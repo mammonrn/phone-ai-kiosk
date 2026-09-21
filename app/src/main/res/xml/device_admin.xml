@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Device admin policy declaration.
+
+  Empty <uses-policies> on purpose: Device Owner status is what lock task mode
+  needs, and that is granted by `adb shell dpm set-device-owner` rather than by
+  anything listed here. Adding policies we do not use would only widen what the
+  app is allowed to do to the device.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies />
+</device-admin>

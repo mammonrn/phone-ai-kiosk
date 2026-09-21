@@ -42,6 +42,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Run unit tests
+        # Before the APK, so a broken test stops the build rather than being
+        # found after an artifact has been published.
+        run: ./gradlew testDebugUnitTest --stacktrace
+
       - name: Build debug APK
         # Release signing is deliberately not done here: phase 0 has no release
         # keystore, and one that CI could reach is one anybody with push access
@@ -56,6 +61,28 @@ jobs:
           APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -1)"
           echo "APK: $APK"
           "$AAPT" dump badging "$APK" | head -3
+
+          # The three things phase 1 can get silently wrong: a debug APK that
+          # is not test-only (no way off the device but a factory reset), a
+          # missing device admin receiver, and a missing HOME category (no
+          # kiosk after reboot). Checked here so a bad APK fails the run
+          # rather than being found on the phone.
+          MANIFEST="$("$AAPT" dump xmltree "$APK" --file AndroidManifest.xml)"
+          fail=0
+          check() {
+            if printf '%s' "$MANIFEST" | grep -q "$2"; then
+              echo "ok: $1"
+            else
+              echo "::error::$1 — not found in the built manifest"
+              fail=1
+            fi
+          }
+          check "debug build is testOnly"        'testOnly'
+          check "device admin receiver declared" 'KioskDeviceAdminReceiver'
+          check "device_admin metadata present"  'android.app.device_admin'
+          check "HOME intent category"           'android.intent.category.HOME'
+          [ "$fail" -eq 0 ] || exit 1
+
           {
             echo "### Debug APK"
             echo ""

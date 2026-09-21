@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Phone AI Kiosk</string>
-    <string name="phase_0_ok">Phone AI Kiosk - Phase 0 OK</string>
+    <string name="phase_1_title">Phase 1 Kiosk</string>
+
+    <string name="yes">yes</string>
+    <string name="no">no</string>
+    <string name="on">on</string>
+    <string name="off">off</string>
+
+    <string name="status_line">owner=%1$s  lock=%2$s  taps=%3$d/%4$d</string>
+    <string name="lock_failed">Could not enter lock task mode: %1$s</string>
+    <string name="no_other_launcher">No other home app on this device — nothing to hand the screen to.</string>
+
+    <string name="device_admin_label">Phone AI Kiosk</string>
+    <string name="device_admin_description">Keeps this device on the kiosk screen.</string>
 </resources>

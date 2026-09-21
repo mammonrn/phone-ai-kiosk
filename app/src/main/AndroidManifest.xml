@@ -9,12 +9,42 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
+            android:stateNotNeeded="true">
+
+            <!-- LAUNCHER so the app can be opened by hand before it is the
+                 device owner; HOME + DEFAULT so the system resolves it as the
+                 home screen, which is what puts the kiosk back after a reboot.
+                 DEFAULT is required alongside HOME — without it the system
+                 will not treat this as a home candidate at all. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- The admin `dpm set-device-owner` is pointed at.
+             BIND_DEVICE_ADMIN must be on the receiver, and it must be exported,
+             or the system refuses to bind it and provisioning fails. -->
+        <receiver
+            android:name=".KioskDeviceAdminReceiver"
+            android:description="@string/device_admin_description"
+            android:exported="true"
+            android:label="@string/device_admin_label"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only overlay.
+
+  android:testOnly="true" is the whole point of this file. Without it, the only
+  way off a device this app has been made Device Owner of is a factory reset:
+  `adb shell dpm remove-active-admin` refuses to remove a device owner unless
+  the package is test-only. With it, the recovery path is one adb command.
+
+  The cost is that a test-only APK will not install with a plain
+  `adb install` — it needs `adb install -t`. That is a deliberate trade, and
+  the flag must never be added to the release manifest, where it would block
+  normal installation entirely.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:testOnly="true"
+        tools:replace="android:testOnly" />
+
+</manifest>
