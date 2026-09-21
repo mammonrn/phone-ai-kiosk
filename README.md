@@ -3,7 +3,14 @@
 Android app that will become a kiosk AI assistant on a Samsung Galaxy A07
 (Android 15).
 
-## Phase 1 — what this is right now
+## Phase 1 — done, and verified on the phone
+
+Signed off on a Samsung Galaxy A07 running Android 15 on 21 Sep 2026: Device
+Owner provisioned, `mLockTaskModeState=LOCKED`, HOME/BACK/APP_SWITCH all
+refused, reboot came back locked, ten taps left the kiosk, the screen followed
+the charger, and `adb install -r -t` replaced the build without disturbing the
+Device Owner. [TESTING.md](TESTING.md) has the measurements.
+
 
 A kiosk shell with no AI in it yet. One screen: a clock, the label
 `Phase 1 Kiosk`, and a line of provisioning state. Around it:
@@ -24,8 +31,8 @@ A kiosk shell with no AI in it yet. One screen: a clock, the label
   nobody can see is not a kiosk, but a phone held awake on battery is flat by
   morning.
 
-All of the above is verified on the target phone; see [TESTING.md](TESTING.md)
-for what was measured.
+Every item above was measured on the target phone, not reasoned about. See
+[TESTING.md](TESTING.md), and `tools/Phase1-Check.ps1` to re-run the checks.
 
 Still to come: wake word, the AI itself, and the phase 5 display.
 

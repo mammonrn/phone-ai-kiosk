@@ -3,13 +3,19 @@
     Checks the phase 1 kiosk on a connected device over adb.
 
 .DESCRIPTION
-    With no switches this script only READS from the device. Nothing it does
-    by default changes the phone, installs, uninstalls, reboots or taps.
+    With no switches this script only reads. It installs nothing, uninstalls
+    nothing, reboots nothing and taps nothing.
+
+    The one thing it writes is /sdcard/ui.xml, which is how uiautomator hands
+    back a screen dump; it is deleted before and after each read. No setting,
+    no app and no policy is touched.
 
     The two tests that do change the phone are opt-in and ask before acting:
 
       -RebootTest   reboots the device and re-checks that the kiosk comes back
       -ExitTest     taps the hidden corner 10 times to leave lock task
+      -AwakeTest    fakes unplugging the charger, then always resets it
+      -UpdateTest   installs an APK over the running one with -r -t
 
     Pass -Yes to skip the confirmation prompts.
 
@@ -25,6 +31,16 @@
     .\Phase1-Check.ps1 -ExitTest -TapX 650 -TapY 1440
     Asks, then sends 10 taps to that point.
 
+.EXAMPLE
+    .\Phase1-Check.ps1 -AwakeTest
+    Asks, fakes an unplugged charger, checks the screen stopped being held
+    awake, and puts the battery state back however the check turns out.
+
+.EXAMPLE
+    .\Phase1-Check.ps1 -UpdateTest -Apk .\app-debug.apk
+    Asks, then installs that APK over the running one without removing the
+    Device Owner.
+
 .NOTES
     Never disables USB debugging. adb is the only recovery path off a device
     this app is Device Owner of.
@@ -35,6 +51,9 @@ param(
     [string] $AdminClass  = 'com.mammonrn.phoneaikiosk.KioskDeviceAdminReceiver',
     [switch] $RebootTest,
     [switch] $ExitTest,
+    [switch] $AwakeTest,
+    [switch] $UpdateTest,
+    [string] $Apk,
     [int]    $TapX = 650,
     [int]    $TapY = 1440,
     [switch] $Yes
@@ -220,8 +239,97 @@ function Show-ActivityState {
     }
 }
 
+# ---------------------------------------------------------- on-screen status
+
+<#
+    Reads the kiosk's own status line off the screen.
+
+    dumpsys answers what the system thinks; this answers what the app is
+    actually showing, which is the only way to check awake= at all — nothing
+    in dumpsys reports FLAG_KEEP_SCREEN_ON per-window in a form worth parsing.
+
+    The dump has to go through a file on the device: `uiautomator dump /dev/tty`
+    exists but interleaves its own chatter with the XML. The file is removed
+    afterwards so this leaves nothing behind.
+#>
+function Get-KioskStatusLine {
+    # Deleted BEFORE the dump, not only after. A dump that fails leaves
+    # whatever the last one wrote sitting there, and reading that would report
+    # a stale status as if it were current — the one failure mode that is
+    # worse than reporting nothing, because it looks like an answer.
+    Invoke-Adb 'shell' 'rm' '-f' '/sdcard/ui.xml' | Out-Null
+
+    $dump = Invoke-Adb 'shell' 'uiautomator' 'dump' '/sdcard/ui.xml'
+    $xml = Invoke-Adb 'shell' 'cat' '/sdcard/ui.xml'
+    Invoke-Adb 'shell' 'rm' '-f' '/sdcard/ui.xml' | Out-Null
+
+    if ($xml -notmatch '<hierarchy') {
+        Write-Verbose "uiautomator said: $($dump.Trim())"
+        return $null
+    }
+
+    $m = [regex]::Match($xml, 'text="(?<t>owner=[^"]*)"')
+    if ($m.Success) { return $m.Groups['t'].Value.Trim() }
+    return $null
+}
+
+<#
+    Prints the status line and checks each field against what it should be.
+
+    $Expect is a hashtable of field name to expected value; anything not
+    named is reported but not judged, because most of the time only one field
+    is the point of the test.
+#>
+function Show-KioskStatus {
+    param([hashtable] $Expect = @{})
+
+    $line = Get-KioskStatusLine
+    if (-not $line) {
+        Write-Warn 'Could not read the status line from the screen.'
+        Write-Info '  The kiosk may not be in the foreground, or the screen is off.'
+        Write-Info '  Wake it with: adb shell input keyevent WAKEUP'
+        return $null
+    }
+
+    Write-Info "screen: $line"
+
+    $fields = @{}
+    foreach ($m in [regex]::Matches($line, '(?<k>\w+)=(?<v>[^\s]+)')) {
+        $fields[$m.Groups['k'].Value] = $m.Groups['v'].Value
+    }
+
+    foreach ($key in $Expect.Keys) {
+        $want = $Expect[$key]
+        $got  = $fields[$key]
+        if ($got -eq $want) {
+            Write-Ok "$key=$got"
+        } else {
+            Write-Fail "$key=$got (expected $want)"
+        }
+    }
+    return $fields
+}
+
 Write-Section 'Lock task state'
 Show-ActivityState
+
+Write-Section 'Status line on screen'
+Show-KioskStatus | Out-Null
+
+Write-Section 'Battery state (must not be left faked)'
+
+# -AwakeTest fakes an unplugged charger and resets it in a finally block, but
+# a hard kill at the wrong moment still leaves the phone convinced it is on
+# battery — the icon lies, the screen stops being held awake, and nothing on
+# the phone says why. BatteryService prints this line for exactly that case,
+# so every run checks for it whether or not it was the run that caused it.
+$batteryDump = Invoke-Adb 'shell' 'dumpsys' 'battery'
+if ($batteryDump -match 'UPDATES STOPPED') {
+    Write-Fail 'Battery readings are FAKED and stuck that way.'
+    Write-Info '  Put them back with: adb shell dumpsys battery reset'
+} else {
+    Write-Ok 'Battery readings are real.'
+}
 
 # ------------------------------------------------------------------- optional
 
@@ -259,6 +367,63 @@ if ($ExitTest) {
         Show-ActivityState
         Write-Info 'Expected: mLockTaskModeState=NONE and the top activity is the Samsung launcher.'
         Write-Info 'Pressing HOME returns to this app, still NONE. Rebooting makes it LOCKED again.'
+    }
+}
+
+if ($AwakeTest) {
+    Write-Section 'Awake test (screen held on only while charging)'
+    if (Confirm-Action 'tell the phone its charger is UNPLUGGED, check awake=off, then put it back.') {
+        # finally, not a trailing command: leaving the phone convinced it is on
+        # battery survives this script, and the battery icon would lie until
+        # someone ran `dumpsys battery reset` by hand. Every exit path resets.
+        try {
+            Invoke-Adb 'shell' 'dumpsys' 'battery' 'unplug' | Out-Null
+            Write-Info 'Charger faked as unplugged; waiting for the app to notice...'
+            Start-Sleep -Seconds 3
+            Show-KioskStatus -Expect @{ awake = 'off' } | Out-Null
+        } finally {
+            Invoke-Adb 'shell' 'dumpsys' 'battery' 'reset' | Out-Null
+            Write-Info 'Battery state reset to the real one.'
+            Start-Sleep -Seconds 3
+            Show-KioskStatus -Expect @{ awake = 'on' } | Out-Null
+            Write-Info 'If this ever gets left unplugged, fix it with: adb shell dumpsys battery reset'
+        }
+    }
+}
+
+if ($UpdateTest) {
+    Write-Section 'Update test (install over a running Device Owner)'
+    if (-not $Apk) {
+        Write-Fail 'Pass the APK to install: -UpdateTest -Apk .\app-debug.apk'
+    } elseif (-not (Test-Path -LiteralPath $Apk)) {
+        Write-Fail "No such file: $Apk"
+    } elseif (Confirm-Action "install '$Apk' over the running app with adb install -r -t.") {
+        # -t because the debug build is testOnly; -r to replace in place. This
+        # is the whole point of pinning the signing key: without it Android
+        # rejects the replacement and the only way forward is uninstalling,
+        # which a Device Owner will not allow.
+        $result = Invoke-Adb 'install' '-r' '-t' $Apk
+        if ($result -match 'Success') {
+            Write-Ok 'adb install -r -t succeeded'
+        } else {
+            Write-Fail "Install failed: $($result.Trim())"
+            if ($result -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE') {
+                Write-Info '  The signing key does not match the installed build.'
+                Write-Info '  Check the run summary says "Signed with the pinned keystore",'
+                Write-Info '  then follow the one-time migration in TESTING.md.'
+            }
+            if ($result -match 'INSTALL_FAILED_TEST_ONLY') {
+                Write-Info '  Missing -t. This APK is testOnly by design; see README.md.'
+            }
+        }
+
+        # Installing kills the app. It is the HOME activity, so HOME brings it
+        # back — which is also exactly how Poom saw it recover on the phone.
+        Invoke-Adb 'shell' 'input' 'keyevent' 'HOME' | Out-Null
+        Start-Sleep -Seconds 4
+        Write-Info 'After reinstall and HOME:'
+        Show-ActivityState
+        Show-KioskStatus -Expect @{ owner = 'yes'; lock = 'on' } | Out-Null
     }
 }
 

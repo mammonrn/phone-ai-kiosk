@@ -3,15 +3,40 @@
 ทุกคำสั่งในไฟล์นี้ **รันบน PowerShell ของคอมพิวเตอร์** (ไม่ใช่บนมือถือ)
 ต่อสาย USB และเปิด USB debugging ไว้ตลอด — นี่คือทางกู้คืนทางเดียว
 
-> ผ่านการทดสอบจริงบน Galaxy A07 (Android 15) เมื่อ 21 ก.ย. 2569 แล้ว
-> สิ่งที่เขียนในไฟล์นี้คือพฤติกรรมที่เห็นจริง ไม่ใช่ที่คาดว่าจะเป็น
+> **เฟส 1 ผ่านครบทุกข้อบนเครื่องจริงแล้ว** Galaxy A07 / Android 15 เมื่อ 21 ก.ย. 2569
+> สิ่งที่เขียนในไฟล์นี้คือพฤติกรรมที่วัดได้จริง ไม่ใช่ที่คาดว่าจะเป็น
+>
+> | ข้อ | ผล | หลักฐาน |
+> |---|---|---|
+> | Device Owner | ผ่าน | `dpm list-owners` แสดง DeviceOwner |
+> | Lock task | ผ่าน | `mLockTaskModeState=LOCKED` |
+> | HOME / BACK / APP_SWITCH หนีไม่ออก | ผ่าน | ยิง keyevent ครบสามปุ่มแล้วยัง LOCKED |
+> | รีบูตกลับเข้า kiosk | ผ่าน | บูตแล้ว LOCKED + top activity เป็น MainActivity |
+> | แตะ 10 ครั้งออกได้ | ผ่าน | `input tap 650 1440` ×10 → NONE + launcher Samsung |
+> | จอค้างเฉพาะตอนชาร์จ | ผ่าน | `dumpsys battery unplug` → `awake=off`, `reset` → `awake=on` |
+> | อัปเดตทับไม่ต้องถอด owner | ผ่าน | `adb install -r -t` สำเร็จขณะเป็น Device Owner |
+> | กุญแจเซ็นคงที่ | ผ่าน | APK versionCode 3 ลงทับได้ |
 
 **ทางลัด:** มีสคริปต์รวมคำสั่งตรวจไว้ให้แล้วที่ [`tools/Phase1-Check.ps1`](tools/Phase1-Check.ps1)
-รันเปล่าๆ จะ **อ่านอย่างเดียว ไม่แตะเครื่อง**
+รันเปล่าๆ จะ **อ่านอย่างเดียว** ไม่ลง ไม่ถอน ไม่รีบูต ไม่แตะการตั้งค่าใดๆ
+(สิ่งเดียวที่เขียนคือไฟล์ชั่วคราว `/sdcard/ui.xml` ที่ `uiautomator` ใช้ส่งผลกลับ
+แล้วลบทิ้งทั้งก่อนและหลังอ่าน)
 
 ```powershell
 .\tools\Phase1-Check.ps1
 ```
+
+โหมดที่เปลี่ยนเครื่อง **ต้องพิมพ์ YES ก่อนเสมอ**:
+
+| สวิตช์ | ทำอะไร |
+|---|---|
+| `-RebootTest` | รีบูตแล้วตรวจว่ากลับเข้า kiosk |
+| `-ExitTest` | แตะมุม 10 ครั้งเพื่อออกจาก lock task |
+| `-AwakeTest` | แกล้งถอดที่ชาร์จ ตรวจ `awake=off` แล้ว **reset คืนเสมอ** |
+| `-UpdateTest -Apk .\app-debug.apk` | ลง APK ทับขณะเป็น Device Owner |
+
+สคริปต์อ่านบรรทัดสถานะจากหน้าจอจริงผ่าน `uiautomator` (ไม่ใช่เดาจาก dumpsys)
+เพราะ `awake=` ไม่มีใน dumpsys ที่ไหนเลย
 
 ชื่อ component ที่ใช้ตลอดคู่มือนี้ ลอกไปวางได้เลย:
 
@@ -313,6 +338,9 @@ summary ของ run นั้นว่าขึ้น "Signed with the **pinne
 | ใครเป็น Device Owner | `adb shell dpm list-owners` |
 | แอปติดตั้งอยู่ไหม | `adb shell pm list packages \| Select-String phoneaikiosk` |
 | ดู log แอป | `adb logcat -s AndroidRuntime:E ActivityManager:I` |
+| บรรทัดสถานะบนจอ | `adb shell uiautomator dump /sdcard/ui.xml` แล้ว `adb shell cat /sdcard/ui.xml` |
+| แบตถูกแกล้งค้างไว้ไหม | `adb shell dumpsys battery \| Select-String "UPDATES STOPPED"` |
+| คืนค่าแบตให้เป็นจริง | `adb shell dumpsys battery reset` |
 | สถานะ kiosk ทั้งหมด | `adb shell dumpsys activity activities \| Select-String "LockTask\|ResumedActivity"` |
 | รายชื่อ allowlist จริง | `adb shell dumpsys activity activities \| Select-String "mLockTaskPackages" -Context 0,3` |
 
