@@ -20,6 +20,12 @@ A kiosk shell with no AI in it yet. One screen: a clock, the label
   app. No PIN, by decision. The app stays the preferred HOME, so the Home
   button still returns here — unlocked — until the process restarts or the
   device reboots.
+- **Screen** — stays on while the phone is charging, and only then. A kiosk
+  nobody can see is not a kiosk, but a phone held awake on battery is flat by
+  morning.
+
+All of the above is verified on the target phone; see [TESTING.md](TESTING.md)
+for what was measured.
 
 Still to come: wake word, the AI itself, and the phase 5 display.
 
@@ -35,6 +41,22 @@ Still to come: wake word, the AI itself, and the phase 5 display.
 `targetSdk` is 36 rather than 37 on purpose: 37 opts the app into runtime
 behaviour changes that nothing here has been tested against. Both are above
 the Android 15 (35) floor.
+
+## Signing
+
+Debug builds are signed with a **pinned** keystore supplied to CI through the
+`ANDROID_DEBUG_KEYSTORE_BASE64` secret, never from a file in this repo.
+
+Without it AGP generates a throwaway keystore per runner — two runs of this
+workflow signed the same app with SHA-256 `d5e883…` and `b7bd30…`. Android
+refuses to update an installed app whose signing certificate changed, and this
+app is the Device Owner, so it cannot simply be uninstalled: a key change
+costs a full re-provisioning of the phone. With the key pinned,
+`adb install -r -t` is enough.
+
+The secret is a base64 of the keystore (`base64 -w0`). A build without it
+still succeeds, but annotates the run with a warning and produces an APK that
+will not install over the previous one.
 
 ## Recovering a device
 

@@ -3,6 +3,16 @@
 ทุกคำสั่งในไฟล์นี้ **รันบน PowerShell ของคอมพิวเตอร์** (ไม่ใช่บนมือถือ)
 ต่อสาย USB และเปิด USB debugging ไว้ตลอด — นี่คือทางกู้คืนทางเดียว
 
+> ผ่านการทดสอบจริงบน Galaxy A07 (Android 15) เมื่อ 21 ก.ย. 2569 แล้ว
+> สิ่งที่เขียนในไฟล์นี้คือพฤติกรรมที่เห็นจริง ไม่ใช่ที่คาดว่าจะเป็น
+
+**ทางลัด:** มีสคริปต์รวมคำสั่งตรวจไว้ให้แล้วที่ [`tools/Phase1-Check.ps1`](tools/Phase1-Check.ps1)
+รันเปล่าๆ จะ **อ่านอย่างเดียว ไม่แตะเครื่อง**
+
+```powershell
+.\tools\Phase1-Check.ps1
+```
+
 ชื่อ component ที่ใช้ตลอดคู่มือนี้ ลอกไปวางได้เลย:
 
 ```
@@ -30,6 +40,24 @@ Android จะไม่ยอมให้ถอด Device Owner เลย แล
 
 ---
 
+## ถ้า adb ขึ้น unauthorized
+
+เจอจริงตอนเปลี่ยนกุญแจ adb ฝั่งคอม เครื่องจะค้างที่ `unauthorized` และ**ไม่มี
+หน้าต่างขออนุญาตเด้งขึ้นมาอีก** เพราะเครื่องยังจำกุญแจเก่าว่า "อนุญาตแล้ว"
+
+วิธีแก้บนตัวมือถือ:
+1. Settings → Developer options → **Revoke USB debugging authorizations** → ยืนยัน
+2. ถอดสาย เสียบใหม่
+3. หน้าต่าง "Allow USB debugging?" จะเด้ง → ติ๊ก Always allow → Allow
+
+แล้วเช็คว่ากลับมาปกติ:
+```powershell
+adb kill-server
+adb devices
+```
+
+---
+
 ## ขั้น A — ตรวจสภาพเครื่องก่อนตั้ง Device Owner
 
 `dpm set-device-owner` จะ **ล้มทันทีถ้ามีบัญชีใดๆ ผูกอยู่ในเครื่อง**
@@ -44,7 +72,28 @@ adb devices
 adb shell dumpsys account | Select-String "Account \{"
 ```
 **ต้องไม่มีผลลัพธ์ออกมาเลย** ถ้ามีบรรทัดไหนโผล่ แปลว่ายังมีบัญชีผูกอยู่
-ต้องเข้าไปลบใน Settings ก่อน
+
+### บัญชีซ่อนของ Google Meet — เจอจริงบน A07
+
+เครื่องที่รีเซ็ตโรงงานแล้วและ**ยังไม่ได้ล็อกอิน Google เลย** ก็ยังขึ้น
+`Accounts: 1` ได้ ตัวการคือ Google Meet ที่ติดมากับเครื่อง มันสร้างบัญชี
+ชนิด `com.google.android.apps.tachyon` ซึ่ง **ไม่โผล่ในหน้า Settings → Accounts**
+จึงลบทางหน้าจอไม่ได้
+
+ถอนออกจาก user 0 (ตัวแอปยังอยู่ในเครื่อง ไม่ได้ลบทิ้งถาวร):
+```powershell
+adb shell pm uninstall --user 0 com.google.android.apps.tachyon
+```
+
+ตรวจซ้ำว่าเหลือ 0 บัญชีแล้ว:
+```powershell
+adb shell dumpsys account | Select-String "Account \{"
+```
+
+อยากได้ Google Meet คืนเมื่อไร (ทำได้ทุกเมื่อ แม้หลังตั้ง Device Owner แล้ว):
+```powershell
+adb shell cmd package install-existing com.google.android.apps.tachyon
+```
 
 ```powershell
 adb shell pm list users
@@ -79,7 +128,7 @@ adb shell am start -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.
 ดูที่จอมือถือ ต้องเห็นนาฬิกาเดิน คำว่า `Phase 1 Kiosk` และบรรทัดสถานะ
 
 ```
-owner=no  lock=off  taps=0/10
+owner=no  lock=off  awake=on  taps=0/10
 ```
 
 `owner=no` ตอนนี้ถูกต้องแล้ว เพราะยังไม่ได้ตั้ง Device Owner
@@ -114,8 +163,11 @@ adb shell am start -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.
 
 ที่จอต้องเปลี่ยนเป็น:
 ```
-owner=yes  lock=on  taps=0/10
+owner=yes  lock=on  awake=on  taps=0/10
 ```
+
+`awake=on` แปลว่าจอจะไม่ดับเพราะกำลังเสียบชาร์จอยู่ ถ้าถอดสายชาร์จจะเปลี่ยนเป็น
+`awake=off` ภายในไม่กี่วินาที แล้วจอจะดับตามการตั้งค่าปกติของเครื่อง
 
 ---
 
@@ -131,6 +183,15 @@ owner=yes  lock=on  taps=0/10
    เป็นค่าเริ่มต้นของ lock task และเป็นวิธีที่จะใช้รีบูตในขั้นถัดไป)
 
 ถ้าข้อ 1–4 ข้อไหนหลุดออกไปได้ ให้จดว่าข้อไหนแล้วบอกผม
+
+ตรวจซ้ำจากฝั่งคอมก็ได้ — ยิงปุ่มผ่าน adb แล้วดูว่า state ไม่เปลี่ยน:
+```powershell
+adb shell input keyevent HOME
+adb shell input keyevent BACK
+adb shell input keyevent APP_SWITCH
+adb shell dumpsys activity activities | Select-String "LockTask|ResumedActivity"
+```
+ทดสอบจริงแล้ว: ยิงครบสามปุ่มแล้ว `mLockTaskModeState` ยังเป็น `LOCKED`
 
 ---
 
@@ -159,10 +220,27 @@ adb reboot
 2. พอครบ 10 → เครื่องต้องออกจาก lock task และเด้งไปหน้า Samsung (One UI Home)
 3. ตอนนี้ใช้เครื่องได้ตามปกติ เปิด Settings เปิดแอปอื่นได้
 
-**สิ่งที่ต้องรู้:** แอปยังเป็น Home อยู่ ดังนั้น**กดปุ่ม Home จะกลับมาหน้า kiosk**
-แต่จะกลับมาแบบ **ไม่ล็อก** (`lock=off`) กด Home ออกไปใหม่ได้เรื่อยๆ
-จะล็อกอีกทีเมื่อรีบูตเครื่อง — ตั้งใจให้เป็นแบบนี้ เพราะข้อกำหนดบอกว่ารีบูต
-แล้วต้องกลับเข้า kiosk ซึ่งทำได้ก็ต่อเมื่อแอปยังเป็น Home อยู่
+### พฤติกรรมจริงที่วัดได้บน A07 (ไม่ใช่ที่คาดไว้)
+
+ลำดับที่เกิดขึ้นจริง ยืนยันด้วย `dumpsys` ทุกขั้น:
+
+| ทำอะไร | `mLockTaskModeState` | `topResumedActivity` |
+|---|---|---|
+| ก่อนแตะ | `LOCKED` | `…phoneaikiosk.debug/….MainActivity` |
+| แตะครบ 10 ครั้ง | `NONE` | `com.sec.android.app.launcher/.activities.LauncherActivity` |
+| จากนั้นกดปุ่ม HOME | `NONE` | `…phoneaikiosk.debug/….MainActivity` |
+| รีบูต | `LOCKED` | `…phoneaikiosk.debug/….MainActivity` |
+
+อ่านตารางนี้ว่า: **แตะ 10 ครั้งแล้วไปโผล่ที่ launcher ของ Samsung จริง**
+แต่แอปเรายังเป็น Home อยู่ (`resolve-activity` ยังชี้มาที่เรา และ `isDefault=true`)
+ดังนั้น**กดปุ่ม Home จะกลับมาหน้า kiosk — แต่กลับมาแบบไม่ล็อก** กด Home ออกไป
+ใหม่ได้เรื่อยๆ ไม่ต้องแตะ 10 ครั้งซ้ำ
+
+จะกลับไปล็อกอีกทีเมื่อ **รีบูต** หรือเมื่อระบบฆ่าโปรเซสแอปทิ้ง
+
+ที่ออกแบบแบบนี้เพราะข้อกำหนดบอกว่ารีบูตแล้วต้องกลับเข้า kiosk ซึ่งทำได้ก็ต่อเมื่อ
+แอปยังเป็น Home ถาวรอยู่ ถ้าไปถอด Home ตอนออก รีบูตแล้วจะไปโผล่ launcher ของ
+Samsung แทน
 
 4. ทดสอบต่อ: รีบูตอีกครั้ง → ต้องกลับมา `lock=on` เหมือนเดิม
 
@@ -192,6 +270,40 @@ Android จะปฏิเสธ
 
 ---
 
+## ย้ายมาใช้กุญแจเซ็นตัวใหม่ — ทำครั้งเดียว
+
+**ทำไมต้องทำ:** ก่อนหน้านี้ CI สร้างกุญแจเซ็นใหม่ทุกรอบ พิสูจน์แล้วด้วยการเทียบ
+ใบรับรองของ APK สองรอบ (`d5e883…` กับ `b7bd30…` คนละใบ) Android ไม่ยอมให้
+อัปเดตแอปที่ลายเซ็นเปลี่ยน และแอปนี้ถอนทิ้งเฉยๆ ไม่ได้เพราะเป็น Device Owner
+→ ทุกครั้งที่อัปเดตต้องรื้อ Device Owner ใหม่ทั้งหมด
+
+ตอนนี้ CI ใช้กุญแจคงที่จาก GitHub Secret แล้ว แต่เครื่องที่ยังมี APK กุญแจเก่า
+ติดตั้งอยู่ **ต้องล้างครั้งสุดท้ายหนึ่งรอบ** ตามลำดับนี้ (สลับลำดับไม่ได้):
+
+```powershell
+adb shell dpm remove-active-admin com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.KioskDeviceAdminReceiver
+adb uninstall com.mammonrn.phoneaikiosk.debug
+adb install -t app-debug.apk
+adb shell dpm set-device-owner com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.KioskDeviceAdminReceiver
+```
+
+แล้วเปิดแอปหนึ่งครั้งให้มันลงนโยบาย:
+```powershell
+adb shell am start -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.MainActivity
+```
+
+**หลังจากรอบนี้แล้ว การอัปเดตครั้งต่อๆ ไปใช้คำสั่งเดียว ไม่ต้องถอด Device Owner:**
+
+```powershell
+adb install -r -t app-debug.apk
+```
+
+ถ้าเจอ `INSTALL_FAILED_UPDATE_INCOMPATIBLE` แปลว่าลายเซ็นไม่ตรง — เช็คที่หน้า
+summary ของ run นั้นว่าขึ้น "Signed with the **pinned** keystore" หรือเปล่า
+ถ้าขึ้นเตือนว่าใช้กุญแจชั่วคราว แปลว่า secret หาย ต้องบอกผม
+
+---
+
 ## สรุปคำสั่งตรวจสถานะ
 
 | อยากรู้ | คำสั่ง (PowerShell) |
@@ -201,3 +313,23 @@ Android จะปฏิเสธ
 | ใครเป็น Device Owner | `adb shell dpm list-owners` |
 | แอปติดตั้งอยู่ไหม | `adb shell pm list packages \| Select-String phoneaikiosk` |
 | ดู log แอป | `adb logcat -s AndroidRuntime:E ActivityManager:I` |
+| สถานะ kiosk ทั้งหมด | `adb shell dumpsys activity activities \| Select-String "LockTask\|ResumedActivity"` |
+| รายชื่อ allowlist จริง | `adb shell dumpsys activity activities \| Select-String "mLockTaskPackages" -Context 0,3` |
+
+### เรื่อง `mLockTaskPackages` ที่ดูเหมือนว่าง
+
+บรรทัด `mLockTaskPackages (userId:packages)=` **ว่างเปล่าเสมอ** ไม่ว่า allowlist
+จะมีของหรือไม่มี เพราะซอร์ส AOSP พิมพ์หัวข้อจบด้วย `=` แล้วขึ้นบรรทัดใหม่ทีละ
+user:
+
+```java
+pw.println(prefix + "mLockTaskPackages (userId:packages)=");
+for (int i = 0; i < mLockTaskPackages.size(); ++i) {
+    pw.println(prefix + "  u" + mLockTaskPackages.keyAt(i)
+            + ":" + Arrays.toString(mLockTaskPackages.valueAt(i)));
+}
+```
+
+`Select-String` คัดเฉพาะบรรทัดที่ตรงคำค้น บรรทัด `u0:[...]` ข้างล่างไม่มีคำว่า
+`LockTask` อยู่เลย มันจึงถูกทิ้ง — ไม่ใช่ PowerShell ตัดบรรทัด แต่เป็นการกรอง
+ทีละบรรทัดที่ทำให้ของหาย ใส่ `-Context 0,3` แล้วจะเห็น

@@ -42,15 +42,47 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Decode debug keystore
+        id: debug_keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        # Without a pinned keystore AGP generates a throwaway one per runner,
+        # so every build is signed with a different certificate. Android
+        # refuses to update an installed app whose signature changed, and this
+        # app is the Device Owner — it cannot just be uninstalled, so a key
+        # change costs a re-provisioning of the phone.
+        #
+        # The build is still allowed to proceed without the secret (a fork or
+        # a PR from one cannot read it), but the run is annotated so an APK
+        # that will not install over the last one is obvious from the summary
+        # rather than from the phone.
+        run: |
+          if [ -n "${DEBUG_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+            if [ ! -s "$RUNNER_TEMP/debug.keystore" ]; then
+              echo "::error::ANDROID_DEBUG_KEYSTORE_BASE64 is set but did not decode to a file. Re-generate it with 'base64 -w0' and update the secret."
+              exit 1
+            fi
+            echo "path=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_OUTPUT"
+            echo "::notice::Signing with the pinned keystore from ANDROID_DEBUG_KEYSTORE_BASE64."
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_DEBUG_KEYSTORE_BASE64 is not set. This APK is signed with a throwaway key and will NOT install over an existing one with 'adb install -r'. Re-provisioning the device owner would be required. See README.md."
+          fi
+
       - name: Run unit tests
         # Before the APK, so a broken test stops the build rather than being
         # found after an artifact has been published.
         run: ./gradlew testDebugUnitTest --stacktrace
 
       - name: Build debug APK
-        # Release signing is deliberately not done here: phase 0 has no release
-        # keystore, and one that CI could reach is one anybody with push access
-        # could sign with.
+        env:
+          # Empty when the secret is absent, which makes build.gradle.kts fall
+          # back to AGP's default debug signing.
+          DEBUG_KEYSTORE_PATH: ${{ steps.debug_keystore.outputs.path }}
+        # Release signing is deliberately not done here: there is no release
+        # keystore yet, and one that CI could reach is one anybody with push
+        # access could sign with.
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Report APK details
@@ -83,12 +115,28 @@ jobs:
           check "HOME intent category"           'android.intent.category.HOME'
           [ "$fail" -eq 0 ] || exit 1
 
+          # The signing certificate decides whether this APK can be installed
+          # over the one already on the phone. Printed every run so a key
+          # change is visible here rather than as INSTALL_FAILED_UPDATE_
+          # INCOMPATIBLE on the device.
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --print-certs "$APK" | grep -iE 'DN:|SHA-256 digest' | tee /tmp/certs.txt
+          SHA256="$(grep -im1 'SHA-256 digest' /tmp/certs.txt | sed 's/.*: //' | tr -d ' \r')"
+
           {
             echo "### Debug APK"
             echo ""
             echo '```'
             "$AAPT" dump badging "$APK" | head -3
             echo '```'
+            echo ""
+            echo "Signing certificate SHA-256: \`$SHA256\`"
+            echo ""
+            if [ -n "${{ steps.debug_keystore.outputs.path }}" ]; then
+              echo "Signed with the **pinned** keystore, so this installs over the previous build with \`adb install -r -t\`."
+            else
+              echo "⚠️ Signed with a **throwaway** key — this will NOT install over an existing build."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload debug APK

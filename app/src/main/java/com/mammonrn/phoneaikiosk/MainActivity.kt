@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,9 +13,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.BatteryManager
 import android.os.SystemClock
+import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,6 +37,21 @@ class MainActivity : Activity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val tapGate = TapGate()
+
+    /**
+     * Keeps the screen on while the phone is charging, and only then.
+     *
+     * A kiosk nobody can see is not a kiosk, but a phone held awake on battery
+     * is a phone that is flat by morning — and on OLED, a clock burnt into the
+     * panel. Charging is the line Poom drew, so the screen follows the cable.
+     */
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            applyKeepScreenOn(intent.action == Intent.ACTION_POWER_CONNECTED)
+        }
+    }
+
+    private var keepingScreenOn = false
 
     private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE d MMMM yyyy", Locale.getDefault())
@@ -91,12 +110,49 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         handler.post(tick)
+
+        // NOT_EXPORTED is the right answer even though these are protected
+        // system broadcasts: it is what Android 14+ wants declared, and the
+        // system still delivers its own broadcasts to a receiver registered
+        // this way.
+        ContextCompat.registerReceiver(
+            this,
+            powerReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        // The receiver only reports changes, so the state at this moment has
+        // to be read directly — otherwise a kiosk that was already plugged in
+        // when it launched (which is every reboot on a charger) would sit
+        // there letting its screen time out.
+        applyKeepScreenOn(isCharging())
+
         enterLockTaskIfWanted()
     }
 
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(tick)
+        unregisterReceiver(powerReceiver)
+    }
+
+    /** Reads the sticky battery broadcast for the plugged-in state right now. */
+    private fun isCharging(): Boolean {
+        val status = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val plugged = status?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        return plugged != 0
+    }
+
+    private fun applyKeepScreenOn(on: Boolean) {
+        keepingScreenOn = on
+        if (on) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     /**
@@ -205,8 +261,9 @@ class MainActivity : Activity() {
         val locked = getString(
             if (lockTaskState() != ActivityManager.LOCK_TASK_MODE_NONE) R.string.on else R.string.off,
         )
+        val awake = getString(if (keepingScreenOn) R.string.on else R.string.off)
         val taps = tapGate.progress
-        return getString(R.string.status_line, owner, locked, taps, TapGate.TAPS_REQUIRED)
+        return getString(R.string.status_line, owner, locked, awake, taps, TapGate.TAPS_REQUIRED)
     }
 
     companion object {

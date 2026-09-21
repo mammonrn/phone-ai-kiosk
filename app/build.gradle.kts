@@ -18,12 +18,48 @@ android {
         versionName = "0.2.0"
     }
 
+    // Optional pinned debug keystore.
+    //
+    // By default AGP signs debug builds with ~/.android/debug.keystore and
+    // generates that file when it is missing. On an ephemeral CI runner it is
+    // always missing, so every run signs with a different certificate — two
+    // runs of this repo's own workflow produced SHA-256 d5e883… and b7bd30…
+    // for the same app. Android refuses to update an installed app whose
+    // signing certificate changed, and this one cannot simply be uninstalled:
+    // it is the Device Owner, so a key change means re-provisioning the phone.
+    //
+    // DEBUG_KEYSTORE_PATH points at a keystore to use instead. Left unset,
+    // behaviour is exactly what it was.
+    //
+    // Blank counts as absent: GitHub Actions substitutes a missing secret as
+    // an EMPTY STRING rather than leaving the variable unset, and Gradle
+    // reports that as present — so a plain null check would have AGP trying to
+    // open "" as a keystore and failing as "keystore password was incorrect".
+    fun env(name: String): String? =
+        providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+
+    val pinnedDebugKeystore = env("DEBUG_KEYSTORE_PATH")?.let(::file)?.takeIf { it.isFile }
+
+    signingConfigs {
+        if (pinnedDebugKeystore != null) {
+            create("debugPinned") {
+                storeFile = pinnedDebugKeystore
+                // Defaults match Android's standard debug keystore, so only a
+                // non-standard one needs the extra variables set.
+                storePassword = env("DEBUG_KEYSTORE_PASSWORD") ?: "android"
+                keyAlias = env("DEBUG_KEY_ALIAS") ?: "androiddebugkey"
+                keyPassword = env("DEBUG_KEY_PASSWORD") ?: storePassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Lets a debug build sit beside a future release build on the
             // same phone.
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
+            signingConfigs.findByName("debugPinned")?.let { signingConfig = it }
         }
         release {
             // No signing config here on purpose: phase 0 builds debug only,

@@ -8,7 +8,7 @@
     <string name="on">on</string>
     <string name="off">off</string>
 
-    <string name="status_line">owner=%1$s  lock=%2$s  taps=%3$d/%4$d</string>
+    <string name="status_line">owner=%1$s  lock=%2$s  awake=%3$s  taps=%4$d/%5$d</string>
     <string name="lock_failed">Could not enter lock task mode: %1$s</string>
     <string name="no_other_launcher">No other home app on this device — nothing to hand the screen to.</string>
 
