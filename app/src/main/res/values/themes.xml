@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Platform theme, so the APK carries no AppCompat/Material dependency.
+         Phase 0 shows one line of text and nothing else. -->
+    <style name="Theme.PhoneAiKiosk" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>
