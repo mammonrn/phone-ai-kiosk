@@ -15,7 +15,8 @@ import sqlite3
 import time
 from typing import Any
 
-from . import actions, auth, botnoi, limits, pronounce, register, shorten, stt, store, tts
+from . import (actions, auth, botnoi, clock, limits, oggopus, pronounce, register,
+               shorten, stt, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -172,9 +173,18 @@ def handle_chat(
     history = store.history(conn, conversation_id=conversation_id, turns=cfg.history_turns)
     messages = history + [{"role": "user", "content": text}]
 
+    # The one fact the broker knows and the model cannot: what time it is.
+    #
+    # Appended to the SYSTEM prompt rather than added to the messages, because
+    # history is replayed on every turn — a time sent as part of a user message
+    # would still be sitting in the conversation an hour later, and the model
+    # would have two times in front of it and no way to tell which was now.
+    # In the system prompt there is only ever one, and it is this minute's.
+    system = SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
+
     started = time.monotonic()
     try:
-        answer = ask(client, model=cfg.model, system=SYSTEM_PROMPT, messages=messages,
+        answer = ask(client, model=cfg.model, system=system, messages=messages,
                      max_tokens=cfg.max_output_tokens)
     except UpstreamError as exc:
         store.record_request(conn, device_id=device_id, day=day, outcome="upstream_error",
@@ -359,6 +369,11 @@ def handle_tts(
     On success the payload carries `audio` (bytes) and `content_type`; the
     listener sends those as the body instead of JSON. Errors stay JSON.
     """
+    # Two clocks, because one number could not tell us what was slow. The phone
+    # reported "tts ... 9343 ms" and that was read as nine seconds of synthesis;
+    # it was not. See the timing note in oggopus.py and TESTING.md.
+    handler_started = time.monotonic()
+
     day = limits.day_key(cfg.budget_timezone)
     month = limits.month_key(cfg.budget_timezone)
 
@@ -458,7 +473,13 @@ def handle_tts(
                              text_len=len(text), endpoint="tts")
         log.warning("tts failed device=%s chars=%d detail=%s", label, len(text), exc.detail)
         return 502, _error("tts_error", exc.user_message)
-    elapsed_ms = int((time.monotonic() - started) * 1000)
+    upstream_ms = int((time.monotonic() - started) * 1000)
+
+    # How long the audio PLAYS for, read out of the container rather than
+    # guessed from its size. This is the number that explains the phone's
+    # measurement: a spoken Thai sentence runs to several seconds, and the phone
+    # was timing synthesis and playback together.
+    audio_ms = oggopus.duration_ms(speech.audio)
 
     pricing = Pricing.load(cfg.pricing_path)
     cost = pricing.tts_cost(cfg.tts_voice_family, speech.billed_characters)
@@ -468,20 +489,31 @@ def handle_tts(
     store.record_request(conn, device_id=device_id, day=day, outcome="ok",
                          text_len=len(text), register_fixes=register_fixes, endpoint="tts")
 
+    handler_ms = int((time.monotonic() - handler_started) * 1000)
+
+    # upstream_ms is the vendor. handler_ms - upstream_ms is everything this
+    # broker did around it. audio_ms is how long the result takes to say, which
+    # is not latency at all and was being counted as if it were.
     log.info("tts ok device=%s voice=%s chars=%d truncated=%s respellings=%d bytes=%d"
-             " cost=%.6f register_fixes=%d ms=%d",
+             " cost=%.6f register_fixes=%d upstream_ms=%d handler_ms=%d audio_ms=%s",
              label, cfg.tts_voice, speech.billed_characters, truncated, respellings,
-             len(speech.audio), cost, register_fixes, elapsed_ms)
+             len(speech.audio), cost, register_fixes, upstream_ms, handler_ms,
+             "unknown" if audio_ms is None else audio_ms)
 
     return 200, {
         "audio": speech.audio,
         "content_type": speech.content_type,
         # Headers rather than a JSON envelope: the body is audio. The phone shows
         # these on the status line so a clipped answer is visible rather than
-        # mysterious.
+        # mysterious, and logs the timing ones beside its own — which is what
+        # makes one log line on the phone enough to say which layer was slow,
+        # without anyone having to line it up against a server log by hand.
         "headers": {
             "X-Kiosk-Spoken-Chars": str(speech.billed_characters),
             "X-Kiosk-Truncated": "1" if truncated else "0",
             "X-Kiosk-Respellings": str(respellings),
+            "X-Kiosk-Upstream-Ms": str(upstream_ms),
+            "X-Kiosk-Handler-Ms": str(handler_ms),
+            "X-Kiosk-Audio-Ms": "" if audio_ms is None else str(audio_ms),
         },
     }

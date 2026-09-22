@@ -530,32 +530,161 @@ replies      : 12
 ตัวเลขนี้เก็บเป็น**จำนวนครั้งเท่านั้น ไม่เก็บข้อความ** ถ้าเลขนี้สูงต่อเนื่อง
 แปลว่าควรไปปรับถ้อยคำใน `persona.py` ถ้าเป็น 0 แปลว่า prompt เอาอยู่เองแล้ว
 
+## ตรวจว่าคำตอบยาวเท่าไรจริง (เป้า 60-80 ตัวอักษร)
+
+`chars_out=` ใน log คือความยาวคำตอบหลังแก้คำลงท้ายแล้ว ซึ่งเป็นตัวเลขเดียวกับที่
+มือถือเห็น วัดจาก log จริงไม่ต้องเดา:
+
+```bash
+sudo journalctl -u kiosk-broker --since '7 days ago' | grep -o 'chars_out=[0-9]*' | cut -d= -f2 | sort -n | awk '{a[NR]=$1; s+=$1} END {printf "n=%d  min=%d  median=%d  p90=%d  max=%d  mean=%.1f\n", NR, a[1], a[int(NR/2)+1], a[int(NR*0.9)+1], a[NR], s/NR}'
+```
+
+```bash
+sudo journalctl -u kiosk-broker --since '7 days ago' | grep -o 'chars_out=[0-9]*' | cut -d= -f2 | awk '{n++; if ($1>80) over++; if ($1>100) cut++} END {printf "เกิน 80: %d/%d (%.0f%%)   เกิน 100 จึงถูกตัด: %d\n", over, n, over*100/n, cut}'
+```
+
+**ต้องมี n อย่างน้อย 20 ก่อนสรุป** ถ้า p90 ยังเกิน 80 แปลว่าถ้อยคำใน `persona.py`
+ยังไม่พอ ไม่ใช่ว่าเพดานผิด
+
+ที่เคยวัดได้บน A07 คือ **94 ตัวอักษร** แต่คำตอบนั้นคือประโยคปฏิเสธเรื่องเวลา
+("ไม่มีเครื่องมือดูเวลา") ซึ่งเป็นคำตอบที่ยาวโดยธรรมชาติ และตอนนี้ไม่เกิดขึ้นอีก
+เพราะ broker บอกเวลาให้แล้ว — ดังนั้นต้องวัดใหม่ อย่าเทียบกับ 94
+
+## เวลาแต่ละชั้นใช้ไปเท่าไร
+
+ไฟล์ log แยกของ kiosk เท่านั้น ไม่แตะ log ของ thaitrack หรือ monthreport:
+
+```bash
+sudo tail -20 /var/log/nginx/kiosk-timing.log
+```
+
+```
+2026-09-22T04:41:57+00:00 200 POST /v1/tts in=327 out=21329 request=1.230 upstream_header=1.230 upstream_all=1.230 connect=0.001
+```
+
+| ค่า | ความหมาย |
+|---|---|
+| `request` | ทั้งหมดที่ nginx ใช้ ตั้งแต่ไบต์แรกเข้าถึงไบต์สุดท้ายออก |
+| `upstream_header` | จนได้ response header จาก broker = **ส่วนของ broker** |
+| `upstream_all` | จนได้ไบต์สุดท้ายจาก broker |
+| `request - upstream_all` | ส่วนที่ nginx เติมเข้ามาเอง |
+
+ฝั่ง broker:
+
+```bash
+sudo journalctl -u kiosk-broker -n 50 | grep 'tts ok'
+```
+
+```
+tts ok device=a07 voice=Schedar chars=37 truncated=False respellings=0 bytes=21329 cost=0.001110 register_fixes=0 upstream_ms=1223 handler_ms=1227 audio_ms=7000
+```
+
+`upstream_ms` คือ Google `handler_ms - upstream_ms` คือ broker เอง และ
+**`audio_ms` คือความยาวของเสียง ไม่ใช่ latency** อ่านจาก granule ของ Ogg Opus
+ไม่ได้เดาจากขนาดไฟล์
+
+`audio_ms=` ว่างได้ ถ้าอ่าน container ไม่ออก เสียงยังทำงานปกติ — ตัวอ่านความยาว
+ไม่มีสิทธิ์ทำให้เสียงล่ม
+
+ไม่มีไฟล์ไหนในนี้บันทึก path พร้อม query string, header, token หรือข้อความภาษาไทย
+(`$uri` ไม่ใช่ `$request`) — ทดลองแล้วว่าไม่มี
+
+## สายฝนรู้เวลาแล้ว
+
+broker เติมวันเวลาของ Asia/Bangkok ลงท้าย system prompt ทุกคำขอ **ไม่ได้เพิ่ม tool
+ให้โมเดล และโมเดลไม่ได้คิดเวลาเอง**
+
+```
+ปัจจุบัน: วันอังคาร 22 กันยายน 2569 11:41 (สิบเอ็ดโมงเช้าสี่สิบเอ็ดนาที)
+```
+
+เครื่องนี้ตั้งเป็น UTC โค้ดไม่อ่าน timezone ของเครื่องเลย แปลงผ่าน
+`zoneinfo` ทุกครั้ง ถ้าเครื่องไม่มี tzdata จะถอยไปใช้ +07:00 ตรึงไว้ ซึ่งเป็น
+offset เดียวที่ไทยเคยใช้ในยุคนี้ — เพื่อไม่ให้ "ไม่มี tzdata" กลายเป็น "ตอบเวลาไม่ได้"
+
+รูปคำอ่านภาษาไทยคำนวณใน Python ไม่ปล่อยให้โมเดลแปลง เพราะ 13:00 คือ "บ่ายโมง"
+22:00 คือ "สี่ทุ่ม" 00:30 คือ "เที่ยงคืนครึ่ง" — เป็นกฎที่โมเดลพลาดได้ และเวลา
+ที่พูดผิดคือเวลาที่ผิด
+
+ตั้งโซนแยกจากโซนของงบได้ใน `config.json`:
+
+```json
+{"clock_timezone": "Asia/Bangkok", "budget_timezone": "Asia/Bangkok"}
+```
+
+สองค่านี้เป็นคนละการตัดสินใจ อันหนึ่งบอกว่าเดือนตัดรอบเมื่อไร อีกอันบอกว่า
+"ตอนนี้กี่โมง" ตอบอะไร
+
 ## ทดลอง Botnoi Voice (ไม่แตะ production)
 
 **production ยังใช้ Google Chirp 3 HD เสียง Schedar และงานนี้ไม่เปลี่ยนมัน**
 `tts_provider` ค่าเริ่มต้นคือ `google` และไม่ได้แก้ `config.json` บนเครื่องจริง
 
-### ใส่ BOTNOI_TOKEN โดยไม่ให้ค้างใน history
-
-อย่าพิมพ์ token ลงบรรทัดคำสั่ง ใช้ `read -rsp` ซึ่งไม่แสดงตัวอักษรและไม่ลง history:
+### ตรวจก่อนว่ามีคีย์อะไรอยู่แล้ว (ไม่แสดงค่า)
 
 ```bash
-sudo -u kioskbroker bash -c '
-  read -rsp "BOTNOI_TOKEN: " T; echo
-  F=/home/kioskbroker/.config/kiosk-broker/env
-  grep -v "^BOTNOI_TOKEN=" "$F" > "$F.new" 2>/dev/null || true
-  printf "BOTNOI_TOKEN=%s\n" "$T" >> "$F.new"
-  mv "$F.new" "$F"; chmod 600 "$F"
-  unset T
-'
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
+  PYTHONPATH=/home/kioskbroker/app \
+  /home/kioskbroker/venv/bin/python -m kiosk_broker keys
 ```
 
-ตรวจว่าเข้าไปแล้วโดยไม่แสดงค่า:
+บอกแค่ `present` / `missing` ต่อคีย์ ไม่พิมพ์ค่า ไม่พิมพ์แม้ความยาว — เพราะความยาว
+ของ token ก็เป็นข้อมูลของ token เอง `BOTNOI_TOKEN missing` เป็นเรื่องปกติ:
+production ใช้ Google
+
+### ใส่ BOTNOI_TOKEN โดยไม่ให้ค้างใน history
+
+**ด่านแรก: ถ้ามีอยู่แล้วต้องหยุด** ต้องได้ `0` ถ้าไม่ใช่ `0` อย่าทำขั้นต่อไป
+(ไปอ่านหัวข้อถัดไปแทน) — การ append ทับตอนที่มีอยู่แล้วจะได้สองบรรทัด และค่าที่มี
+ผลจริงคือบรรทัดล่าง ซึ่งเป็นกับดักที่เคยเจอมาแล้วในโปรเจกต์อื่น
 
 ```bash
 sudo -u kioskbroker grep -c '^BOTNOI_TOKEN=' /home/kioskbroker/.config/kiosk-broker/env
-sudo ls -l /home/kioskbroker/.config/kiosk-broker/env   # ต้องเป็น -rw------- kioskbroker
 ```
+
+ได้ `0` แล้วจึงใส่ พิมพ์ในเชลล์ของ poom เอง (`read -rsp` ไม่แสดงตัวอักษรและไม่ลง
+history) แล้ว **append** เข้าไฟล์ผ่าน `tee -a`:
+
+```bash
+read -rsp 'BOTNOI_TOKEN: ' T; echo; printf 'BOTNOI_TOKEN=%s\n' "$T" | sudo -u kioskbroker tee -a /home/kioskbroker/.config/kiosk-broker/env >/dev/null; unset T
+```
+
+ทำไมต้องเป็นแบบนี้ สามข้อ และทุกข้อเคยเป็นบั๊กจริงในคำสั่งรุ่นก่อน:
+
+1. **`tee -a` ต่อท้ายเท่านั้น ไม่เขียนทับไฟล์** รุ่นก่อนใช้ `grep -v ... > "$F.new"`
+   แล้ว `mv` ทับ ถ้า `grep` ล้มเหลว (ไฟล์อ่านไม่ได้ พาธผิด ดิสก์เต็ม) `|| true`
+   จะกลืน error แล้ว `$F.new` จะมีแค่บรรทัด Botnoi — **ANTHROPIC_API_KEY,
+   GROQ_API_KEY และ GOOGLE_TTS_API_KEY หายทั้งหมด** ทดลองจริงแล้วเหลือ 1 บรรทัด
+2. **ไม่สร้างไฟล์ชั่วคราว** `$F.new` ถูกสร้างใหม่ตาม umask จึงเป็น `664` แล้ว `mv`
+   ก็พาสิทธิ์นั้นมาทับของเดิม เปิดช่องให้ทุกคนบนเครื่องอ่านคีย์ทั้งหมดได้
+   ทดลองจริงแล้วไฟล์กลายเป็น `664` — `chmod 600` ตามหลังช้าไปแล้ว
+   ส่วน `tee -a` ต่อท้ายไฟล์เดิม สิทธิ์ `600` ไม่เปลี่ยน (ทดลองแล้ว)
+3. **`>/dev/null` ปิดปาก tee** ไม่ใส่จะพิมพ์ token กลับขึ้นจอ
+
+ตรวจผลโดยไม่แสดงค่า — ต้องได้ `1` และ `-rw-------`:
+
+```bash
+sudo -u kioskbroker grep -c '^BOTNOI_TOKEN=' /home/kioskbroker/.config/kiosk-broker/env
+sudo ls -l /home/kioskbroker/.config/kiosk-broker/env
+```
+
+แล้วดูภาพรวมอีกครั้งด้วย `keys` ข้างบน — คีย์อื่นต้องยัง `present` ทั้งสามตัว
+
+### ถ้ามี BOTNOI_TOKEN อยู่แล้ว และต้องการเปลี่ยนค่า
+
+อย่า append ทับ ให้ลบบรรทัดเดิมก่อนแล้วค่อยใส่ใหม่ `sed -i` ลบเฉพาะบรรทัดที่ตรง
+pattern คีย์อื่นไม่ถูกแตะ และสิทธิ์ `600` ยังอยู่ (ทดลองแล้วทั้งสองข้อ):
+
+```bash
+sudo -u kioskbroker sed -i '/^BOTNOI_TOKEN=/d' /home/kioskbroker/.config/kiosk-broker/env
+sudo -u kioskbroker grep -c '^BOTNOI_TOKEN=' /home/kioskbroker/.config/kiosk-broker/env
+```
+
+บรรทัดที่สองต้องได้ `0` แล้วจึงกลับไปใช้คำสั่ง `tee -a` ข้างบน
+
+ถ้า `env` ยังไม่มีไฟล์เลย `tee -a` จะสร้างใหม่ตาม umask ซึ่งอาจกว้างกว่า `600`
+กรณีนั้นต้อง `sudo -u kioskbroker chmod 600` ตามทันที แล้วตรวจด้วย `ls -l` —
+แต่บน production ไฟล์นี้มีอยู่แล้วเพราะ broker กำลังทำงานด้วยคีย์ในไฟล์นี้
 
 ### ดูรายชื่อเสียงก่อน (ไม่สร้างเสียง ไม่ใช้ point)
 

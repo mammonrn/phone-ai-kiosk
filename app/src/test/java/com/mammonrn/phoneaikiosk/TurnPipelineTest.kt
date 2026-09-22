@@ -1,6 +1,7 @@
 package com.mammonrn.phoneaikiosk
 
 import com.mammonrn.phoneaikiosk.voice.Broker
+import com.mammonrn.phoneaikiosk.voice.SpokenAudio
 import com.mammonrn.phoneaikiosk.voice.TurnPipeline
 import com.mammonrn.phoneaikiosk.voice.VoiceSink
 import org.junit.Assert.assertEquals
@@ -30,7 +31,7 @@ class TurnPipelineTest {
         sink: Sink,
         transcribe: (ByteArray) -> String = { "วันนี้อากาศเป็นยังไง" },
         ask: (String, String?) -> Pair<String, String> = { _, _ -> "ผมยังดูให้ไม่ได้ครับ" to "c1" },
-        speak: (String) -> ByteArray = { ByteArray(2000) },
+        speak: (String) -> SpokenAudio = { SpokenAudio(ByteArray(2000), "") },
         play: (ByteArray) -> Boolean = { true },
         sayLocally: (String) -> Boolean = { true },
     ) = TurnPipeline(transcribe, ask, speak, play, sayLocally, sink) { sink.trail.add(it) }
@@ -128,6 +129,55 @@ class TurnPipelineTest {
         val sink = Sink()
         val kept = pipeline(sink, ask = { _, _ -> "ครับ" to "" }).run(wav(), "existing").second
         assertEquals("existing", kept)
+    }
+
+    /**
+     * The bug this file now guards against.
+     *
+     * The A07 logged "tts ok 28813 bytes 9343 ms" and that was read as nine
+     * seconds of synthesis. It was not: one timer was wrapped around synthesis
+     * AND playback, and playback blocks until the audio has finished playing.
+     *
+     * The stubs here are deliberately lopsided — synthesis returns at once, and
+     * "playing" takes a measurable fraction of a second. Under the old single
+     * timer both would have been added into one number with no way to tell them
+     * apart, which is exactly how a long answer came to look like a slow vendor.
+     */
+    @Test
+    fun `synthesis and playback are timed separately`() {
+        val sink = Sink()
+        val playFor = 250L
+
+        pipeline(
+            sink,
+            speak = { SpokenAudio(ByteArray(28813), "broker=40ms vendor=35ms audio=9600ms") },
+            play = { Thread.sleep(playFor); true },
+        ).run(wav(), null)
+
+        val line = sink.trail.single { it.startsWith("tts ok") }
+
+        val synth = Regex("synth=(\\d+)ms").find(line)!!.groupValues[1].toLong()
+        val play = Regex(" play=(\\d+)ms").find(line)!!.groupValues[1].toLong()
+
+        assertTrue("playback should be the big number, got: $line", play >= playFor)
+        assertTrue("synthesis must not include playback, got: $line", synth < playFor)
+
+        // And the server's own account of itself rides along, so one line on the
+        // phone says which layer was slow.
+        assertTrue(line.contains("vendor=35ms"))
+        assertTrue(line.contains("audio=9600ms"))
+    }
+
+    /** While the audio plays, the screen says so rather than still saying "synthesising". */
+    @Test
+    fun `the state says speaking while the audio is playing`() {
+        val sink = Sink()
+        val seen = mutableListOf<String>()
+
+        pipeline(sink, play = { seen.add(sink.tts); true }).run(wav(), null)
+
+        assertEquals(listOf("speaking"), seen)
+        assertEquals("ok", sink.tts)
     }
 
     @Test

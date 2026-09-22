@@ -33,6 +33,13 @@ class Config:
     monthly_budget_usd: float = 5.00
     budget_timezone: str = "Asia/Bangkok"
 
+    #: The zone the assistant tells the time in. Separate from budget_timezone
+    #: on purpose: one decides when the month rolls over for billing, the other
+    #: decides what "ตอนนี้กี่โมง" answers. They happen to be the same zone and
+    #: are still two different decisions. The machine runs on UTC; nothing reads
+    #: its local zone. See clock.py.
+    clock_timezone: str = "Asia/Bangkok"
+
     # ---- speech to text -------------------------------------------------
     stt_model: str = "whisper-large-v3-turbo"
     stt_language: str = "th"

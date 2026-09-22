@@ -456,7 +456,7 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 | `wake` | `idle` `listening` `detected` `triggered` **`no-model`** |
 | `stt` | `idle` `recording` `sending` `ok` `error` **`empty`** |
 | `chat` | `idle` `asking` `ok` `error` |
-| `tts` | `idle` `synthesising` `ok` **`device-fallback`** `failed` |
+| `tts` | `idle` `synthesising` **`speaking`** `ok` **`device-fallback`** `failed` |
 | `capture-mode` | `LISTENING` `CAPTURING` (จาก dumpsys) |
 
 `stt=empty` แปลว่าอัดแล้วไม่ได้เสียงเลย — ไม่ถูกส่งขึ้นเซิร์ฟเวอร์และไม่เสียเงิน
@@ -467,6 +467,53 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 
 `tts=device-fallback` แปลว่า Cloud TTS ใช้ไม่ได้และใช้เสียงในเครื่องแทน —
 ตั้งใจให้เป็นแบบนี้ ไม่ใช่ความผิดพลาด
+
+`tts=synthesising` คือกำลังรอเสียงจากเซิร์ฟเวอร์ `tts=speaking` คือได้เสียงแล้ว
+และกำลังพูดอยู่ สองอันนี้แยกกันเพราะมันเป็นคนละปัญหา — อันแรกช้าคือปัญหา
+อันที่สองยาวคือคำตอบยาว
+
+### อ่านเวลาว่าช้าที่ชั้นไหน
+
+บรรทัด `tts` ใน log มีทุกชั้นในบรรทัดเดียว:
+
+```
+tts ok 28813 bytes synth=1310ms play=9340ms ttfb=1290ms dl=20ms broker=1240ms net=50ms vendor=1235ms audio=9600ms
+```
+
+| ค่า | ใครวัด | ความหมาย |
+|---|---|---|
+| `synth=` | มือถือ | ขอเสียงจนได้เสียงครบ **นี่คือ latency จริง** |
+| `play=` | มือถือ | เวลาที่ใช้พูดออกลำโพง **ไม่ใช่ latency** |
+| `ttfb=` | มือถือ | ส่งคำขอจนได้ response header |
+| `dl=` | มือถือ | โหลด body ต่อจาก header |
+| `broker=` | broker | เวลาใน handler ทั้งหมด (ส่งกลับมาใน header) |
+| `net=` | คำนวณ | `ttfb - broker` = เครือข่าย + TLS + nginx |
+| `vendor=` | broker | เวลาที่ Google ใช้จริง |
+| `audio=` | broker | **ความยาวของเสียง** อ่านจาก granule ของ Ogg Opus |
+
+`net` ติดลบเล็กน้อยได้ เพราะเป็นนาฬิกาสองเครื่องและ broker หยุดนับก่อนไบต์
+สุดท้ายออก — พิมพ์ตามที่วัดได้ ไม่ปัดขึ้นศูนย์ เพราะการปัดจะกลบนาฬิกาที่เพี้ยน
+
+ฝั่งเซิร์ฟเวอร์มีสองไฟล์ให้เทียบ ถ้าต้องยืนยัน:
+
+```bash
+sudo journalctl -u kiosk-broker -n 50 | grep 'tts ok'
+sudo tail -5 /var/log/nginx/kiosk-timing.log
+```
+
+`upstream_header` ของ nginx ควรใกล้ `broker` ของมือถือ และ
+`request - upstream_all` คือเวลาที่ nginx เติมเข้ามาเอง
+
+### 🔴 การวัดผิดที่เคยหลงทางมาแล้ว
+
+log ของ versionCode 5 เขียนว่า `tts ok 28813 bytes 9343 ms` เลขเดียว และถูกอ่าน
+ว่า "Google ช้า 9 วินาที" **ซึ่งไม่จริง** ตัวจับเวลาเดียวนั้นครอบทั้งการสร้างเสียง
+และการเล่นเสียง และ `Speaker.play` รอจนเสียงพูดจบ (`done.await()`) ก่อนคืนค่า
+
+คำตอบภาษาไทยหนึ่งประโยคใช้เวลาพูดหลายวินาที ดังนั้นเลขนั้นคือ "เวลาพูด" เกือบทั้งก้อน
+เลขเดียวที่รวมสองอย่างซึ่งแก้ด้วยวิธีต่างกัน คือเลขที่พาไปแก้ผิดจุด
+ตั้งแต่ versionCode 6 แยกเป็น `synth=` กับ `play=` และมีเทสต์
+`synthesis and playback are timed separately` กันถอยหลัง
 
 ### 🔴 บั๊กที่แก้แล้วใน versionCode 5 — อาการที่เคยเจอ
 

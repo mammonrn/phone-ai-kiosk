@@ -489,3 +489,65 @@ def test_a_server_that_hangs_up_mid_request_is_an_error_not_a_crash():
     finally:
         listener.close()
         thread.join(timeout=5)
+
+
+# ------------------------------------------------------------------ the timing
+
+def test_the_response_reports_what_each_layer_spent(conn, cfg):
+    """So the phone can print every layer in one log line.
+
+    The phone used to log a single number covering synthesis AND playback, and
+    "tts ok 28813 bytes 9343 ms" was read as nine seconds of vendor latency. It
+    was not. These headers are what makes the split visible without anyone
+    lining two logs up against each other by hand.
+    """
+    token = _token(conn)
+    status, body = _post(conn, cfg, token, {"text": "สวัสดีครับ"})
+    assert status == 200
+
+    headers = body["headers"]
+    upstream = int(headers["X-Kiosk-Upstream-Ms"])
+    handler = int(headers["X-Kiosk-Handler-Ms"])
+
+    # The handler wraps the vendor call, so it cannot be the smaller of the two.
+    assert handler >= upstream >= 0
+    # And both are the broker's own share only — nothing here has been anywhere
+    # near the phone's clock.
+    assert handler < 30_000
+
+
+def test_the_timing_headers_carry_no_text_and_no_key(conn, cfg):
+    token = _token(conn)
+    _, body = _post(conn, cfg, token, {"text": "วันนี้อากาศดีครับ"})
+
+    everything = " ".join(f"{k}:{v}" for k, v in body["headers"].items())
+    assert "อากาศ" not in everything
+    assert "test-not-a-real-key" not in everything
+    assert all(value == "" or value.isdigit() for key, value in body["headers"].items()
+               if key.endswith("-Ms"))
+
+
+def test_the_duration_of_readable_audio_is_reported(conn, cfg, monkeypatch):
+    """How long the answer takes to SAY, which is not latency and was counted
+    as if it were."""
+    from test_oggopus import opus_file
+
+    monkeypatch.setitem(globals(), "AUDIO", opus_file(granule=48_000 * 7 + 312))
+    token = _token(conn)
+    _, body = _post(conn, cfg, token, {"text": "สวัสดีครับ"})
+
+    assert body["headers"]["X-Kiosk-Audio-Ms"] == "7000"
+
+
+def test_audio_whose_length_cannot_be_read_does_not_break_the_reply(conn, cfg):
+    """The stub returns something that is not real Ogg Opus, which is the point.
+
+    A duration that cannot be parsed is reported as empty and the voice still
+    works. A parser that raised here would take the kiosk down over a diagnostic.
+    """
+    token = _token(conn)
+    status, body = _post(conn, cfg, token, {"text": "สวัสดีครับ"})
+
+    assert status == 200
+    assert body["audio"] == AUDIO
+    assert body["headers"]["X-Kiosk-Audio-Ms"] == ""

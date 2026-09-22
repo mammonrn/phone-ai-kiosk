@@ -3,10 +3,11 @@
 import dataclasses
 import json
 import time
+from datetime import datetime, timezone
 
 import pytest
 
-from kiosk_broker import auth, limits, store
+from kiosk_broker import auth, clock, limits, store
 from kiosk_broker.llm import Usage, UpstreamError
 from kiosk_broker.service import handle_chat
 
@@ -362,3 +363,90 @@ def test_register_stats_report_how_often_the_prompt_failed(conn, cfg):
     assert stats["replies"] == 2
     assert stats["touched"] == 1
     assert stats["fixes"] == 1
+
+
+# ------------------------------------------------------- the clock in the prompt
+
+def test_the_system_prompt_carries_the_current_bangkok_time(conn, cfg, client):
+    """The one fact the broker knows and the model cannot look up."""
+    token = _token(conn)
+    _post(conn, cfg, client, token, {"text": "ตอนนี้กี่โมง"})
+
+    system = client.calls[0]["system"]
+    assert "ปัจจุบัน:" in system
+    # Not a fixed string: this asserts the line the broker would generate right
+    # now, which is what catches the prompt being built from a stale value.
+    assert clock.context_line(cfg.clock_timezone) in system
+
+
+def test_the_time_never_enters_the_conversation(conn, cfg, client):
+    """Why it goes in the system prompt and not in the user's message.
+
+    History is replayed on every turn. A time sent as part of a message would
+    still be sitting in the conversation an hour later, and the model would have
+    two times in front of it with nothing to say which was now.
+    """
+    token = _token(conn)
+    _, first = _post(conn, cfg, client, token, {"text": "ตอนนี้กี่โมง"})
+    _post(conn, cfg, client, token,
+          {"text": "แล้ววันนี้วันอะไร", "conversation_id": first["conversation_id"]})
+
+    second = client.calls[1]
+    assert len(second["messages"]) > 1, "expected history to be replayed"
+    for message in second["messages"]:
+        assert "ปัจจุบัน:" not in message["content"]
+        assert "โมง" not in message["content"] or message["role"] == "user"
+
+    # And the stored history itself is clean, which is what the next turn reads.
+    for row in store.history(conn, conversation_id=first["conversation_id"], turns=6):
+        assert "ปัจจุบัน:" not in row["content"]
+
+
+def test_each_turn_gets_this_minute_and_not_the_last_one(conn, cfg, client, monkeypatch):
+    token = _token(conn)
+    times = iter([
+        datetime(2026, 9, 22, 4, 20, tzinfo=timezone.utc),   # 11:20 in Bangkok
+        datetime(2026, 9, 22, 9, 50, tzinfo=timezone.utc),   # 16:50 in Bangkok
+    ])
+
+    # Held before the patch goes on. Looking the name up inside the replacement
+    # would find the replacement, and the first version of this test recursed
+    # into itself until it ran out of clocks.
+    real = clock.context_line
+    monkeypatch.setattr(clock, "context_line",
+                        lambda name="Asia/Bangkok", now=None: real(now=next(times)))
+
+    _, first = _post(conn, cfg, client, token, {"text": "กี่โมง"})
+    _post(conn, cfg, client, token,
+          {"text": "แล้วตอนนี้", "conversation_id": first["conversation_id"]})
+
+    assert "11:20" in client.calls[0]["system"]
+    assert "16:50" in client.calls[1]["system"]
+    # The first turn's time is gone rather than accumulated.
+    assert "11:20" not in client.calls[1]["system"]
+
+
+def test_the_prompt_no_longer_claims_it_cannot_know_the_time(conn, cfg, client):
+    """It still cannot know the weather, a price or the news — those are real.
+
+    The time was in that list by association and stopped being true the moment
+    the broker started stating it, which is why the A07 was told
+    "ไม่มีเครื่องมือดูเวลา" by an assistant running on a machine with a clock.
+    """
+    token = _token(conn)
+    _post(conn, cfg, client, token, {"text": "กี่โมง"})
+    system = client.calls[0]["system"]
+
+    assert "ไม่รู้เวลา" not in system
+    assert "อากาศ" in system and "ข่าว" in system
+    assert "ห้ามเดาเอง" in system
+
+
+def test_the_clock_zone_is_configurable_without_touching_the_budget_zone(conn, cfg, client):
+    """Two different decisions that happen to name the same zone."""
+    tokyo = dataclasses.replace(cfg, clock_timezone="Asia/Tokyo")
+    token = _token(conn)
+    _post(conn, tokyo, client, token, {"text": "กี่โมง"})
+
+    assert clock.context_line("Asia/Tokyo") in client.calls[0]["system"]
+    assert tokyo.budget_timezone == "Asia/Bangkok"

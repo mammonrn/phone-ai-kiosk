@@ -315,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("list-devices")
     sub.add_parser("usage", help="this month's spend for the phone")
+    sub.add_parser("keys", help="which secrets are configured (present/missing, never the value)")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
     sub.add_parser("prompt-size", help="measure the prompt in tokens (free, no answer generated)")
 
@@ -588,16 +589,49 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "wake-samples":
             return _wake_samples(conn, cfg, args)
 
+        if args.cmd == "keys":
+            # Four secrets, four lines, no values. This exists because the way
+            # to check a key used to be to look at the file, and looking at the
+            # file is how a key ends up in a scrollback, a screenshot or a chat
+            # window. "present" is the entire answer anyone needs.
+            #
+            # Not even the length is printed: the length of a token is a fact
+            # about the token.
+            env_path = config_mod.DEFAULT_HOME / "env"
+            print(f"env file: {env_path}")
+            if not env_path.is_file():
+                print("  (the file does not exist)")
+            print()
+            for name, what in (
+                ("ANTHROPIC_API_KEY", "/v1/chat"),
+                ("GROQ_API_KEY", "/v1/stt"),
+                ("GOOGLE_TTS_API_KEY", "/v1/tts"),
+                ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
+            ):
+                state = "present" if _secret(name) else "missing"
+                print(f"  {name:<20} {state:<8} {what}")
+            print()
+            print("BOTNOI_TOKEN missing is normal: tts_provider is 'google' and")
+            print("production does not use Botnoi.")
+            return 0
+
         if args.cmd == "prompt-size":
             from .measure import measure_prompt
 
-            size = measure_prompt(_client(cfg), model=cfg.model, system=SYSTEM_PROMPT,
+            # Measured WITH the clock line, because that is what every request
+            # actually sends. Measuring SYSTEM_PROMPT alone would under-report
+            # the thing this command exists to report.
+            from . import clock
+
+            system = SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
+            size = measure_prompt(_client(cfg), model=cfg.model, system=system,
                                   sample="วันนี้อากาศเป็นยังไง")
             pricing = Pricing.load(cfg.pricing_path)
             rate = pricing.models[cfg.model]["input"]
 
             print(f"model                       : {cfg.model}")
-            print(f"prompt characters           : {len(SYSTEM_PROMPT)}")
+            print(f"prompt characters           : {len(system)}"
+                  f"   ({len(SYSTEM_PROMPT)} written + {len(system) - len(SYSTEM_PROMPT)} clock)")
             print()
             print(f"prompt + {size.placeholder!r} placeholder    : {size.with_prompt} tokens")
             print(f"  the {size.placeholder!r} placeholder alone : {size.baseline} tokens"

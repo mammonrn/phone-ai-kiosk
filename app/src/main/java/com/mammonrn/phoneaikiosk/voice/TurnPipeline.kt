@@ -11,7 +11,7 @@ package com.mammonrn.phoneaikiosk.voice
 class TurnPipeline(
     private val transcribe: (ByteArray) -> String,
     private val ask: (String, String?) -> Pair<String, String>,
-    private val speak: (String) -> ByteArray,
+    private val speak: (String) -> SpokenAudio,
     private val play: (ByteArray) -> Boolean,
     private val sayLocally: (String) -> Boolean,
     private val state: VoiceSink,
@@ -66,11 +66,24 @@ class TurnPipeline(
 
         state.tts = "synthesising"
         val cloudPlayed = try {
-            val started = System.currentTimeMillis()
+            // TWO TIMERS, NOT ONE. The first version wrapped a single timer
+            // around synthesis AND playback, and `play` blocks until the audio
+            // has finished playing — so a ten-second answer logged as ten
+            // seconds of latency. That reading sent us looking for a slow
+            // vendor when what was slow was the sentence being long. Synthesis
+            // is latency and worth chasing; playback is the answer being said
+            // out loud, and the only way to shorten it is a shorter answer.
+            val synthStarted = System.currentTimeMillis()
             val audio = speak(reply)
-            val ok = play(audio)
-            log("tts ${if (ok) "ok" else "play-failed"} ${audio.size} bytes " +
-                "${System.currentTimeMillis() - started} ms")
+            val synthMs = System.currentTimeMillis() - synthStarted
+
+            state.tts = "speaking"
+            val playStarted = System.currentTimeMillis()
+            val ok = play(audio.bytes)
+            val playMs = System.currentTimeMillis() - playStarted
+
+            log("tts ${if (ok) "ok" else "play-failed"} ${audio.bytes.size} bytes " +
+                "synth=${synthMs}ms play=${playMs}ms ${audio.timing}")
             ok
         } catch (e: Exception) {
             state.lastError = describe(e)
@@ -110,6 +123,18 @@ class TurnPipeline(
         const val WAV_HEADER_BYTES = 44
     }
 }
+
+/**
+ * Audio for one reply, and where the time went getting it.
+ *
+ * Lives here rather than in Broker so the pipeline stays free of anything that
+ * knows about HTTP, which is what lets it be tested without Android.
+ *
+ * `timing` is a formatted string, not structured data, on purpose: its only
+ * consumer is a log line. Giving it fields would invite something to start
+ * making decisions on a number measured across two different clocks.
+ */
+class SpokenAudio(val bytes: ByteArray, val timing: String)
 
 /**
  * The fields the pipeline reports into. An interface so a test can watch the
