@@ -54,24 +54,42 @@ jobs:
           git clone --depth 1 --branch v0.6.0 \
             https://github.com/dscripka/openWakeWord.git "$RUNNER_TEMP/openWakeWord"
 
+      - name: Install FFmpeg
+        # torchcodec decodes through FFmpeg's shared libraries. The runner image
+        # does not ship them — the first version of this step ran
+        # `ffmpeg -version | head -1`, which printed "command not found" and
+        # still exited 0, because the pipeline takes head's status. pipefail
+        # below, so a missing FFmpeg fails here instead of surfacing later as an
+        # unexplained OSError out of torchcodec.
+        #
+        # torchcodec 0.16 ships core4..core9, so FFmpeg majors 4-9. Ubuntu 24.04
+        # is well inside that.
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
       - name: Install what Colab already ships
         # The notebook deliberately does NOT install these: Colab has them, and
         # its torch is a build matched to its own CUDA — letting pip touch it can
         # swap in a CPU wheel and lose the GPU silently. A bare runner has none
-        # of them, so CI stands them up instead. The CPU index keeps torch to a
-        # couple of hundred megabytes; CI is testing imports, not speed.
+        # of them, so CI stands them up instead.
         #
-        # torchcodec is in here for the same reason: it is a compiled extension
-        # built against one torch version, so the notebook must not let pip
-        # choose it either. Colab ships a matching pair; CI has to build one.
-        # It decodes through the system FFmpeg, which the runner image has.
+        # ALL THREE from the CPU index, in one resolve. torchcodec is a compiled
+        # extension linked against one torch build, and PyPI's torchcodec is the
+        # CUDA one: its image ops want libcudart.so.13 and libtorch_cuda.so, so
+        # pairing it with a CPU torch fails to load with
+        # "Could not load this library: libtorchcodec_image.so" — which is not an
+        # audio problem at all, and cost a CI run to read properly. The +cpu
+        # build has no CUDA to look for. Colab ships a matched CUDA pair, which
+        # is why the notebook must not install any of these itself.
         run: |
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet torch torchaudio \
+          python -m pip install --quiet torch torchaudio torchcodec \
             --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install --quiet torchcodec
           python -m pip install --quiet numpy scipy scikit-learn pyyaml tqdm requests
-          ffmpeg -version | head -1
+          python -c "import torchcodec; print('torchcodec', torchcodec.__version__)"
 
       - name: Run the notebook's own pip lines
         # Read out of the .ipynb rather than copied here, so this cannot pass
