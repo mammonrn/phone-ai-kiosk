@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from . import auth, config as config_mod, limits, store
+from .persona import SYSTEM_PROMPT
 from .pricing import Pricing
 
 
@@ -53,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("list-devices")
     sub.add_parser("usage", help="this month's spend for the phone")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
+    sub.add_parser("prompt-size", help="measure the prompt in tokens (free, no answer generated)")
 
     args = parser.parse_args(argv)
     cfg = config_mod.load()
@@ -62,6 +64,11 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(message)s",
         stream=sys.stdout,
     )
+    # The HTTP client logs every request line at INFO, which puts the upstream
+    # URL in the journal on every question and buries the one line per request
+    # that is actually worth reading. Warnings and errors still come through.
+    for noisy in ("httpx", "httpx2", "httpcore", "anthropic"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
     if args.cmd == "serve":
         from .server import make_server
@@ -116,9 +123,38 @@ def main(argv: list[str] | None = None) -> int:
             print(f"calls        : {row['c']}  in_tokens={row['i']}  out_tokens={row['o']}")
             return 0
 
+        if args.cmd == "prompt-size":
+            # count_tokens is free and rate-limited separately from message
+            # creation, so this can be run as often as it takes to tune the
+            # prompt without spending a cent of the phone's budget.
+            # https://platform.claude.com/docs/en/build-with-claude/token-counting
+            client = _client(cfg)
+            sample = "สวัสดี"
+
+            system_only = client.messages.count_tokens(
+                model=cfg.model, system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": ""}],
+            ).input_tokens
+            with_question = client.messages.count_tokens(
+                model=cfg.model, system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": sample}],
+            ).input_tokens
+
+            pricing = Pricing.load(cfg.pricing_path)
+            rate = pricing.models[cfg.model]["input"]
+            print(f"model                  : {cfg.model}")
+            print(f"prompt characters      : {len(SYSTEM_PROMPT)}")
+            print(f"INPUT TOKENS, prompt   : {system_only}")
+            print(f"INPUT TOKENS, + {sample!r} : {with_question}")
+            print(f"cost of those in-tokens: ${with_question * rate / 1e6:.6f} per question")
+            print()
+            print("Free to call — token counting is not billed. Run it before and after")
+            print("editing persona.py to see what an edit actually costs.")
+            print(f"For reference, the first production prompt measured 1107 input tokens.")
+            return 0
+
         if args.cmd == "selftest":
             from .llm import ask
-            from .persona import SYSTEM_PROMPT
 
             answer = ask(_client(cfg), model=cfg.model, system=SYSTEM_PROMPT,
                          messages=[{"role": "user", "content": "สวัสดี ทดสอบระบบ ตอบสั้นๆ"}],
@@ -129,10 +165,22 @@ def main(argv: list[str] | None = None) -> int:
                                 output_tokens=answer.usage.output_tokens,
                                 cache_write_tokens=answer.usage.cache_write_tokens,
                                 cache_read_tokens=answer.usage.cache_read_tokens)
-            print(f"reply : {answer.text}")
-            print(f"usage : in={answer.usage.input_tokens} out={answer.usage.output_tokens} "
-                  f"cache_w={answer.usage.cache_write_tokens} cache_r={answer.usage.cache_read_tokens}")
-            print(f"cost  : ${cost:.6f}")
+            print(f"reply              : {answer.text}")
+            print()
+            print(f"INPUT TOKENS       : {answer.usage.input_tokens}")
+            print(f"output tokens      : {answer.usage.output_tokens}")
+            print(f"cache write / read : {answer.usage.cache_write_tokens} / "
+                  f"{answer.usage.cache_read_tokens}")
+            print(f"cost of this call  : ${cost:.6f}")
+            print()
+            print("Input tokens are the number to watch: the system prompt is resent on")
+            print("every request, so it is the floor under every answer's cost. The first")
+            print("production prompt measured 1107. Use `prompt-size` to measure without")
+            print("paying for an answer.")
+            if answer.usage.cache_write_tokens == 0 and answer.usage.cache_read_tokens == 0:
+                print()
+                print("cache 0/0 is expected: Haiku 4.5 will not cache a prefix under 4,096")
+                print("tokens, and this prompt is far below that on purpose.")
             print()
             print("Not written to the ledger — selftest does not spend the phone's budget line.")
             return 0

@@ -125,6 +125,17 @@ def history(conn: sqlite3.Connection, *, conversation_id: str, turns: int) -> li
     return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
 
+# Rate limiting only ever looks at the last minute and the current day, so rows
+# older than this are dead weight. The usage ledger is deliberately NOT pruned:
+# that is the money record.
+REQUEST_LOG_KEEP_DAYS = 30
+
+
+def prune_requests(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM requests WHERE ts < ?",
+                 (time.time() - REQUEST_LOG_KEEP_DAYS * 86400,))
+
+
 def prune_messages(conn: sqlite3.Connection, *, conversation_id: str, turns: int,
                    ttl_hours: int) -> None:
     """Drops anything past the turn cap, and anything stale anywhere.

@@ -1,5 +1,22 @@
 # ติดตั้ง kiosk broker (เฟส 2)
 
+> **เฟส 2 ขึ้น production แล้ว** ทดสอบจริงบน VPS 45.76.157.64 เมื่อ 22 ก.ย. 2569
+>
+> | ข้อ | ผล |
+> |---|---|
+> | `install.sh` | ผ่าน · thaitrack/monthreport ไม่เปลี่ยนสถานะ |
+> | คีย์ Haiku | ใส่แล้ว · `linuxuser` อ่านไฟล์ไม่ได้ (Permission denied) |
+> | `selftest` ยิง Anthropic จริง | ผ่าน in=1107 out=52 cost=$0.001367 |
+> | service | `active (running)` · listening 127.0.0.1:8770 budget $5.00/month |
+> | DNS | `kiosk.xn--l3cgts1b3bzcvf.com` → 45.76.157.64 |
+> | ใบรับรอง | `certonly --webroot` สำเร็จ หมดอายุ 21 ธ.ค. 2569 |
+> | `nginx -t` + reload | ผ่าน · thaitrack **200** · monthreport **302** |
+> | HTTPS `/healthz` | 200 ทั้งผ่านชื่อโดเมนจริงและ `--resolve` |
+> | จากคอม Windows | token ถูก → reply ไทย + `action=null` · ไม่มี token → 401 · token ผิด → 401 · `/` → 404 · http → 301 |
+>
+> สิ่งที่แก้ตามหลังจากรอบนั้น: บุคลิกใช้ "ผม/ครับ" แล้ว · system prompt เล็กลง 44% ·
+> มี certbot deploy hook reload nginx เองหลังต่ออายุ
+
 ทุกขั้นในไฟล์นี้ **Poom ต้องรันเองบน VPS** เพราะต้องใช้ sudo
 
 ```bash
@@ -88,10 +105,42 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
   /home/kioskbroker/venv/bin/python -m kiosk_broker selftest
 ```
 
-ต้องได้คำตอบภาษาไทยสั้นๆ พร้อมจำนวนโทเคนและค่าใช้จ่ายที่คิดจาก `pricing.json`
-ประมาณ $0.0002 ต่อครั้ง
+ต้องได้คำตอบภาษาไทยสั้นๆ พร้อม **INPUT TOKENS** และค่าใช้จ่ายที่คิดจาก `pricing.json`
 
 `selftest` **ไม่บันทึกลงบัญชีงบ** ของมือถือ
+
+### วัดขนาด prompt (ฟรี ไม่เสียเงินเลย)
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
+  PYTHONPATH=/home/kioskbroker/app \
+  /home/kioskbroker/venv/bin/python -m kiosk_broker prompt-size
+```
+
+ใช้ `count_tokens` ซึ่ง[เอกสารทางการระบุว่าฟรี](https://platform.claude.com/docs/en/build-with-claude/token-counting)
+และมี rate limit แยกจากการสร้างข้อความ รันกี่ครั้งก็ได้
+
+**ค่าอ้างอิงที่วัดได้จาก production รอบแรก: 1107 input tokens**
+รอบนี้ prompt เล็กลง 44% (1132 → 631 ตัวอักษร) รันคำสั่งนี้เทียบก่อน/หลังได้เลย
+
+### ทำไมไม่ใช้ prompt caching (ตรวจจากเอกสารทางการแล้ว)
+
+**Haiku 4.5 ไม่ cache prefix ที่เล็กกว่า 4,096 โทเคน และไม่แจ้ง error เมื่อปฏิเสธ**
+ต้องดูเองว่า `cache_creation_input_tokens` กับ `cache_read_input_tokens` เป็น 0 ทั้งคู่
+([prompt caching docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching))
+
+prompt ของเราอยู่ราว 600 โทเคน จึงต่ำกว่าเกณฑ์มาก **ใส่ `cache_control` ไปก็ไม่เกิดอะไรขึ้น**
+
+ถ้าจะถ่วง prompt ให้ถึง 4,096 โทเคนเพื่อให้ cache ได้ คิดเป็นหน่วยโทเคนเทียบเท่า
+(cache read = 0.1× · cache write 5 นาที = 1.25×):
+
+- ไม่ cache: **600** ต่อคำถาม
+- cache ได้: อ่าน 4,096 × 0.1 = **410** ต่อคำถาม แต่ต้องจ่ายค่าเขียน 4,096 × 1.25 = **5,120**
+  ทุกครั้งที่ cache หมดอายุ (อายุ 5 นาที)
+
+จุดคุ้มทุน: `5120 + 410n < 600(n+1)` → **n > 24** คือต้องถามเกิน 24 คำถาม
+ภายในทุกช่วง 5 นาที ถึงจะเริ่มถูกกว่า เครื่องในบ้านถามไม่กี่ครั้งต่อชั่วโมง
+**สรุป: ไม่ทำ** วิธีที่ได้ผลจริงคือ prompt ให้เล็ก ซึ่งทำไปแล้ว
 
 ---
 
@@ -175,6 +224,57 @@ curl -s -o /dev/null -w 'monthreport %{http_code}\n' -k -H 'Host: ubet89.house' 
 ```
 
 (ค่าตั้งต้นที่วัดไว้ 22 ก.ย. 2569 ก่อนแตะอะไร: thaitrack **200**, monthreport **302**)
+
+---
+
+## ขั้น 7ก — reload nginx อัตโนมัติหลังต่ออายุใบรับรอง
+
+`install.sh` ติดตั้ง deploy hook ไว้แล้วที่
+`/etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx` (รันซ้ำได้ ทับได้)
+
+**ทำไมต้องมี:** ใบรับรองออกด้วย `certonly --webroot` จึงไม่มี installer plugin
+ที่จะ reload nginx ให้ ต่างจาก thaitrack/monthreport ที่ออกด้วย `--nginx`
+ถ้าไม่มี hook นี้ ไฟล์ใบใหม่จะอยู่บนดิสก์ แต่ nginx ยังเสิร์ฟใบเก่าที่ค้างใน
+หน่วยความจำจนกว่าจะมีอะไรไป restart
+
+**hook ทำแค่สองอย่าง:** `nginx -t` แล้ว reload ถ้าผ่าน **ไม่แก้ไฟล์ config ใดๆ เลย**
+
+**ด่านสำคัญ:** โฟลเดอร์นี้ certbot รันให้ **ทุกใบที่ต่ออายุ** รวมของ thaitrack
+และ monthreport ด้วย hook จึงเช็ค `RENEWED_LINEAGE` ก่อน ถ้าไม่ใช่ใบของ kiosk
+จะ `exit 0` ทันทีโดยไม่ทำอะไร
+
+### ทดสอบ hook
+
+```bash
+sudo certbot renew --dry-run --run-deploy-hooks
+```
+
+**ต้องมี `--run-deploy-hooks`** — `--dry-run` เฉยๆ **ไม่รัน** deploy hook
+(certbot 2.9.0 บนเครื่องนี้ระบุไว้ใน `certbot renew --help all` ตรงๆ)
+
+ดูว่า hook พูดอะไร:
+
+```bash
+sudo journalctl -t kiosk-cert-hook -n 20 --no-pager
+```
+
+ถ้าอยากทดสอบทีละกิ่งโดยไม่ยุ่งกับ certbot เลย เรียก hook ตรงๆ ได้:
+
+```bash
+# ใบของเรา -> ต้อง reload
+sudo RENEWED_LINEAGE=/etc/letsencrypt/live/kiosk.xn--l3cgts1b3bzcvf.com \
+  /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
+
+# ใบของ thaitrack -> ต้องเงียบ ไม่ทำอะไร
+sudo RENEWED_LINEAGE=/etc/letsencrypt/live/xn--l3cgts1b3bzcvf.com \
+  /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
+```
+
+ตรวจว่า timer ต่ออายุทำงานอยู่:
+
+```bash
+systemctl list-timers 'certbot*' --no-pager
+```
 
 ---
 

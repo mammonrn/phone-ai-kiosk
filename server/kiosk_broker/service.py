@@ -164,6 +164,7 @@ def handle_chat(
                          role="assistant", content=reply)
     store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
                          ttl_hours=cfg.history_ttl_hours)
+    store.prune_requests(conn)
 
     log.info(
         "ok device=%s conv=%s chars_in=%d chars_out=%d in_tok=%d out_tok=%d cost=%.6f ms=%d%s",

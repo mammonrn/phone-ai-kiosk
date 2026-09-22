@@ -4,6 +4,13 @@ The only thing the kiosk phone is allowed to talk to. Phase 2: it takes a Thai
 question over HTTPS, asks Claude Haiku, and returns a short answer meant to be
 read aloud. It has no tools and returns `action: null` on every response.
 
+**Running in production** on 45.76.157.64 since 22 Sep 2026, behind
+`kiosk.xn--l3cgts1b3bzcvf.com`. Verified end to end from a Windows machine over
+real HTTPS: a valid token gets a Thai reply with `action: null`, no token and a
+wrong token both get 401, `/` gets 404, and plain HTTP redirects. The API key is
+readable only by `kioskbroker` — `linuxuser` gets Permission denied, which is
+the point. [INSTALL.md](INSTALL.md) carries the measurements.
+
 Install and operate: **[INSTALL.md](INSTALL.md)** (Thai).
 
 ## API
@@ -88,9 +95,36 @@ and the length. History is kept separately, as conversation state rather than a
 log: a few turns, pruned by count and by age, because every turn is resent as
 input tokens and history is the quiet way to spend a monthly budget.
 
+**The prompt is the running cost.** Thai runs near one token per character on
+this model, and the system prompt is resent on every request — the first
+production version measured 1,107 input tokens for a one-line question, which
+was most of what each answer cost. It is now 44% smaller, with a test holding
+the ceiling. Prompt caching cannot help: Haiku 4.5 will not cache a prefix
+under 4,096 tokens and returns no error when it declines, and padding the
+prompt up to that floor needs more than 24 questions inside every 5-minute
+cache window before it breaks even. `prompt-size` measures the prompt through
+the token-counting endpoint, which is free.
+
+**History is bounded in both directions** — a few turns, capped by count and by
+age, in memory and on disk. Every turn is resent as input tokens, so an
+unbounded history is a bill that grows with use.
+
 **No web framework.** stdlib `http.server` behind nginx, with the Anthropic SDK
 as the only third-party dependency. One phone, two routes, and a dependency
 tree is a thing to keep patched.
+
+## Operator commands
+
+Run as `kioskbroker` on the VPS; none of them are reachable over HTTP.
+
+| Command | What it does |
+|---|---|
+| `issue-token <label>` | Creates a device and prints its token once |
+| `revoke-token <label>` | Revokes it |
+| `list-devices` | Labels and whether each is active |
+| `usage` | This month's spend, the cap, and where the prices came from |
+| `selftest` | One real call, printing input tokens and the measured cost. Not written to the ledger |
+| `prompt-size` | The prompt's size in tokens, through the free token-counting endpoint. No answer generated, nothing billed |
 
 ## Development
 

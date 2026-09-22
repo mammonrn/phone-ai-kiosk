@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# certbot deploy hook — reloads nginx after the kiosk certificate is renewed.
+#
+# Installed at /etc/letsencrypt/renewal-hooks/deploy/, which certbot runs once
+# per successfully renewed lineage. The certificate was issued with
+# `certonly --webroot`, so there is no installer plugin to reload nginx for it;
+# without this the renewed file sits on disk while nginx keeps serving the old
+# one in memory until something else restarts it.
+#
+# The lineage guard is the important line. This directory runs for EVERY
+# renewed certificate, including thaitrack's and monthreport's, and those were
+# issued with --nginx, which reloads them itself. Anything this script did
+# unguarded would be acting on somebody else's certificate.
+#
+# It never edits any nginx configuration — the whole action is `nginx -t` and a
+# reload, and the reload only happens if the test passes.
+set -euo pipefail
+
+DOMAIN=kiosk.xn--l3cgts1b3bzcvf.com
+
+log() { logger -t kiosk-cert-hook -- "$*"; echo "kiosk-cert-hook: $*"; }
+
+# certbot sets RENEWED_LINEAGE to /etc/letsencrypt/live/<name> for the
+# certificate it just renewed.
+if [[ "$(basename "${RENEWED_LINEAGE:-}")" != "$DOMAIN" ]]; then
+    exit 0
+fi
+
+log "renewed $DOMAIN; testing nginx configuration"
+
+if ! nginx -t 2>/dev/null; then
+    # Loud and non-zero: a reload now would take the other two sites down with
+    # it, so the old certificate keeping the kiosk offline is the better failure.
+    log "ERROR nginx -t failed — NOT reloading. Fix the config, then: systemctl reload nginx"
+    nginx -t || true
+    exit 1
+fi
+
+systemctl reload nginx
+log "nginx reloaded"

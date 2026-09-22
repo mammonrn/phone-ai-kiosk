@@ -128,6 +128,18 @@ install -o root -g root -m 0644 "$REPO_SERVER_DIR/install/nginx-kiosk.conf" \
 echo "  written to /etc/nginx/sites-available/kiosk (NOT enabled yet)"
 echo "  the symlink and reload come after the certificate exists — see INSTALL.md"
 
+# -------------------------------------------------------- certificate hook
+say "certbot deploy hook"
+# certbot runs everything in this directory once per renewed certificate. The
+# hook guards on RENEWED_LINEAGE and no-ops for every lineage but ours, so
+# thaitrack's and monthreport's renewals are untouched by it — they were issued
+# with --nginx and reload themselves.
+install -d -o root -g root -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+install -o root -g root -m 0755 "$REPO_SERVER_DIR/install/kiosk-reload-nginx" \
+    /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
+echo "  installed /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx"
+echo "  (reloads nginx only after OUR certificate renews, and only if nginx -t passes)"
+
 # ----------------------------------------------------------------- recheck
 say "Checking the existing sites again"
 after_thaitrack=$(curl -s -o /dev/null -w '%{http_code}' -k -H 'Host: xn--l3cgts1b3bzcvf.com' https://127.0.0.1/ || echo 000)
@@ -146,6 +158,13 @@ Done with the parts that need root. Still to do, in order:
   3. Issue the certificate (certbot certonly --webroot)
   4. Enable the nginx site, nginx -t, reload
   5. Issue a device token and test from outside
+
+The certbot deploy hook is already in place, so renewals will reload nginx by
+themselves. Test it with:
+
+  sudo certbot renew --dry-run --run-deploy-hooks
+
+(--dry-run alone does NOT run deploy hooks.)
 
 INSTALL.md has the exact commands for each.
 NEXT

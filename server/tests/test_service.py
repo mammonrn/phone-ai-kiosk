@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import time
 
 import pytest
 
@@ -237,3 +238,68 @@ def test_the_request_log_keeps_no_message_text(conn, cfg, client):
     dumped = " ".join(str(v) for row in rows for v in tuple(row))
     assert "ความลับ" not in dumped
     assert rows[0]["text_len"] == len("ความลับของผม")
+
+
+# --------------------------------------------------------- bounded growth
+
+def test_history_cannot_grow_without_limit(conn, cfg, client):
+    """What gets resent as input tokens has a ceiling, in messages and in size.
+
+    History is the quiet way a monthly budget disappears: every turn is resent
+    on every request, so an unbounded history is a bill that grows with use.
+    """
+    cfg = dataclasses.replace(cfg, rate_per_minute=200, rate_per_day=500)
+    token = _token(conn)
+    long_question = "ก" * cfg.max_text_chars
+
+    conv = None
+    for _ in range(40):
+        payload = {"text": long_question}
+        if conv:
+            payload["conversation_id"] = conv
+        status, body = _post(conn, cfg, client, token, payload)
+        assert status == 200
+        conv = body["conversation_id"]
+
+    replayed = client.calls[-1]["messages"]
+    assert len(replayed) <= cfg.history_turns * 2 + 1
+
+    # And the same ceiling on disk, so the file does not grow either.
+    stored = conn.execute("SELECT COUNT(*) c FROM messages WHERE conversation_id = ?",
+                          (conv,)).fetchone()["c"]
+    assert stored <= cfg.history_turns * 2
+
+    characters = sum(len(m["content"]) for m in replayed)
+    ceiling = (cfg.history_turns * 2 + 1) * (cfg.max_text_chars + 200)
+    assert characters <= ceiling
+
+
+def test_stale_history_is_swept(conn, cfg, client):
+    token = _token(conn)
+    _, body = _post(conn, cfg, client, token, {"text": "เก่า"})
+    conv = body["conversation_id"]
+
+    # Age everything past the TTL, then talk in a different conversation.
+    conn.execute("UPDATE messages SET ts = ?", (time.time() - (cfg.history_ttl_hours + 1) * 3600,))
+    _post(conn, cfg, client, token, {"text": "ใหม่", "conversation_id": "other"})
+
+    left = conn.execute("SELECT COUNT(*) c FROM messages WHERE conversation_id = ?",
+                        (conv,)).fetchone()["c"]
+    assert left == 0
+
+
+def test_the_request_log_does_not_grow_forever(conn, cfg, client):
+    token = _token(conn)
+    device_id = conn.execute("SELECT id FROM devices").fetchone()["id"]
+
+    conn.execute("INSERT INTO requests (device_id, ts, day, outcome, text_len)"
+                 " VALUES (?,?,?,'ok',5)",
+                 (device_id, time.time() - (store.REQUEST_LOG_KEEP_DAYS + 1) * 86400,
+                  "2020-01-01"))
+    _post(conn, cfg, client, token, {"text": "สวัสดี"})
+
+    remaining = conn.execute("SELECT COUNT(*) c FROM requests WHERE day = '2020-01-01'").fetchone()
+    assert remaining["c"] == 0
+
+    # The money ledger is not pruned, whatever happens to the request log.
+    assert conn.execute("SELECT COUNT(*) c FROM usage").fetchone()["c"] == 1
