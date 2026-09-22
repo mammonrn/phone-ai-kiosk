@@ -1,0 +1,144 @@
+package com.mammonrn.phoneaikiosk
+
+import com.mammonrn.phoneaikiosk.voice.Broker
+import com.mammonrn.phoneaikiosk.voice.TurnPipeline
+import com.mammonrn.phoneaikiosk.voice.VoiceSink
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Somewhere to watch the transitions the screen shows. */
+private class Sink : VoiceSink {
+    override var stt = "idle"
+    override var chat = "idle"
+    override var tts = "idle"
+    override var heard = ""
+    override var reply = ""
+    override var lastError = ""
+    val trail = mutableListOf<String>()
+    fun snapshot() = "stt=$stt chat=$chat tts=$tts"
+}
+
+private const val WAV_HEADER = 44
+
+class TurnPipelineTest {
+
+    private fun wav(bytes: Int = 4000) = ByteArray(WAV_HEADER + bytes)
+
+    private fun pipeline(
+        sink: Sink,
+        transcribe: (ByteArray) -> String = { "วันนี้อากาศเป็นยังไง" },
+        ask: (String, String?) -> Pair<String, String> = { _, _ -> "ผมยังดูให้ไม่ได้ครับ" to "c1" },
+        speak: (String) -> ByteArray = { ByteArray(2000) },
+        play: (ByteArray) -> Boolean = { true },
+        sayLocally: (String) -> Boolean = { true },
+    ) = TurnPipeline(transcribe, ask, speak, play, sayLocally, sink) { sink.trail.add(it) }
+
+    @Test
+    fun `a good turn goes all the way through`() {
+        val sink = Sink()
+        val (outcome, conversation) = pipeline(sink).run(wav(), null)
+
+        assertEquals(TurnPipeline.Outcome.COMPLETED, outcome)
+        assertEquals("c1", conversation)
+        assertEquals("stt=ok chat=ok tts=ok", sink.snapshot())
+        assertEquals("วันนี้อากาศเป็นยังไง", sink.heard)
+        assertEquals("ผมยังดูให้ไม่ได้ครับ", sink.reply)
+    }
+
+    @Test
+    fun `an empty recording never reaches the network`() {
+        val sink = Sink()
+        var called = false
+        val outcome = pipeline(sink, transcribe = { called = true; "" })
+            .run(ByteArray(WAV_HEADER), null).first
+
+        assertEquals(TurnPipeline.Outcome.EMPTY_AUDIO, outcome)
+        assertFalse("silence must not be uploaded", called)
+        assertEquals("empty", sink.stt)
+    }
+
+    @Test
+    fun `a failing transcription stops there and says so out loud`() {
+        val sink = Sink()
+        var spoken: String? = null
+        val outcome = pipeline(
+            sink,
+            transcribe = { throw Broker.Failure(502, "stt_error", "ถอดเสียงไม่สำเร็จครับ") },
+            sayLocally = { spoken = it; true },
+        ).run(wav(), null).first
+
+        assertEquals(TurnPipeline.Outcome.FAILED, outcome)
+        assertEquals("error", sink.stt)
+        assertEquals("idle", sink.chat)
+        assertEquals("ถอดเสียงไม่สำเร็จครับ", spoken)
+        assertTrue(sink.lastError.contains("stt_error"))
+    }
+
+    @Test
+    fun `an exhausted budget is read out in the broker's own words`() {
+        val sink = Sink()
+        var spoken: String? = null
+        val message = "งบค่าใช้งานของเดือนนี้หมดแล้วครับ ระบบจะกลับมาใช้ได้อีกครั้งวันที่ 1 ของเดือนหน้า"
+        pipeline(
+            sink,
+            ask = { _, _ -> throw Broker.Failure(402, "budget_exhausted", message) },
+            sayLocally = { spoken = it; true },
+        ).run(wav(), null)
+
+        assertEquals(message, spoken)
+        assertTrue(sink.lastError.contains("budget_exhausted"))
+    }
+
+    @Test
+    fun `when cloud speech fails the answer is still spoken`() {
+        val sink = Sink()
+        var spoken: String? = null
+        val outcome = pipeline(
+            sink,
+            speak = { throw Broker.Failure(502, "tts_error", "สร้างเสียงไม่สำเร็จครับ") },
+            sayLocally = { spoken = it; true },
+        ).run(wav(), null).first
+
+        assertEquals(TurnPipeline.Outcome.SPOKEN_LOCALLY, outcome)
+        assertEquals("device-fallback", sink.tts)
+        assertEquals("ผมยังดูให้ไม่ได้ครับ", spoken)
+    }
+
+    @Test
+    fun `when playback fails the answer is still spoken`() {
+        val sink = Sink()
+        val outcome = pipeline(sink, play = { false }).run(wav(), null).first
+        assertEquals(TurnPipeline.Outcome.SPOKEN_LOCALLY, outcome)
+        assertEquals("device-fallback", sink.tts)
+    }
+
+    @Test
+    fun `when even the device voice fails it is reported and not pretended`() {
+        val sink = Sink()
+        val outcome = pipeline(sink, play = { false }, sayLocally = { false })
+            .run(wav(), null).first
+        assertEquals(TurnPipeline.Outcome.FAILED, outcome)
+        assertEquals("failed", sink.tts)
+    }
+
+    @Test
+    fun `the conversation id is carried forward and an empty one does not erase it`() {
+        val sink = Sink()
+        val kept = pipeline(sink, ask = { _, _ -> "ครับ" to "" }).run(wav(), "existing").second
+        assertEquals("existing", kept)
+    }
+
+    @Test
+    fun `the log carries lengths and never the words`() {
+        val sink = Sink()
+        pipeline(sink).run(wav(), null)
+
+        val logged = sink.trail.joinToString(" ")
+        assertFalse(logged.contains("วันนี้อากาศเป็นยังไง"))
+        assertFalse(logged.contains("ผมยังดูให้ไม่ได้ครับ"))
+        assertTrue("expected byte and char counts, got: $logged", logged.contains("chars"))
+        assertTrue(logged.contains("ms"))
+    }
+}

@@ -10,8 +10,11 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.mammonrn.phoneaikiosk.R
+import java.io.FileDescriptor
+import java.io.PrintWriter
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -20,25 +23,38 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * A foreground service of type `microphone`, which Android requires for
  * continuous capture — and which **cannot be started from the background or
- * from a BOOT_COMPLETED receiver** on Android 15. That is not a problem here
- * and it is worth saying why: the app is the persistent HOME activity, so the
- * system opens MainActivity itself at boot, and the service is started from an
- * activity that is on screen. The phase 1 design already put us on the right
- * side of that rule.
+ * from a BOOT_COMPLETED receiver** on Android 15. That is fine here and worth
+ * saying why: the app is the persistent HOME activity, so the system opens
+ * MainActivity itself at boot, and the service is started from an activity that
+ * is on screen.
  *
- * If this service is killed, [Service.onStartCommand] returning START_STICKY
- * brings it back, and MainActivity.onResume starts it again regardless — two
- * independent paths, neither of which is BOOT_COMPLETED.
+ * TWO THREADS, NOT ONE. versionCode 4 had a single-threaded executor: the
+ * listening loop occupied it forever, so the turn submitted when adb triggered
+ * a test was queued behind a task that never finishes. The screen showed
+ * `wake=triggered stt=idle` and stayed there, with nothing thrown and nothing
+ * logged. The capture thread now does nothing but read the microphone, and the
+ * network work runs on its own executor so the loop can go straight back to
+ * listening.
+ *
+ * ONE RECORDER, NOT TWO. The same version opened a second AudioRecord to
+ * capture the question while the listening loop still held the first. The
+ * capture thread now owns the only recorder and switches modes inside the loop.
  */
 class VoiceService : Service() {
 
     private val running = AtomicBoolean(false)
-    private val worker = Executors.newSingleThreadExecutor()
+
+    /** Owns the microphone. Never does network work. */
+    private val capture = Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-capture") }
+
+    /** Does the network work. Never touches the microphone. */
+    private val network = Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-network") }
 
     private lateinit var recorder: Recorder
     private lateinit var detector: Detector
     private lateinit var stats: VoiceStats
     private lateinit var speaker: Speaker
+    private lateinit var machine: CaptureMachine
 
     override fun onCreate() {
         super.onCreate()
@@ -46,14 +62,20 @@ class VoiceService : Service() {
         detector = NoModelDetector(this)
         stats = VoiceStats(this)
         speaker = Speaker(this).also { it.warmUp() }
+        machine = CaptureMachine(frameMillis = recorder.frameSamples * 1000 / Recorder.SAMPLE_RATE)
         VoiceState.detector = detector.state
+        VoiceState.hasToken = TokenStore(this).hasToken()
+        Log.i(TAG, "created detector=${detector.state} token=${VoiceState.hasToken}")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand action=${intent?.action} startId=$startId")
+
         if (!hasMicPermission()) {
-            // Reported rather than crashed: the status line is how anybody finds
-            // out, and the Device Owner grant is what fixes it.
+            // Reported rather than crashed: the status line and the dump are how
+            // anybody finds out, and the Device Owner grant is what fixes it.
             VoiceState.mic = "no-permission"
+            Log.w(TAG, "RECORD_AUDIO not granted; stopping")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -61,105 +83,127 @@ class VoiceService : Service() {
         startForegroundCompat()
 
         if (intent?.action == ACTION_LISTEN_NOW) {
-            // The adb trigger: skip the wake word and take a question straight
-            // away, so the rest of the pipeline can be tested before a model
-            // exists.
+            // Arms a flag the capture thread reads. It does NOT submit work to
+            // the capture executor, which is the bug this replaces.
+            machine.arm()
             VoiceState.wake = "triggered"
-            worker.execute { runOneTurn(confirmed = true) }
-            return START_STICKY
+            Log.i(TAG, "armed by adb trigger; capture thread will pick it up next frame")
         }
 
         if (running.compareAndSet(false, true)) {
-            worker.execute { listenLoop() }
+            capture.execute { captureLoop() }
         }
         return START_STICKY
     }
 
     /**
-     * Listens on the device, forever, and sends nothing anywhere.
+     * The only thread that touches the microphone.
      *
-     * This is the loop that has to be right for the promise to hold: audio is
-     * read into a frame, handed to the detector, and dropped. Nothing leaves
-     * this method until [Detector.accept] returns true.
+     * Reads frames, hands them to the wake word stage while listening, and
+     * accumulates them while capturing. When a capture completes, the audio goes
+     * to the network executor and this loop is immediately back to listening.
      */
-    private fun listenLoop() {
+    private fun captureLoop() {
         VoiceState.mic = "open"
+        VoiceState.wake = if (detector.ready) "listening" else detector.state
+        Log.i(TAG, "capture loop started")
+
+        val buffer = java.io.ByteArrayOutputStream()
+
         try {
             recorder.listen(shouldStop = { !running.get() }) { frame, read ->
-                VoiceState.level = peak(frame, read)
-                if (detector.accept(frame, read)) {
-                    VoiceState.wake = "detected"
+                val peak = peak(frame, read)
+                VoiceState.level = peak
+
+                val fired = detector.ready && detector.accept(frame, read)
+                if (fired) {
                     stats.recordWake()
-                    runOneTurn(confirmed = false)
+                    Log.i(TAG, "wake word detected")
+                }
+
+                when (machine.onFrame(peak, fired)) {
+                    CaptureMachine.Step.IDLE -> Unit
+
+                    CaptureMachine.Step.STARTED -> {
+                        buffer.reset()
+                        VoiceState.stt = "recording"
+                        Log.i(TAG, "capture started")
+                    }
+
+                    CaptureMachine.Step.CAPTURING -> recorder.appendPcm(buffer, frame, read)
+
+                    CaptureMachine.Step.FINISHED -> {
+                        recorder.appendPcm(buffer, frame, read)
+                        val wav = recorder.wrapAsWav(buffer.toByteArray())
+                        buffer.reset()
+                        Log.i(TAG, "capture finished reason=${machine.lastStopReason} " +
+                            "bytes=${wav.size}")
+                        VoiceState.wake = if (detector.ready) "listening" else detector.state
+                        // Straight to the other executor. This loop must not
+                        // wait for the network.
+                        network.execute { runTurn(wav) }
+                    }
                 }
                 true
             }
         } catch (e: Exception) {
             VoiceState.mic = "error"
             VoiceState.lastError = "mic: ${e.javaClass.simpleName}"
+            Log.e(TAG, "capture loop failed", e)
         } finally {
             VoiceState.mic = "closed"
+            Log.i(TAG, "capture loop ended")
         }
     }
 
-    /** Record, transcribe, answer, speak. Each stage reports itself. */
-    private fun runOneTurn(confirmed: Boolean) {
-        if (confirmed) stats.recordConfirmed()
-
+    /** Runs on the network executor. Never reads the microphone. */
+    private fun runTurn(wav: ByteArray) {
         val token = TokenStore(this).token()
+        VoiceState.hasToken = token != null
         if (token == null) {
             VoiceState.lastError = "no device token — see TESTING.md"
+            Log.w(TAG, "no device token installed; see TESTING.md")
             stats.recordError()
             return
         }
+
         val broker = Broker(VoiceState.brokerBaseUrl, token)
+        val pipeline = TurnPipeline(
+            transcribe = broker::transcribe,
+            ask = broker::chat,
+            speak = broker::speak,
+            play = { audio -> speaker.play(audio, "ogg") },
+            sayLocally = speaker::sayLocally,
+            state = VoiceState,
+            log = { message -> Log.i(TAG, message) },
+        )
 
-        try {
-            VoiceState.stt = "recording"
-            val wav = recorder.recordQuestion(maxMillis = 12_000, silenceMillis = 1_200)
+        val (outcome, conversationId) = pipeline.run(wav, VoiceState.conversationId)
+        VoiceState.conversationId = conversationId
+        Log.i(TAG, "turn finished outcome=$outcome")
 
-            VoiceState.stt = "sending"
-            val question = broker.transcribe(wav)
-            VoiceState.heard = question
-            VoiceState.stt = "ok"
-
-            VoiceState.chat = "asking"
-            val (reply, conversationId) = broker.chat(question, VoiceState.conversationId)
-            VoiceState.conversationId = conversationId.ifEmpty { null }
-            VoiceState.reply = reply
-            VoiceState.chat = "ok"
-
-            VoiceState.tts = "synthesising"
-            val spoken = try {
-                val audio = broker.speak(reply)
-                if (speaker.play(audio, "ogg")) "cloud" else null
-            } catch (e: Broker.Failure) {
-                VoiceState.lastError = "tts ${e.code}"
-                null
+        when (outcome) {
+            TurnPipeline.Outcome.COMPLETED, TurnPipeline.Outcome.SPOKEN_LOCALLY -> {
+                stats.recordTurn()
+                VoiceState.turns += 1
             }
-
-            if (spoken == null) {
-                // The answer is worth more than the voice it is said in.
-                VoiceState.tts = if (speaker.sayLocally(reply)) "device-fallback" else "failed"
-            } else {
-                VoiceState.tts = "ok"
-            }
-
-            stats.recordTurn()
-        } catch (e: Broker.Failure) {
-            // The broker's own Thai message, including "the month's budget is
-            // gone" — said out loud, because a kiosk that just stops is a kiosk
-            // nobody can diagnose from the sofa.
-            VoiceState.lastError = "${e.code}"
-            VoiceState.chat = "error"
-            stats.recordError()
-            speaker.sayLocally(e.message)
-        } catch (e: Exception) {
-            VoiceState.lastError = e.javaClass.simpleName
-            stats.recordError()
-        } finally {
-            VoiceState.wake = if (detector.ready) "listening" else detector.state
+            else -> stats.recordError()
         }
+    }
+
+    /**
+     * `adb shell dumpsys activity service .../.voice.VoiceService`
+     *
+     * The way to read the state without uiautomator, which cannot dump this
+     * screen at all: the clock ticks every second so the hierarchy never
+     * settles and the dump times out.
+     */
+    override fun dump(fd: FileDescriptor, writer: PrintWriter, args: Array<out String>?) {
+        writer.print(VoiceState.dump())
+        writer.println("  capture-mode : ${machine.mode}")
+        writer.println("  armed        : ${machine.isArmed()}")
+        writer.println()
+        writer.print(stats.report())
     }
 
     private fun peak(frame: ShortArray, read: Int): Int {
@@ -197,16 +241,21 @@ class VoiceService : Service() {
 
     override fun onDestroy() {
         running.set(false)
-        worker.shutdownNow()
+        capture.shutdownNow()
+        network.shutdownNow()
         detector.close()
         speaker.shutdown()
         VoiceState.mic = "stopped"
+        Log.i(TAG, "destroyed")
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        /** One tag for everything, so `logcat -s KioskVoice:I` is the whole story. */
+        const val TAG = "KioskVoice"
+
         private const val CHANNEL = "kiosk-voice"
         private const val NOTIFICATION_ID = 1
 

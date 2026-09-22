@@ -188,15 +188,34 @@ class MainActivity : Activity() {
      */
     private fun grantMicrophoneToSelf() {
         if (!isDeviceOwner) return
-        try {
-            dpm.setPermissionGrantState(
-                KioskDeviceAdminReceiver.componentName(this),
-                packageName,
-                android.Manifest.permission.RECORD_AUDIO,
-                DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
-            )
-        } catch (e: SecurityException) {
-            VoiceState.lastError = "mic grant refused: ${e.javaClass.simpleName}"
+
+        // POST_NOTIFICATIONS as well as RECORD_AUDIO. The foreground service ran
+        // on the A07 but the system logged "Suppressing notification ... by user
+        // request": since Android 13 posting one is a runtime permission, and
+        // nobody granted it because there is nobody to ask. The service works
+        // either way — it was foreground with type 0x80 — but a microphone
+        // foreground service whose notification is suppressed is a kiosk holding
+        // the mic with no visible sign of it, which is the wrong default for a
+        // device in somebody's living room.
+        val permissions = listOf(
+            android.Manifest.permission.RECORD_AUDIO,
+            android.Manifest.permission.POST_NOTIFICATIONS,
+        )
+        for (permission in permissions) {
+            try {
+                dpm.setPermissionGrantState(
+                    KioskDeviceAdminReceiver.componentName(this),
+                    packageName,
+                    permission,
+                    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+                )
+            } catch (e: SecurityException) {
+                VoiceState.lastError = "grant refused: ${permission.substringAfterLast('.')}"
+            } catch (e: IllegalArgumentException) {
+                // Thrown for a permission the platform will not let a device
+                // owner set. Recorded rather than fatal.
+                VoiceState.lastError = "grant rejected: ${permission.substringAfterLast('.')}"
+            }
         }
     }
 

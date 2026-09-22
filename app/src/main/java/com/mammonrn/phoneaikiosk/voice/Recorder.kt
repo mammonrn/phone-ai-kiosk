@@ -61,45 +61,23 @@ class Recorder {
     }
 
     /**
-     * Records one question and returns it as a WAV.
+     * Appends one frame of samples to a buffer as little-endian 16-bit PCM.
      *
-     * Stops on [maxMillis] or after [silenceMillis] of quiet, whichever comes
-     * first. The silence test is a plain amplitude threshold: a room is not
-     * silent, so the bar is "quieter than speech", not "zero".
+     * Public so the capture loop can accumulate a question using the recorder it
+     * already has open. The previous version had a `recordQuestion` that opened
+     * a SECOND AudioRecord while the listening loop still held the first, which
+     * is not something a phone reliably allows.
      */
-    fun recordQuestion(maxMillis: Int, silenceMillis: Int): ByteArray {
-        val pcm = ByteArrayOutputStream()
-        val frameMs = frameSamples * 1000 / SAMPLE_RATE
-        var elapsed = 0
-        var quiet = 0
-        var heardAnything = false
-
-        listen(shouldStop = { false }) { frame, read ->
-            for (i in 0 until read) {
-                val sample = frame[i].toInt()
-                pcm.write(sample and 0xFF)
-                pcm.write((sample shr 8) and 0xFF)
-            }
-
-            var peak = 0
-            for (i in 0 until read) {
-                val magnitude = kotlin.math.abs(frame[i].toInt())
-                if (magnitude > peak) peak = magnitude
-            }
-
-            if (peak > SPEECH_THRESHOLD) {
-                heardAnything = true
-                quiet = 0
-            } else if (heardAnything) {
-                quiet += frameMs
-            }
-
-            elapsed += frameMs
-            elapsed < maxMillis && quiet < silenceMillis
+    fun appendPcm(out: ByteArrayOutputStream, frame: ShortArray, read: Int) {
+        for (i in 0 until read) {
+            val sample = frame[i].toInt()
+            out.write(sample and 0xFF)
+            out.write((sample shr 8) and 0xFF)
         }
-
-        return wav(pcm.toByteArray())
     }
+
+    /** Puts a RIFF header in front of accumulated PCM. */
+    fun wrapAsWav(pcm: ByteArray): ByteArray = wav(pcm)
 
     /** A 44-byte RIFF header in front of the samples. */
     private fun wav(pcm: ByteArray): ByteArray {

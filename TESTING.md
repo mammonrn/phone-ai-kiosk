@@ -379,9 +379,50 @@ adb shell run-as com.mammonrn.phoneaikiosk.debug rm files/device_token
 build ไม่มีปุ่มบนจอ และไม่มีอยู่ใน release build เลย**
 
 ```powershell
-# พูดคำถามใส่มือถือทันทีหลังรันคำสั่งนี้ มันจะอัดจนเงียบแล้วส่งไปถอดเสียง
-adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN
+# ต้องมี -p ระบุ package ไม่งั้นแอปไม่ได้รับ broadcast เลย (ยืนยันบน A07 แล้ว)
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN -p com.mammonrn.phoneaikiosk.debug
 ```
+
+**`-p` จำเป็น** Android จำกัด implicit broadcast ไปยังแอปที่ไม่ได้ทำงาน
+ถ้าไม่ระบุ package คำสั่งจะขึ้นว่าส่งสำเร็จแต่แอปไม่เคยได้รับ
+
+### อ่านสถานะด้วย dumpsys (แนะนำ ไม่ต้องพึ่ง uiautomator)
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/.voice.VoiceService
+```
+
+ได้แบบนี้:
+
+```
+kiosk voice state
+  mic        : open
+  detector   : no-model
+  wake       : listening
+  stt        : ok
+  chat       : ok
+  tts        : ok
+  level      : 1573
+  token      : yes
+  turns      : 1
+  last-error : none
+  capture-mode : LISTENING
+  armed        : false
+```
+
+⚠️ **`adb shell uiautomator dump` ใช้กับหน้าจอนี้ไม่ได้** เพราะนาฬิกาเดินทุกวินาที
+ทำให้ลำดับชั้นของหน้าจอไม่เคยนิ่ง uiautomator จึงรอจนหมดเวลาแล้วล้ม
+(เจอจริงบน A07) — ให้ใช้ `dumpsys` ข้างบนแทน
+
+### ดู log สดตอนทดสอบ
+
+```powershell
+adb logcat -s KioskVoice:I
+```
+
+ทุกขั้นมี log tag เดียวคือ `KioskVoice` เห็นการเปลี่ยนสถานะ จำนวนไบต์ที่อัด
+HTTP status และเวลาที่ใช้ **ไม่มี token ไม่มีคีย์ ไม่มีเสียงดิบ และไม่มีข้อความเต็ม**
+มีแต่จำนวนตัวอักษร
 
 ดูที่จอมือถือ จะเห็นทีละขั้น:
 
@@ -405,9 +446,12 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 |---|---|
 | `mic` | `off` `open` `closed` `error` **`no-permission`** |
 | `wake` | `idle` `listening` `detected` `triggered` **`no-model`** |
-| `stt` | `idle` `recording` `sending` `ok` |
+| `stt` | `idle` `recording` `sending` `ok` `error` **`empty`** |
 | `chat` | `idle` `asking` `ok` `error` |
 | `tts` | `idle` `synthesising` `ok` **`device-fallback`** `failed` |
+| `capture-mode` | `LISTENING` `CAPTURING` (จาก dumpsys) |
+
+`stt=empty` แปลว่าอัดแล้วไม่ได้เสียงเลย — ไม่ถูกส่งขึ้นเซิร์ฟเวอร์และไม่เสียเงิน
 
 `mic=no-permission` แปลว่า Device Owner ให้สิทธิ์ไมค์ตัวเองไม่สำเร็จ
 ทางแก้ชั่วคราว: `adb shell pm grant com.mammonrn.phoneaikiosk.debug android.permission.RECORD_AUDIO`
@@ -415,6 +459,19 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 
 `tts=device-fallback` แปลว่า Cloud TTS ใช้ไม่ได้และใช้เสียงในเครื่องแทน —
 ตั้งใจให้เป็นแบบนี้ ไม่ใช่ความผิดพลาด
+
+### 🔴 บั๊กที่แก้แล้วใน versionCode 5 — อาการที่เคยเจอ
+
+ถ้าเห็น `wake=triggered` แล้ว `stt` ค้างที่ `idle` ไม่ขยับเลย นั่นคือบั๊กของ
+versionCode 4 **ต้องอัปเป็น versionCode 5 ขึ้นไป**
+
+สาเหตุ: service ใช้ executor เธรดเดียว ลูปฟังไมค์จองเธรดนั้นไว้ตลอด งานที่
+trigger สั่งจึงถูกต่อคิวหลังงานที่ไม่จบ `wake` เปลี่ยนได้เพราะตั้งบนเธรด binder
+แต่ `stt` ไม่มีทางขยับ และไม่มี exception ให้เห็นเลย
+
+แก้เป็นสองเธรดแยก: เธรดจับเสียงถือไมค์เท่านั้น เธรดเครือข่ายทำงาน STT/chat/TTS
+พร้อมกับแก้อีกจุดที่ยังไม่เคยแสดงอาการ — โค้ดเดิมเปิด AudioRecord ตัวที่สอง
+ขณะลูปแรกยังถืออยู่ ซึ่งจะพังทันทีที่มีโมเดลคำปลุก
 
 ---
 
