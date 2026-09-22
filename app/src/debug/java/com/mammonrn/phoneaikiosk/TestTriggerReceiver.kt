@@ -60,6 +60,14 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }
             }
 
+            ACTION_HOME -> {
+                // The route back to the kiosk that does not depend on Android
+                // letting a service start an activity, and does not depend on
+                // Back doing what it is supposed to either.
+                VoiceService.start(context, VoiceService.ACTION_RETURN_HOME)
+                android.util.Log.i("KioskStats", "asked the kiosk to come forward")
+            }
+
             ACTION_WAKE_ONLY -> {
                 // Measuring how often the wake word actually fires needs twenty
                 // attempts, and twenty full turns is twenty transcriptions,
@@ -89,5 +97,6 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_SET_BROKER = "com.mammonrn.phoneaikiosk.TEST_SET_BROKER"
         const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
+        const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
     }
 }

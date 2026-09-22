@@ -458,6 +458,8 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 | `chat` | `idle` `asking` `ok` `error` |
 | `tts` | `idle` `synthesising` **`speaking`** `ok` **`device-fallback`** `failed` |
 | `capture-mode` | `LISTENING` `CAPTURING` **`BUSY`** (จาก dumpsys) |
+| `last-action` | `none` `open_maps:opened` `open_maps:not_installed` `open_maps:refused` `open_maps:failed` |
+| `maps` | `unknown` `ready` `not-installed` `location-denied` `granted-unconfirmed` `opened` |
 
 `stt=empty` แปลว่าอัดแล้วไม่ได้เสียงเลย — ไม่ถูกส่งขึ้นเซิร์ฟเวอร์และไม่เสียเงิน
 
@@ -535,7 +537,7 @@ trigger สั่งจึงถูกต่อคิวหลังงานท
 ผู้ช่วยชื่อ **จาร์วิส** คำปลุกคือ **"Hey Jarvis"** (ภาษาอังกฤษ เพราะโมเดลเป็น
 pretrained ของ openWakeWord) ทุกอย่างรันบนเครื่อง ไม่มีเสียงออกจากห้องก่อนเจอคำปลุก
 
-### ขั้น 0 — ติดตั้ง versionCode 8
+### ขั้น 0 — ติดตั้ง versionCode 9
 
 ```powershell
 adb install -r -t app-debug.apk
@@ -546,7 +548,7 @@ adb install -r -t app-debug.apk
 ```powershell
 adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | Select-String versionCode
 ```
-ต้องเห็น `versionCode=8`
+ต้องเห็น `versionCode=9`
 
 ### ขั้น 1 — detector โหลดโมเดลได้จริงไหม
 
@@ -791,6 +793,130 @@ adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.
 `speech-floor` ต้อง**สูงกว่า**ระดับเสียงทีวี (ดู `ambient` ในวงเล็บ) และ
 `stop-reason` ต้องเป็น `no-speech-after-wake` **ไม่ใช่ `silence-timeout` หรือ
 `max-length`**
+
+## เฟส 4 — พูดให้เปิดแผนที่
+
+### ขั้น M0 — ตรวจว่ามี Google Maps และได้สิทธิ์ตำแหน่ง
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "maps"
+```
+
+ต้องเห็นสองบรรทัด:
+```
+  maps       : ready
+  maps-package : com.google.android.apps.maps installed=true
+```
+
+| ค่า `maps` | แปลว่า | ทำอะไรต่อ |
+|---|---|---|
+| `ready` | Device Owner ให้สิทธิ์ตำแหน่งสำเร็จ ไม่มี dialog | ไปต่อได้ |
+| `not-installed` | เครื่องไม่มี Maps | ติดตั้ง Maps ก่อน แล้วเปิดแอป kiosk ใหม่ |
+| `location-denied` | ให้สิทธิ์ไม่ผ่าน | **หยุด ส่ง output มาให้ผม** |
+| `granted-unconfirmed` | สั่งให้แล้วแต่อ่านกลับมายืนยันไม่ได้ | **หยุด ส่ง output มาให้ผม** |
+
+🔴 **สิทธิ์ ≠ ระบบระบุตำแหน่งเปิดอยู่** Device Owner ให้ "สิทธิ์" ได้ แต่**เปิด
+Location Services ของเครื่องให้ไม่ได้ และล็อกอิน Google ให้ไม่ได้** ถ้า Maps
+เปิดแล้วบอกว่าไม่รู้ตำแหน่ง ให้ไปเปิด Location ในตั้งค่าเครื่องเอง แล้วบอกผมว่า
+ต้องทำ — จะได้บันทึกไว้
+
+ตรวจว่า lock task อนุญาต Maps แล้ว:
+```powershell
+adb shell dumpsys device_policy | Select-String -Context 0,3 "Lock task packages"
+```
+ต้องเห็นทั้ง `com.mammonrn.phoneaikiosk.debug` และ `com.google.android.apps.maps`
+
+### ขั้น M1 — สั่งด้วยเสียง
+
+```powershell
+adb logcat -c
+adb logcat -s KioskVoice:I
+```
+
+พูด **"Hey Jarvis"** รอเสียงบี๊บ แล้วพูด **"พาไปเซ็นทรัลเชียงราย"**
+
+ควรเห็น:
+```
+wake word detected score=...
+capture started
+capture finished reason=end-of-speech
+stt ok ... chat ok ... action=open_maps
+tts ok ...
+action open_maps result=OPENED destination_chars=16
+turn finished outcome=COMPLETED
+```
+
+**จาร์วิสต้องพูดยืนยันก่อน แล้ว Maps ค่อยเปิด** ไม่ใช่สลับกัน
+
+🔴 `destination_chars=16` คือ**จำนวนตัวอักษร ไม่ใช่ปลายทาง** — ปลายทางที่คุณจะไป
+ไม่ถูกบันทึกลง log และไม่ขึ้นบนจอ ตั้งใจให้เป็นแบบนั้น
+
+### ขั้น M2 — สั่งสิ่งที่ห้าม ต้องถูกปฏิเสธ
+
+ลองพูดทีละอัน:
+
+| พูดว่า | ต้องได้ |
+|---|---|
+| "โทรหาแม่หน่อย" | ปฏิเสธด้วยเสียง **ไม่มี** `action=` ใน log |
+| "ส่งข้อความหาพ่อ" | ปฏิเสธ |
+| "เปิดเว็บ google" | ปฏิเสธ |
+| "เปิดยูทูป" | ปฏิเสธ |
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "action="
+```
+ทุกบรรทัดต้องเป็น `action=none` **ถ้าเห็น `action=open_maps` จากคำสั่งพวกนี้ ให้หยุดแล้วบอกผม**
+
+ฝั่ง broker ก็มี log ของตัวเอง ถ้าโมเดลพยายามส่ง action แปลกๆ:
+```bash
+sudo journalctl -u kiosk-broker -n 100 | grep "dropped action"
+```
+
+### ขั้น M3 — กลับหน้า kiosk
+
+หลัง Maps เปิดแล้ว ลองสามทางตามลำดับ:
+
+1. **กดปุ่ม Back** — ควรกลับหน้า kiosk
+2. **พูด "Hey Jarvis"** — kiosk ควรกลับมาหน้าจอเอง
+   ```powershell
+   adb logcat -s KioskVoice:I -d | Select-String "returning to the kiosk|could not return"
+   ```
+   ❓ ข้อนี้ผมไม่แน่ใจว่าจะทำงาน Android จำกัดการเปิดหน้าจอจากเบื้องหลัง
+   ถ้าเห็น `could not return to the kiosk screen: ...` **นั่นคือคำตอบ ส่งมาให้ผม**
+3. **adb** — ทางที่ไม่พึ่งข้อ 1 หรือ 2
+   ```powershell
+   adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME `
+     -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+   ```
+
+**บอกผมว่าข้อไหนใช้ได้บ้าง** ถ้า Back ใช้ได้ก็พอแล้ว ที่เหลือเป็นของแถม
+
+### ขั้น M4 — ไมค์ยังทำงานตอน Maps อยู่หน้าจอไหม ❓
+
+**นี่คือข้อที่ผมตอบล่วงหน้าไม่ได้** และเป็นข้อที่สำคัญที่สุดในเฟสนี้
+
+🔶 เหตุผลที่**น่าจะ**ทำงาน: ตั้งแต่ Android 11 แอปจะอัดเสียงตอนไม่ได้อยู่หน้าจอได้
+ก็ต่อเมื่อมี foreground service ชนิด `microphone` ทำงานอยู่ ซึ่งเรามี และมันไม่ได้
+ถูกหยุดตอน Maps ขึ้นมา ❓ แต่ Samsung มีการจัดการพลังงานของตัวเอง และ Android 14+
+เข้มเรื่อง FGS มากขึ้น — **ต้องวัดบนเครื่องจริงเท่านั้น**
+
+วิธีวัด: เปิด Maps ทิ้งไว้ แล้วดูว่า `level` ขยับตามเสียงไหม
+
+```powershell
+# เปิด Maps ก่อน (ผ่านขั้น M1) แล้วรันอันนี้ พร้อมตบมือดังๆ ใกล้เครื่อง
+while ($true) {
+  adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+    Select-String "score|level|mic "
+  Start-Sleep -Milliseconds 500
+}
+```
+
+| ผล | แปลว่า |
+|---|---|
+| `level` ขยับตามเสียง | ✅ ไมค์ทำงาน — ลองพูด "Hey Jarvis" ได้เลย |
+| `level` ค้างที่ 0 หรือใกล้ 0 ตลอด | 🔴 Android ปิดไมค์ให้ **ส่ง output มา ผมจะหาทางแก้** |
+| `mic` เป็น `error` | service โดนหยุด — ส่ง `adb logcat -s KioskVoice:I -d` มาด้วย |
 
 ## สรุปคำสั่งตรวจสถานะ
 

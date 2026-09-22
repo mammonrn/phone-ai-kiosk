@@ -10,10 +10,18 @@ package com.mammonrn.phoneaikiosk.voice
  */
 class TurnPipeline(
     private val transcribe: (ByteArray) -> String,
-    private val ask: (String, String?) -> Pair<String, String>,
+    private val ask: (String, String?) -> Answer,
     private val speak: (String) -> SpokenAudio,
     private val play: (ByteArray) -> Boolean,
     private val sayLocally: (String) -> Boolean,
+    /**
+     * Carries out an approved action. Returns what to say if it could not be
+     * done, or null when it worked or there was nothing to do.
+     *
+     * Runs AFTER the answer has been spoken, so the person hears "กำลังเปิด
+     * แผนที่..." before the screen changes under them rather than after.
+     */
+    private val perform: (KioskAction) -> String? = { null },
     private val state: VoiceSink,
     private val log: (String) -> Unit = {},
 ) {
@@ -76,15 +84,20 @@ class TurnPipeline(
         }
 
         val reply: String
+        var action: KioskAction? = null
         var nextConversation = conversationId
         try {
             state.chat = "asking"
             val started = System.currentTimeMillis()
-            val (answer, id) = ask(question, conversationId)
-            log("chat ok ${System.currentTimeMillis() - started} ms ${answer.length} chars")
-            reply = answer
-            nextConversation = id.ifEmpty { conversationId }
-            state.reply = answer
+            val answer = ask(question, conversationId)
+            // The type and whether there was one — never where somebody asked
+            // to be taken.
+            log("chat ok ${System.currentTimeMillis() - started} ms " +
+                "${answer.reply.length} chars action=${answer.action?.type ?: "none"}")
+            reply = answer.reply
+            action = answer.action
+            nextConversation = answer.conversationId.ifEmpty { conversationId }
+            state.reply = answer.reply
             state.chat = "ok"
         } catch (e: Exception) {
             state.chat = "error"
@@ -123,14 +136,37 @@ class TurnPipeline(
 
         if (cloudPlayed) {
             state.tts = "ok"
-            return Outcome.COMPLETED to nextConversation
+            return finishWith(action, nextConversation, Outcome.COMPLETED)
         }
 
         // The answer is worth more than the voice it is said in.
         val locally = sayLocally(reply)
         state.tts = if (locally) "device-fallback" else "failed"
         log("fell back to the device voice: $locally")
-        return (if (locally) Outcome.SPOKEN_LOCALLY else Outcome.FAILED) to nextConversation
+        return finishWith(action, nextConversation,
+                          if (locally) Outcome.SPOKEN_LOCALLY else Outcome.FAILED)
+    }
+
+    /**
+     * Carries out the action, if there is one, after the words have been said.
+     *
+     * A failure here is spoken but does not turn a delivered answer into a
+     * failed turn: the person was told what was about to happen, and then told
+     * why it did not. Both are more use than an outcome enum.
+     */
+    private fun finishWith(
+        action: KioskAction?,
+        conversationId: String?,
+        outcome: Outcome,
+    ): Pair<Outcome, String?> {
+        if (action == null) return outcome to conversationId
+        val failure = perform(action)
+        if (failure != null) {
+            log("action ${action.type} failed")
+            state.lastError = "action-failed"
+            sayLocally(failure)
+        }
+        return outcome to conversationId
     }
 
     /**
@@ -162,6 +198,22 @@ class TurnPipeline(
         const val MIN_QUESTION_CHARS = 3
     }
 }
+
+/**
+ * An action the broker approved, in the only shape the phone accepts.
+ *
+ * `type` is carried even though there is exactly one, because the day a second
+ * is added this class should fail to compile rather than quietly do the wrong
+ * thing with it.
+ */
+class KioskAction(val type: String, val destination: String) {
+    companion object {
+        const val OPEN_MAPS = "open_maps"
+    }
+}
+
+/** One answer from /v1/chat. */
+class Answer(val reply: String, val conversationId: String, val action: KioskAction?)
 
 /**
  * Audio for one reply, and where the time went getting it.

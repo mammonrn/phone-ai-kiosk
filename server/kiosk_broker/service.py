@@ -215,10 +215,17 @@ def handle_chat(
     # the reply goes out in one voice whether or not the prompt managed it.
     reply, register_fixes = register.enforce(reply)
     if raw_action is not None and action is None:
-        # Worth a line: in phase 2 the model has not been told actions exist, so
-        # one appearing means either a prompt-injection attempt in the incoming
-        # text or a persona that has drifted.
+        # Worth a warning, not an info line. The prompt describes exactly one
+        # action; anything else reaching here is the model being talked into
+        # something, or a destination that did not look like a place. Either way
+        # somebody should be able to find it afterwards.
         log.warning("dropped action type=%r device=%s", raw_action.get("type"), label)
+    elif action is not None:
+        # The type, and how long the destination was — not where. Where somebody
+        # asked to be taken is not something to keep in a log file, and the
+        # length is enough to recognise a truncation or an empty string later.
+        log.info("action device=%s type=%s destination_chars=%d",
+                 label, action["type"], len(action.get("destination", "")))
 
     store.record_request(conn, device_id=device_id, day=day, outcome="ok",
                          text_len=len(text), register_fixes=register_fixes)

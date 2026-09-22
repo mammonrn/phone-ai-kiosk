@@ -5,6 +5,7 @@ import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.BroadcastReceiver
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -19,6 +20,7 @@ import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import com.mammonrn.phoneaikiosk.voice.MapsLauncher
 import com.mammonrn.phoneaikiosk.voice.TokenStore
 import com.mammonrn.phoneaikiosk.voice.VoiceService
 import com.mammonrn.phoneaikiosk.voice.VoiceState
@@ -261,6 +263,49 @@ class MainActivity : Activity() {
      * device that was provisioned before this code existed picks them up by
      * being opened once.
      */
+    /**
+     * Gives Google Maps its location permission without anybody tapping a
+     * dialog.
+     *
+     * A Device Owner can set the grant state of a runtime permission for ANY
+     * package, which is the only reason a kiosk with no touch input can use
+     * Maps at all: the permission dialog has no one to answer it.
+     *
+     * Reported rather than assumed. If the grant does not take — the platform
+     * refuses it, or Maps is not installed yet — the state is recorded and the
+     * screen says so, because "Maps opens but has no idea where you are" is a
+     * failure that otherwise looks like Maps being slow.
+     *
+     * WHAT THIS CANNOT DO, and it is worth being plain: it does not turn on
+     * the device's location services, and it does not sign anybody into a
+     * Google account. Both are settings, not permissions.
+     */
+    private fun grantMapsLocation(admin: ComponentName) {
+        if (!MapsLauncher.isInstalled(this)) {
+            VoiceState.mapsState = "not-installed"
+            return
+        }
+        val granted = LOCATION_PERMISSIONS.map { permission ->
+            runCatching {
+                dpm.setPermissionGrantState(
+                    admin, MapsLauncher.MAPS_PACKAGE, permission,
+                    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+                )
+            }.getOrDefault(false)
+        }
+        val state = runCatching {
+            dpm.getPermissionGrantState(
+                admin, MapsLauncher.MAPS_PACKAGE, LOCATION_PERMISSIONS.first(),
+            )
+        }.getOrDefault(DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT)
+
+        VoiceState.mapsState = when {
+            state == DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED -> "ready"
+            granted.all { it } -> "granted-unconfirmed"
+            else -> "location-denied"
+        }
+    }
+
     private fun applyDeviceOwnerPolicies() {
         if (!isDeviceOwner) return
         val admin = KioskDeviceAdminReceiver.componentName(this)
@@ -268,7 +313,15 @@ class MainActivity : Activity() {
         // Without the allowlist, startLockTask() falls back to screen pinning,
         // which shows a "hold Back and Overview to unpin" prompt — an exit
         // route the kiosk is not supposed to have.
-        dpm.setLockTaskPackages(admin, arrayOf(packageName))
+        //
+        // Google Maps is on the list because phase 4 opens it, and an app that
+        // is not on the list cannot appear at all while the task is locked.
+        // TWO PACKAGES, NAMED. Not "every Google app", not a prefix: the list
+        // is the boundary of what this kiosk can ever put on screen, and it is
+        // worth having to edit it deliberately.
+        dpm.setLockTaskPackages(admin, arrayOf(packageName, MapsLauncher.MAPS_PACKAGE))
+
+        grantMapsLocation(admin)
 
         // Makes this the HOME activity the system resolves to without a
         // chooser, which is also what puts the kiosk back on screen after a
@@ -370,6 +423,15 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        /**
+         * What Maps needs to show where you are. Coarse as well as fine: a
+         * grant of one is not a grant of the other, and Maps asks for both.
+         */
+        private val LOCATION_PERMISSIONS = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+
         /**
          * Set by the escape hatch, cleared by the process dying.
          *

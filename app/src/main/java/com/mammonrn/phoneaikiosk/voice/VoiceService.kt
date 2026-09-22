@@ -108,6 +108,10 @@ class VoiceService : Service() {
             Log.i(TAG, "armed by adb trigger; capture thread will pick it up next frame")
         }
 
+        if (intent?.action == ACTION_RETURN_HOME) {
+            returnToKiosk("adb")
+        }
+
         if (running.compareAndSet(false, true)) {
             capture.execute { captureLoop() }
         }
@@ -192,6 +196,14 @@ class VoiceService : Service() {
                         buffer.reset()
                         VoiceState.stt = "recording"
                         Log.i(TAG, "capture started")
+                        // If Maps is on top, saying the wake word should bring
+                        // the kiosk back so the person can see what it heard.
+                        // Only then: calling this on every capture would be a
+                        // no-op most of the time and an activity start from a
+                        // service every time, which is not free.
+                        if (VoiceState.lastAction.startsWith("open_maps:opened")) {
+                            returnToKiosk("wake")
+                        }
                     }
 
                     CaptureMachine.Step.CAPTURING -> recorder.appendPcm(buffer, frame, read)
@@ -255,6 +267,7 @@ class VoiceService : Service() {
             speak = broker::speak,
             play = { audio -> deafWhile { speaker.play(audio, "ogg") } },
             sayLocally = { text -> deafWhile { speaker.sayLocally(text) } },
+            perform = ::performAction,
             state = VoiceState,
             log = { message -> Log.i(TAG, message) },
         )
@@ -304,8 +317,67 @@ class VoiceService : Service() {
         writer.println("  speech-floor : ${machine.speechThreshold} " +
             "(ambient ${machine.ambientLevel()})")
         writer.println("  stop-reason  : ${machine.lastStopReason}")
+        writer.println("  maps-package : ${MapsLauncher.MAPS_PACKAGE} " +
+            "installed=${MapsLauncher.isInstalled(this)}")
         writer.println()
         writer.print(stats.report())
+    }
+
+    /**
+     * Brings the kiosk screen back in front of whatever is showing.
+     *
+     * ❓ THIS MAY NOT WORK, AND IT IS WRITTEN SO THAT NOT WORKING IS VISIBLE.
+     * Android restricts starting an activity from the background, and a
+     * foreground service is still the background for that rule. Being the HOME
+     * app and the Device Owner may or may not exempt this one; the phone is the
+     * only place that answers it, so the attempt and its exception are both
+     * logged rather than assumed either way.
+     *
+     * The routes that do not depend on it: Back from Maps, and the adb command
+     * in TESTING.md. Neither needs this to succeed.
+     */
+    fun returnToKiosk(reason: String) {
+        val intent = Intent(this, com.mammonrn.phoneaikiosk.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        try {
+            startActivity(intent)
+            Log.i(TAG, "returning to the kiosk screen reason=$reason")
+        } catch (e: Exception) {
+            // The interesting case. If this is what the A07 logs, the answer to
+            // "why did it stay on Maps" is here and not a mystery.
+            Log.w(TAG, "could not return to the kiosk screen: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Carries out an action the broker approved. Returns what to say if it
+     * could not be done.
+     *
+     * The only action there is opens Google Maps. The check for the type is
+     * here as well as in Broker.readAction and in the broker itself, because
+     * this is the last line before startActivity and three cheap checks in a
+     * row is the right number for the one place a string becomes an Intent.
+     */
+    private fun performAction(action: KioskAction): String? {
+        if (action.type != KioskAction.OPEN_MAPS) {
+            Log.w(TAG, "refused action type=${action.type}")
+            VoiceState.lastAction = "${action.type}:refused"
+            return null
+        }
+
+        val result = MapsLauncher.open(this, action.destination)
+        // The type and the outcome. Not the destination: where somebody asked
+        // to be taken does not belong in a log.
+        VoiceState.lastAction = "open_maps:${result.name.lowercase()}"
+        Log.i(TAG, "action open_maps result=${result.name} " +
+            "destination_chars=${action.destination.length}")
+
+        if (result == MapsLauncher.Result.OPENED) {
+            VoiceState.mapsState = "opened"
+            return null
+        }
+        return MapsLauncher.spokenFailure(result)
     }
 
     /**
@@ -451,6 +523,7 @@ class VoiceService : Service() {
 
         /** Used by the debug-only adb trigger. */
         const val ACTION_LISTEN_NOW = "com.mammonrn.phoneaikiosk.LISTEN_NOW"
+        const val ACTION_RETURN_HOME = "com.mammonrn.phoneaikiosk.RETURN_HOME"
 
         /**
          * Wake-word-only test mode. Counted and shown, never recorded.

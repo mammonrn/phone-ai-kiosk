@@ -1,6 +1,8 @@
 package com.mammonrn.phoneaikiosk
 
+import com.mammonrn.phoneaikiosk.voice.Answer
 import com.mammonrn.phoneaikiosk.voice.Broker
+import com.mammonrn.phoneaikiosk.voice.KioskAction
 import com.mammonrn.phoneaikiosk.voice.SpokenAudio
 import com.mammonrn.phoneaikiosk.voice.TurnPipeline
 import com.mammonrn.phoneaikiosk.voice.VoiceSink
@@ -30,11 +32,12 @@ class TurnPipelineTest {
     private fun pipeline(
         sink: Sink,
         transcribe: (ByteArray) -> String = { "วันนี้อากาศเป็นยังไง" },
-        ask: (String, String?) -> Pair<String, String> = { _, _ -> "ผมยังดูให้ไม่ได้ครับ" to "c1" },
+        ask: (String, String?) -> Answer = { _, _ -> Answer("ผมยังดูให้ไม่ได้ครับ", "c1", null) },
         speak: (String) -> SpokenAudio = { SpokenAudio(ByteArray(2000), "") },
         play: (ByteArray) -> Boolean = { true },
         sayLocally: (String) -> Boolean = { true },
-    ) = TurnPipeline(transcribe, ask, speak, play, sayLocally, sink) { sink.trail.add(it) }
+        perform: (KioskAction) -> String? = { null },
+    ) = TurnPipeline(transcribe, ask, speak, play, sayLocally, perform, sink) { sink.trail.add(it) }
 
     @Test
     fun `a good turn goes all the way through`() {
@@ -127,7 +130,7 @@ class TurnPipelineTest {
     @Test
     fun `the conversation id is carried forward and an empty one does not erase it`() {
         val sink = Sink()
-        val kept = pipeline(sink, ask = { _, _ -> "ครับ" to "" }).run(wav(), "existing").second
+        val kept = pipeline(sink, ask = { _, _ -> Answer("ครับ", "", null) }).run(wav(), "existing").second
         assertEquals("existing", kept)
     }
 
@@ -197,7 +200,7 @@ class TurnPipelineTest {
         val (outcome, _) = pipeline(
             sink,
             transcribe = { "  " },
-            ask = { _, _ -> asked = true; "ไม่ควรถูกเรียก" to "c1" },
+            ask = { _, _ -> asked = true; Answer("ไม่ควรถูกเรียก", "c1", null) },
             speak = { spoke = true; SpokenAudio(ByteArray(10), "") },
         ).run(wav(), null)
 
@@ -214,7 +217,7 @@ class TurnPipelineTest {
         val (outcome, _) = pipeline(
             sink,
             transcribe = { "อ" },
-            ask = { _, _ -> asked = true; "x" to "c1" },
+            ask = { _, _ -> asked = true; Answer("x", "c1", null) },
         ).run(wav(), null)
 
         assertEquals(TurnPipeline.Outcome.NO_QUESTION, outcome)
@@ -232,7 +235,7 @@ class TurnPipelineTest {
         val (outcome, _) = pipeline(
             sink,
             transcribe = { "กี่โมง" },
-            ask = { _, _ -> asked = true; "บ่ายโมงครับ" to "c1" },
+            ask = { _, _ -> asked = true; Answer("บ่ายโมงครับ", "c1", null) },
         ).run(wav(), null)
 
         assertEquals(TurnPipeline.Outcome.COMPLETED, outcome)

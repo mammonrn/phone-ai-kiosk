@@ -36,6 +36,16 @@ object VoiceState : VoiceSink {
 
     /** Why the last capture was thrown away, if it was. */
     @Volatile var lastCancel: String = ""
+
+    /**
+     * The last action and how it went — the TYPE and the OUTCOME, never where
+     * somebody asked to be taken. Where you are going is not something to leave
+     * on a screen in a kitchen or in a log file.
+     */
+    @Volatile var lastAction: String = "none"
+
+    /** Google Maps: installed, and does it have its location permission. */
+    @Volatile var mapsState: String = "unknown"
     @Volatile var wake: String = "idle"
     @Volatile override var stt: String = "idle"
     @Volatile override var chat: String = "idle"
@@ -82,6 +92,8 @@ object VoiceState : VoiceSink {
         appendLine("  detections : $detections")
         appendLine("  wake-only  : ${if (wakeOnly) "ON — no STT, chat or TTS" else "off"}")
         if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
+        appendLine("  last-action: $lastAction")
+        appendLine("  maps       : $mapsState")
         appendLine("  wake       : $wake")
         appendLine("  stt        : $stt")
         appendLine("  chat       : $chat")

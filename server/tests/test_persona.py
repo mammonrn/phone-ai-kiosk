@@ -35,7 +35,15 @@ def test_every_safety_rule_survived_the_shrinking():
     """The prompt was cut by 44% to save tokens. This is what must not have
     been cut with it."""
     required = [
-        "เครื่องมือ",      # has no tools at all
+        # PHASE 4 CHANGED THIS LINE AND NOT THE REST. The prompt used to say
+        # "ไม่มีเครื่องมือใดเลย" — no tools at all — and that is no longer true:
+        # it has exactly one. So the guarantee is now that maps is the ONLY one,
+        # which is a stronger thing to assert than the absence of a word.
+        "เปิดแผนที่ได้อย่างเดียว",   # maps, and nothing else
+        "โทร",             # cannot make calls
+        "ส่งข้อความ",       # cannot send messages
+        "จ่ายเงิน",         # cannot pay for anything
+        "เปิดแอปอื่น",      # cannot open other apps
         "เปิดเว็บ",        # cannot browse
         "ไฟล์",            # cannot read or write files
         "รันคำสั่ง",        # cannot run commands
@@ -85,14 +93,27 @@ def test_the_prompt_stays_within_its_budget():
 
 
 def test_it_is_meaningfully_smaller_than_the_first_production_version():
-    assert len(SYSTEM_PROMPT) < 1132 * 0.75
+    """The first production prompt was 1,132 characters and most of what each
+    answer cost. It was cut to 776; phase 4 spent 188 of that back on the one
+    thing that needed it, and the ceiling is what stops the rest creeping."""
+    assert len(SYSTEM_PROMPT) < 1132
+    assert len(SYSTEM_PROMPT) <= MAX_PROMPT_CHARS
 
 
-def test_it_never_mentions_actions():
-    """Phase 2 does not tell the model that actions exist, so a marker in a
-    reply means an injection attempt rather than the prompt inviting one."""
-    assert "action" not in SYSTEM_PROMPT.lower()
-    assert "[[" not in SYSTEM_PROMPT
+def test_it_names_exactly_one_action_and_forbids_the_rest():
+    """Phase 2 did not tell the model actions existed at all. Phase 4 has to,
+    because a model cannot emit one it has never heard of — but it may hear of
+    exactly one.
+
+    This is the prompt half. The half that actually enforces it is
+    actions.ENABLED_ACTION_TYPES, which drops anything else whatever the prompt
+    says or the person in front of the kiosk talks it into."""
+    assert "open_maps" in SYSTEM_PROMPT
+    # No second action type is described anywhere in it.
+    markers = re.findall(r"\[\[\s*action\s*:\s*([a-z_]+)", SYSTEM_PROMPT)
+    assert markers == ["open_maps"], markers
+    # And it is told plainly that everything else is off limits.
+    assert "ห้ามใส่ [[action]]" in SYSTEM_PROMPT
 
 
 def test_no_ascii_markdown_syntax_leaked_in():

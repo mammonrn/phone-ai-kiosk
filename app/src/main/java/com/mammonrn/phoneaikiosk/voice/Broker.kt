@@ -26,8 +26,8 @@ class Broker(private val baseUrl: String, private val token: String) {
         return JSONObject(String(body, Charsets.UTF_8)).optString("text")
     }
 
-    /** One turn of conversation. Returns the reply and the conversation id. */
-    fun chat(text: String, conversationId: String?): Pair<String, String> {
+    /** One turn of conversation: the reply, the conversation id and any action. */
+    fun chat(text: String, conversationId: String?): Answer {
         val payload = JSONObject().put("text", text)
         if (conversationId != null) payload.put("conversation_id", conversationId)
 
@@ -35,10 +35,26 @@ class Broker(private val baseUrl: String, private val token: String) {
                         "application/json; charset=utf-8").bytes
         val json = JSONObject(String(body, Charsets.UTF_8))
 
-        // Phase 2 answers null here every time, and phase 3 does not read it.
-        // Left unread on purpose rather than half-handled: an action this app
-        // does not understand must do nothing, not something.
-        return json.optString("reply") to json.optString("conversation_id")
+        return Answer(json.optString("reply"), json.optString("conversation_id"),
+                      readAction(json.optJSONObject("action")))
+    }
+
+    /**
+     * Reads the action, refusing anything the phone does not understand.
+     *
+     * The broker validates this already and is the enforcement. This is the
+     * client half of the same rule, and it is here because "the server checked
+     * it" is an assumption, and an assumption is what a compromised or simply
+     * newer server quietly breaks. An unknown type does nothing, rather than
+     * something.
+     */
+    private fun readAction(json: JSONObject?): KioskAction? {
+        if (json == null) return null
+        val type = json.optString("type")
+        if (type != KioskAction.OPEN_MAPS) return null
+        val destination = json.optString("destination").trim()
+        if (destination.isEmpty()) return null
+        return KioskAction(type, destination)
     }
 
     /** Text in, audio out, ready to play — with where the time went. */

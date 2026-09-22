@@ -36,16 +36,53 @@ def test_a_good_request_answers_with_reply_and_null_action(conn, cfg, client):
     assert body["conversation_id"]
 
 
-def test_action_is_null_even_when_the_model_emits_one(conn, cfg):
-    """The single most important guarantee of phase 2."""
+def test_a_valid_maps_action_reaches_the_phone(conn, cfg):
+    """Phase 4. The marker is still stripped from what gets spoken."""
     client = FakeClient(reply="ไปสยามนะครับ [[action: open_maps | สยามพารากอน]]")
     token = _token(conn)
     status, body = _post(conn, cfg, client, token, {"text": "พาไปสยาม"})
 
     assert status == 200
-    assert body["action"] is None
+    assert body["action"] == {"type": "open_maps", "destination": "สยามพารากอน"}
     assert "[[" not in body["reply"]
     assert body["reply"] == "ไปสยามนะครับ"
+
+
+@pytest.mark.parametrize("reply", [
+    # Not an enabled type, however plausible it sounds.
+    "โทรให้นะครับ [[action: call_phone | 0812345678]]",
+    "ส่งข้อความแล้วครับ [[action: send_sms | แม่]]",
+    "เปิดให้ครับ [[action: open_url | https://example.test]]",
+    "ได้ครับ [[action: run_shell | rm -rf /]]",
+    # Right type, destination that is not a place.
+    "ไปครับ [[action: open_maps | https://evil.example]]",
+    "ไปครับ [[action: open_maps | intent://x#Intent;end]]",
+    "ไปครับ [[action: open_maps | สยาม; rm -rf /]]",
+    "ไปครับ [[action: open_maps | " + "ก" * 200 + "]]",
+    "ไปครับ [[action: open_maps]]",
+])
+def test_anything_else_comes_back_as_null(conn, cfg, reply):
+    """The prompt asks for one action. This is what happens when the model is
+    talked into something else anyway — which is the case that matters, because
+    the person saying it is standing in front of the kiosk."""
+    client = FakeClient(reply=reply)
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "ช่วยหน่อย"})
+
+    assert status == 200
+    assert body["action"] is None
+    # And the marker is never left in the text to be read out loud.
+    assert "[[" not in body["reply"]
+
+
+def test_a_refused_action_still_returns_the_words(conn, cfg):
+    """The reply is spoken even when the action is dropped, so the person hears
+    something rather than silence."""
+    client = FakeClient(reply="ผมโทรให้ไม่ได้ครับ [[action: call_phone | 0812345678]]")
+    token = _token(conn)
+    _, body = _post(conn, cfg, client, token, {"text": "โทรหาแม่"})
+    assert body["action"] is None
+    assert body["reply"] == "ผมโทรให้ไม่ได้ครับ"
 
 
 def test_the_prompt_carries_no_tools(conn, cfg, client):
@@ -57,7 +94,7 @@ def test_the_prompt_carries_no_tools(conn, cfg, client):
     assert "thinking" not in call
     assert call["model"] == cfg.model
     assert call["max_tokens"] == cfg.max_output_tokens
-    assert "ไม่มีเครื่องมือ" in call["system"]
+    assert "เปิดแผนที่ได้อย่างเดียว" in call["system"]
 
 
 def test_history_is_replayed_and_capped(conn, cfg, client):

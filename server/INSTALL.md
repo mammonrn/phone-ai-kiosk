@@ -812,7 +812,38 @@ sudo systemctl restart kiosk-broker
 
 ---
 
-## deploy รอบนี้ (เปลี่ยนชื่อเป็นจาร์วิส)
+## deploy เฟส 4 (เปิดใช้ action แผนที่)
+
+รอบนี้แก้ **`actions.py`, `persona.py`, `service.py`** — ไม่ได้แตะ nginx, endpoint,
+คีย์ หรือฐานข้อมูล **จึงไม่ต้องรัน `install.sh` และไม่ต้อง reload nginx**
+
+```bash
+cd ~/phone-ai-kiosk && git pull && sudo systemctl restart kiosk-broker
+```
+
+ยืนยันว่าขึ้นแล้ว:
+```bash
+systemctl is-active kiosk-broker && curl -s -o /dev/null -w '%{http_code}\n' https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+```
+
+ยืนยันว่า action เปิดใช้งานจริง และเปิดแค่ตัวเดียว:
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -c "from kiosk_broker import actions; print(sorted(actions.ENABLED_ACTION_TYPES))"
+```
+ต้องได้ `['open_maps']` — ถ้าได้อย่างอื่นหรือได้ว่าง อย่าทดสอบต่อ
+
+ดูว่ามีการปฏิเสธ action แปลกๆ ไหมหลังใช้งานไปสักพัก:
+```bash
+sudo journalctl -u kiosk-broker --since '1 hour ago' | grep -E "dropped action|action device"
+```
+`action device=... type=open_maps destination_chars=N` คือครั้งที่อนุญาต —
+**บันทึกแค่จำนวนตัวอักษร ไม่ได้บันทึกว่าไปไหน**
+
+🔴 **ถ้าจะปิด action ทั้งหมดฉุกเฉิน** ไม่ต้องแก้โค้ด — แก้ `ENABLED_ACTION_TYPES`
+ให้เป็น `frozenset()` แล้ว restart ทุก action จะกลายเป็น null ทันที
+(มีเทสต์ยืนยันว่าสวิตช์นี้ทำงานทั้งสองทิศ)
+
+## deploy รอบก่อน (เปลี่ยนชื่อเป็นจาร์วิส)
 
 รอบนี้แก้เฉพาะ **persona ของ broker** (ชื่อผู้ช่วยในคำสั่งระบบ) ไม่ได้แตะ
 endpoint, nginx, คีย์ หรือฐานข้อมูล จึงไม่ต้อง reload nginx:
