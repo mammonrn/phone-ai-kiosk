@@ -130,8 +130,28 @@ echo "  installed and enabled (not started — the key has to go in first)"
 say "nginx site file"
 install -o root -g root -m 0644 "$REPO_SERVER_DIR/install/nginx-kiosk.conf" \
     /etc/nginx/sites-available/kiosk
-echo "  written to /etc/nginx/sites-available/kiosk (NOT enabled yet)"
-echo "  the symlink and reload come after the certificate exists — see INSTALL.md"
+echo "  written to /etc/nginx/sites-available/kiosk"
+
+# First install: the file is written but not enabled, because the certificate it
+# references does not exist yet and `nginx -t` would fail on it. Every later run:
+# the site is already live, the file just changed, and a change nobody reloads is
+# a change that does nothing — which is how /v1/stt spent a release being
+# refused with 413 by a config that had already been fixed in git.
+if [[ -L /etc/nginx/sites-enabled/kiosk ]]; then
+    echo "  site is enabled; testing the configuration before reloading"
+    if ! nginx -t; then
+        echo >&2
+        echo "  nginx -t FAILED. NOT reloading." >&2
+        echo "  The running configuration is untouched and all three sites are still up." >&2
+        echo "  Fix /etc/nginx/sites-available/kiosk, then: sudo nginx -t && sudo systemctl reload nginx" >&2
+        exit 1
+    fi
+    systemctl reload nginx
+    echo "  nginx reloaded"
+else
+    echo "  NOT enabled yet — the symlink and the first reload come after the"
+    echo "  certificate exists. See INSTALL.md."
+fi
 
 # -------------------------------------------------------- certificate hook
 say "certbot deploy hook"
@@ -164,6 +184,9 @@ Done with the parts that need root. Still to do, in order:
   3. Issue the certificate (certbot certonly --webroot)
   4. Enable the nginx site, nginx -t, reload
   5. Issue a device token and test from outside
+
+On a machine where the site is ALREADY enabled, this script has just tested and
+reloaded nginx for you — steps 2 to 4 are only for a first install.
 
 The certbot deploy hook is already in place, so renewals will reload nginx by
 themselves. Test it with:

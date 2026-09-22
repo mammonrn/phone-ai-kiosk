@@ -389,8 +389,16 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN -p com.mammonrn.
 ### อ่านสถานะด้วย dumpsys (แนะนำ ไม่ต้องพึ่ง uiautomator)
 
 ```powershell
-adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/.voice.VoiceService
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService
 ```
+
+⚠️ **ต้องใช้ชื่อคลาสเต็ม** ย่อเป็น `.voice.VoiceService` ไม่ได้ เพราะ Android
+เติมชื่อย่อด้วย **package id** ซึ่งมี `.debug` ต่อท้าย ได้เป็น
+`com.mammonrn.phoneaikiosk.debug.voice.VoiceService` แต่คลาสจริงคือ
+`com.mammonrn.phoneaikiosk.voice.VoiceService` (ไม่มี `.debug`)
+
+**กับดักเดียวกับ component ของ Device Owner** — `applicationIdSuffix` เปลี่ยน
+package id ไม่เปลี่ยนชื่อคลาส Java
 
 ได้แบบนี้:
 

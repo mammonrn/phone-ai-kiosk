@@ -200,3 +200,50 @@ def test_it_listens_on_loopback_only(live):
     with socket.socket() as s:
         s.settimeout(2)
         assert s.connect_ex(("45.76.157.64", cfg.port)) != 0
+
+
+# ------------------------------------------- refusing a body without poisoning
+# the connection
+
+def test_an_oversized_body_is_refused_with_json_not_a_broken_connection(live):
+    """Answering without reading the request body poisons keep-alive.
+
+    Behind nginx that surfaced as a 502 for the phone instead of the broker's
+    Thai error: nginx was still writing 1.1 MB of audio when the response
+    arrived. Found by putting a real nginx in front of this, not by reading it.
+    """
+    base, token, cfg, _ = live
+    huge = b"x" * (cfg.max_audio_bytes * 2 + 4096)
+
+    status, body = _call(base, "/v1/stt", token=token, raw=huge, content_type="audio/wav")
+    assert status == 413
+    assert body["error"]["code"] == "payload_too_large"
+
+
+def test_the_connection_is_still_usable_after_an_oversized_refusal(live):
+    """The property the 502 was really about: a refusal must leave the socket in
+    a state the next request can use."""
+    base, token, cfg, _ = live
+
+    huge = b"x" * (cfg.max_audio_bytes * 2 + 4096)
+    assert _call(base, "/v1/stt", token=token, raw=huge, content_type="audio/wav")[0] == 413
+
+    # The very next request on a fresh connection must be answered normally.
+    assert _call(base, "/healthz", method="GET") == (200, {"status": "ok"})
+    status, body = _call(base, "/v1/stt", token=token, raw=b"RIFFfake", content_type="audio/wav")
+    assert status == 200, f"a good request after a refusal got {status}: {body}"
+
+
+def test_a_body_between_the_app_cap_and_the_proxy_cap_reaches_the_handler(live):
+    """nginx allows 1200k so that the HANDLER refuses an over-long recording —
+    it says "เสียงยาวเกินไปครับ", which a kiosk can read out loud. The transport
+    ceiling only says "the body is too big"."""
+    base, token, cfg, _ = live
+    over_app_cap = b"x" * (cfg.max_audio_bytes + 2048)
+
+    status, body = _call(base, "/v1/stt", token=token, raw=over_app_cap,
+                         content_type="audio/wav")
+    assert status == 413
+    assert "เสียง" in body["error"]["message"], (
+        "the audio route has to give the audio message, not the generic one"
+    )

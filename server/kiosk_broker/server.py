@@ -23,6 +23,14 @@ log = logging.getLogger("kiosk_broker")
 # Read before the body is, so a lying Content-Length cannot make us allocate.
 HARD_BODY_CEILING = 1024 * 1024
 
+#: How much of an over-sized body to read and throw away before answering.
+#: Answering without consuming the request body poisons a keep-alive connection:
+#: the proxy is still writing when the response arrives, and nginx turns that
+#: into a 502 for the phone instead of passing on the broker's Thai error. Found
+#: by putting a real nginx in front of this and sending 1.1 MB of audio.
+#: Bounded, so nobody can make the broker read forever.
+MAX_DRAIN_BYTES = 8 * 1024 * 1024
+
 
 class Handler(BaseHTTPRequestHandler):
     # Set by make_server.
@@ -41,6 +49,29 @@ class Handler(BaseHTTPRequestHandler):
         # is one refactor away from writing a query string, so it is replaced
         # rather than trusted; the real logging happens in the service.
         log.debug("http %s", fmt % args)
+
+    def _drain(self, remaining: int) -> bool:
+        """Reads and discards a request body we are about to refuse.
+
+        Returns False when the body is too large to be worth draining, in which
+        case the caller must close the connection rather than leave it
+        half-read.
+        """
+        if remaining > MAX_DRAIN_BYTES:
+            return False
+        while remaining > 0:
+            chunk = self.rfile.read(min(65536, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+        return True
+
+    def _refuse_oversized(self, length: int) -> None:
+        """413, with the connection left in a state nginx can use."""
+        if not self._drain(length):
+            self.close_connection = True
+        self._send(413, {"error": {"code": "payload_too_large",
+                                   "message": "ข้อความยาวเกินกำหนด"}})
 
     def _send(self, status: int, payload: dict) -> None:
         """JSON, unless the handler produced audio.
@@ -84,14 +115,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": {"code": "bad_request", "message": "รูปแบบคำขอไม่ถูกต้อง"}})
             return
 
-        # Audio is bigger than a question, so the hard ceiling is whichever of
-        # the two limits applies to this route. The per-route cap in the handler
-        # is the real one; this only stops a lying Content-Length making us
-        # allocate.
-        ceiling = max(HARD_BODY_CEILING, self.config.max_audio_bytes + 1024)
-        if length < 0 or length > ceiling:
-            self._send(413, {"error": {"code": "payload_too_large",
-                                       "message": "ข้อความยาวเกินกำหนด"}})
+        # Deliberately well above the per-route caps in the handler, and above
+        # what nginx lets through, so an over-long recording is refused by the
+        # HANDLER — which says "เสียงยาวเกินไปครับ ลองถามสั้นลงนะ" — rather than
+        # here, which can only say "the body is too big". This is a backstop for
+        # a request that did not come through nginx at all.
+        ceiling = max(HARD_BODY_CEILING, self.config.max_audio_bytes * 2)
+        if length < 0:
+            self._send(400, {"error": {"code": "bad_request",
+                                       "message": "รูปแบบคำขอไม่ถูกต้อง"}})
+            return
+        if length > ceiling:
+            self._refuse_oversized(length)
             return
 
         body = self.rfile.read(length) if length else b""

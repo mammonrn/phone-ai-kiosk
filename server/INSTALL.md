@@ -617,3 +617,39 @@ sudo systemctl restart kiosk-broker
 ```
 
 `install.sh` ไม่เขียน `config.json` หรือ `env` ทับถ้ามีอยู่แล้ว
+
+### ⚠️ การอัปเดตเฟส 3 ต้อง reload nginx ด้วย
+
+ไฟล์ vhost เปลี่ยน (เพิ่ม `location = /v1/stt` และ `/v1/tts`) **ไฟล์ที่เปลี่ยนแล้ว
+แต่ไม่มีใคร reload คือไฟล์ที่ไม่มีผลอะไรเลย** — นั่นคือสาเหตุที่ `/v1/stt` โดน
+413 ทั้งที่ config ถูกแก้ใน git ไปแล้ว
+
+`install.sh` จัดการให้เองแล้วถ้าเว็บไซต์ถูก enable อยู่: มันจะรัน `nginx -t` ก่อน
+**ถ้าไม่ผ่านจะหยุดและไม่ reload เด็ดขาด** (config ที่กำลังรันอยู่ไม่ถูกแตะ
+ทั้งสามเว็บยังทำงาน) ถ้าผ่านถึงจะ reload
+
+ตรวจเองอีกชั้นหลังรัน:
+
+```bash
+sudo nginx -t
+curl -s -o /dev/null -w 'thaitrack %{http_code}\n'   -k -H 'Host: xn--l3cgts1b3bzcvf.com' https://127.0.0.1/
+curl -s -o /dev/null -w 'monthreport %{http_code}\n' -k -H 'Host: ubet89.house'          https://127.0.0.1/
+curl -s -o /dev/null -w 'kiosk %{http_code}\n'       https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+```
+
+ค่าที่ถูก: **200 / 302 / 200**
+
+### เพดานขนาด body แต่ละเส้นทาง
+
+| เส้นทาง | nginx | broker | ใครปฏิเสธ |
+|---|---|---|---|
+| `/v1/stt` | 1200k | 1 MiB (`max_audio_bytes`) | **broker** → ได้ข้อความไทยที่อ่านออกเสียงได้ |
+| `/v1/chat` | 16k | 8 KiB | broker |
+| `/v1/tts` | 16k | 8 KiB | broker |
+
+nginx ตั้งไว้**หลวมกว่า** broker เสมอโดยตั้งใจ เพื่อให้ broker เป็นคนปฏิเสธและ
+มือถือได้ JSON ภาษาไทย ไม่ใช่หน้า HTML ของ nginx ที่อ่านออกเสียงไม่ได้
+
+rate limit ของ nginx คือ 90 คำขอ/นาที ส่วน broker คือ 10 คำขอ/นาทีต่อเส้นทาง
+**เสียงหนึ่งรอบใช้ 3 คำขอ** (stt + chat + tts) จึงตั้ง nginx ให้หลวมพอที่
+เพดานของ broker เป็นตัวที่มีผลจริง
