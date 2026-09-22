@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A 1995 desktop palette, rebuilt from scratch.
+
+  These are ordinary colours — a teal desktop, a grey chrome, a white highlight
+  and a dark shadow — chosen to evoke the era. No Microsoft artwork, icon, font
+  or other asset is used anywhere in this app; everything visual here is drawn
+  from shapes and vectors in this repository. See VOICE.md for the same rule
+  applied to how Jarvis talks.
+-->
+<resources>
+    <color name="retro_desktop">#FF008080</color>
+    <color name="retro_face">#FFC0C0C0</color>
+    <color name="retro_light">#FFFFFFFF</color>
+    <color name="retro_shadow">#FF808080</color>
+    <color name="retro_dark">#FF000000</color>
+    <color name="retro_title">#FF000080</color>
+    <color name="retro_title_text">#FFFFFFFF</color>
+    <color name="retro_text">#FF000000</color>
+    <color name="retro_dim">#FF404040</color>
+    <color name="retro_good">#FF008000</color>
+    <color name="retro_bad">#FF800000</color>
+</resources>

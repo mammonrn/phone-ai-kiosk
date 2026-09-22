@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Our own pixel art, drawn on a 16x16 grid as vector rectangles.
+
+  Every icon in this app is made here, from squares, for one reason: an icon
+  pack is a licence to check and a dependency to keep, and a kiosk needs four
+  small pictures. Nothing is traced from or based on anyone else's artwork.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <!-- the disc -->
+    <path android:fillColor="#FFB000" android:pathData="M6,5h4v1h-4z M5,6h6v4h-6z M6,10h4v1h-4z" />
+    <!-- rays, one square each, on the axes and the diagonals -->
+    <path android:fillColor="#FFB000"
+        android:pathData="M7,2h2v2h-2z M7,12h2v2h-2z M2,7h2v2h-2z M12,7h2v2h-2z
+                          M3,3h2v2h-2z M11,3h2v2h-2z M3,11h2v2h-2z M11,11h2v2h-2z" />
+</vector>

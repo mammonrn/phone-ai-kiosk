@@ -15,10 +15,16 @@ import android.os.Handler
 import android.os.Looper
 import android.os.BatteryManager
 import android.os.SystemClock
+import android.util.Log
 import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.mammonrn.phoneaikiosk.voice.Broker
+import com.mammonrn.phoneaikiosk.voice.DashboardState
 import com.mammonrn.phoneaikiosk.voice.MapsLauncher
 import com.mammonrn.phoneaikiosk.voice.TokenStore
 import com.mammonrn.phoneaikiosk.voice.VoiceService
@@ -40,8 +46,26 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var voiceStatus: TextView
     private lateinit var transcript: TextView
+    private lateinit var taskbarClock: TextView
+    private lateinit var weatherTitle: TextView
+    private lateinit var weatherBody: TextView
+    private lateinit var goldBody: TextView
+    private lateinit var cryptoBody: TextView
+    private lateinit var jarvisState: TextView
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * One thread, off the main one, for the dashboard fetch.
+     *
+     * Separate from the voice executors on purpose: the screen must never be
+     * able to queue behind a question, and a question must never wait for the
+     * weather.
+     */
+    private val dashboardThread =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "kiosk-dashboard").apply { isDaemon = true }
+        }
     private val tapGate = TapGate()
 
     /**
@@ -61,6 +85,7 @@ class MainActivity : Activity() {
 
     private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE d MMMM yyyy", Locale.getDefault())
+    private val taskbarFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private val tick = object : Runnable {
         override fun run() {
@@ -68,9 +93,68 @@ class MainActivity : Activity() {
             clock.text = clockFormat.format(now)
             date.text = dateFormat.format(now)
             status.text = statusLine()
+            taskbarClock.text = taskbarFormat.format(now)
             voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine()
             transcript.text = transcriptLine()
+            jarvisState.text = DashboardState.jarvisState(
+                VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
+                getString(R.string.jarvis_ready),
+                getString(R.string.jarvis_listening),
+                getString(R.string.jarvis_thinking),
+                getString(R.string.jarvis_speaking),
+                getString(R.string.jarvis_offline),
+            )
             handler.postDelayed(this, 1_000L)
+        }
+    }
+
+    /**
+     * Asks the broker what to put in the three data windows.
+     *
+     * The broker caches every source, so polling this often costs one local
+     * request and no outside call at all — which is why the interval is about
+     * the screen looking current rather than about anybody's rate limit.
+     *
+     * A failure here changes NOTHING on screen. The last values stay, the clock
+     * keeps ticking, and the next attempt is a minute away: a kiosk that blanks
+     * itself because one request timed out is worse than one showing numbers
+     * from a minute ago.
+     */
+    private val refreshDashboard = object : Runnable {
+        override fun run() {
+            dashboardThread.execute {
+                val token = TokenStore(this@MainActivity).token()
+                val attempt = if (token.isNullOrEmpty()) null else runCatching {
+                    Broker(VoiceState.brokerBaseUrl, token).dashboard()
+                }
+                // Whether it worked, and nothing else. NOT the payload: it is
+                // a few hundred bytes of numbers today, and a log line that
+                // prints whatever the server sent is a log line that prints
+                // whatever the server sends tomorrow. A failure is reported as
+                // the exception TYPE for the reason the broker uses too — a URL
+                // inside an exception message can carry a query string.
+                when {
+                    attempt == null -> Log.i(DASHBOARD_TAG, "refresh skipped: no token")
+                    attempt.isSuccess -> Log.i(DASHBOARD_TAG, "refresh ok")
+                    else -> Log.w(DASHBOARD_TAG, "refresh failed: " +
+                        (attempt.exceptionOrNull()?.javaClass?.simpleName ?: "unknown"))
+                }
+                val payload = attempt?.getOrNull()
+                if (payload != null) {
+                    handler.post { applyDashboard(payload) }
+                }
+            }
+            handler.postDelayed(this, DASHBOARD_INTERVAL_MILLIS)
+        }
+    }
+
+    private fun applyDashboard(payload: String) {
+        val screen = DashboardState.parse(payload, getString(R.string.data_unavailable))
+        weatherBody.text = screen.weather.text
+        goldBody.text = screen.gold.text
+        cryptoBody.text = screen.crypto.text
+        if (screen.place.isNotEmpty()) {
+            weatherTitle.text = "${getString(R.string.window_weather)} · ${screen.place}"
         }
     }
 
@@ -89,6 +173,18 @@ class MainActivity : Activity() {
         status = findViewById(R.id.status)
         voiceStatus = findViewById(R.id.voice_status)
         transcript = findViewById(R.id.transcript)
+        taskbarClock = findViewById(R.id.taskbar_clock)
+        weatherTitle = findViewById(R.id.weather_title)
+        weatherBody = findViewById(R.id.weather_body)
+        goldBody = findViewById(R.id.gold_body)
+        cryptoBody = findViewById(R.id.crypto_body)
+        jarvisState = findViewById(R.id.jarvis_state)
+
+        // The system bars are already off via Samsung's gesture setting, but a
+        // setting is somebody's preference and this is the app's own statement.
+        // Belt and braces: an update, a guest mode or a reset could put them
+        // back, and a navigation bar on a kiosk is an exit nobody chose.
+        hideSystemBars()
 
         findViewById<android.view.View>(R.id.exit_corner).setOnClickListener {
             onCornerTap()
@@ -112,6 +208,22 @@ class MainActivity : Activity() {
         grantMicrophoneToSelf()
     }
 
+    /**
+     * Immersive, sticky.
+     *
+     * Re-applied on every resume as well, because the flags are cleared by a
+     * dialog, by the screen turning off and by some system interactions —
+     * setting them once at creation lasts until the first time anything else
+     * happens.
+     */
+    private fun hideSystemBars() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+    }
+
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")
     @Suppress("DEPRECATION", "MissingSuperCall")
     override fun onBackPressed() {
@@ -121,6 +233,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         handler.post(tick)
+        hideSystemBars()
+        handler.post(refreshDashboard)
 
         // NOT_EXPORTED is the right answer even though these are protected
         // system broadcasts: it is what Android 14+ wants declared, and the
@@ -156,6 +270,9 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(tick)
+        // Stopped with the clock: a paused kiosk polling the broker every
+        // minute forever is a background job nobody asked for.
+        handler.removeCallbacks(refreshDashboard)
         unregisterReceiver(powerReceiver)
     }
 
@@ -381,6 +498,21 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        /**
+         * How often the screen asks the broker.
+         *
+         * The broker caches each source on its own schedule, so this is not a
+         * rate limit question: it is how stale the numbers on a wall are
+         * allowed to look. A minute, matching the fastest source's own
+         * lifetime.
+         */
+        const val DASHBOARD_INTERVAL_MILLIS = 60_000L
+
+        /** Its own logcat tag, so `adb logcat -s KioskDashboard:*`
+         *  shows the screen refreshing without the voice pipeline's
+         *  traffic on top of it. */
+        const val DASHBOARD_TAG = "KioskDashboard"
+
 
         /**
          * Set by the escape hatch, cleared by the process dying.

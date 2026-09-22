@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A sunken well: the raised panel with its light and shadow swapped. Used
+     for anything that displays a value, which is the era's own convention. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/retro_light" />
+        </shape>
+    </item>
+    <item android:right="2dp" android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/retro_shadow" />
+        </shape>
+    </item>
+    <item android:left="2dp" android:top="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/retro_face" />
+        </shape>
+    </item>
+</layer-list>

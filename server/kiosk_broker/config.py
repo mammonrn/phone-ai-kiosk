@@ -87,6 +87,28 @@ class Config:
     #: when it does not get them, and it is what bounds the cost of one answer.
     tts_spoken_chars: int = 100
 
+    # ---- the kiosk screen ------------------------------------------------
+    #: Mae Sai, Chiang Rai. In config rather than in code because the kiosk
+    #: could move house and a latitude is not a decision worth a deploy.
+    weather_latitude: float = 20.4342
+    weather_longitude: float = 99.8836
+    weather_place: str = "แม่สาย เชียงราย"
+
+    #: Cache lifetimes, chosen from each source's own published limits rather
+    #: than from what feels responsive:
+    #:   Open-Meteo allows 10,000 calls a day; 10 minutes is 144.
+    #:   The gold association updates a few times an hour at most, and the
+    #:   third party in front of it deserves not to be hammered.
+    #:   Binance is generous enough for a minute, which is the only one of the
+    #:   three where freshness is worth anything.
+    dashboard_weather_ttl: int = 600
+    dashboard_gold_ttl: int = 300
+    dashboard_crypto_ttl: int = 60
+
+    #: Short. A slow source must not hold the phone's request open: the panel
+    #: fails, the screen says so, and the other panels still arrive.
+    dashboard_timeout: float = 6.0
+
     rate_per_minute: int = 10
     rate_per_day: int = 300
 

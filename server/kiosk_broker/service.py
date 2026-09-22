@@ -15,8 +15,8 @@ import sqlite3
 import time
 from typing import Any
 
-from . import (actions, auth, botnoi, clock, limits, oggopus, pronounce, register,
-               shorten, stt, store, tts)
+from . import (actions, auth, botnoi, clock, dashboard as dashboard_mod, limits,
+               oggopus, pronounce, register, shorten, stt, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -529,3 +529,80 @@ def handle_tts(
             "X-Kiosk-Audio-Ms": "" if audio_ms is None else str(audio_ms),
         },
     }
+
+
+# ================================================================= dashboard
+
+#: One per configuration, so the cache is shared by every request thread and two
+#: phones asking at once do not become two calls to the same source.
+#:
+#: Keyed on the settings that change what it fetches, NOT on id(cfg): a
+#: dataclass that has been garbage collected can have its id handed to the next
+#: one, and a cache keyed on that would serve one config's weather under
+#: another's coordinates.
+_DASHBOARD: dict[tuple, dashboard_mod.Dashboard] = {}
+
+
+def forget_dashboards() -> None:
+    """Drops every cached board. Used by tests; harmless in production."""
+    _DASHBOARD.clear()
+
+
+def _dashboard(cfg: Config) -> dashboard_mod.Dashboard:
+    key = (cfg.weather_latitude, cfg.weather_longitude,
+           cfg.dashboard_weather_ttl, cfg.dashboard_gold_ttl,
+           cfg.dashboard_crypto_ttl, cfg.dashboard_timeout)
+    if key not in _DASHBOARD:
+        _DASHBOARD[key] = dashboard_mod.Dashboard(cfg)
+    return _DASHBOARD[key]
+
+
+def handle_dashboard(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    *,
+    authorization: str | None,
+) -> tuple[int, dict]:
+    """GET /v1/dashboard: what the kiosk screen shows when nobody is talking.
+
+    Authenticated like everything else, and rate limited like everything else —
+    but NOT charged against the month's budget, because none of the three
+    sources costs anything. Putting a free endpoint on the paid ledger would
+    have the kiosk refuse to show the weather because somebody asked a lot of
+    questions, which is not a trade anybody chose.
+    """
+    day = limits.day_key(cfg.budget_timezone)
+
+    device, refusal = _authorise(conn, authorization=authorization, day=day,
+                                 endpoint="dashboard")
+    if refusal:
+        return refusal
+    device_id, label = int(device["id"]), str(device["label"])
+
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=cfg.rate_per_minute,
+                             per_day=cfg.rate_per_day, day=day, endpoint="dashboard")
+    if not rate.allowed:
+        store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
+                             text_len=None, endpoint="dashboard")
+        return 429, _error(rate.code, rate.message)
+
+    started = time.monotonic()
+    snapshot = _dashboard(cfg).snapshot()
+    # The place NAME is a label on this request's config, not something the
+    # fetcher caches: two configs can share one weather cache and still want
+    # different words under it.
+    snapshot["place"] = cfg.weather_place
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+
+    failed = [name for name in ("weather", "gold", "crypto")
+              if not snapshot[name].get("ok", False)]
+    store.record_request(conn, device_id=device_id, day=day,
+                         outcome="ok" if not failed else "partial",
+                         text_len=None, endpoint="dashboard")
+
+    # Which panels, and how long. Never a price, never a URL — the numbers on
+    # the screen are not a secret, but a log is not where they belong either.
+    log.info("dashboard device=%s failed=%s ms=%d", label, ",".join(failed) or "none",
+             elapsed_ms)
+
+    return 200, snapshot

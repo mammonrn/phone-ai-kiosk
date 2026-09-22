@@ -3,6 +3,11 @@
 agp = "9.3.1"
 coreKtx = "1.19.0"
 junit = "4.13.2"
+# org.json for JVM unit tests ONLY. On the phone this class comes from
+# Android itself; in a unit test the android.jar stub throws "not mocked",
+# so the parser DashboardState uses could not be tested at all without a
+# real implementation on the test classpath. It never ships in the APK.
+json = "20260814"
 # Same version for the Android runtime and the JVM one used by the parity
 # test, so the test and the phone run the identical kernels.
 #
@@ -19,6 +24,7 @@ onnxruntime = "1.22.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+json = { group = "org.json", name = "json", version.ref = "json" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 onnxruntime-jvm = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntime" }

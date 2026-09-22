@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art: a stack of bars on a 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFD700" android:pathData="M4,9h8v3h-8z" />
+    <path android:fillColor="#FFB000" android:pathData="M4,12h8v1h-8z" />
+    <path android:fillColor="#FFD700" android:pathData="M6,5h5v3h-5z" />
+    <path android:fillColor="#FFB000" android:pathData="M6,8h5v1h-5z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M5,9h2v1h-2z M7,5h2v1h-2z" />
+</vector>

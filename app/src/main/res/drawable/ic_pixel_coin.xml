@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art: a generic coin. Deliberately not any currency's logo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#E8A317" android:pathData="M6,2h4v1h-4z M4,3h8v1h-8z
+        M3,4h10v8h-10z M4,12h8v1h-8z M6,13h4v1h-4z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M5,5h2v1h-2z" />
+    <path android:fillColor="#8B6914" android:pathData="M7,6h2v4h-2z M6,7h1v2h-1z M9,7h1v2h-1z" />
+</vector>

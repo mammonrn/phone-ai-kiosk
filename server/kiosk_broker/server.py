@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import store
 from .config import Config
-from .service import handle_chat, handle_stt, handle_tts
+from .service import handle_chat, handle_dashboard, handle_stt, handle_tts
 
 log = logging.getLogger("kiosk_broker")
 
@@ -98,6 +98,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        if self.path == "/v1/dashboard":
+            # A GET because it reads and changes nothing, which also means the
+            # phone can retry it freely when the screen comes back.
+            conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            try:
+                status, payload = handle_dashboard(
+                    conn, self.config,
+                    authorization=self.headers.get("Authorization"),
+                )
+            except Exception:
+                log.exception("unhandled error")
+                status, payload = 500, {"error": {"code": "internal",
+                                                  "message": "ระบบขัดข้องครับ"}}
+            finally:
+                conn.close()
+            self._send(status, payload)
+            return
+
         if self.path == "/healthz":
             # Deliberately says nothing about tokens, spend or the model: it is
             # reachable from nginx and exists only to answer "is it up".

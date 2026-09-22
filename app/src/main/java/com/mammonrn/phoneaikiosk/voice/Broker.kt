@@ -57,6 +57,13 @@ class Broker(private val baseUrl: String, private val token: String) {
         return KioskAction(type, destination)
     }
 
+    /**
+     * What the screen shows when nobody is talking. Raw JSON: DashboardState
+     * does the reading, and it does it without Android so it can be tested.
+     */
+    fun dashboard(): String =
+        String(get("/v1/dashboard").bytes, Charsets.UTF_8)
+
     /** Text in, audio out, ready to play — with where the time went. */
     fun speak(text: String): SpokenAudio {
         val result = post("/v1/tts",
@@ -68,22 +75,34 @@ class Broker(private val baseUrl: String, private val token: String) {
     /** A response, and how long each layer took to produce it. */
     private class Result(val bytes: ByteArray, val timing: String)
 
-    private fun post(path: String, body: ByteArray, contentType: String): Result {
+    private fun get(path: String): Result = send(path, "GET", null, null)
+
+    private fun post(path: String, body: ByteArray, contentType: String): Result =
+        send(path, "POST", body, contentType)
+
+    private fun send(
+        path: String,
+        method: String,
+        body: ByteArray?,
+        contentType: String?,
+    ): Result {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
+            requestMethod = method
             // Generous: a model answer is seconds, not milliseconds, and a
             // timeout that fires early looks identical to a broken server.
             connectTimeout = 10_000
             readTimeout = 45_000
             setRequestProperty("Authorization", "Bearer $token")
-            setRequestProperty("Content-Type", contentType)
-            setFixedLengthStreamingMode(body.size)
+            if (body != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", contentType)
+                setFixedLengthStreamingMode(body.size)
+            }
         }
 
         try {
             val sent = System.currentTimeMillis()
-            connection.outputStream.use { it.write(body) }
+            if (body != null) connection.outputStream.use { it.write(body) }
 
             // Reading responseCode is what blocks until the response HEADERS
             // arrive, so this is time-to-first-byte: the network, nginx and the

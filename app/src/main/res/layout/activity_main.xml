@@ -1,85 +1,363 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The kiosk screen: a 1995-flavoured desktop, portrait, read from two metres.
+
+  EVERY ID THE ACTIVITY ALREADY USED IS STILL HERE — clock, date, status,
+  voice_status, transcript and exit_corner. The last one is the only way off
+  this device without a factory reset (ten taps, bottom right), and a redesign
+  that quietly dropped it would strand the phone.
+
+  No image files, no icon pack and no downloaded font. The chrome is layer-list
+  shapes in this repository and the icons are vectors drawn from squares, so
+  there is nothing here whose licence has to be checked. The typeface is
+  "monospace", which is whatever the device already has.
+
+  Sizes are chosen for distance, not for density: the clock is 64sp and nothing
+  that carries a number is under 20sp.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#101010">
+    android:background="@color/retro_desktop">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center_horizontal"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="8dp">
 
-        <TextView
-            android:id="@+id/clock"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textColor="#FFFFFF"
-            android:textSize="64sp"
-            tools:ignore="HardcodedText" />
-
-        <TextView
-            android:id="@+id/date"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="#B0B0B0"
-            android:textSize="16sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:text="@string/kiosk_prompt"
-            android:textColor="#FFFFFF"
-            android:textSize="24sp" />
-
-        <!-- What the phone heard and what it answered. Misheard Thai is the
-             most common failure in the voice path and this is where it shows. -->
-        <TextView
-            android:id="@+id/transcript"
+        <!-- ===================================================== clock window -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:gravity="center"
-            android:textColor="#D0D0D0"
-            android:textSize="15sp" />
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:padding="6dp">
 
-        <!-- Device Owner / lock task state. The only way to read provisioning
-             state from the phone itself, and what the manual test steps check. -->
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:fontFamily="monospace"
-            android:textColor="#808080"
-            android:textSize="13sp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/retro_titlebar"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:text="@string/window_clock"
+                android:textColor="@color/retro_title_text"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace" />
 
-        <!-- Every stage of the voice path, so a failure names itself. -->
-        <TextView
-            android:id="@+id/voice_status"
-            android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="4dp"
+                android:padding="8dp">
+
+                <TextView
+                    android:id="@+id/clock"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:textColor="@color/retro_text"
+                    android:textSize="64sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/date"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:textColor="@color/retro_dim"
+                    android:textSize="20sp"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ==================================================== weather window -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:fontFamily="monospace"
-            android:gravity="center"
-            android:textColor="#707070"
-            android:textSize="12sp" />
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:layout_marginTop="8dp"
+            android:padding="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/retro_titlebar"
+                android:gravity="center_vertical"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_pixel_sun"
+                    android:contentDescription="@string/window_weather" />
+
+                <TextView
+                    android:id="@+id/weather_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/window_weather"
+                    android:textColor="@color/retro_title_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/weather_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="4dp"
+                android:padding="8dp"
+                android:textColor="@color/retro_text"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:text="@string/data_loading" />
+        </LinearLayout>
+
+        <!-- ======================================================= gold window -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:layout_marginTop="8dp"
+            android:padding="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/retro_titlebar"
+                android:gravity="center_vertical"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_pixel_gold"
+                    android:contentDescription="@string/window_gold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/window_gold"
+                    android:textColor="@color/retro_title_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/gold_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="4dp"
+                android:padding="8dp"
+                android:textColor="@color/retro_text"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:text="@string/data_loading" />
+        </LinearLayout>
+
+        <!-- ===================================================== crypto window -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:layout_marginTop="8dp"
+            android:padding="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/retro_titlebar"
+                android:gravity="center_vertical"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_pixel_coin"
+                    android:contentDescription="@string/window_crypto" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/window_crypto"
+                    android:textColor="@color/retro_title_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/crypto_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="4dp"
+                android:padding="8dp"
+                android:textColor="@color/retro_text"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:text="@string/data_loading" />
+        </LinearLayout>
+
+        <!-- ===================================================== jarvis window -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:layout_marginTop="8dp"
+            android:padding="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/retro_titlebar"
+                android:gravity="center_vertical"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_pixel_jarvis"
+                    android:contentDescription="@string/app_name" />
+
+                <TextView
+                    android:id="@+id/jarvis_state"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/jarvis_ready"
+                    android:textColor="@color/retro_title_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/transcript"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="4dp"
+                android:padding="8dp"
+                android:textColor="@color/retro_text"
+                android:textSize="20sp"
+                android:fontFamily="monospace"
+                android:text="@string/kiosk_prompt" />
+
+            <!-- Diagnostics, deliberately small and at the bottom: useful with a
+                 phone in your hand, invisible from across the room. Carries no
+                 token and no key — see VoiceState.statusLine. -->
+            <TextView
+                android:id="@+id/voice_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/retro_dim"
+                android:textSize="10sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <!-- ========================================================== taskbar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@drawable/retro_raised"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp"
+            android:padding="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/retro_raised"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:text="@string/taskbar_button"
+                android:textColor="@color/retro_text"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:textColor="@color/retro_dim"
+                android:textSize="10sp"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:id="@+id/taskbar_clock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/retro_sunken"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:textColor="@color/retro_text"
+                android:textSize="15sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- The escape hatch. Transparent and unlabelled on purpose; 96dp is a
-         corner you can hit repeatedly without looking, and small enough that
-         it is not in the way of anything phase 5 puts on this screen. -->
+    <!--
+      THE WAY OFF THIS DEVICE. Ten taps in the bottom-right corner.
+
+      Invisible on purpose and last in the file so it sits above everything: a
+      Device Owner in lock task mode cannot be left any other way without a
+      factory reset. Do not move it, do not shrink it, and do not put anything
+      clickable under it.
+    -->
     <View
         android:id="@+id/exit_corner"
-        android:layout_width="96dp"
-        android:layout_height="96dp"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
         android:layout_gravity="bottom|end"
+        android:background="@android:color/transparent"
         android:contentDescription="@null" />
-
 </FrameLayout>

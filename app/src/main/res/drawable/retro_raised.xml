@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A raised panel: light on the top and left, shadow on the bottom and right.
+
+  Layers rather than a nine-patch, so it scales to any size without a bitmap
+  and there is no image file to licence. The 2dp offsets are what make it read
+  as bevelled rather than as a plain box.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/retro_shadow" />
+        </shape>
+    </item>
+    <item android:right="2dp" android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/retro_light" />
+        </shape>
+    </item>
+    <item android:left="2dp" android:top="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/retro_face" />
+        </shape>
+    </item>
+</layer-list>

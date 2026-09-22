@@ -14,8 +14,8 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionCode = 12
-        versionName = "0.12.0"
+        versionCode = 13
+        versionName = "0.13.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
@@ -107,6 +107,8 @@ dependencies {
     implementation(libs.onnxruntime.android)
 
     testImplementation(libs.junit)
+    // Test classpath only — see the note in libs.versions.toml.
+    testImplementation(libs.json)
     // The JVM build of the SAME runtime version, so WakeWordParityTest exercises
     // the identical kernels the phone will run rather than an approximation of
     // them. Without this the parity test could only check our own arithmetic.
