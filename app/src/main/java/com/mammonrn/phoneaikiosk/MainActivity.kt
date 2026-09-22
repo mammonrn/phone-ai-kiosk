@@ -179,8 +179,10 @@ class MainActivity : Activity() {
                 // the whole of the last phase anyway, and everything else is
                 // correct. Costs one extra request a minute and only while the
                 // first one is failing.
+                var withoutPosition = fix == null
                 if (attempt?.isFailure == true && fix != null) {
                     attempt = broker?.let { runCatching { it.dashboard() } }
+                    withoutPosition = true
                 }
                 // Whether it worked, and nothing else. NOT the payload: it is
                 // a few hundred bytes of numbers today, and a log line that
@@ -196,14 +198,21 @@ class MainActivity : Activity() {
                 }
                 val payload = attempt?.getOrNull()
                 if (payload != null) {
-                    handler.post { applyDashboard(payload) }
+                    handler.post { applyDashboard(payload, withoutPosition) }
                 }
             }
             handler.postDelayed(this, DASHBOARD_INTERVAL_MILLIS)
         }
     }
 
-    private fun applyDashboard(payload: String) {
+    /**
+     * @param withoutPosition true when this answer was asked for with no
+     *   coordinates — no fix, or the retry above. The phone knows that even
+     *   when the broker is too old to say `location_fallback`, and a status
+     *   field that reads "phone" while the weather is the university's would
+     *   be a small quiet lie in the one place somebody looks to catch one.
+     */
+    private fun applyDashboard(payload: String, withoutPosition: Boolean = false) {
         val screen = DashboardState.parse(payload, getString(R.string.data_unavailable))
         // Numbers into the pixel face, the freshness note turned down. The
         // strings themselves are DashboardState's business and are not touched
@@ -226,7 +235,7 @@ class MainActivity : Activity() {
         // known and its name is not. Never a coordinate: there is nothing a
         // person standing in front of a kiosk does with one, and a screen faces
         // a room.
-        VoiceState.weatherFallback = screen.locationFallback
+        VoiceState.weatherFallback = screen.locationFallback || withoutPosition
 
         val place = screen.place.ifEmpty { getString(R.string.place_unknown) }
         weatherTitle.text = "${getString(R.string.window_weather)} · $place"
