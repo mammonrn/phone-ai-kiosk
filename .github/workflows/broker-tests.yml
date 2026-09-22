@@ -1,0 +1,61 @@
+name: Broker tests
+
+# The broker's tests need no API key, no network and no VPS — so there is no
+# reason for them to only ever run on someone's laptop.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/**'
+      - '.github/workflows/broker-tests.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+      - '.github/workflows/broker-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          # Matches the VPS (Ubuntu 24.04 ships 3.12), so a version-specific
+          # failure shows up here rather than on the server.
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: server
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet pytest anthropic
+
+      - name: Run tests
+        working-directory: server
+        run: python -m pytest tests/ -q
+
+      - name: Check the pricing file still matches its own source note
+        working-directory: server
+        # Not a price check against the live page — that would make the build
+        # depend on a web fetch. It checks the file still carries a source and a
+        # date, so a price can never be edited in without saying where it came
+        # from.
+        run: |
+          python - <<'PY'
+          import json, sys
+          data = json.load(open("pricing.json"))
+          missing = [k for k in ("_source", "_checked_at") if not data.get(k)]
+          if missing:
+              sys.exit(f"pricing.json is missing {missing} — a rate with no provenance")
+          if not data["_source"].startswith("https://platform.claude.com/"):
+              sys.exit("pricing.json _source must point at the official pricing page")
+          print(f"pricing from {data['_source']} checked {data['_checked_at']}")
+          PY
