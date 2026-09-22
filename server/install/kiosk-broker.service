@@ -1,0 +1,55 @@
+# System unit, not a --user unit: it starts at boot with no lingering session,
+# and root owns it, so the broker user cannot rewrite its own hardening.
+#
+# If the service fails to start with a namespace or permission error, the
+# sandboxing lines below are the first place to look — comment out ProtectHome
+# and BindPaths, confirm it starts, then put them back one at a time.
+[Unit]
+Description=Kiosk broker (phone -> Claude Haiku, restricted)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kioskbroker
+Group=kioskbroker
+WorkingDirectory=/home/kioskbroker/app
+Environment=PYTHONPATH=/home/kioskbroker/app
+Environment=PYTHONUNBUFFERED=1
+Environment=KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
+ExecStart=/home/kioskbroker/venv/bin/python -m kiosk_broker serve
+Restart=on-failure
+RestartSec=5
+
+# The API key is read from a 0600 file in KIOSK_BROKER_HOME, never from the
+# environment — so it is not in `systemctl show`, not in the journal, and not
+# inherited by anything this process starts (which is nothing).
+
+# Every other home directory is replaced with an empty tmpfs, then this user's
+# own is bound back in. /home/hermes stops existing as far as this process is
+# concerned, which is a stronger statement than "it has no permission".
+ProtectHome=tmpfs
+BindPaths=/home/kioskbroker
+ReadWritePaths=/home/kioskbroker/.config/kiosk-broker
+
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Outbound HTTPS to the API and the loopback listener. Nothing else.
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

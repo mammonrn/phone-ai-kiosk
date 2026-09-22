@@ -10,3 +10,10 @@ captures/
 *.apk
 *.aab
 *.keystore
+vendor/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/

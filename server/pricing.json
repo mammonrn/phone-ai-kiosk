@@ -1,0 +1,14 @@
+{
+  "_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "_checked_at": "2026-09-22",
+  "_note": "USD per 1,000,000 tokens. Copied from the official pricing table, not computed from multipliers. Re-check the source before changing a number, and update _checked_at when you do.",
+  "models": {
+    "claude-haiku-4-5": {
+      "input": 1.00,
+      "output": 5.00,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 2.00,
+      "cache_read": 0.10
+    }
+  }
+}
