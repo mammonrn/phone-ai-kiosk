@@ -7,6 +7,7 @@ import android.text.TextPaint
 import android.text.style.ForegroundColorSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.ScaleXSpan
 
 /**
  * Two typefaces on one line, without either of them looking like an accident.
@@ -69,6 +70,39 @@ object RetroType {
     }
 
     /**
+     * The spaces that have to work harder than the rest.
+     *
+     * On the phone, "ความชื้น 83%" read as one word. Plex's word space is
+     * 0.236 em, which is right between two Thai words and not nearly enough
+     * between a Thai word and a slab of 8-bit digits — the pixel face is so
+     * much blacker that the gap disappears under it.
+     *
+     * Only the spaces on the SEAM get widened: a space with a pixel run on one
+     * side and Thai on the other. The two spaces inside "BTC  $85,965" have
+     * pixel on both sides and are already generous, and the ones in
+     * "27.4°C  แดดจัด" come in pairs and need no help either. Widening those
+     * too was the first attempt and it blew the crypto window apart.
+     */
+    fun gapSpaces(text: CharSequence, runs: List<IntRange>): List<Int> {
+        if (runs.isEmpty()) return emptyList()
+        val startsRun = runs.map { it.first }.toSet()
+        val endsRun = runs.map { it.last }.toSet()
+        val out = ArrayList<Int>()
+        for (i in text.indices) {
+            if (text[i] != ' ') continue
+            val leftIsRun = i > 0 && (i - 1) in endsRun
+            val rightIsRun = i + 1 < text.length && (i + 1) in startsRun
+            val leftIsWord = i > 0 && text[i - 1] != ' ' && (i - 1) !in endsRun
+            val rightIsWord = i + 1 < text.length && text[i + 1] != ' ' && (i + 1) !in startsRun
+            if ((leftIsRun && rightIsWord) || (rightIsRun && leftIsWord)) out.add(i)
+        }
+        return out
+    }
+
+    /** How much wider a seam space gets. 0.236 em becomes about 0.5. */
+    private const val GAP_STRETCH = 2.2f
+
+    /**
      * [text] with its numbers and Latin in [pixel], ready for setText.
      *
      * The TextView keeps its own face for everything else, so callers set the
@@ -76,11 +110,20 @@ object RetroType {
      */
     fun pixelify(text: CharSequence, pixel: Typeface): CharSequence {
         val out = SpannableStringBuilder(text)
-        for (run in pixelRuns(text)) {
+        val runs = pixelRuns(text)
+        for (run in runs) {
             out.setSpan(
                 PixelSpan(pixel),
                 run.first,
                 run.last + 1,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        for (gap in gapSpaces(text, runs)) {
+            out.setSpan(
+                ScaleXSpan(GAP_STRETCH),
+                gap,
+                gap + 1,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
         }

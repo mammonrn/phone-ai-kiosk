@@ -64,4 +64,36 @@ class RetroTypeTest {
             runs("ความชื้น 83%   สูง 30.7°  ต่ำ 22.9°"),
         )
     }
+
+    /**
+     * The seams, named by the character on each side of the widened space.
+     *
+     * One character, not a slice: Thai vowels and tone marks are separate code
+     * units, so "text.substring(i - 3, i)" cuts a syllable in half and the
+     * failure message becomes unreadable.
+     */
+    private fun gaps(text: String): List<String> {
+        val runs = RetroType.pixelRuns(text)
+        return RetroType.gapSpaces(text, runs).map { i -> "${text[i - 1]}|${text[i + 1]}" }
+    }
+
+    @Test
+    fun `the space between a Thai word and a number is widened`() {
+        assertEquals(listOf("น|8"), gaps("ความชื้น 83%"))
+    }
+
+    @Test
+    fun `both seams of a price are widened, the one inside it is not`() {
+        assertEquals(listOf("ณ|6", "0|บ"), gaps("รูปพรรณ 68,800 บ."))
+    }
+
+    @Test
+    fun `a line that is all pixel keeps the spacing it already had`() {
+        assertEquals(emptyList<String>(), gaps("BTC  \$85,965  +0.97%"))
+    }
+
+    @Test
+    fun `a double space between a number and Thai is left alone`() {
+        assertEquals(emptyList<String>(), gaps("27.4°C  แดดจัด"))
+    }
 }
