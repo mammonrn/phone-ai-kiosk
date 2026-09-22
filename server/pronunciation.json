@@ -1,0 +1,12 @@
+{
+  "_note": "Respellings applied ONLY to text on its way to Google Cloud Text-to-Speech. The screen, the chat history and the ledger all keep the correct spelling — this file changes what is said, never what is written.",
+  "_why_respelling": "Chirp 3 HD does have an official customPronunciations field taking IPA or X-SAMPA, but the docs mark it Experimental and do not list which locales support it, Thai included. Respelling needs no phonetic alphabet, anyone can add an entry by ear, and it works today. See server/README.md for the comparison.",
+  "_rules": "Entries must be phrases of at least 3 characters. Thai does not put spaces between words, so a short entry would match inside longer words with no way to tell — 'ดี' would hit 'ดีใจ' and 'ดีเซล'. The loader refuses anything shorter.",
+  "entries": [
+    {
+      "spelling": "อากาศดี",
+      "say": "อากาด ดี",
+      "why": "Read aloud as อา-กา-สะ-ดี. The ศ closes อากาศ (pronounced อา-กาด) and is not the start of a syllable with ดี. Respelling the final as ด and inserting a space forces both the right final consonant and the right word boundary."
+    }
+  ]
+}

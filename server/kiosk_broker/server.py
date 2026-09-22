@@ -60,6 +60,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (payload.get("headers") or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 

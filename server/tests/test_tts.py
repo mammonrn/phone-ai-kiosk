@@ -291,3 +291,201 @@ def test_the_endpoint_is_resolved_at_call_time(monkeypatch):
         tts.synthesize(api_key="k", text="สวัสดี", language_code="th-TH", voice="Charon",
                        timeout=2.0)
     assert "urlerror" in exc.value.detail or "http" in exc.value.detail
+
+
+# ------------------------------------------------- the spoken cap is the bill
+
+LONG_REPLY = ("วันนี้อากาศดีครับ ท้องฟ้าแจ่มใสครับ ลมเย็นสบายครับ "
+              "เหมาะกับการออกไปเดินเล่นนอกบ้านครับ แต่ควรพกร่มไปด้วยครับ "
+              "เพราะช่วงบ่ายอาจมีฝนตกได้ครับ")
+
+
+def test_a_long_reply_is_cut_before_it_is_sent_not_billed_and_then_regretted(conn, cfg):
+    token = _token(conn)
+    status, body = _post(conn, cfg, token, {"text": LONG_REPLY})
+
+    assert status == 200
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    assert len(spoken) <= cfg.tts_spoken_chars
+    assert len(LONG_REPLY) > cfg.tts_spoken_chars, "the fixture has to actually be long"
+    assert spoken.endswith("ครับ"), "cut at a sentence end, not mid-word"
+
+
+def test_the_cost_recorded_is_the_cost_of_what_was_spoken(conn, cfg):
+    token = _token(conn)
+    _post(conn, cfg, token, {"text": LONG_REPLY})
+
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    row = conn.execute("SELECT quantity, cost_usd FROM usage WHERE service = 'tts'").fetchone()
+
+    assert row["quantity"] == len(spoken)
+    assert row["quantity"] < len(LONG_REPLY)
+    assert row["cost_usd"] == pytest.approx(len(spoken) * 0.00003)
+
+
+def test_the_response_says_how_much_was_spoken_and_whether_it_was_cut(conn, cfg):
+    token = _token(conn)
+    _, body = _post(conn, cfg, token, {"text": LONG_REPLY})
+
+    headers = body["headers"]
+    assert headers["X-Kiosk-Truncated"] == "1"
+    assert int(headers["X-Kiosk-Spoken-Chars"]) <= cfg.tts_spoken_chars
+
+    _, short = _post(conn, cfg, token, {"text": "ไม่ทราบครับ"})
+    assert short["headers"]["X-Kiosk-Truncated"] == "0"
+    assert short["headers"]["X-Kiosk-Spoken-Chars"] == str(len("ไม่ทราบครับ"))
+
+
+def test_thai_without_spaces_is_still_capped(conn, cfg):
+    token = _token(conn)
+    text = "กรุงเทพมหานครอมรรัตนโกสินทร์มหินทรายุธยามหาดิลกภพนพรัตนราชธานีบุรีรมย์อุดมราชนิเวศน์มหาสถาน"
+    _post(conn, cfg, token, {"text": text})
+
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    assert len(spoken) <= cfg.tts_spoken_chars
+
+
+def test_a_reply_full_of_spoken_numbers_is_cut_at_a_sentence(conn, cfg):
+    token = _token(conn)
+    text = ("อุณหภูมิยี่สิบห้าองศาเซลเซียสครับ ความชื้นเจ็ดสิบเปอร์เซ็นต์ครับ "
+            "ลมความเร็วสิบกิโลเมตรต่อชั่วโมงครับ แล้วพระอาทิตย์ตกหกโมงเย็นครับ")
+    _post(conn, cfg, token, {"text": text})
+
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    assert len(spoken) <= cfg.tts_spoken_chars
+    assert spoken.endswith("ครับ")
+    # A whole number is either there or not there; half of one is a wrong number.
+    assert "ยี่สิบห้าองศาเซลเซียส" in spoken
+
+
+def test_the_register_fix_runs_before_the_cut(conn, cfg):
+    """Order matters: fixing "ค่ะ" to "ครับ" makes the text longer, so cutting
+    first would leave a "ค่ะ" inside the limit that then gets spoken."""
+    token = _token(conn)
+    text = "สวัสดีค่ะ " + "ยาวมากเลยนะ" * 20
+    _post(conn, cfg, token, {"text": text})
+
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    assert "ค่ะ" not in spoken
+    assert len(spoken) <= cfg.tts_spoken_chars
+
+
+def test_an_absurd_body_is_still_refused_rather_than_shortened(conn, cfg):
+    """The spoken cap is cost control. The body cap is a sanity bound, and
+    something 800 characters long is not a spoken reply."""
+    cfg = dataclasses.replace(cfg, max_body_bytes=64 * 1024)
+    token = _token(conn)
+    status, body = _post(conn, cfg, token, {"text": "ก" * (cfg.max_tts_chars + 1)})
+    assert status == 400
+    assert body["error"]["code"] == "text_too_long"
+    assert not REQUESTS
+
+
+# ----------------------------------------------------- pronunciation dictionary
+
+def _with_dictionary(cfg, entries):
+    import json as _json
+
+    (cfg.home / "pronunciation.json").write_text(
+        _json.dumps({"entries": entries}, ensure_ascii=False), encoding="utf-8")
+    # The service caches per path; clear it so each test sees its own file.
+    from kiosk_broker import service as service_mod
+
+    service_mod._PRONUNCIATION.clear()
+    return cfg
+
+
+def test_the_respelling_reaches_google_but_not_the_caller(conn, cfg):
+    """The screen and the history keep the correct spelling. Only the string
+    sent to the synthesiser is respelled."""
+    cfg = _with_dictionary(cfg, [{"spelling": "อากาศดี", "say": "อากาด ดี", "why": "real"}])
+    token = _token(conn)
+    status, body = _post(conn, cfg, token, {"text": "วันนี้อากาศดีครับ"})
+
+    assert status == 200
+    assert REQUESTS[0]["body"]["input"]["text"] == "วันนี้อากาด ดีครับ"
+    assert body["headers"]["X-Kiosk-Respellings"] == "1"
+
+
+def test_the_cost_recorded_is_the_respelled_length(conn, cfg):
+    """Respelling changes the character count, and Google bills characters."""
+    cfg = _with_dictionary(cfg, [{"spelling": "อากาศดี", "say": "อากาด ดี", "why": "real"}])
+    token = _token(conn)
+    _post(conn, cfg, token, {"text": "อากาศดี"})
+
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    row = conn.execute("SELECT quantity FROM usage WHERE service = 'tts'").fetchone()
+    assert row["quantity"] == len(spoken)
+    assert row["quantity"] == len("อากาด ดี")
+
+
+def test_a_missing_dictionary_is_not_an_error(conn, cfg):
+    from kiosk_broker import service as service_mod
+
+    (cfg.home / "pronunciation.json").unlink(missing_ok=True)
+    service_mod._PRONUNCIATION.clear()
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, token, {"text": "อากาศดีครับ"})
+    assert status == 200
+    assert body["headers"]["X-Kiosk-Respellings"] == "0"
+    assert REQUESTS[0]["body"]["input"]["text"] == "อากาศดีครับ"
+
+
+def test_a_broken_dictionary_does_not_take_the_voice_down(conn, cfg):
+    """An unusable file is worth a warning, not a silent kiosk."""
+    from kiosk_broker import service as service_mod
+
+    (cfg.home / "pronunciation.json").write_text("{not json", encoding="utf-8")
+    service_mod._PRONUNCIATION.clear()
+
+    token = _token(conn)
+    status, _ = _post(conn, cfg, token, {"text": "อากาศดีครับ"})
+    assert status == 200
+
+
+def test_respelling_runs_before_the_length_cap(conn, cfg):
+    """A respelling makes the text longer, so cutting first would let a
+    respelled reply exceed the cap and be billed for it."""
+    cfg = _with_dictionary(cfg, [{"spelling": "อากาศดี", "say": "อากาด ดี ยาวขึ้นมาก", "why": "x"}])
+    token = _token(conn)
+    _post(conn, cfg, token, {"text": "อากาศดี " * 20})
+
+    spoken = REQUESTS[0]["body"]["input"]["text"]
+    assert len(spoken) <= cfg.tts_spoken_chars
+
+
+# ------------------------------------------------- upstream closing the socket
+
+def test_a_server_that_hangs_up_mid_request_is_an_error_not_a_crash():
+    """urlopen wraps connect-time failures into URLError but not read-time ones.
+
+    A server that accepts the request and then closes the socket surfaces as
+    http.client.RemoteDisconnected, which used to escape and take the process
+    down. Found when a stub rejected an unexpected field and closed the
+    connection.
+    """
+    import socket as _socket
+    import threading as _threading
+
+    listener = _socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+
+    def hang_up():
+        conn, _ = listener.accept()
+        conn.recv(4096)
+        conn.close()  # no response at all
+
+    thread = _threading.Thread(target=hang_up, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(tts.TtsError) as exc:
+            tts.synthesize(api_key="k", text="สวัสดี", language_code="th-TH", voice="Schedar",
+                           endpoint=f"http://127.0.0.1:{port}/v1/text:synthesize", timeout=5.0)
+        assert "ต่อเครือข่ายไม่ได้" in exc.value.user_message
+        assert "k" not in exc.value.detail.replace("Disconnected", "")
+    finally:
+        listener.close()
+        thread.join(timeout=5)

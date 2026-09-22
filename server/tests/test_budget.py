@@ -104,9 +104,14 @@ def test_the_worst_case_numbers_are_the_ones_the_rates_imply(cfg):
     pricing = Pricing.load(cfg.pricing_path)
     # 30 seconds of audio, billed by the second above the floor.
     assert cfg.worst_case_stt_usd == pytest.approx(30 / 3600 * 0.04)
-    # The longest reply the cap allows.
-    assert cfg.worst_case_tts_usd == pytest.approx(cfg.max_tts_chars * 0.00003)
-    assert pricing.tts_cost("chirp3-hd", cfg.max_tts_chars) == cfg.worst_case_tts_usd
+    # The longest reply that can be SPOKEN, not the longest body that is
+    # accepted: nothing over the spoken cap is ever sent to Google, so nothing
+    # over it can ever be billed.
+    assert cfg.worst_case_tts_usd == pytest.approx(cfg.tts_spoken_chars * 0.00003)
+    assert pricing.tts_cost("chirp3-hd", cfg.tts_spoken_chars) == cfg.worst_case_tts_usd
+    assert cfg.tts_spoken_chars < cfg.max_tts_chars, (
+        "the spoken cap is the cost control; the body cap is only a sanity bound"
+    )
 
 
 def test_spend_is_reported_per_service(conn, cfg):

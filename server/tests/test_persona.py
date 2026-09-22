@@ -53,6 +53,17 @@ def test_every_safety_rule_survived_the_shrinking():
     assert not missing, f"safety rules dropped from the prompt: {missing}"
 
 
+def test_it_asks_for_a_short_reply_with_a_number_in_it():
+    """Text-to-speech is billed per character and is most of the bill, so the
+    length instruction is the cheapest cost control there is: ~70 characters of
+    prompt against ~50 characters of speech saved on every answer."""
+    assert "60-80" in SYSTEM_PROMPT or "60–80" in SYSTEM_PROMPT
+    assert "สั้น" in SYSTEM_PROMPT
+    # And a rule for the case that would otherwise blow the budget: a question
+    # whose honest answer is long.
+    assert "สรุป" in SYSTEM_PROMPT
+
+
 def test_it_is_written_to_be_read_aloud():
     for rule in ["อ่านออกเสียง", "อิโมจิ", "ลิงก์", "บุลเล็ต"]:
         assert rule in SYSTEM_PROMPT

@@ -61,6 +61,21 @@ CREATE TABLE IF NOT EXISTS messages (
     content         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
+
+-- Money spent building the wake word training set. A SEPARATE table from
+-- `usage` on purpose: that one is the phone's $5 and `month_spend_usd` sums it,
+-- so putting training spend in it would quietly eat the household's questions.
+-- This has its own ceiling and its own report.
+CREATE TABLE IF NOT EXISTS training_usage (
+    id        INTEGER PRIMARY KEY,
+    ts        REAL NOT NULL,
+    job       TEXT NOT NULL,
+    service   TEXT NOT NULL,
+    quantity  REAL NOT NULL,
+    unit      TEXT NOT NULL,
+    cost_usd  REAL NOT NULL,
+    note      TEXT
+);
 """
 
 
@@ -173,6 +188,38 @@ def record_usage(conn: sqlite3.Connection, *, device_id: int, month: str, model:
         (device_id, time.time(), month, model, input_tokens, output_tokens,
          cache_write_tokens, cache_read_tokens, cost_usd, service, quantity, unit),
     )
+
+
+def record_training_usage(conn: sqlite3.Connection, *, job: str, service: str, quantity: float,
+                          unit: str, cost_usd: float, note: str | None = None) -> None:
+    """Spend on building a training set, kept out of the phone's budget."""
+    conn.execute(
+        "INSERT INTO training_usage (ts, job, service, quantity, unit, cost_usd, note)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (time.time(), job, service, quantity, unit, cost_usd, note),
+    )
+
+
+def training_spend_usd(conn: sqlite3.Connection, job: str | None = None) -> float:
+    """Total spent on training data, ever.
+
+    Cumulative rather than monthly: the ceiling Poom approved is for the job, not
+    for a calendar month, so a second run has to see what the first one spent.
+    """
+    where = " WHERE job = ?" if job else ""
+    row = conn.execute(
+        f"SELECT COALESCE(SUM(cost_usd), 0.0) AS s FROM training_usage{where}",
+        (job,) if job else (),
+    ).fetchone()
+    return float(row["s"])
+
+
+def training_usage_report(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT job, service, COUNT(*) AS runs, SUM(quantity) AS quantity, MAX(unit) AS unit,"
+        " SUM(cost_usd) AS cost, MAX(ts) AS last_ts"
+        " FROM training_usage GROUP BY job, service ORDER BY job, service").fetchall()
+    return [dict(r) for r in rows]
 
 
 def month_spend_by_service(conn: sqlite3.Connection, month: str) -> dict[str, dict]:

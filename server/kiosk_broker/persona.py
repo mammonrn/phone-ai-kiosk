@@ -13,13 +13,21 @@ tokens on a one-line question, which is most of what each answer costs. Every
 sentence added here is paid for on every request for the rest of the month.
 Prompt caching cannot help: Claude Haiku 4.5 will not cache a prefix under
 4,096 tokens, and it reports no error when it declines to.
+
+THE ONE EXCEPTION is the length instruction, which pays for itself several
+times over. Asking for 60–80 characters instead of one to three sentences costs
+about 70 characters of prompt — 67 input tokens, $0.000067 — and takes a spoken
+reply from roughly 120 characters to roughly 70, saving 50 characters of
+text-to-speech at $0.00003 each, $0.0015. Twenty-two times the outlay, on every
+single question.
 """
 
 SYSTEM_PROMPT = """\
 คุณคือ "สายฝน" ผู้ช่วยในบ้าน คำตอบจะถูกอ่านออกเสียง
 
 แทนตัวเองว่า "ผม" ลงท้าย "ครับ" ทุกครั้ง ห้ามใช้ "ค่ะ" "คะ" "ดิฉัน" "หนู"
-ตอบไทย 1-3 ประโยค ไม่ใช้หัวข้อ บุลเล็ต ตาราง อิโมจิ ลิงก์
+ตอบไทยสั้นๆ 1-2 ประโยค ยาวราว 60-80 ตัวอักษร ไม่ใช้หัวข้อ บุลเล็ต ตาราง อิโมจิ ลิงก์
+เรื่องที่ต้องเล่ายาว ให้สรุปสั้นก่อน แล้วถามว่าจะให้เล่าต่อไหม
 ตัวเลขเขียนแบบพูด เช่น "ยี่สิบห้าองศา"
 ถ้ากำกวม ถามกลับหนึ่งคำถาม
 
@@ -35,4 +43,4 @@ SYSTEM_PROMPT = """\
 # Guarded by a test. Thai runs close to one token per character on this model,
 # so this is the token budget in all but name: the prompt is the floor on what
 # every single answer costs.
-MAX_PROMPT_CHARS = 700
+MAX_PROMPT_CHARS = 780

@@ -53,8 +53,39 @@ Answers with the audio itself (`audio/ogg`, Chirp 3 HD, OGG_OPUS) rather than
 base64 inside JSON: a third fewer bytes and no decode step before the phone can
 play it. Errors are still JSON.
 
-The text is put through the register fix on the way in, so whatever is read
-aloud is in one voice even if it did not come from `/v1/chat`.
+Three things happen to the text on the way in, in this order, and the order
+matters:
+
+1. **Register fix** — whatever is read aloud is in one voice even if it did not
+   come from `/v1/chat`.
+2. **Pronunciation respelling** — words the voice reads wrongly are respelled
+   for the synthesiser only. The screen and the history keep the correct
+   spelling; production said `อากาศดี` and the voice read it as อา-กา-สะ-ดี,
+   taking the ศ as the start of a syllable instead of the final consonant of
+   อากาศ.
+3. **Length cap** — cut to `tts_spoken_chars` (100) at a sentence end where
+   possible. Last, because the two steps above both change the length and the
+   cap has to apply to what is finally sent.
+
+Response headers report all three: `X-Kiosk-Spoken-Chars`,
+`X-Kiosk-Truncated`, `X-Kiosk-Respellings`.
+
+### Why a respelling dictionary and not Google's own field
+
+Chirp 3 HD does accept a `customPronunciations` field taking IPA or X-SAMPA.
+It was checked, and not used:
+
+| | Respelling dictionary (used) | `customPronunciations` |
+|---|---|---|
+| Status | ours, works today | ✅ documented, but marked **Experimental** |
+| Thai support | n/a — it is just Thai text | ❓ the docs list locales for pace control and say nothing about this |
+| To add a word | edit `pronunciation.json` by ear | write correct IPA or X-SAMPA, tones included |
+| Billed characters | counts, slightly | 🔶 separate field, so probably not |
+| Precision | approximate | exact, if the phonemes are right |
+
+The dictionary wins on the thing that matters most here: somebody who can hear
+the mistake can fix it, without knowing a phonetic alphabet. If a word turns out
+to be beyond respelling, that field is the next thing to try.
 
 ### `POST /v1/chat`
 
@@ -165,9 +196,10 @@ text-to-speech all write to the same `usage` table, so the $5 cap means the
 total rather than three caps that each look healthy while the sum runs over.
 Each endpoint reserves only its *own* worst case against that shared total —
 reserving the sum would have `/v1/chat` refusing for headroom it will never use.
-`usage` prints the split, which on a kiosk is mostly text-to-speech: at roughly
-120 characters a reply it is about 77% of the bill, against 20% for the model
-and 2% for transcription.
+`usage` prints the split. Text-to-speech dominates it, which is why the reply
+length is the main cost lever: asking the prompt for 60–80 characters instead of
+one to three sentences took the average question from **$0.0047 to $0.0032**, a
+third off, and the $5 budget from about 35 questions a day to about **52**.
 
 **Rate limits are per endpoint.** One spoken question is three requests. A
 single shared counter would have the voice path eating the allowance

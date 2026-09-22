@@ -19,6 +19,7 @@ The phone never holds this key either.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -39,6 +40,17 @@ MALE_VOICES = (
     "Fenrir", "Iapetus", "Orus", "Puck", "Rasalgethi", "Sadachbia",
     "Sadaltager", "Schedar", "Umbriel", "Zubenelgenubi",
 )
+
+#: The other fourteen, from the same table. Not used for the kiosk's own voice —
+#: Poom chose ผม/ครับ — but a wake word model has to recognise the phrase from
+#: whoever says it, so the training set uses every voice there is.
+FEMALE_VOICES = (
+    "Achernar", "Aoede", "Autonoe", "Callirrhoe", "Despina", "Erinome",
+    "Gacrux", "Kore", "Laomedeia", "Leda", "Pulcherrima", "Sulafat",
+    "Vindemiatrix", "Zephyr",
+)
+
+ALL_VOICES = MALE_VOICES + FEMALE_VOICES
 
 
 class TtsError(RuntimeError):
@@ -73,7 +85,8 @@ CONTENT_TYPES = {
 
 def synthesize(*, api_key: str, text: str, language_code: str, voice: str,
                encoding: str = "OGG_OPUS", timeout: float = 20.0,
-               endpoint: str | None = None) -> Speech:
+               endpoint: str | None = None, speaking_rate: float | None = None,
+               sample_rate_hertz: int | None = None) -> Speech:
     """One synchronous synthesis.
 
     Plain text, not SSML: Chirp 3 HD accepts only three SSML tags, we need none
@@ -89,10 +102,19 @@ def synthesize(*, api_key: str, text: str, language_code: str, voice: str,
     # the tests stayed green because they patched `synthesize` itself.
     endpoint = endpoint or ENDPOINT
 
+    audio_config: dict = {"audioEncoding": encoding}
+    if speaking_rate is not None:
+        # Chirp 3 HD pace control, 0.25–2.0, available in every locale. Used only
+        # when building wake word training data: a phrase said quickly and said
+        # carefully are different sounds, and the model has to know both.
+        audio_config["speakingRate"] = speaking_rate
+    if sample_rate_hertz is not None:
+        audio_config["sampleRateHertz"] = sample_rate_hertz
+
     body = json.dumps({
         "input": {"text": text},
         "voice": {"languageCode": language_code, "name": voice_name(language_code, voice)},
-        "audioConfig": {"audioEncoding": encoding},
+        "audioConfig": audio_config,
     }).encode("utf-8")
 
     if len(body) > MAX_REQUEST_BYTES:
@@ -122,6 +144,13 @@ def synthesize(*, api_key: str, text: str, language_code: str, voice: str,
         raise TtsError("สร้างเสียงไม่สำเร็จครับ", detail) from exc
     except urllib.error.URLError as exc:
         raise TtsError("ต่อเครือข่ายไม่ได้ครับ", f"urlerror: {type(exc).__name__}") from exc
+    except (http.client.HTTPException, OSError) as exc:
+        # urlopen wraps failures that happen while CONNECTING into URLError, but
+        # not ones that happen while reading the response — a server that accepts
+        # the request and then closes the socket surfaces as RemoteDisconnected
+        # straight out of http.client. Found by a stub doing exactly that, where
+        # it crashed the process instead of answering 502.
+        raise TtsError("ต่อเครือข่ายไม่ได้ครับ", f"{type(exc).__name__}") from exc
     except (ValueError, TimeoutError) as exc:
         raise TtsError("สร้างเสียงไม่สำเร็จครับ", f"{type(exc).__name__}") from exc
 

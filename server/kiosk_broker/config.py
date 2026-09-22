@@ -52,10 +52,17 @@ class Config:
     #: Overridable so a test or a staging run can point somewhere else without
     #: reaching into the module.
     tts_endpoint: str = "https://texttospeech.googleapis.com/v1/text:synthesize"
-    #: Replies are one to three sentences. Thai is three bytes a character in
-    #: UTF-8, so 800 characters is ~2.4 kB, comfortably inside Google's 5,000
-    #: byte request limit, and caps what one answer can cost.
+    #: The outer sanity bound on a /v1/tts body: anything longer than this is
+    #: refused outright rather than shortened, because it is not a spoken reply.
+    #: Thai is three bytes a character in UTF-8, so 800 characters is ~2.4 kB,
+    #: comfortably inside Google's 5,000 byte request limit.
     max_tts_chars: int = 800
+
+    #: What is actually SPOKEN, and therefore what is actually billed. Anything
+    #: longer is cut before the request goes out — never sent and then counted
+    #: afterwards. The prompt asks for 60–80 characters; this is the ceiling for
+    #: when it does not get them, and it is what bounds the cost of one answer.
+    tts_spoken_chars: int = 100
 
     rate_per_minute: int = 10
     rate_per_day: int = 300
@@ -83,6 +90,12 @@ class Config:
         return self.home / "pricing.json"
 
     @property
+    def pronunciation_path(self) -> Path:
+        """Respellings for the synthesiser. Optional: a missing file is an empty
+        dictionary, not a failure to start."""
+        return self.home / "pronunciation.json"
+
+    @property
     def worst_case_stt_usd(self) -> float:
         """Most one transcription could cost, for the budget guard."""
         from .pricing import Pricing
@@ -94,7 +107,10 @@ class Config:
         """Most one synthesis could cost, for the budget guard."""
         from .pricing import Pricing
 
-        return Pricing.load(self.pricing_path).tts_cost(self.tts_voice_family, self.max_tts_chars)
+        # The spoken cap, not the body cap: nothing longer than this is ever
+        # sent to Google, so nothing longer can ever be billed.
+        return Pricing.load(self.pricing_path).tts_cost(self.tts_voice_family,
+                                                        self.tts_spoken_chars)
 
     @property
     def worst_case_request_usd(self) -> float:

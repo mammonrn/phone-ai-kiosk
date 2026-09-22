@@ -15,13 +15,32 @@ import sqlite3
 import time
 from typing import Any
 
-from . import actions, auth, limits, register, stt, store, tts
+from . import actions, auth, limits, pronounce, register, shorten, stt, store, tts
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
 from .pricing import Pricing
 
 log = logging.getLogger("kiosk_broker")
+
+#: Loaded once per process. A missing file is an empty dictionary rather than a
+#: refusal to start: respellings are an improvement to the voice, not a
+#: precondition for answering.
+_PRONUNCIATION: dict[str, pronounce.Dictionary] = {}
+
+
+def _pronunciation(cfg: Config) -> pronounce.Dictionary:
+    key = str(cfg.pronunciation_path)
+    if key not in _PRONUNCIATION:
+        try:
+            _PRONUNCIATION[key] = pronounce.Dictionary.load(cfg.pronunciation_path)
+        except FileNotFoundError:
+            _PRONUNCIATION[key] = pronounce.Dictionary.empty()
+        except (ValueError, OSError) as exc:
+            # A broken dictionary must not take the voice down with it.
+            log.warning("pronunciation dictionary unusable, ignoring it: %s", exc)
+            _PRONUNCIATION[key] = pronounce.Dictionary.empty()
+    return _PRONUNCIATION[key]
 
 CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -382,6 +401,18 @@ def handle_tts(
     # because /v1/chat already corrected its own reply.
     text, register_fixes = register.enforce(text)
 
+    # Respelled for the synthesiser only. The caller's text — which is what the
+    # screen shows and what the history keeps — is not touched by this; only the
+    # string that goes to Google is. Before the shortening, because a respelling
+    # changes the length and the cap has to apply to what is finally sent.
+    spoken_text, respellings = _pronunciation(cfg).apply(text)
+
+    # Shortened BEFORE the budget guard and before the request, so the cost that
+    # is reserved and the cost that is charged are both the cost of what is
+    # actually spoken. Sending a long reply and counting it afterwards would be
+    # a budget that finds out too late.
+    spoken_text, truncated = shorten.for_speech(spoken_text, cfg.tts_spoken_chars)
+
     refusal = _check_caps(conn, cfg, device_id=device_id, day=day, month=month, endpoint="tts",
                           worst_case_usd=cfg.worst_case_tts_usd, text_len=len(text))
     if refusal:
@@ -389,7 +420,7 @@ def handle_tts(
 
     started = time.monotonic()
     try:
-        speech = tts.synthesize(api_key=api_key, text=text, language_code=cfg.tts_language,
+        speech = tts.synthesize(api_key=api_key, text=spoken_text, language_code=cfg.tts_language,
                                 voice=cfg.tts_voice, encoding=cfg.tts_encoding,
                                 endpoint=cfg.tts_endpoint)
     except tts.TtsError as exc:
@@ -409,8 +440,20 @@ def handle_tts(
     store.record_request(conn, device_id=device_id, day=day, outcome="ok",
                          text_len=len(text), register_fixes=register_fixes, endpoint="tts")
 
-    log.info("tts ok device=%s voice=%s chars=%d bytes=%d cost=%.6f register_fixes=%d ms=%d",
-             label, cfg.tts_voice, speech.billed_characters, len(speech.audio), cost,
-             register_fixes, elapsed_ms)
+    log.info("tts ok device=%s voice=%s chars=%d truncated=%s respellings=%d bytes=%d"
+             " cost=%.6f register_fixes=%d ms=%d",
+             label, cfg.tts_voice, speech.billed_characters, truncated, respellings,
+             len(speech.audio), cost, register_fixes, elapsed_ms)
 
-    return 200, {"audio": speech.audio, "content_type": speech.content_type}
+    return 200, {
+        "audio": speech.audio,
+        "content_type": speech.content_type,
+        # Headers rather than a JSON envelope: the body is audio. The phone shows
+        # these on the status line so a clipped answer is visible rather than
+        # mysterious.
+        "headers": {
+            "X-Kiosk-Spoken-Chars": str(speech.billed_characters),
+            "X-Kiosk-Truncated": "1" if truncated else "0",
+            "X-Kiosk-Respellings": str(respellings),
+        },
+    }
