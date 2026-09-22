@@ -27,7 +27,7 @@ import importlib
 import importlib.util
 import inspect
 import json
-import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -54,7 +54,10 @@ def pip_commands(clone: Path) -> list[list[str]]:
             if not line.startswith("!pip install"):
                 continue
             line = line[1:].replace(CLONE_MARKER, str(clone))
-            found.append(line.split())
+            # shlex, not split(): the list carries a quoted pin ("scipy<1.17")
+            # and splitting on whitespace hands pip an argument with quote
+            # characters still in it.
+            found.append(shlex.split(line))
     if not found:
         raise SystemExit("no `!pip install` lines found in the notebook — did it change shape?")
     return found

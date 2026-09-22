@@ -69,11 +69,25 @@ tflite_runtime ในเครื่อง และ `AudioFeatures` ราย�
    `tensorflow-cpu==2.8.1` กับ `onnx-tf==1.10.0` (ปักรุ่นไว้ตั้งแต่ปี 2022
    ลง Python 3.12 ไม่ได้) ถ้าปล่อยไว้จะได้ traceback ยาวๆ **หลังเทรนเสร็จแล้ว**
    notebook จึงปิดฟังก์ชันนั้นทิ้งพร้อม assert ว่าแก้ติดจริง
-5. **CI ใหม่** [`wakeword-deps.yml`](.github/workflows/wakeword-deps.yml)
+5. **🔴 บั๊กที่สี่ — CI จับได้เอง ผมไม่ได้เจอจากการอ่านโค้ด**
+   `openwakeword.data` ใช้ `acoustics.generator.noise()` สร้างเสียงรบกวนตอน
+   augment แต่ `import acoustics` ทำ `from scipy.special import sph_harm`
+   ซึ่ง **scipy เอาออกใน 1.17** (ทดลองแล้ว: มีใน 1.16.2 หายใน 1.17.0)
+   และ `acoustics` ออกรุ่นสุดท้ายเมื่อ ก.ค. 2022 จึงไม่มีรุ่นใหม่มาแก้
+   ผลคือ `import openwakeword.train` พังทั้งก้อน ไม่ใช่แค่ acoustics เจ้าเดียว
+   แก้ด้วยการตรึง `scipy<1.17` ทดลองแล้วได้ 1.16.3 และ `noise()` ทำงานครบทั้ง
+   5 สีที่ openWakeWord สุ่มใช้ (white, pink, blue, brown, violet)
+   🔶 ยังไม่ทราบว่า Colab ติด scipy รุ่นไหนมาให้ ถ้าต่ำกว่า 1.17 อยู่แล้ว
+   บรรทัดนี้ก็ไม่ทำอะไร ถ้าสูงกว่า มันจะ downgrade ให้
+6. **CI ใหม่** [`wakeword-deps.yml`](.github/workflows/wakeword-deps.yml)
    ลงและ import จริงบน Ubuntu + Python 3.12 ทุกครั้งที่แตะโฟลเดอร์ `wakeword/`
    **อ่านคำสั่ง pip และรายชื่อโมดูลออกมาจากตัว notebook เอง** ไม่ได้ก๊อปรายการมาไว้
    ซ้ำ — รายการที่ก๊อปมาคือรายการที่เขียวทั้งที่ notebook พังแล้ว
    ไม่โหลด dataset ไม่เทรนจริง และไม่รันบน VPS เพราะ RAM ไม่พอ
+
+   **CI คุ้มค่าตั้งแต่รอบแรก**: รอบแรกที่รันมันแดง และสิ่งที่มันจับได้คือข้อ 5
+   ข้างบน ซึ่งผมอ่าน source แล้วมองไม่เห็น เพราะมันไม่ได้อยู่ในโค้ดของ
+   openWakeWord แต่อยู่ใน dependency ของ dependency อีกทีหนึ่ง
 
 ### คำเตือน protobuf — ✅ ตรวจแล้วว่าไม่กระทบ
 
