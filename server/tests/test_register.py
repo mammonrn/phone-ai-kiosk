@@ -7,6 +7,8 @@ not a safe instruction — these tests are what says so.
 
 import pytest
 
+from kiosk_broker import register
+
 from kiosk_broker.register import enforce
 
 
@@ -112,3 +114,53 @@ def test_a_particle_before_punctuation_counts():
         out, fixes = enforce(before)
         assert out == after
         assert fixes == 1
+
+
+# ---------------------------------------------------- the formal register
+
+def test_thaan_is_replaced_where_it_is_the_word():
+    for before, after in [
+        ("สวัสดีท่าน", "สวัสดีพี่"),
+        ("ท่าน อยากไปไหนครับ", "พี่ อยากไปไหนครับ"),
+        ("ขอบคุณท่าน", "ขอบคุณพี่"),
+    ]:
+        fixed, fixes = register.enforce(before)
+        assert fixed == after
+        assert fixes == 1
+
+
+def test_thaan_is_left_alone_inside_ordinary_words():
+    """THE TRAP. Thai has no spaces and "ท่าน" is a PREFIX of everyday words:
+    "ท่านั้น" is "that one" and "ท่านี้" is "this one". A plain replace turns
+    "ท่านั้น" into "พี่ั้น", which is not a word — and it would be read aloud."""
+    for text in ("ท่านั้นสวยครับ", "ท่านี้ดีกว่า", "ท่านั้นแหละ", "ท่านครับ"):
+        fixed, fixes = register.enforce(text)
+        assert fixed == text, f"{text!r} was corrupted into {fixed!r}"
+        assert fixes == 0
+
+
+def test_the_too_formal_words_are_counted_and_never_rewritten():
+    """Taking them out means rewriting the sentence, and half a rewritten Thai
+    sentence read out loud is worse than a slightly formal one."""
+    for text in ("กรุณารอสักครู่", "ผมจะดำเนินการให้"):
+        fixed, _ = register.enforce(text)
+        assert fixed == text
+        assert register.formality_hits(text) == 1
+
+
+def test_the_everyday_word_for_studying_is_not_flagged():
+    """"เรียน" as a salutation is forbidden; "เรียน" meaning "to study" is an
+    ordinary word spelled identically. A checker that fires on the second is
+    worse than no checker."""
+    assert register.formality_hits("ผมเรียนมาแล้วครับ") == 0
+    assert register.formality_hits("พี่เรียนจบหรือยังครับ") == 0
+    # Only the letter-opening shape at the very start counts.
+    assert register.formality_hits("เรียน คุณลูกค้า") == 1
+
+
+def test_a_clean_reply_needs_no_fixing_at_all():
+    for text in ("ตอนนี้ห้าโมงครึ่งครับพี่", "ได้เลยพี่ ผมเปิดทางไปให้แล้วครับ"):
+        fixed, fixes = register.enforce(text)
+        assert fixed == text
+        assert fixes == 0
+        assert register.formality_hits(text) == 0

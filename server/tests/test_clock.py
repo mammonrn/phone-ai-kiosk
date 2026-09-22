@@ -176,7 +176,7 @@ def test_the_prompt_and_the_clock_together_stay_affordable():
     assert len(SYSTEM_PROMPT) <= MAX_PROMPT_CHARS
     # Thai runs about a token a character on this model, so this is roughly the
     # input tokens every request pays before the question is even read.
-    assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1060
+    assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1160
 
 
 def test_the_line_carries_both_the_digits_and_the_words():

@@ -214,6 +214,10 @@ def handle_chat(
     # After the action marker is stripped, before anything is stored or spoken:
     # the reply goes out in one voice whether or not the prompt managed it.
     reply, register_fixes = register.enforce(reply)
+    # Counted, not corrected: taking "กรุณา" or "ดำเนินการ" out of a Thai
+    # sentence means rewriting it, and half a rewritten sentence read aloud is
+    # worse than a slightly formal one. See VOICE.md.
+    formality = register.formality_hits(reply)
     if raw_action is not None and action is None:
         # Worth a warning, not an info line. The prompt describes exactly one
         # action; anything else reaching here is the model being talked into
@@ -240,9 +244,10 @@ def handle_chat(
 
     log.info(
         "ok device=%s conv=%s chars_in=%d chars_out=%d in_tok=%d out_tok=%d cost=%.6f"
-        " register_fixes=%d ms=%d%s",
+        " register_fixes=%d formality=%d ms=%d%s",
         label, conversation_id, len(text), len(reply),
-        answer.usage.input_tokens, answer.usage.output_tokens, cost, register_fixes, elapsed_ms,
+        answer.usage.input_tokens, answer.usage.output_tokens, cost, register_fixes,
+        formality, elapsed_ms,
         f" text={text!r}" if cfg.log_prompts else "",
     )
 

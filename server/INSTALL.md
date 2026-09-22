@@ -812,59 +812,82 @@ sudo systemctl restart kiosk-broker
 
 ---
 
-## deploy เฟส 4 (เปิดใช้ action แผนที่)
+## 🔴 deploy — ต้องรัน install.sh เสมอ (ผมเคยบอกผิด)
 
-รอบนี้แก้ **`actions.py`, `persona.py`, `service.py`** — ไม่ได้แตะ nginx, endpoint,
-คีย์ หรือฐานข้อมูล **จึงไม่ต้องรัน `install.sh` และไม่ต้อง reload nginx**
-
-```bash
-cd ~/phone-ai-kiosk && git pull && sudo systemctl restart kiosk-broker
-```
-
-ยืนยันว่าขึ้นแล้ว:
-```bash
-systemctl is-active kiosk-broker && curl -s -o /dev/null -w '%{http_code}\n' https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
-```
-
-ยืนยันว่า action เปิดใช้งานจริง และเปิดแค่ตัวเดียว:
-```bash
-sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -c "from kiosk_broker import actions; print(sorted(actions.ENABLED_ACTION_TYPES))"
-```
-ต้องได้ `['open_maps']` — ถ้าได้อย่างอื่นหรือได้ว่าง อย่าทดสอบต่อ
-
-ดูว่ามีการปฏิเสธ action แปลกๆ ไหมหลังใช้งานไปสักพัก:
-```bash
-sudo journalctl -u kiosk-broker --since '1 hour ago' | grep -E "dropped action|action device"
-```
-`action device=... type=open_maps destination_chars=N` คือครั้งที่อนุญาต —
-**บันทึกแค่จำนวนตัวอักษร ไม่ได้บันทึกว่าไปไหน**
-
-🔴 **ถ้าจะปิด action ทั้งหมดฉุกเฉิน** ไม่ต้องแก้โค้ด — แก้ `ENABLED_ACTION_TYPES`
-ให้เป็น `frozenset()` แล้ว restart ทุก action จะกลายเป็น null ทันที
-(มีเทสต์ยืนยันว่าสวิตช์นี้ทำงานทั้งสองทิศ)
-
-## deploy รอบก่อน (เปลี่ยนชื่อเป็นจาร์วิส)
-
-รอบนี้แก้เฉพาะ **persona ของ broker** (ชื่อผู้ช่วยในคำสั่งระบบ) ไม่ได้แตะ
-endpoint, nginx, คีย์ หรือฐานข้อมูล จึงไม่ต้อง reload nginx:
+**broker ไม่ได้รันโค้ดจาก git checkout** `install.sh` บรรทัด 85-86 ทำ:
 
 ```bash
-cd ~/phone-ai-kiosk && git pull && sudo systemctl restart kiosk-broker
+rm -rf "$APP_DIR/kiosk_broker"
+cp -r "$REPO_SERVER_DIR/kiosk_broker" "$APP_DIR/"
 ```
 
-ยืนยันว่าขึ้นแล้วและชื่อเปลี่ยนจริง:
+และ systemd unit รันด้วย `WorkingDirectory=/home/kioskbroker/app` กับ
+`PYTHONPATH=/home/kioskbroker/app`
+
+**แปลว่า broker รันสำเนาที่อยู่ใน `/home/kioskbroker/app/kiosk_broker`**
+`git pull` อัปเดตแค่ repo ส่วนสำเนาไม่ขยับ `systemctl restart` เฉยๆ จึง
+**รีสตาร์ตโค้ดเก่า**
+
+🔴 **ผมเคยเขียนในรายงานว่า "ไม่ต้องรัน install.sh" ทั้งรอบเปลี่ยนชื่อเป็นจาร์วิส
+และรอบเฟส 4 — นั่นผิด** ถ้าตอนนั้นรันแค่ `git pull && restart` แปลว่าโค้ดใหม่
+ยังไม่เคยขึ้นเครื่องเลย
+
+### คำสั่ง deploy ที่ถูกต้อง ใช้ทุกครั้งที่แก้ `server/`
+
+```bash
+cd ~/phone-ai-kiosk && git pull && sudo bash server/install/install.sh && sudo systemctl restart kiosk-broker
+```
+
+`install.sh` เป็น idempotent — รันซ้ำได้ ไม่ทำลายคีย์ ไม่ทำลาย config
+และจะ `nginx -t` ก่อน reload (ไม่ผ่านจะหยุดและไม่ reload)
+
+### ตรวจว่าโค้ดที่รันอยู่ใหม่จริง
+
+```bash
+sudo -u kioskbroker diff -r /home/kioskbroker/app/kiosk_broker ~/phone-ai-kiosk/server/kiosk_broker && echo "ตรงกัน"
+```
+
+ไม่มี output + `ตรงกัน` = สำเนาตรงกับ repo แล้ว
+
+ตรวจสิ่งที่รอบนี้เปลี่ยน:
 
 ```bash
 systemctl is-active kiosk-broker && curl -s -o /dev/null -w '%{http_code}\n' https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
 ```
 
 ```bash
-sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -c "from kiosk_broker.persona import SYSTEM_PROMPT; print(SYSTEM_PROMPT.splitlines()[0])"
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -c "
+from kiosk_broker import actions
+from kiosk_broker.persona import SYSTEM_PROMPT
+print('actions :', sorted(actions.ENABLED_ACTION_TYPES))
+print('address :', [l for l in SYSTEM_PROMPT.splitlines() if 'แทนตัวเองว่า' in l][0])
+print('chars   :', len(SYSTEM_PROMPT))
+"
 ```
-ต้องได้บรรทัดที่ขึ้นต้นด้วย `คุณคือ "จาร์วิส"`
 
-**ไม่ต้องแตะ Hermes** ผู้ช่วยใน Telegram ยังชื่อสายฝนเหมือนเดิม คนละ service
-คนละฐานข้อมูล งานนี้ไม่ได้ restart อะไรของ Hermes เลย
+ต้องได้:
+```
+actions : ['open_maps']
+address : แทนตัวเองว่า "ผม" เรียกผู้ใช้ว่า "พี่" ลงท้าย "ครับ"
+chars   : 1057
+```
+
+**ถ้า `address` ยังไม่มีคำว่า "พี่" แปลว่า install.sh ยังไม่ได้รัน**
+
+ดู log ว่าโทนเอาอยู่ไหมหลังใช้งานไปสักพัก:
+
+```bash
+sudo journalctl -u kiosk-broker --since '1 hour ago' | grep -oE 'register_fixes=[0-9]+ formality=[0-9]+' | sort | uniq -c
+```
+
+`register_fixes` คือจำนวนครั้งที่โค้ดต้องแก้คำลงท้าย/คำเรียก
+`formality` คือจำนวนคำราชการที่เจอ (นับอย่างเดียว ไม่แก้)
+**ทั้งคู่เป็นตัวเลข ไม่มีข้อความ** — ถ้าเป็น 0 ต่อเนื่องแปลว่า prompt เอาอยู่เอง
+
+## deploy รอบก่อนๆ
+
+รอบเปลี่ยนชื่อเป็นจาร์วิส และรอบเฟส 4 เคยเขียนไว้ว่า "ไม่ต้องรัน install.sh"
+**ซึ่งผิด** ดูหัวข้อข้างบน — ใช้คำสั่งเดียวกันทุกครั้ง
 
 ## อัปเดตโค้ดรอบต่อไป
 

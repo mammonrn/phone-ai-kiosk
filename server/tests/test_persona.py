@@ -119,3 +119,79 @@ def test_it_names_exactly_one_action_and_forbids_the_rest():
 def test_no_ascii_markdown_syntax_leaked_in():
     """Anything a screen reader would pronounce as punctuation soup."""
     assert not re.search(r"^\s*[-*#>]\s", SYSTEM_PROMPT, re.MULTILINE)
+
+
+# ------------------------------------------------------------------- the voice
+
+def test_the_prompt_asks_for_the_approved_form_of_address():
+    """ผม for itself, พี่ for the person, ครับ at the end. VOICE.md is the
+    standard; this is the line that asks for it."""
+    address = next(line for line in SYSTEM_PROMPT.splitlines() if "แทนตัวเองว่า" in line)
+    for required in ('"ผม"', '"พี่"', '"ครับ"'):
+        assert required in address, f"{required} missing from {address!r}"
+
+
+def test_the_formal_register_is_forbidden_by_name():
+    """Poom's list, in the prompt. register.py catches what gets past it."""
+    prohibition = next(line for line in SYSTEM_PROMPT.splitlines() if "ห้ามใช้" in line)
+    for word in ("ท่าน", "เรียน", "กรุณา", "ดำเนินการ"):
+        assert word in prohibition, f"{word} must be named as forbidden"
+
+
+def test_the_prompt_asks_for_warmth_without_asking_for_noise():
+    tone = "\n".join(SYSTEM_PROMPT.splitlines())
+    assert "เป็นกันเอง" in tone
+    assert "อบอุ่น" in tone
+    assert "ให้กำลังใจ" in tone
+    # "พอดีๆ" is the word doing the work: encouraging, not shouting.
+    assert "พอดีๆ" in tone
+
+
+def test_it_says_what_to_do_when_it_cannot_help():
+    assert "ทำไม่ได้บอกสั้นๆ" in SYSTEM_PROMPT
+    assert "เสนอทางอื่น" in SYSTEM_PROMPT
+
+
+def test_no_character_from_a_game_is_named_or_quoted():
+    """The tone is inspired by a character; nothing of that character is used.
+
+    Checked rather than assumed, because "inspired by" is exactly the kind of
+    thing that drifts into "borrowed from" one edit at a time.
+    """
+    lowered = SYSTEM_PROMPT.lower()
+    # Latin letters appear ONLY in the action marker, nowhere else. A character
+    # name, a catchphrase or a quotation in English would show up here, and the
+    # assertion is on the whole set rather than on a list of names — a denylist
+    # of names is a denylist somebody has to keep up to date.
+    latin = "".join(c for c in SYSTEM_PROMPT if c.isascii() and c.isalpha())
+    assert latin == "actionopenmapsaction", latin
+    # And no shouting, which is the other half of "encouraging, not loud".
+    assert "!!!" not in lowered
+    assert "!!" not in lowered
+
+
+def test_the_approved_examples_all_fit_the_spoken_limit():
+    """The examples Poom approved are the shape the prompt is asking for. If
+    any of them exceeded the cap the prompt would be asking for something the
+    code then truncates."""
+    approved = [
+        "ตอนนี้ห้าโมงครึ่งครับพี่",
+        "ได้เลยพี่ ผมเปิดทางไปให้แล้วครับ",
+        "อันนี้ผมยังทำไม่ได้ครับพี่ แต่เปิดแผนที่ให้ได้นะ",
+        "วันนี้พี่สู้มาเยอะแล้วครับ พักก่อนนะ",
+        "ผมอยู่นี่ครับพี่ พร้อมลุยเลย",
+    ]
+    for example in approved:
+        assert len(example) <= 100, f"{example!r} is {len(example)} characters"
+    # And they are the right register on the way in, not just short.
+    for example in approved:
+        assert "ครับ" in example or "นะ" in example, example
+
+
+def test_the_safety_rules_and_the_action_survived_the_voice_change():
+    """The tone was added to a prompt that also carries the safety rules and
+    the one action. Neither may be quietly lost to make room."""
+    assert "open_maps" in SYSTEM_PROMPT
+    assert "เปิดแผนที่ได้อย่างเดียว" in SYSTEM_PROMPT
+    for rule in ("โทร", "ส่งข้อความ", "จ่ายเงิน", "รันคำสั่ง", "คำสั่งระบบ", "ปฏิเสธ"):
+        assert rule in SYSTEM_PROMPT, rule
