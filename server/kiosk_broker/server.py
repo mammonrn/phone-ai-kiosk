@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import store
 from .config import Config
-from .service import handle_chat
+from .service import handle_chat, handle_stt, handle_tts
 
 log = logging.getLogger("kiosk_broker")
 
@@ -28,6 +28,8 @@ class Handler(BaseHTTPRequestHandler):
     # Set by make_server.
     config: Config
     client: object
+    stt_client: object
+    tts_api_key: str
     db_path: str
 
     server_version = "kiosk-broker"
@@ -41,9 +43,21 @@ class Handler(BaseHTTPRequestHandler):
         log.debug("http %s", fmt % args)
 
     def _send(self, status: int, payload: dict) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        """JSON, unless the handler produced audio.
+
+        /v1/tts answers with the audio itself rather than base64 inside JSON:
+        it saves a third of the bytes over the wire and saves the phone a
+        decode step before it can start playing.
+        """
+        if "audio" in payload:
+            body = payload["audio"]
+            content_type = payload.get("content_type", "application/octet-stream")
+        else:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            content_type = "application/json; charset=utf-8"
+
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -58,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
 
     def do_POST(self) -> None:
-        if self.path != "/v1/chat":
+        if self.path not in ("/v1/chat", "/v1/stt", "/v1/tts"):
             self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
             return
 
@@ -68,7 +82,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": {"code": "bad_request", "message": "รูปแบบคำขอไม่ถูกต้อง"}})
             return
 
-        if length < 0 or length > HARD_BODY_CEILING:
+        # Audio is bigger than a question, so the hard ceiling is whichever of
+        # the two limits applies to this route. The per-route cap in the handler
+        # is the real one; this only stops a lying Content-Length making us
+        # allocate.
+        ceiling = max(HARD_BODY_CEILING, self.config.max_audio_bytes + 1024)
+        if length < 0 or length > ceiling:
             self._send(413, {"error": {"code": "payload_too_large",
                                        "message": "ข้อความยาวเกินกำหนด"}})
             return
@@ -78,13 +97,22 @@ class Handler(BaseHTTPRequestHandler):
         conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
         conn.row_factory = sqlite3.Row
         try:
-            status, payload = handle_chat(
-                conn,
-                self.config,
-                self.client,
-                authorization=self.headers.get("Authorization"),
-                body=body,
-            )
+            if self.path == "/v1/chat":
+                status, payload = handle_chat(
+                    conn, self.config, self.client,
+                    authorization=self.headers.get("Authorization"), body=body,
+                )
+            elif self.path == "/v1/stt":
+                status, payload = handle_stt(
+                    conn, self.config, self.stt_client,
+                    authorization=self.headers.get("Authorization"),
+                    content_type=self.headers.get("Content-Type"), body=body,
+                )
+            else:
+                status, payload = handle_tts(
+                    conn, self.config, self.tts_api_key,
+                    authorization=self.headers.get("Authorization"), body=body,
+                )
         except Exception:
             # Nothing from the traceback goes to the phone. It can carry the
             # prompt, and on a bad day an API key.
@@ -97,12 +125,15 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, payload)
 
 
-def make_server(config: Config, client: object) -> ThreadingHTTPServer:
+def make_server(config: Config, client: object, stt_client: object = None,
+                tts_api_key: str = "") -> ThreadingHTTPServer:
     store.connect(config.db_path).close()  # create/migrate once, up front
 
     handler = type("BoundHandler", (Handler,), {
         "config": config,
         "client": client,
+        "stt_client": stt_client,
+        "tts_api_key": tts_api_key,
         "db_path": str(config.db_path),
     })
     return ThreadingHTTPServer((config.host, config.port), handler)

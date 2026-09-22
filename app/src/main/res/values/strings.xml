@@ -8,10 +8,13 @@
     <string name="on">on</string>
     <string name="off">off</string>
 
-    <string name="status_line">owner=%1$s  lock=%2$s  awake=%3$s  taps=%4$d/%5$d</string>
+    <string name="status_line">owner=%1$s  lock=%2$s  awake=%3$s  token=%4$s  taps=%5$d/%6$d</string>
     <string name="lock_failed">Could not enter lock task mode: %1$s</string>
     <string name="no_other_launcher">No other home app on this device — nothing to hand the screen to.</string>
 
     <string name="device_admin_label">Phone AI Kiosk</string>
     <string name="device_admin_description">Keeps this device on the kiosk screen.</string>
+
+    <string name="voice_channel">Kiosk microphone</string>
+    <string name="voice_notification">สายฝนกำลังฟังอยู่</string>
 </resources>

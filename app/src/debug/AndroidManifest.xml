@@ -17,6 +17,26 @@
 
     <application
         android:testOnly="true"
-        tools:replace="android:testOnly" />
+        tools:replace="android:testOnly">
+
+        <!-- Debug only, by living in this source set: a receiver that can make
+             the phone start recording is absent from a release build rather
+             than disabled in one.
+
+             Exported because `adb shell am broadcast` has to reach it. On a
+             locked kiosk with no other apps installed that is the shell and
+             nothing else; it is still the reason this is not in the release
+             manifest. -->
+        <receiver
+            android:name="com.mammonrn.phoneaikiosk.TestTriggerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_LISTEN" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_STATS" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_RESET_STATS" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_BROKER" />
+            </intent-filter>
+        </receiver>
+    </application>
 
 </manifest>

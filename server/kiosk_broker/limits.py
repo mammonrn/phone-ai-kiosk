@@ -30,7 +30,7 @@ class Decision:
 
 
 def check_rate(conn: sqlite3.Connection, *, device_id: int, per_minute: int, per_day: int,
-               day: str, now: float | None = None) -> Decision:
+               day: str, now: float | None = None, endpoint: str = "chat") -> Decision:
     """Counts only accepted requests.
 
     A refusal that counted towards the limit would let a phone with a wrong
@@ -39,17 +39,22 @@ def check_rate(conn: sqlite3.Connection, *, device_id: int, per_minute: int, per
     """
     now = now or time.time()
 
+    # Counted per endpoint: one spoken question is an /v1/stt, a /v1/chat and a
+    # /v1/tts, and a single shared counter would let the voice path exhaust the
+    # allowance that /v1/chat was given on its own.
     minute = conn.execute(
-        "SELECT COUNT(*) AS c FROM requests WHERE device_id = ? AND outcome = 'ok' AND ts >= ?",
-        (device_id, now - 60),
+        "SELECT COUNT(*) AS c FROM requests WHERE device_id = ? AND outcome = 'ok'"
+        " AND COALESCE(endpoint, 'chat') = ? AND ts >= ?",
+        (device_id, endpoint, now - 60),
     ).fetchone()["c"]
     if minute >= per_minute:
         return Decision(False, "rate_limited",
                         "ถามเร็วเกินไปครับ รอสักครู่แล้วลองอีกครั้ง")
 
     today = conn.execute(
-        "SELECT COUNT(*) AS c FROM requests WHERE device_id = ? AND outcome = 'ok' AND day = ?",
-        (device_id, day),
+        "SELECT COUNT(*) AS c FROM requests WHERE device_id = ? AND outcome = 'ok'"
+        " AND COALESCE(endpoint, 'chat') = ? AND day = ?",
+        (device_id, endpoint, day),
     ).fetchone()["c"]
     if today >= per_day:
         return Decision(False, "rate_limited_daily",

@@ -70,6 +70,21 @@ CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
 # running, so a migration that could fail on real data is not an option.
 MIGRATIONS = [
     ("requests", "register_fixes", "INTEGER"),
+    # Three services now share one budget, so the ledger has to say which one
+    # each row came from. Defaulted rather than backfilled: every row that
+    # existed before this column was a chat call.
+    ("usage", "service", "TEXT"),
+    # Tokens do not describe seconds of audio or characters of speech, so the
+    # quantity that was actually billed gets its own pair of columns rather
+    # than being crammed into input_tokens.
+    ("usage", "quantity", "REAL"),
+    ("usage", "unit", "TEXT"),
+    # Which endpoint the request hit. Rate limits are counted per endpoint —
+    # one spoken question is three requests, and a shared counter would have
+    # /v1/stt and /v1/tts eating the allowance /v1/chat was given. It is also
+    # what makes "no audio left this room before the wake word" checkable:
+    # count /v1/stt rows over a quiet hour and the answer is a number.
+    ("requests", "endpoint", "TEXT"),
 ]
 
 
@@ -101,14 +116,27 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 def record_request(conn: sqlite3.Connection, *, device_id: int | None, day: str,
-                   outcome: str, text_len: int | None, register_fixes: int | None = None) -> None:
+                   outcome: str, text_len: int | None, register_fixes: int | None = None,
+                   endpoint: str = "chat") -> None:
     """One row per request. `register_fixes` counts the politeness particles the
     reply had to have corrected — a number, never the text."""
     conn.execute(
-        "INSERT INTO requests (device_id, ts, day, outcome, text_len, register_fixes)"
-        " VALUES (?,?,?,?,?,?)",
-        (device_id, time.time(), day, outcome, text_len, register_fixes),
+        "INSERT INTO requests (device_id, ts, day, outcome, text_len, register_fixes, endpoint)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (device_id, time.time(), day, outcome, text_len, register_fixes, endpoint),
     )
+
+
+def endpoint_counts(conn: sqlite3.Connection, *, since: float) -> dict[str, int]:
+    """Requests per endpoint since a timestamp.
+
+    Exists for one question in particular: did the phone send any audio while
+    nobody was talking to it? `{"stt": 0}` over a quiet hour is the evidence.
+    """
+    rows = conn.execute(
+        "SELECT COALESCE(endpoint, 'chat') AS endpoint, COUNT(*) AS n"
+        " FROM requests WHERE ts >= ? GROUP BY COALESCE(endpoint, 'chat')", (since,)).fetchall()
+    return {r["endpoint"]: r["n"] for r in rows}
 
 
 def register_fix_stats(conn: sqlite3.Connection, day: str | None = None) -> dict:
@@ -128,14 +156,39 @@ def register_fix_stats(conn: sqlite3.Connection, day: str | None = None) -> dict
 
 
 def record_usage(conn: sqlite3.Connection, *, device_id: int, month: str, model: str,
-                 input_tokens: int, output_tokens: int, cache_write_tokens: int,
-                 cache_read_tokens: int, cost_usd: float) -> None:
+                 input_tokens: int = 0, output_tokens: int = 0, cache_write_tokens: int = 0,
+                 cache_read_tokens: int = 0, cost_usd: float = 0.0,
+                 service: str = "chat", quantity: float | None = None,
+                 unit: str | None = None) -> None:
+    """One row per billable call, whichever service it was.
+
+    Every row lands in the same table on purpose: `month_spend_usd` sums the
+    lot, which is what makes one $5 cap cover all three services instead of
+    three caps that each look fine while the total runs over.
+    """
     conn.execute(
         "INSERT INTO usage (device_id, ts, month, model, input_tokens, output_tokens,"
-        " cache_write_tokens, cache_read_tokens, cost_usd) VALUES (?,?,?,?,?,?,?,?,?)",
+        " cache_write_tokens, cache_read_tokens, cost_usd, service, quantity, unit)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (device_id, time.time(), month, model, input_tokens, output_tokens,
-         cache_write_tokens, cache_read_tokens, cost_usd),
+         cache_write_tokens, cache_read_tokens, cost_usd, service, quantity, unit),
     )
+
+
+def month_spend_by_service(conn: sqlite3.Connection, month: str) -> dict[str, dict]:
+    """The month's spend split by service, for `usage` to print.
+
+    COALESCE on service, not a backfill: rows written before the column existed
+    are chat calls by definition, and rewriting history to say so would be a
+    migration that can lose data for a line of output.
+    """
+    rows = conn.execute(
+        "SELECT COALESCE(service, 'chat') AS service, COUNT(*) AS calls,"
+        " COALESCE(SUM(cost_usd), 0.0) AS cost, COALESCE(SUM(quantity), 0.0) AS quantity,"
+        " MAX(unit) AS unit"
+        " FROM usage WHERE month = ? GROUP BY COALESCE(service, 'chat')", (month,)).fetchall()
+    return {r["service"]: {"calls": r["calls"], "cost": r["cost"],
+                           "quantity": r["quantity"], "unit": r["unit"]} for r in rows}
 
 
 def month_spend_usd(conn: sqlite3.Connection, month: str) -> float:

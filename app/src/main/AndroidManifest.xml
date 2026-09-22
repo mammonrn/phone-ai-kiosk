@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Talking to the broker, and nothing else. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The microphone, and the foreground service type that Android requires
+         for holding it continuously. RECORD_AUDIO is granted by the Device
+         Owner without a dialog — see MainActivity.grantMicrophoneToSelf — which
+         matters because a modal permission prompt inside lock task mode is a
+         modal nobody in the house can get past. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
@@ -26,6 +39,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Holds the microphone for as long as the kiosk is up.
+             NOT started from BOOT_COMPLETED: Android 15 forbids launching a
+             microphone foreground service from the background or from a boot
+             receiver. MainActivity starts it, which is legal because this app is
+             the HOME activity and the system puts it on screen at boot. -->
+        <service
+            android:name=".voice.VoiceService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- The admin `dpm set-device-owner` is pointed at.
              BIND_DEVICE_ADMIN must be on the receiver, and it must be exported,

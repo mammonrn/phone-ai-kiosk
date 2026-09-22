@@ -1,14 +1,38 @@
 {
-  "_source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "_checked_at": "2026-09-22",
-  "_note": "USD per 1,000,000 tokens. Copied from the official pricing table, not computed from multipliers. Re-check the source before changing a number, and update _checked_at when you do.",
+  "_note": "Every rate here is copied from an official page, never computed and never estimated. Each section carries its own source URL and the date it was checked. Re-check the source before changing a number, and update _checked_at when you do. The last rate that was inlined in code on this machine came out 18x wrong because the model had changed underneath it.",
+
   "models": {
+    "_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "_checked_at": "2026-09-22",
+    "_unit": "USD per 1,000,000 tokens",
     "claude-haiku-4-5": {
       "input": 1.00,
       "output": 5.00,
       "cache_write_5m": 1.25,
       "cache_write_1h": 2.00,
       "cache_read": 0.10
+    }
+  },
+
+  "stt": {
+    "_source": "https://console.groq.com/docs/speech-to-text",
+    "_checked_at": "2026-09-22",
+    "_unit": "USD per hour of audio",
+    "_note": "Quoted: $0.04 per hour, and \"Minimum billed length: 10 seconds. If you submit a request less than this, you will still be billed for 10 seconds.\" Duration is taken from Groq's own verbose_json response, not measured locally — they bill on what they report.",
+    "whisper-large-v3-turbo": {
+      "usd_per_hour": 0.04,
+      "min_billed_seconds": 10
+    }
+  },
+
+  "tts": {
+    "_source": "https://cloud.google.com/text-to-speech/pricing",
+    "_checked_at": "2026-09-22",
+    "_sku": "F977-2280-6F1B",
+    "_unit": "USD per character",
+    "_note": "Quoted for Chirp 3: HD voices: \"0 to 1 million characters | US$0.00003 per character (US$30 per 1 million characters)\". The same page states the billed count includes spaces and newlines, and all SSML tags except <mark>. NOTE: the page's free-allowance wording names WaveNet (1M) and Standard (4M) only; it does NOT name Chirp 3 HD, and the Chirp 3 HD row bills from character 0. No free allowance is assumed here — assuming one would silently under-count the budget.",
+    "chirp3-hd": {
+      "usd_per_character": 0.00003
     }
   }
 }

@@ -19,6 +19,9 @@ import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import com.mammonrn.phoneaikiosk.voice.TokenStore
+import com.mammonrn.phoneaikiosk.voice.VoiceService
+import com.mammonrn.phoneaikiosk.voice.VoiceState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,6 +37,8 @@ class MainActivity : Activity() {
     private lateinit var clock: TextView
     private lateinit var date: TextView
     private lateinit var status: TextView
+    private lateinit var voiceStatus: TextView
+    private lateinit var transcript: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val tapGate = TapGate()
@@ -62,6 +67,8 @@ class MainActivity : Activity() {
             clock.text = clockFormat.format(now)
             date.text = dateFormat.format(now)
             status.text = statusLine()
+            voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine()
+            transcript.text = transcriptLine()
             handler.postDelayed(this, 1_000L)
         }
     }
@@ -79,6 +86,8 @@ class MainActivity : Activity() {
         clock = findViewById(R.id.clock)
         date = findViewById(R.id.date)
         status = findViewById(R.id.status)
+        voiceStatus = findViewById(R.id.voice_status)
+        transcript = findViewById(R.id.transcript)
 
         findViewById<android.view.View>(R.id.exit_corner).setOnClickListener {
             onCornerTap()
@@ -99,6 +108,7 @@ class MainActivity : Activity() {
         }
 
         applyDeviceOwnerPolicies()
+        grantMicrophoneToSelf()
     }
 
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")
@@ -131,6 +141,15 @@ class MainActivity : Activity() {
         applyKeepScreenOn(isCharging())
 
         enterLockTaskIfWanted()
+
+        // Started from here and only from here. A microphone foreground service
+        // cannot be launched from the background or from a BOOT_COMPLETED
+        // receiver on Android 15, and this activity is the HOME activity, so the
+        // system opens it at boot and on every press of Home — which makes this
+        // both the legal place to start it and the one that runs most often.
+        // Also the recovery path: if the service dies, the next resume restarts
+        // it without anything else having to notice.
+        VoiceService.start(this)
     }
 
     override fun onPause() {
@@ -152,6 +171,46 @@ class MainActivity : Activity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    /**
+     * Grants this app the microphone, with no dialog.
+     *
+     * A Device Owner can set a runtime permission's grant state for any app,
+     * itself included, and the user is never asked. That matters here because
+     * there is nobody to ask: the kiosk runs in lock task mode where a
+     * permission dialog would be a modal the household cannot dismiss, and on a
+     * device with no Google account there is nobody logged in to dismiss it.
+     *
+     * If this silently fails, the service reports `mic=no-permission` rather
+     * than crashing, and `adb shell pm grant` is the way in until it is fixed.
+     */
+    private fun grantMicrophoneToSelf() {
+        if (!isDeviceOwner) return
+        try {
+            dpm.setPermissionGrantState(
+                KioskDeviceAdminReceiver.componentName(this),
+                packageName,
+                android.Manifest.permission.RECORD_AUDIO,
+                DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+            )
+        } catch (e: SecurityException) {
+            VoiceState.lastError = "mic grant refused: ${e.javaClass.simpleName}"
+        }
+    }
+
+    /**
+     * What the phone heard and what it answered.
+     *
+     * Shown because misheard Thai is the most common failure in the voice path,
+     * and the person standing there is the only one who can catch it.
+     */
+    private fun transcriptLine(): String = buildString {
+        if (VoiceState.heard.isNotEmpty()) append("ได้ยิน: ${VoiceState.heard}")
+        if (VoiceState.reply.isNotEmpty()) {
+            if (isNotEmpty()) append("\n")
+            append("ตอบ: ${VoiceState.reply}")
         }
     }
 
@@ -263,7 +322,11 @@ class MainActivity : Activity() {
         )
         val awake = getString(if (keepingScreenOn) R.string.on else R.string.off)
         val taps = tapGate.progress
-        return getString(R.string.status_line, owner, locked, awake, taps, TapGate.TAPS_REQUIRED)
+        // Deliberately no token here, not even a fingerprint of it: this screen
+        // faces a room. Whether one is installed is the only part that helps.
+        val hasToken = getString(if (TokenStore(this).hasToken()) R.string.yes else R.string.no)
+        return getString(R.string.status_line, owner, locked, awake, hasToken, taps,
+                         TapGate.TAPS_REQUIRED)
     }
 
     companion object {

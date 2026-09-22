@@ -17,26 +17,43 @@ from .persona import SYSTEM_PROMPT
 from .pricing import Pricing
 
 
-def _client(cfg: "config_mod.Config"):
-    """The Anthropic client, from a key that must not be in the environment.
+def _secret(name: str) -> str | None:
+    """One value out of the broker's own env file.
 
-    The key is read out of the broker's own env file rather than inherited, so
-    the only process that can see it is one running as the broker user with
-    that file readable — which is the point of the 0600 on it.
+    Read from the file rather than inherited from the environment, so the only
+    process that can see a key is one running as the broker user with that file
+    readable — which is the point of the 0600 on it. It also keeps keys out of
+    `systemctl show` and out of anything this process starts.
     """
-    import anthropic
-
     env_path = config_mod.DEFAULT_HOME / "env"
-    key = None
+    value = None
     if env_path.is_file():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
-            if line.startswith("ANTHROPIC_API_KEY="):
-                key = line.split("=", 1)[1].strip().strip("'\"")
-    key = key or os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        sys.exit(f"no ANTHROPIC_API_KEY in {env_path} — see INSTALL.md")
-    return anthropic.Anthropic(api_key=key, base_url=cfg.api_base_url)
+            if line.startswith(f"{name}="):
+                value = line.split("=", 1)[1].strip().strip("'\"")
+    return value or os.environ.get(name) or None
+
+
+def _require(name: str) -> str:
+    value = _secret(name)
+    if not value:
+        sys.exit(f"no {name} in {config_mod.DEFAULT_HOME / 'env'} — see INSTALL.md")
+    return value
+
+
+def _client(cfg: "config_mod.Config"):
+    """The Anthropic client."""
+    import anthropic
+
+    return anthropic.Anthropic(api_key=_require("ANTHROPIC_API_KEY"), base_url=cfg.api_base_url)
+
+
+def _stt_client():
+    """The Groq client, with its own key — separate from anything else."""
+    import groq
+
+    return groq.Groq(api_key=_require("GROQ_API_KEY"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
     sub.add_parser("prompt-size", help="measure the prompt in tokens (free, no answer generated)")
 
+    p = sub.add_parser("voice-samples",
+                       help="synthesise the same Thai line in every male Chirp 3 HD voice")
+    p.add_argument("--out", default="voice-samples", help="directory to write the audio into")
+    p.add_argument("--text", default="สวัสดีครับ ผมสายฝน มีอะไรให้ผมช่วยไหมครับ วันนี้อากาศดีนะครับ")
+    p.add_argument("--voices", default="", help="comma-separated subset, default all male voices")
+
     args = parser.parse_args(argv)
     cfg = config_mod.load()
 
@@ -73,7 +96,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "serve":
         from .server import make_server
 
-        httpd = make_server(cfg, _client(cfg))
+        # The two speech keys are optional at start-up on purpose: a broker with
+        # no Groq key must still answer /v1/chat rather than refusing to boot.
+        # The endpoints that need them say so when they are called.
+        stt_client = None
+        if _secret("GROQ_API_KEY"):
+            stt_client = _stt_client()
+        else:
+            logging.getLogger("kiosk_broker").warning(
+                "no GROQ_API_KEY — /v1/stt will fail until one is configured")
+        tts_key = _secret("GOOGLE_TTS_API_KEY") or ""
+        if not tts_key:
+            logging.getLogger("kiosk_broker").warning(
+                "no GOOGLE_TTS_API_KEY — /v1/tts will fail until one is configured")
+
+        httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key)
         logging.getLogger("kiosk_broker").info(
             "listening on http://%s:%d model=%s budget=$%.2f/month",
             cfg.host, cfg.port, cfg.model, cfg.monthly_budget_usd,
@@ -116,11 +153,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"spent        : ${spent:.4f}")
             print(f"cap          : ${cfg.monthly_budget_usd:.2f}")
             print(f"remaining    : ${cfg.monthly_budget_usd - spent:.4f}")
-            print(f"prices from  : {pricing.source} (checked {pricing.checked_at})")
+            print(f"prices from  : chat {pricing.source('models')} (checked {pricing.checked_at('models')})")
+            print(f"               stt  {pricing.source('stt')} (checked {pricing.checked_at('stt')})")
+            print(f"               tts  {pricing.source('tts')} (checked {pricing.checked_at('tts')})")
             row = conn.execute(
                 "SELECT COUNT(*) c, COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o"
                 " FROM usage WHERE month = ?", (month,)).fetchone()
             print(f"calls        : {row['c']}  in_tokens={row['i']}  out_tokens={row['o']}")
+
+            # One budget, three services. Printed apart so it is obvious which
+            # one is eating it — on a kiosk that is almost always speech.
+            print()
+            print("by service:")
+            by_service = store.month_spend_by_service(conn, month)
+            for name in ("chat", "stt", "tts"):
+                row = by_service.get(name)
+                if not row:
+                    print(f"  {name:<5} : —")
+                    continue
+                quantity = f" {row['quantity']:.0f} {row['unit']}" if row["unit"] else ""
+                share = row["cost"] / spent * 100 if spent else 0.0
+                print(f"  {name:<5} : ${row['cost']:.4f}  ({share:4.1f}%)  "
+                      f"{row['calls']} calls{quantity}")
 
             # How often the prompt failed to hold ผม/ครับ on its own. Counts
             # only; the replies themselves are not kept.
@@ -132,6 +186,42 @@ def main(argv: list[str] | None = None) -> int:
             if stats["replies"] and stats["touched"]:
                 share = stats["touched"] / stats["replies"] * 100
                 print(f"  that is {share:.0f}% of replies — the prompt is not holding on its own")
+            return 0
+
+        if args.cmd == "voice-samples":
+            from pathlib import Path as _Path
+
+            from . import tts as tts_mod
+
+            api_key = _require("GOOGLE_TTS_API_KEY")
+            voices = [v.strip() for v in args.voices.split(",") if v.strip()] or \
+                list(tts_mod.MALE_VOICES)
+            out = _Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+
+            pricing = Pricing.load(cfg.pricing_path)
+            total = 0.0
+            for voice in voices:
+                try:
+                    speech = tts_mod.synthesize(
+                        api_key=api_key, text=args.text, language_code=cfg.tts_language,
+                        voice=voice, encoding=cfg.tts_encoding)
+                except tts_mod.TtsError as exc:
+                    print(f"{voice:<16} FAILED  {exc.detail}")
+                    continue
+                suffix = {"OGG_OPUS": "ogg", "MP3": "mp3", "LINEAR16": "wav"}.get(
+                    cfg.tts_encoding, "bin")
+                path = out / f"{cfg.tts_language}-Chirp3-HD-{voice}.{suffix}"
+                path.write_bytes(speech.audio)
+                cost = pricing.tts_cost(cfg.tts_voice_family, speech.billed_characters)
+                total += cost
+                print(f"{voice:<16} {len(speech.audio):>7} bytes  ${cost:.6f}  {path}")
+
+            print()
+            print(f"{len(voices)} voices, {len(args.text)} characters each, "
+                  f"${total:.4f} in total.")
+            print("These are NOT written to the ledger — choosing a voice is not the phone's")
+            print("budget. Listen, then set tts_voice in config.json.")
             return 0
 
         if args.cmd == "prompt-size":

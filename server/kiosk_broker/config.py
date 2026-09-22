@@ -33,6 +33,30 @@ class Config:
     monthly_budget_usd: float = 5.00
     budget_timezone: str = "Asia/Bangkok"
 
+    # ---- speech to text -------------------------------------------------
+    stt_model: str = "whisper-large-v3-turbo"
+    stt_language: str = "th"
+    #: 1 MiB is about 32 seconds of the 16 kHz mono 16-bit WAV the phone sends,
+    #: which is a long question. Compressed formats fit more seconds in the same
+    #: bytes, so the duration cap below is what actually bounds the bill.
+    max_audio_bytes: int = 1024 * 1024
+    max_audio_seconds: float = 30.0
+
+    # ---- text to speech -------------------------------------------------
+    tts_language: str = "th-TH"
+    tts_voice: str = "Charon"
+    #: OGG_OPUS: smallest of the formats Chirp 3 HD offers for batch synthesis,
+    #: and Android plays Ogg/Opus without a library.
+    tts_encoding: str = "OGG_OPUS"
+    tts_voice_family: str = "chirp3-hd"
+    #: Overridable so a test or a staging run can point somewhere else without
+    #: reaching into the module.
+    tts_endpoint: str = "https://texttospeech.googleapis.com/v1/text:synthesize"
+    #: Replies are one to three sentences. Thai is three bytes a character in
+    #: UTF-8, so 800 characters is ~2.4 kB, comfortably inside Google's 5,000
+    #: byte request limit, and caps what one answer can cost.
+    max_tts_chars: int = 800
+
     rate_per_minute: int = 10
     rate_per_day: int = 300
 
@@ -57,6 +81,20 @@ class Config:
     @property
     def pricing_path(self) -> Path:
         return self.home / "pricing.json"
+
+    @property
+    def worst_case_stt_usd(self) -> float:
+        """Most one transcription could cost, for the budget guard."""
+        from .pricing import Pricing
+
+        return Pricing.load(self.pricing_path).stt_cost(self.stt_model, self.max_audio_seconds)
+
+    @property
+    def worst_case_tts_usd(self) -> float:
+        """Most one synthesis could cost, for the budget guard."""
+        from .pricing import Pricing
+
+        return Pricing.load(self.pricing_path).tts_cost(self.tts_voice_family, self.max_tts_chars)
 
     @property
     def worst_case_request_usd(self) -> float:

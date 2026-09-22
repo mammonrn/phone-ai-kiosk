@@ -15,16 +15,10 @@ from kiosk_broker import store  # noqa: E402
 from kiosk_broker.config import Config  # noqa: E402
 from kiosk_broker.llm import Usage  # noqa: E402
 
-PRICING = {
-    "_source": "https://platform.claude.com/docs/en/about-claude/pricing",
-    "_checked_at": "2026-09-22",
-    "models": {
-        "claude-haiku-4-5": {
-            "input": 1.00, "output": 5.00,
-            "cache_write_5m": 1.25, "cache_write_1h": 2.00, "cache_read": 0.10,
-        }
-    },
-}
+#: The tests use the file that actually ships, not a copy of it. A fixture with
+#: its own numbers is a fixture that drifts, and the numbers here are money.
+SHIPPED_PRICING = Path(__file__).resolve().parents[1] / "pricing.json"
+PRICING = json.loads(SHIPPED_PRICING.read_text(encoding="utf-8"))
 
 
 @dataclass
@@ -113,6 +107,66 @@ def conn(cfg: Config):
     c.close()
 
 
+class FakeGroq:
+    """Stands in for groq.Groq, refusing what the real API refuses.
+
+    A fake that is more permissive than the thing it replaces is how the empty
+    user-message bug reached production, so this one checks the arguments the
+    real endpoint checks: a file with bytes in it, a model, and a response
+    format that actually carries a duration.
+    """
+
+    def __init__(self, text: str = "สวัสดี วันนี้อากาศเป็นยังไง", duration: float = 3.4,
+                 raises=None):
+        self.text = text
+        self.duration = duration
+        self.raises = raises
+        self.calls: list[dict] = []
+
+    @property
+    def audio(self):
+        return self
+
+    @property
+    def transcriptions(self):
+        return self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.raises:
+            raise self.raises
+
+        name, stream = kwargs["file"]
+        payload = stream.read()
+        if not payload:
+            raise AssertionError("file must not be empty")
+        if not kwargs.get("model"):
+            raise AssertionError("model is required")
+        if kwargs.get("response_format") != "verbose_json":
+            # Without verbose_json the response has no duration, and billing
+            # would have to be guessed.
+            raise AssertionError("duration is only returned for verbose_json")
+
+        class Response:
+            text = self.text
+            duration = self.duration
+
+        return Response()
+
+
+class FakeHttpError(Exception):
+    """An exception shaped like an SDK error, with a status code on it."""
+
+    def __init__(self, status_code: int):
+        super().__init__(f"status {status_code}")
+        self.status_code = status_code
+
+
 @pytest.fixture
 def client() -> FakeClient:
     return FakeClient()
+
+
+@pytest.fixture
+def groq_client() -> FakeGroq:
+    return FakeGroq()

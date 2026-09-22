@@ -72,8 +72,13 @@ if [[ ! -x $VENV_DIR/bin/python ]]; then
     sudo -u "$USER_NAME" python3 -m venv "$VENV_DIR"
 fi
 sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet --upgrade pip
-sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet anthropic
+# groq for speech-to-text. Google Text-to-Speech is deliberately NOT a library:
+# it is one JSON POST with an API key, which urllib does with nothing installed,
+# and an API key can be restricted to one API and one IP in a way a service
+# account key cannot.
+sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet anthropic groq
 echo "  anthropic $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import anthropic; print(anthropic.__version__)')"
+echo "  groq      $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import groq; print(groq.__version__)')"
 
 # -------------------------------------------------------------------- code
 say "Application code"
@@ -153,7 +158,8 @@ cat <<'NEXT'
 
 Done with the parts that need root. Still to do, in order:
 
-  1. Put the API key in /home/kioskbroker/.config/kiosk-broker/env
+  1. Put the API keys in /home/kioskbroker/.config/kiosk-broker/env
+     (ANTHROPIC_API_KEY, and for phase 3 also GROQ_API_KEY and GOOGLE_TTS_API_KEY)
   2. Add the DNS A record for kiosk.xn--l3cgts1b3bzcvf.com
   3. Issue the certificate (certbot certonly --webroot)
   4. Enable the nginx site, nginx -t, reload

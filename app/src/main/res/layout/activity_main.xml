@@ -38,6 +38,17 @@
             android:textColor="#FFFFFF"
             android:textSize="24sp" />
 
+        <!-- What the phone heard and what it answered. Misheard Thai is the
+             most common failure in the voice path and this is where it shows. -->
+        <TextView
+            android:id="@+id/transcript"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:textColor="#D0D0D0"
+            android:textSize="15sp" />
+
         <!-- Device Owner / lock task state. The only way to read provisioning
              state from the phone itself, and what the manual test steps check. -->
         <TextView
@@ -48,6 +59,17 @@
             android:fontFamily="monospace"
             android:textColor="#808080"
             android:textSize="13sp" />
+
+        <!-- Every stage of the voice path, so a failure names itself. -->
+        <TextView
+            android:id="@+id/voice_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:textColor="#707070"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <!-- The escape hatch. Transparent and unlabelled on purpose; 96dp is a

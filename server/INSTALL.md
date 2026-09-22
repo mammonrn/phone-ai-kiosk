@@ -164,6 +164,83 @@ prompt ของเราอยู่ราว 600 โทเคน จึงต�
 
 ---
 
+## ขั้น 3ก — คีย์ของเฟส 3 (Groq และ Google TTS)
+
+ทั้งสองใบอยู่ในไฟล์เดียวกับคีย์ Anthropic คือ
+`/home/kioskbroker/.config/kiosk-broker/env` โหมด 600 **มือถือไม่ถือคีย์ทั้งสองใบ**
+
+```bash
+sudo -u kioskbroker nano /home/kioskbroker/.config/kiosk-broker/env
+```
+
+```
+ANTHROPIC_API_KEY=<ของเดิม>
+GROQ_API_KEY=<คีย์ Groq ใบใหม่>
+GOOGLE_TTS_API_KEY=<API key ของ Google>
+```
+
+### สร้างคีย์ Groq ใบใหม่แยกสำหรับมือถือ
+
+1. เข้า https://console.groq.com → API Keys → Create API Key
+2. ตั้งชื่อให้รู้ว่าเป็นของงานนี้ เช่น `phone-ai-kiosk-broker`
+3. **ใบใหม่แยกจากของเดิม** เพื่อเพิกถอนเฉพาะของมือถือได้โดยไม่กระทบงานอื่น
+4. ❓ Groq ยังไม่มี IP restriction ต่อคีย์เท่าที่ตรวจพบ — ด่านที่มีคือ
+   rate limit และงบของ broker เอง ถ้าคีย์หลุดต้องเพิกถอนที่ console
+
+### เปิด Google Cloud TTS แบบสิทธิ์น้อยที่สุด
+
+ใช้ **API key ไม่ใช่ service account** ตั้งใจเลือกแบบนี้เพราะ API key จำกัดได้
+ทั้งตาม API และตาม IP ส่วน service account JSON จำกัดไม่ได้ทั้งสองอย่าง
+
+1. https://console.cloud.google.com → สร้างโปรเจกต์ใหม่แยก เช่น `phone-ai-kiosk`
+2. APIs & Services → Library → เปิดใช้ **Cloud Text-to-Speech API** ตัวเดียว
+3. Credentials → Create credentials → **API key**
+4. กด **Edit API key** แล้วตั้งสองอย่างนี้ (ข้อสำคัญที่สุด):
+   - **API restrictions** → Restrict key → ติ๊กเฉพาะ **Cloud Text-to-Speech API**
+   - **Application restrictions** → **IP addresses** → ใส่ `45.76.157.64`
+5. ตั้งงบเตือนที่ Billing → Budgets & alerts เผื่อกรณีผิดพลาด
+
+**ทำไมต้องจำกัดทั้งสองชั้น:** API key ของ Google คือ bearer token ระดับโปรเจกต์
+ถ้าไม่จำกัด ใครได้ไปก็เรียก API ทุกตัวในโปรเจกต์จากที่ไหนก็ได้
+
+ตรวจสิทธิ์ไฟล์:
+
+```bash
+sudo ls -l /home/kioskbroker/.config/kiosk-broker/env      # ต้อง -rw------- kioskbroker
+sudo -u linuxuser cat /home/kioskbroker/.config/kiosk-broker/env   # ต้อง Permission denied
+```
+
+### ฟังเสียงแล้วเลือกเอง
+
+Chirp 3 HD มีเสียงชาย 16 เสียง คำสั่งนี้สร้างไฟล์ทั้ง 16 เสียงพูดประโยคเดียวกัน
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
+  PYTHONPATH=/home/kioskbroker/app \
+  /home/kioskbroker/venv/bin/python -m kiosk_broker voice-samples --out /tmp/voices
+```
+
+ดึงมาฟังบนคอม:
+
+```powershell
+scp "poom@45.76.157.64:/tmp/voices/*.ogg" .
+```
+
+ค่าใช้จ่ายทั้งชุด ~$0.03 🔶 (16 เสียง × ~60 ตัวอักษร × $0.00003)
+**ไม่ถูกบันทึกลงบัญชีงบของมือถือ** — การเลือกเสียงไม่ใช่งบของโทรศัพท์
+
+ถูกใจเสียงไหนแล้วตั้งใน `config.json`:
+
+```bash
+sudo -u kioskbroker nano /home/kioskbroker/.config/kiosk-broker/config.json
+```
+```json
+{ "tts_voice": "Puck" }
+```
+แล้ว `sudo systemctl restart kiosk-broker`
+
+---
+
 ## ขั้น 4 — เริ่มบริการ
 
 ```bash
@@ -384,6 +461,28 @@ replies      : 12
 
 ตัวเลขนี้เก็บเป็น**จำนวนครั้งเท่านั้น ไม่เก็บข้อความ** ถ้าเลขนี้สูงต่อเนื่อง
 แปลว่าควรไปปรับถ้อยคำใน `persona.py` ถ้าเป็น 0 แปลว่า prompt เอาอยู่เองแล้ว
+
+## ค่าใช้จ่ายจริงต่อคำถามหนึ่งครั้ง 🔶
+
+จากราคาทางการที่ตรวจแล้ว:
+
+| ส่วน | หน่วย | ต่อคำถาม |
+|---|---|---|
+| Groq STT | $0.04/ชม. **คิดขั้นต่ำ 10 วินาที** | $0.000111 |
+| Claude Haiku | in $1 / out $5 ต่อ 1M | ~$0.00096 |
+| Google TTS Chirp 3 HD | **$0.00003 ต่อตัวอักษร** | ~$0.0036 (คำตอบ 120 ตัวอักษร) |
+| **รวม** | | **~$0.0047** |
+
+**งบ $5 = ประมาณ 1,070 คำถาม/เดือน ≈ 35 คำถาม/วัน**
+
+⚠️ **TTS กินงบประมาณ 77%** ไม่ใช่ตัวโมเดล คำตอบยิ่งยาวยิ่งแพงเป็นเส้นตรง
+ถ้าอยากได้จำนวนคำถามมากขึ้น วิธีที่ได้ผลที่สุดคือทำให้คำตอบสั้นลง
+
+⚠️ **แก้ไขจากที่เคยรายงานไว้:** รอบสำรวจผมบอกว่า Chirp 3 HD มีโควตาฟรี 1 ล้าน
+ตัวอักษร/เดือน **ตอนนี้อ่านหน้าราคาทางการแบบคำต่อคำแล้วพบว่าไม่ใช่** — ข้อความ
+เรื่องโควตาฟรีระบุเฉพาะ WaveNet (1M) กับ Standard (4M) ไม่ได้ระบุ Chirp 3 HD และ
+แถวของ Chirp 3 HD คิดเงินตั้งแต่ตัวอักษรแรก ระบบจึง**ไม่สมมติว่ามีโควตาฟรี**
+เพราะถ้าสมมติผิดจะนับงบต่ำกว่าจริงเงียบๆ
 
 ## ดูงบที่ใช้ไป
 

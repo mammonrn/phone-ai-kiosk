@@ -17,6 +17,45 @@ Install and operate: **[INSTALL.md](INSTALL.md)** (Thai).
 
 ## API
 
+Three endpoints, one token, one budget. The phone holds no key for any of the
+services behind them — the Groq key and the Google key live on the VPS, so a
+stolen phone yields a revocable device token and nothing else.
+
+### `POST /v1/stt`
+
+```
+Authorization: Bearer <device-token>
+Content-Type: audio/wav        (or flac, ogg, mp4, m4a, webm, mpeg)
+
+<raw audio bytes, 16 kHz mono>
+```
+
+```json
+{"text": "วันนี้อากาศเป็นยังไง"}
+```
+
+The audio is never written to disk and never logged — it exists as a bytes
+object for the length of one call. Billing uses the duration **Groq** reports,
+with their ten-second minimum applied, because that is the number they charge
+on; a ledger recording the true duration of a three-second question would
+under-count every request the kiosk ever makes.
+
+### `POST /v1/tts`
+
+```
+Authorization: Bearer <device-token>
+Content-Type: application/json
+
+{"text": "ผมยังดูอากาศให้ไม่ได้ครับ"}
+```
+
+Answers with the audio itself (`audio/ogg`, Chirp 3 HD, OGG_OPUS) rather than
+base64 inside JSON: a third fewer bytes and no decode step before the phone can
+play it. Errors are still JSON.
+
+The text is put through the register fix on the way in, so whatever is read
+aloud is in one voice even if it did not come from `/v1/chat`.
+
 ### `POST /v1/chat`
 
 ```
@@ -120,6 +159,19 @@ the token-counting endpoint, which is free.
 **History is bounded in both directions** — a few turns, capped by count and by
 age, in memory and on disk. Every turn is resent as input tokens, so an
 unbounded history is a bill that grows with use.
+
+**One budget, three services, one ledger.** Chat, speech-to-text and
+text-to-speech all write to the same `usage` table, so the $5 cap means the
+total rather than three caps that each look healthy while the sum runs over.
+Each endpoint reserves only its *own* worst case against that shared total —
+reserving the sum would have `/v1/chat` refusing for headroom it will never use.
+`usage` prints the split, which on a kiosk is mostly text-to-speech: at roughly
+120 characters a reply it is about 77% of the bill, against 20% for the model
+and 2% for transcription.
+
+**Rate limits are per endpoint.** One spoken question is three requests. A
+single shared counter would have the voice path eating the allowance
+`/v1/chat` was given on its own.
 
 **No web framework.** stdlib `http.server` behind nginx, with the Anthropic SDK
 as the only third-party dependency. One phone, two routes, and a dependency

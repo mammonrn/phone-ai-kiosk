@@ -329,6 +329,95 @@ summary ของ run นั้นว่าขึ้น "Signed with the **pinne
 
 ---
 
+## เฟส 3 — ใส่ token ให้มือถือ (ไม่มี token ใน APK เด็ดขาด)
+
+token **ไม่อยู่ใน APK ไม่อยู่ในซอร์ส ไม่อยู่ใน repo ไม่อยู่ใน log และไม่อยู่ใน artifact**
+ใส่เข้าเครื่อง debug ผ่าน adb และเก็บไว้ในพื้นที่ส่วนตัวของแอปเท่านั้น
+
+ออก token จาก VPS ก่อน (ดู `server/INSTALL.md` ขั้น 8) แล้วเซฟลงไฟล์ `token.txt`
+บนคอม **อย่าพิมพ์ token ลงบรรทัดคำสั่งตรงๆ** เพราะจะค้างใน history ของ PowerShell
+
+```powershell
+# 1) ส่งไฟล์ไปที่พื้นที่ของ shell (ไม่ใช่ /sdcard ซึ่งแอปอื่นอ่านได้)
+adb push token.txt /data/local/tmp/kiosk-token
+
+# 2) ย้ายเข้าพื้นที่ส่วนตัวของแอป — cat รันในฐานะ shell ที่อ่านได้
+#    แล้วส่งต่อเข้า run-as ที่เขียนในฐานะแอป
+adb shell "mkdir -p /data/local/tmp && cat /data/local/tmp/kiosk-token | run-as com.mammonrn.phoneaikiosk.debug sh -c 'mkdir -p files && cat > files/device_token'"
+
+# 3) ลบร่องรอย
+adb shell rm /data/local/tmp/kiosk-token
+del token.txt
+```
+
+ตรวจว่าเข้าไปแล้ว (ไม่แสดงค่า แค่บอกว่ามีกี่ตัวอักษร):
+
+```powershell
+adb shell run-as com.mammonrn.phoneaikiosk.debug sh -c 'wc -c files/device_token'
+```
+
+หรือดูที่จอ: บรรทัดสถานะจะขึ้น `token=yes`
+
+**เปลี่ยน token:** ทำขั้น 1–3 ซ้ำด้วยไฟล์ใหม่
+**ลบ token:**
+
+```powershell
+adb shell run-as com.mammonrn.phoneaikiosk.debug rm files/device_token
+```
+
+จากนั้นเพิกถอนฝั่งเซิร์ฟเวอร์ด้วย `revoke-token` (ดู server/INSTALL.md)
+
+❓ คำสั่งชุดนี้ยังไม่ได้ทดสอบบนเครื่องจริง โดยเฉพาะการอ้างอิง `run-as` กับ quoting
+ของ PowerShell — ถ้าติด ให้ส่ง error มา
+
+---
+
+## เฟส 3 — ทดสอบเส้นทางเสียงก่อนมีโมเดลคำปลุก
+
+โมเดลคำปลุกยังไม่มี (ดู [WAKEWORD.md](WAKEWORD.md)) ระหว่างนี้ใช้ตัวกระตุ้นลับ
+ผ่าน adb เพื่อทดสอบ STT → chat → TTS ได้ทั้งเส้น **ตัวกระตุ้นนี้มีเฉพาะใน debug
+build ไม่มีปุ่มบนจอ และไม่มีอยู่ใน release build เลย**
+
+```powershell
+# พูดคำถามใส่มือถือทันทีหลังรันคำสั่งนี้ มันจะอัดจนเงียบแล้วส่งไปถอดเสียง
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN
+```
+
+ดูที่จอมือถือ จะเห็นทีละขั้น:
+
+```
+mic=open wake=triggered stt=recording chat=idle tts=idle
+mic=open wake=triggered stt=ok chat=asking tts=idle
+ได้ยิน: วันนี้อากาศเป็นยังไง
+ตอบ: ผมยังดูอากาศให้ไม่ได้ครับ
+mic=open wake=listening stt=ok chat=ok tts=ok
+```
+
+ชี้ไปเซิร์ฟเวอร์อื่นชั่วคราว (เช่นทดสอบกับ staging):
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "https://kiosk.xn--l3cgts1b3bzcvf.com"
+```
+
+### ความหมายของแต่ละสถานะ
+
+| ช่อง | ค่าที่เป็นไปได้ |
+|---|---|
+| `mic` | `off` `open` `closed` `error` **`no-permission`** |
+| `wake` | `idle` `listening` `detected` `triggered` **`no-model`** |
+| `stt` | `idle` `recording` `sending` `ok` |
+| `chat` | `idle` `asking` `ok` `error` |
+| `tts` | `idle` `synthesising` `ok` **`device-fallback`** `failed` |
+
+`mic=no-permission` แปลว่า Device Owner ให้สิทธิ์ไมค์ตัวเองไม่สำเร็จ
+ทางแก้ชั่วคราว: `adb shell pm grant com.mammonrn.phoneaikiosk.debug android.permission.RECORD_AUDIO`
+**แล้วบอกผม** เพราะแปลว่าข้อสันนิษฐานเรื่อง `setPermissionGrantState` ผิด
+
+`tts=device-fallback` แปลว่า Cloud TTS ใช้ไม่ได้และใช้เสียงในเครื่องแทน —
+ตั้งใจให้เป็นแบบนี้ ไม่ใช่ความผิดพลาด
+
+---
+
 ## สรุปคำสั่งตรวจสถานะ
 
 | อยากรู้ | คำสั่ง (PowerShell) |
