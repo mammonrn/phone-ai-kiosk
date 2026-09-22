@@ -453,11 +453,11 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 | ช่อง | ค่าที่เป็นไปได้ |
 |---|---|
 | `mic` | `off` `open` `closed` `error` **`no-permission`** |
-| `wake` | `idle` `listening` `detected` `triggered` **`no-model`** **`model-load-failed`** |
-| `stt` | `idle` `recording` `sending` `ok` `error` **`empty`** |
+| `wake` | `idle` `listening` **`heard`** `detected` `triggered` **`no-model`** **`model-load-failed`** |
+| `stt` | `idle` `recording` `sending` `ok` `error` **`empty`** **`too-short`** |
 | `chat` | `idle` `asking` `ok` `error` |
 | `tts` | `idle` `synthesising` **`speaking`** `ok` **`device-fallback`** `failed` |
-| `capture-mode` | `LISTENING` `CAPTURING` (จาก dumpsys) |
+| `capture-mode` | `LISTENING` `CAPTURING` **`BUSY`** (จาก dumpsys) |
 
 `stt=empty` แปลว่าอัดแล้วไม่ได้เสียงเลย — ไม่ถูกส่งขึ้นเซิร์ฟเวอร์และไม่เสียเงิน
 
@@ -535,7 +535,7 @@ trigger สั่งจึงถูกต่อคิวหลังงานท
 ผู้ช่วยชื่อ **จาร์วิส** คำปลุกคือ **"Hey Jarvis"** (ภาษาอังกฤษ เพราะโมเดลเป็น
 pretrained ของ openWakeWord) ทุกอย่างรันบนเครื่อง ไม่มีเสียงออกจากห้องก่อนเจอคำปลุก
 
-### ขั้น 0 — ติดตั้ง versionCode 7
+### ขั้น 0 — ติดตั้ง versionCode 8
 
 ```powershell
 adb install -r -t app-debug.apk
@@ -546,7 +546,7 @@ adb install -r -t app-debug.apk
 ```powershell
 adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | Select-String versionCode
 ```
-ต้องเห็น `versionCode=7`
+ต้องเห็น `versionCode=8`
 
 ### ขั้น 1 — detector โหลดโมเดลได้จริงไหม
 
@@ -611,9 +611,68 @@ adb logcat -s KioskStats:I -d | Select-Object -Last 3
 และ **กลับเป็น 0.5 เมื่อรีสตาร์ต service** (ตั้งใจ: ค่าที่ปรับระหว่างวัดต้องไม่
 กลายเป็นค่าถาวรโดยไม่มีใครตัดสินใจ)
 
-### ขั้น 5 — วัดความแม่นที่ 3 เมตร
+### ขั้น 5 — โหมดทดสอบคำปลุกอย่างเดียว แล้ววัด 20 ครั้งที่ 3 เมตร
 
-รีเซ็ตตัวนับ แล้วพูด "Hey Jarvis" **20 ครั้ง** ห่าง 3 เมตร เว้นแต่ละครั้ง ~5 วินาที
+**เปิดโหมดนี้ก่อนวัดเสมอ** ในโหมดนี้เมื่อได้ยิน "Hey Jarvis" เครื่องจะ
+**นับ + โชว์คะแนนบนจอ + ส่งเสียงบี๊บ** แล้วจบ — **ไม่อัดคำถาม ไม่เรียก STT
+ไม่เรียก chat ไม่เรียก TTS** วัด 20 ครั้งจึงใช้เวลาไม่กี่นาทีและ**ไม่เสียเงินเลย**
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es value on
+adb logcat -s KioskStats:I -d | Select-Object -Last 2
+```
+ต้องเห็น `wake-only mode ON` และบนจอเครื่องจะขึ้น `โหมดทดสอบคำปลุก`
+
+ยืนยันจาก dumpsys:
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "wake-only|detections"
+```
+ต้องเห็น `wake-only  : ON — no STT, chat or TTS`
+
+**ขั้นตอนวัด 20 ครั้ง:**
+
+1. รีเซ็ตตัวนับ
+   ```powershell
+   adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_RESET_STATS `
+     -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+   ```
+2. ยืนห่างจากเครื่อง **3 เมตร** (วัดจริง อย่ากะ) ในสภาพห้องที่จะใช้งานจริง
+   ถ้าปกติเปิดทีวี **ก็เปิดทีวี** — การวัดในห้องเงียบให้ตัวเลขที่ใช้ไม่ได้
+3. พูด **"Hey Jarvis"** ด้วยเสียงปกติ **20 ครั้ง** เว้นแต่ละครั้ง **≥3 วินาที**
+   (cooldown 2 วินาที ถ้าพูดถี่กว่านั้นจะนับไม่ครบเพราะกันนับซ้ำ)
+   **นับเองด้วยว่าพูดไปกี่ครั้ง** — ตัวเลขบนจอคือครั้งที่เครื่องได้ยิน
+   ได้ยินเมื่อไรจะมี **เสียงบี๊บ** ทันที ไม่ต้องรอดูจอ
+4. อ่านผล
+   ```powershell
+   adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+     Select-String "detections|score|threshold"
+   ```
+
+**เกณฑ์: `detections` ≥ 18 จาก 20 ครั้ง (90%)**
+
+| ผลที่ได้ | แปลว่า | ทำอะไรต่อ |
+|---|---|---|
+| ≥18 | ผ่านเกณฑ์ที่ threshold นี้ | ไปขั้น 6 วัดปลุกผิด |
+| 12–17 | ใกล้แล้ว | ลด threshold ทีละ 0.05 วัดใหม่ |
+| <12 | ไกล | ดูคะแนนในขั้น 3 ก่อน ถ้าคะแนนสูงสุดยังต่ำกว่า 0.3 แปลว่าไมค์หรือระยะมีปัญหา ไม่ใช่ threshold |
+
+**ปิดโหมดเมื่อวัดเสร็จ** ไม่งั้นจาร์วิสจะไม่ตอบอะไรเลย:
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es value off
+```
+
+🔴 **ห้ามเปลี่ยนค่า threshold เริ่มต้น (0.50) ในโค้ดจนกว่าจะมีผลวัดแล้วอนุมัติ**
+ค่าที่ตั้งผ่าน adb เป็นค่าชั่วคราว หายเมื่อรีสตาร์ต service ซึ่งตั้งใจให้เป็นแบบนั้น
+
+### ขั้น 5ก — วัดความแม่นแบบเต็มรอบ (ถ้าต้องการ)
+
+ถ้าอยากวัดทั้งวงรวม STT/chat/TTS ให้ปิดโหมดทดสอบก่อน แล้วพูด "Hey Jarvis"
+**20 ครั้ง** ห่าง 3 เมตร เว้นแต่ละครั้ง ~5 วินาที
 
 ```powershell
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_RESET_STATS `
@@ -671,6 +730,67 @@ adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.
 
 พูด "Hey Jarvis Hey Jarvis Hey Jarvis" รัวๆ ติดกัน — `detections` ควรเพิ่ม
 **1 ครั้ง ไม่ใช่ 3** เพราะมี cooldown 25 เฟรม (2 วินาที)
+
+## 🔴 บั๊กที่แก้ใน versionCode 8 — ตรวจว่าหายจริง
+
+### อาการเดิม
+
+พูด "Hey Jarvis" ครั้งเดียวไม่ได้ถามอะไร แล้วจาร์วิสตอบหลายรอบ
+
+สาเหตุจาก log ของ A07: `capture finished` แล้ว machine กลับไป LISTENING ทันที
+**ทั้งที่ยังทำ STT/chat/TTS อยู่** คำปลุกจึงยิงซ้ำระหว่างนั้นได้ แล้ว capture
+รอบใหม่**อัดเสียงคำตอบของจาร์วิสเอง** ส่งไปถอดเสียงแล้วเอาไปถามโมเดลต่อ
+
+และ "เสียงพูด" เดิมเป็นค่าคงที่ 2000 ทีวีจึงดันให้ทุก capture มีเสียงตลอด
+บางครั้งอัดยาวจนชน timeout 12 วินาที แล้วเอาเสียงห้องไปถามโมเดล
+
+### ตรวจข้อ 1 — ห้ามมี turn ซ้อน
+
+```powershell
+adb logcat -c
+```
+พูด **"Hey Jarvis"** แล้วถามอะไรสักอย่าง จากนั้น **พูด "Hey Jarvis" ซ้ำระหว่างที่
+จาร์วิสกำลังตอบ**
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "wake word detected|capture started|turn finished"
+```
+
+**ต้องเห็น `capture started` เพียงครั้งเดียว** และต้องไม่เห็น `wake word detected`
+ระหว่างช่วงที่ยังไม่ถึง `turn finished`
+
+ดูสถานะสดระหว่างนั้น — ต้องเป็น `BUSY`:
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "capture-mode"
+```
+
+### ตรวจข้อ 2 — เรียกแล้วเงียบ ต้องไม่เสียเงิน
+
+พูด **"Hey Jarvis"** แล้ว **เงียบไปเลย** ไม่ต้องถามอะไร
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "capture cancelled|stt ok|chat ok"
+```
+
+**ต้องเห็น** `capture cancelled reason=no-speech-after-wake threshold=... ambient=...`
+**และต้องไม่เห็น `stt ok` หรือ `chat ok` เลย** บนจอจะขึ้น `ไม่ได้ยินคำถามครับ`
+
+ถ้ายังเห็น `stt ok` แปลว่าเสียงในห้องดังพอจะผ่านเกณฑ์ — ดู `threshold` กับ
+`ambient` ในบรรทัด cancelled ว่าห่างกันพอไหม แล้วบอกผม
+
+### ตรวจข้อ 3 — ทีวีต้องไม่ทำให้อัดยาว
+
+เปิดทีวีเสียงปกติ พูด "Hey Jarvis" แล้วเงียบ
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "speech-floor|stop-reason"
+```
+
+`speech-floor` ต้อง**สูงกว่า**ระดับเสียงทีวี (ดู `ambient` ในวงเล็บ) และ
+`stop-reason` ต้องเป็น `no-speech-after-wake` **ไม่ใช่ `silence-timeout` หรือ
+`max-length`**
 
 ## สรุปคำสั่งตรวจสถานะ
 

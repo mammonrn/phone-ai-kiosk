@@ -60,6 +60,18 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }
             }
 
+            ACTION_WAKE_ONLY -> {
+                // Measuring how often the wake word actually fires needs twenty
+                // attempts, and twenty full turns is twenty transcriptions,
+                // twenty model calls and twenty spoken answers — minutes of
+                // waiting and real money, to measure something that happens in
+                // the first 80 ms. In this mode a detection is counted, shown
+                // and beeped, and nothing else happens at all.
+                val on = intent.getStringExtra("value")?.lowercase() in setOf("on", "1", "true")
+                val applied = VoiceService.setWakeOnly(on)
+                android.util.Log.i("KioskStats", "wake-only mode ${if (applied) "ON" else "off"}")
+            }
+
             ACTION_SET_BROKER -> {
                 val url = intent.getStringExtra("url")
                 if (!url.isNullOrBlank()) {
@@ -76,5 +88,6 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_RESET_STATS = "com.mammonrn.phoneaikiosk.TEST_RESET_STATS"
         const val ACTION_SET_BROKER = "com.mammonrn.phoneaikiosk.TEST_SET_BROKER"
         const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
+        const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
     }
 }

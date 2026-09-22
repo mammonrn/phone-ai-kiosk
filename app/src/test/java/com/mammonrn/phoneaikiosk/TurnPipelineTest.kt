@@ -180,6 +180,82 @@ class TurnPipelineTest {
         assertEquals("ok", sink.tts)
     }
 
+    /**
+     * The backstop for what the capture stage lets through.
+     *
+     * On the A07 a wake word with no question behind it still produced
+     * "stt ok ... 10 chars" and then a model call and a spoken answer. The
+     * capture stage now cancels that before it is ever uploaded; this is what
+     * happens when something clears that bar and still is not a question.
+     */
+    @Test
+    fun `an empty transcript is never asked and never spoken`() {
+        val sink = Sink()
+        var asked = false
+        var spoke = false
+
+        val (outcome, _) = pipeline(
+            sink,
+            transcribe = { "  " },
+            ask = { _, _ -> asked = true; "ไม่ควรถูกเรียก" to "c1" },
+            speak = { spoke = true; SpokenAudio(ByteArray(10), "") },
+        ).run(wav(), null)
+
+        assertEquals(TurnPipeline.Outcome.NO_QUESTION, outcome)
+        assertFalse("the model must not be asked", asked)
+        assertFalse("nothing must be spoken", spoke)
+        assertEquals("too-short", sink.stt)
+    }
+
+    @Test
+    fun `a one character transcript is treated the same way`() {
+        val sink = Sink()
+        var asked = false
+        val (outcome, _) = pipeline(
+            sink,
+            transcribe = { "อ" },
+            ask = { _, _ -> asked = true; "x" to "c1" },
+        ).run(wav(), null)
+
+        assertEquals(TurnPipeline.Outcome.NO_QUESTION, outcome)
+        assertFalse(asked)
+    }
+
+    /**
+     * The bar has to sit below real Thai questions, which get very short.
+     * "กี่โมง" is six characters and is a perfectly ordinary thing to ask.
+     */
+    @Test
+    fun `a short but real thai question still goes through`() {
+        val sink = Sink()
+        var asked = false
+        val (outcome, _) = pipeline(
+            sink,
+            transcribe = { "กี่โมง" },
+            ask = { _, _ -> asked = true; "บ่ายโมงครับ" to "c1" },
+        ).run(wav(), null)
+
+        assertEquals(TurnPipeline.Outcome.COMPLETED, outcome)
+        assertTrue("a real question must be asked", asked)
+    }
+
+    @Test
+    fun `a cancelled turn says nothing out loud`() {
+        val sink = Sink()
+        var spokeLocally = false
+        pipeline(
+            sink,
+            transcribe = { "" },
+            sayLocally = { spokeLocally = true; true },
+        ).run(wav(), null)
+
+        // Not even an apology: the person said the wake word and did not ask
+        // anything, and a kiosk that announces that every time is a kiosk
+        // nobody wants in the kitchen.
+        assertFalse(spokeLocally)
+        assertEquals("", sink.reply)
+    }
+
     @Test
     fun `the log carries lengths and never the words`() {
         val sink = Sink()

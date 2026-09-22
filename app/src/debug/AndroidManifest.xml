@@ -36,6 +36,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_RESET_STATS" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_BROKER" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY" />
             </intent-filter>
         </receiver>
     </application>

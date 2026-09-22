@@ -19,7 +19,15 @@ class TurnPipeline(
 ) {
 
     /** What happened, for the counters and the log. */
-    enum class Outcome { COMPLETED, SPOKEN_LOCALLY, FAILED, EMPTY_AUDIO }
+    enum class Outcome {
+        COMPLETED, SPOKEN_LOCALLY, FAILED, EMPTY_AUDIO,
+
+        /**
+         * Something was recorded and transcribed, but it was not a question.
+         * Nothing was asked and nothing was spoken.
+         */
+        NO_QUESTION,
+    }
 
     fun run(wav: ByteArray, conversationId: String?): Pair<Outcome, String?> {
         if (wav.size <= WAV_HEADER_BYTES) {
@@ -43,6 +51,28 @@ class TurnPipeline(
             log("stt failed: ${describe(e)}")
             speakError(e)
             return Outcome.FAILED to conversationId
+        }
+
+        // A SECOND GATE, AFTER TRANSCRIPTION.
+        //
+        // The first gate is upstream: a capture that never heard anybody speak
+        // is cancelled before it reaches this class at all, and that is the one
+        // that does the real work. This one catches what gets past it — a cough,
+        // a door, a moment of television loud enough to clear the bar — where
+        // the transcriber returns a word or two of nothing in particular.
+        //
+        // Length is a weak signal and is treated as one. Real Thai questions get
+        // short: "กี่โมง" is six characters and "อะไร" is four, so the bar has to
+        // sit below them, which means it only rejects the obviously empty. It is
+        // a backstop, not the defence.
+        val asked = question.trim()
+        if (asked.length < MIN_QUESTION_CHARS) {
+            state.stt = "too-short"
+            state.reply = ""
+            // The count, never the words.
+            log("no question after the wake word: ${asked.length} chars; " +
+                "not asking and not speaking")
+            return Outcome.NO_QUESTION to conversationId
         }
 
         val reply: String
@@ -121,6 +151,15 @@ class TurnPipeline(
 
     companion object {
         const val WAV_HEADER_BYTES = 44
+
+        /**
+         * Below this, a transcript is not a question worth paying to answer.
+         *
+         * Deliberately low. The job of not answering the television belongs to
+         * the capture stage, which never records it in the first place; this
+         * only stops the empty and the single stray character.
+         */
+        const val MIN_QUESTION_CHARS = 3
     }
 }
 

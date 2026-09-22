@@ -226,7 +226,28 @@ class MainActivity : Activity() {
      * and the person standing there is the only one who can catch it.
      */
     private fun transcriptLine(): String = buildString {
-        if (VoiceState.heard.isNotEmpty()) append("ได้ยิน: ${VoiceState.heard}")
+        // THE WAKE WORD HAS TO BE VISIBLE THE MOMENT IT LANDS. Before this, the
+        // only sign the kiosk had heard you was the answer several seconds
+        // later, so anyone unsure said it again — and on versionCode 7 that
+        // started a second turn on top of the first.
+        if (VoiceState.wakeOnly) {
+            append("โหมดทดสอบคำปลุก · ได้ยินแล้ว ${VoiceState.detections} ครั้ง")
+            append("  (คะแนนล่าสุด %.3f)".format(VoiceState.wakeScore))
+            return@buildString
+        }
+        when {
+            VoiceState.wake == "heard" && VoiceState.heard.isEmpty() ->
+                append("ฟังอยู่ครับ เชิญถามได้เลย")
+            VoiceState.lastCancel.isNotEmpty() && VoiceState.heard.isEmpty() ->
+                // Short on purpose: a kiosk that explains itself at length every
+                // time somebody says its name and then changes their mind is
+                // worse than one that just goes quiet.
+                append("ไม่ได้ยินคำถามครับ")
+        }
+        if (VoiceState.heard.isNotEmpty()) {
+            if (isNotEmpty()) append("\n")
+            append("ได้ยิน: ${VoiceState.heard}")
+        }
         if (VoiceState.reply.isNotEmpty()) {
             if (isNotEmpty()) append("\n")
             append("ตอบ: ${VoiceState.reply}")

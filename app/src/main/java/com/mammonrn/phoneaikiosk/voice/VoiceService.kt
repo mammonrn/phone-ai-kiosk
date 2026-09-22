@@ -67,6 +67,10 @@ class VoiceService : Service() {
     /** Capture-thread only: whether the previous frame was during playback. */
     private var wasDeaf = false
 
+    /** The wake acknowledgement beep. Created on first use, released on stop. */
+    @Volatile
+    private var tone: android.media.ToneGenerator? = null
+
     override fun onCreate() {
         super.onCreate()
         recorder = Recorder()
@@ -140,7 +144,15 @@ class VoiceService : Service() {
                 // in the mel buffer afterwards, and the first real detection
                 // would be scored against a window half full of the kiosk's own
                 // voice. The buffers are dropped when hearing resumes.
-                val deaf = android.os.SystemClock.elapsedRealtime() < hearingFrom.get()
+                // AND NOT DURING A TURN. The detector is fed only while the
+                // machine is actually listening: not while a question is being
+                // recorded, not while it is being transcribed, asked or spoken.
+                // In versionCode 7 the lock covered playback alone, so a wake
+                // word landing between "capture finished" and "tts ok" started
+                // a second turn on top of the first — and that second capture
+                // recorded the first answer.
+                val busy = machine.mode != CaptureMachine.Mode.LISTENING
+                val deaf = busy || android.os.SystemClock.elapsedRealtime() < hearingFrom.get()
                 if (deaf) {
                     wasDeaf = true
                 } else if (wasDeaf) {
@@ -159,6 +171,18 @@ class VoiceService : Service() {
                     // The score, never the audio.
                     Log.i(TAG, "wake word detected score=%.3f threshold=%.2f"
                         .format(VoiceState.wakeScore, VoiceState.threshold))
+                    // Something has to tell the person it heard them, or the
+                    // only feedback is an answer several seconds later.
+                    acknowledge()
+                }
+
+                if (VoiceState.wakeOnly) {
+                    // Counted, shown, beeped — and that is all. The frame still
+                    // goes through the machine so the ambient level keeps being
+                    // tracked, but never as a trigger, so no capture can start
+                    // and nothing is ever sent anywhere.
+                    machine.onFrame(peak, false)
+                    return@listen true
                 }
 
                 when (machine.onFrame(peak, fired)) {
@@ -171,6 +195,23 @@ class VoiceService : Service() {
                     }
 
                     CaptureMachine.Step.CAPTURING -> recorder.appendPcm(buffer, frame, read)
+
+                    CaptureMachine.Step.CANCELLED -> {
+                        // Thrown away here, on the phone. Nothing is uploaded,
+                        // nothing is transcribed, nothing is asked, nothing is
+                        // paid for. Somebody said the wake word and then did
+                        // not ask anything, or the room cleared the bar for a
+                        // moment and then did not.
+                        buffer.reset()
+                        VoiceState.stt = "idle"
+                        VoiceState.lastCancel = machine.lastStopReason
+                        VoiceState.heard = ""
+                        VoiceState.reply = ""
+                        Log.i(TAG, "capture cancelled reason=${machine.lastStopReason} " +
+                            "threshold=${machine.speechThreshold} ambient=${machine.ambientLevel()}")
+                        detector.reset()
+                        VoiceState.wake = if (detector.ready) "listening" else detector.state
+                    }
 
                     CaptureMachine.Step.FINISHED -> {
                         recorder.appendPcm(buffer, frame, read)
@@ -218,16 +259,32 @@ class VoiceService : Service() {
             log = { message -> Log.i(TAG, message) },
         )
 
-        val (outcome, conversationId) = pipeline.run(wav, VoiceState.conversationId)
-        VoiceState.conversationId = conversationId
-        Log.i(TAG, "turn finished outcome=$outcome")
+        try {
+            val (outcome, conversationId) = pipeline.run(wav, VoiceState.conversationId)
+            VoiceState.conversationId = conversationId
+            Log.i(TAG, "turn finished outcome=$outcome")
 
-        when (outcome) {
-            TurnPipeline.Outcome.COMPLETED, TurnPipeline.Outcome.SPOKEN_LOCALLY -> {
-                stats.recordTurn()
-                VoiceState.turns += 1
+            when (outcome) {
+                TurnPipeline.Outcome.COMPLETED, TurnPipeline.Outcome.SPOKEN_LOCALLY -> {
+                    stats.recordTurn()
+                    VoiceState.turns += 1
+                }
+                TurnPipeline.Outcome.NO_QUESTION -> {
+                    // Not an error and not a turn: somebody said the wake word
+                    // and did not ask anything. Nothing was spoken, so there is
+                    // nothing to apologise for either.
+                    VoiceState.lastCancel = "no-question-transcribed"
+                }
+                else -> stats.recordError()
             }
-            else -> stats.recordError()
+        } finally {
+            // THE LOCK COMES OFF HERE AND ONLY HERE, on every path including a
+            // thrown one. A turn that failed still has to hand the microphone
+            // back, or the kiosk goes deaf for good and looks like the wake
+            // word stopped working.
+            machine.turnFinished()
+            detector.reset()
+            VoiceState.wake = if (detector.ready) "listening" else detector.state
         }
     }
 
@@ -244,8 +301,38 @@ class VoiceService : Service() {
         writer.println("  armed        : ${machine.isArmed()}")
         val deafFor = hearingFrom.get() - android.os.SystemClock.elapsedRealtime()
         writer.println("  deaf-for-ms  : ${if (deafFor > 0) deafFor else 0}")
+        writer.println("  speech-floor : ${machine.speechThreshold} " +
+            "(ambient ${machine.ambientLevel()})")
+        writer.println("  stop-reason  : ${machine.lastStopReason}")
         writer.println()
         writer.print(stats.report())
+    }
+
+    /**
+     * Tells the person it heard them, the moment it hears them.
+     *
+     * Without this the only feedback is the answer, several seconds later, and
+     * somebody who is not sure whether they were heard says it again — which
+     * used to start a second turn. A short tone and a line on the screen cost
+     * nothing and remove the reason to repeat yourself.
+     *
+     * ToneGenerator rather than an audio asset: it is in the platform, it needs
+     * no file, and it plays on the notification stream so it does not fight the
+     * answer for the music stream.
+     */
+    private fun acknowledge() {
+        VoiceState.lastCancel = ""
+        VoiceState.heard = ""
+        VoiceState.reply = ""
+        VoiceState.wake = "heard"
+        runCatching {
+            if (tone == null) {
+                tone = android.media.ToneGenerator(
+                    android.media.AudioManager.STREAM_NOTIFICATION, TONE_VOLUME,
+                )
+            }
+            tone?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, TONE_MILLIS)
+        }
     }
 
     /**
@@ -304,6 +391,8 @@ class VoiceService : Service() {
         capture.shutdownNow()
         network.shutdownNow()
         detector.close()
+        runCatching { tone?.release() }
+        tone = null
         speaker.shutdown()
         VoiceState.mic = "stopped"
         Log.i(TAG, "destroyed")
@@ -356,8 +445,23 @@ class VoiceService : Service() {
          */
         const val MAX_SPEECH_MILLIS = 60_000L
 
+        /** Loud enough to hear across a room, short enough not to be annoying. */
+        const val TONE_VOLUME = 70
+        const val TONE_MILLIS = 120
+
         /** Used by the debug-only adb trigger. */
         const val ACTION_LISTEN_NOW = "com.mammonrn.phoneaikiosk.LISTEN_NOW"
+
+        /**
+         * Wake-word-only test mode. Counted and shown, never recorded.
+         *
+         * Lives on VoiceState rather than in the detector because it is about
+         * what the SERVICE does with a detection, not about detecting.
+         */
+        fun setWakeOnly(on: Boolean): Boolean {
+            VoiceState.wakeOnly = on
+            return VoiceState.wakeOnly
+        }
 
         /**
          * Started from a visible activity, never from a receiver: a microphone

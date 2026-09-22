@@ -23,6 +23,19 @@ object VoiceState : VoiceSink {
 
     /** How many times the wake word has fired since the service started. */
     @Volatile var detections: Int = 0
+
+    /**
+     * Wake-word-only test mode, switched on over adb.
+     *
+     * The wake word is counted and shown and nothing else happens: no
+     * recording, no transcription, no model call, no speech. It exists so the
+     * twenty-times-at-three-metres measurement costs nothing and takes as long
+     * as it takes to say the words, instead of a full turn each time.
+     */
+    @Volatile var wakeOnly: Boolean = false
+
+    /** Why the last capture was thrown away, if it was. */
+    @Volatile var lastCancel: String = ""
     @Volatile var wake: String = "idle"
     @Volatile override var stt: String = "idle"
     @Volatile override var chat: String = "idle"
@@ -67,6 +80,8 @@ object VoiceState : VoiceSink {
         appendLine("  detector   : $detector")
         appendLine("  score      : %.4f  (threshold %.2f)".format(wakeScore, threshold))
         appendLine("  detections : $detections")
+        appendLine("  wake-only  : ${if (wakeOnly) "ON — no STT, chat or TTS" else "off"}")
+        if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
         appendLine("  wake       : $wake")
         appendLine("  stt        : $stt")
         appendLine("  chat       : $chat")
