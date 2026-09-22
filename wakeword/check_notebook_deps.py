@@ -83,6 +83,132 @@ def module_names() -> list[str]:
     raise SystemExit("could not find the readiness cell's module list")
 
 
+def helper_source() -> str:
+    """The cell that holds nothing but the audio-reading helpers.
+
+    That cell is deliberately side-effect free so this can exec it and test the
+    functions for real, rather than reimplementing them here and testing a copy.
+    """
+    for source in cells("code"):
+        if "def audio_16k_mono(" in source and "load_dataset" not in source:
+            return source
+    raise SystemExit("could not find the audio-helper cell in the notebook")
+
+
+def check_audio_parser() -> list[str]:
+    """Feeds the notebook's parser every shape a `datasets` row has ever been.
+
+    The one that matters is the torchcodec AudioDecoder, because that is what
+    broke the notebook: `datasets` wraps it in a __getitem__ that serves "array"
+    and "sampling_rate" and raises TypeError on everything else, so
+    row["audio"]["path"] died with "object is not subscriptable".
+    """
+    import numpy as np
+
+    namespace: dict = {}
+    exec(compile(helper_source(), "<notebook helper cell>", "exec"), namespace)
+    audio_16k_mono = namespace["audio_16k_mono"]
+    to_int16 = namespace["to_int16"]
+
+    failures: list[str] = []
+
+    def case(label: str, value, expected_samples: int, tolerance: int = 60):
+        try:
+            wave, rate = audio_16k_mono(value)
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"parser {label}: {type(exc).__name__}: {exc}")
+            print(f"  FAIL {label}  <- {type(exc).__name__}: {exc}")
+            return
+        problems = []
+        if rate != 16000:
+            problems.append(f"rate {rate}")
+        if wave.ndim != 1:
+            problems.append(f"not mono, shape {wave.shape}")
+        if abs(len(wave) - expected_samples) > tolerance:
+            problems.append(f"{len(wave)} samples, wanted ~{expected_samples}")
+        if wave.dtype != np.float32:
+            problems.append(f"dtype {wave.dtype}")
+        if problems:
+            failures.append(f"parser {label}: {', '.join(problems)}")
+            print(f"  FAIL {label}  <- {', '.join(problems)}")
+        else:
+            print(f"  ok   parser {label}")
+
+    # ---- the old shape, which some datasets versions still produce ----------
+    case("old dict 16 kHz", {"array": np.zeros(16000), "sampling_rate": 16000}, 16000)
+    case("old dict 44.1 kHz resampled",
+         {"array": np.zeros(44100), "sampling_rate": 44100}, 16000)
+    case("old dict stereo",
+         {"array": np.zeros((2, 32000)), "sampling_rate": 32000}, 16000)
+
+    # ---- the new shape, for real if torchcodec is installed -----------------
+    try:
+        import torch
+        from torchcodec.decoders import AudioDecoder
+    except Exception as exc:  # noqa: BLE001
+        failures.append(f"torchcodec unavailable, the shape that broke the "
+                        f"notebook went untested: {type(exc).__name__}: {exc}")
+        print(f"  FAIL real AudioDecoder  <- {type(exc).__name__}: {exc}")
+        return failures
+
+    # A real wav, encoded to bytes, decoded by a real torchcodec decoder.
+    import io
+    import wave as wavemodule
+
+    buffer = io.BytesIO()
+    with wavemodule.open(buffer, "wb") as handle:
+        handle.setnchannels(2)
+        handle.setsampwidth(2)
+        handle.setframerate(48000)
+        tone = (np.sin(np.linspace(0, 400 * np.pi, 48000)) * 20000).astype("<i2")
+        handle.writeframes(np.repeat(tone, 2).tobytes())
+    payload = buffer.getvalue()
+
+    decoder = AudioDecoder(payload)
+
+    # Straight torchcodec: 48 kHz stereo in, 16 kHz mono out.
+    case("real AudioDecoder 48 kHz stereo", decoder, 16000)
+
+    # And the datasets wrapper, whose __getitem__ is the thing that raised.
+    class DatasetsWrapper(AudioDecoder):
+        """Reproduces datasets/features/_torchcodec.py, including the raise."""
+
+        def __getitem__(self, key):
+            if key == "array":
+                y = self.get_all_samples().data.cpu().numpy()
+                return np.mean(y, axis=tuple(range(y.ndim - 1))) if y.ndim > 1 else y
+            if key == "sampling_rate":
+                return self.get_samples_played_in_range(0, 0).sample_rate
+            raise TypeError("'torchcodec.decoders.AudioDecoder' object is not subscriptable")
+
+    wrapped = DatasetsWrapper(payload)
+    case("datasets AudioDecoder wrapper", wrapped, 16000)
+
+    # The exact call that failed on Colab must still fail, or this test is
+    # asserting against a world that no longer exists.
+    try:
+        wrapped["path"]
+        failures.append("the datasets wrapper no longer raises on ['path'] — this test's "
+                        "premise has changed, re-read datasets/features/_torchcodec.py")
+        print("  FAIL ['path'] no longer raises")
+    except TypeError:
+        print("  ok   ['path'] still raises TypeError, as it did on Colab")
+
+    # Undecoded rows: what Audio(decode=False) hands over.
+    case("undecoded bytes", {"bytes": payload, "path": None}, 16000)
+
+    # ---- clipping ----------------------------------------------------------
+    # resample_poly rings above 1.0 at edges; int16 would wrap that into a bang.
+    loud = to_int16(np.array([0.0, 1.4, -1.4], dtype=np.float32))
+    if loud.max() != 32767 or loud.min() != -32767:
+        failures.append(f"to_int16 did not clip: {loud}")
+        print(f"  FAIL to_int16 clipping <- {loud}")
+    else:
+        print("  ok   to_int16 clips instead of wrapping")
+
+    return failures
+
+
 def notebook_says_no_tflite() -> None:
     """The notebook must keep explaining itself, not just work by accident."""
     prose = "\n".join(cells("code") + cells("markdown"))
@@ -148,11 +274,15 @@ def main() -> int:
         print("  ok   convert_onnx_to_tflite still present, notebook patch still applies")
 
     print()
+    print("audio parser, against every row shape datasets has produced:")
+    failures.extend(check_audio_parser())
+
+    print()
     if failures:
         for failure in failures:
             print("  x", failure)
         return 1
-    print("the notebook's dependency set imports cleanly")
+    print("the notebook's dependency set imports cleanly and its audio parser holds")
     return 0
 
 

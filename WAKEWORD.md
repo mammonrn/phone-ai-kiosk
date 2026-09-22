@@ -125,6 +125,114 @@ Colab **cache notebook ที่เปิดค้างไว้** ถ้าก
 รันผ่านบน Colab จริง CI พิสูจน์ได้แค่ว่า Ubuntu + Python 3.12 ลงและ import ผ่าน
 ซึ่งเป็นจุดที่พังพอดี แต่ไม่ใช่ Colab เอง
 
+## 🔴 รอบที่ 2 — ขั้น 4 ล้ม เพราะ datasets เปลี่ยนรูปแบบข้อมูลเสียง
+
+ขั้น 1ก ถึงขั้น 3 ผ่านหมด (torch 2.11.0+cu128, T4, positive_train 390 /
+positive_test 60 / negative_train 512 / negative_test 88) แล้วขั้น 4 ตาย:
+
+```
+TypeError: 'torchcodec.decoders.AudioDecoder' object is not subscriptable
+  ที่บรรทัด  name = row['audio']['path'].split('/')[-1]
+```
+
+### สาเหตุ ✅ อ่านจาก source ของ datasets แล้ว ไม่ได้เดา
+
+`datasets` 5.x คืน `torchcodec.decoders.AudioDecoder` แทน dict แต่จุดที่สำคัญคือ
+**มันไม่ได้พังทั้งหมด** ใน `datasets/features/_torchcodec.py` มี wrapper:
+
+```python
+class AudioDecoder(_AudioDecoder):
+    def __getitem__(self, key):
+        if key == "array":          ...   # ยังใช้ได้
+        elif key == "sampling_rate": ...  # ยังใช้ได้
+        else:
+            raise TypeError("'torchcodec.decoders.AudioDecoder' object is not subscriptable")
+```
+
+แปลว่า `row['audio']['array']` **ยังทำงานอยู่** ส่วน `row['audio']['path']`
+คือตัวเดียวที่โยน TypeError ออกมา — ตรงกับข้อความ error ที่ได้เป๊ะๆ
+เซลล์เดิมใช้ `['path']` แค่เพื่อ**ตั้งชื่อไฟล์** ซึ่งเป็นสิ่งที่ไม่จำเป็นเลย
+
+### แก้อะไรไปบ้าง
+
+1. **เซลล์ใหม่ "ขั้น 3ก"** มีแต่ฟังก์ชัน `audio_16k_mono()` กับ `to_int16()`
+   ไม่มี side effect รองรับทุกรูปแบบที่ datasets เคยคืนมา:
+   AudioDecoder (เรียก `get_all_samples()` ตัวจริง ไม่ใช่ shim), dict แบบเก่า
+   `{'array','sampling_rate'}`, dict ที่ยังไม่ decode `{'bytes','path'}`,
+   และ path/bytes ดิบ **ไม่พึ่งรูปแบบใดรูปแบบเดียว**
+2. **resample จริง** เซลล์เดิมเขียน header เป็น `16000` แบบฮาร์ดโค้ดโดยไม่เคยดู
+   ว่าเสียงต้นทางเป็น rate เท่าไร ถ้า dataset ไม่ใช่ 16 kHz พอดี impulse response
+   ทุกไฟล์จะเพี้ยนแบบเงียบๆ ตอนนี้ resample ด้วย `scipy.signal.resample_poly`
+   (ไม่เพิ่ม dependency) และรวมเป็น mono จริง
+3. **`to_int16()` clip ก่อนแปลง** `resample_poly` แกว่งเกิน 1.0 ได้ที่ขอบสัญญาณ
+   และ `(x * 32767).astype(np.int16)` จะ **wrap รอบ** กลายเป็นเสียงแตกดังลั่น
+   ความเสียหายแบบนี้นับจำนวนไฟล์ไม่เจอ ต้องฟังเท่านั้นจึงจะรู้
+4. **ชื่อไฟล์จากตัวนับ** `rir_00000.wav` / `bg_00000.wav` ไม่ซ้ำโดยโครงสร้าง
+   และไม่ต้องมี path จาก dataset เลย
+5. **`mkdir` ย้ายไปไว้บนสุด** ✅ ยืนยันว่า Poom วิเคราะห์ถูก: `mkdir -p
+   /content/background_clips` เดิมอยู่ **ท้าย** เซลล์ขั้น 4 หลังลูป RIR พอลูปล้ม
+   บรรทัดนั้นไม่ได้รัน เซลล์ถัดไปจึงตายด้วย `FileNotFoundError` ตามมา
+   ทำให้ดูเหมือนพังสองที่ทั้งที่พังที่เดียว ตอนนี้สร้างทั้งสองโฟลเดอร์ก่อน
+   ทำอะไรที่ล้มได้ และเซลล์เสียงพื้นหลังก็ `mkdir` เองด้วย ไม่พึ่งเซลล์ก่อนหน้า
+6. **ข้ามรายการที่อ่านไม่ได้ ไม่ให้ทั้งเซลล์ล้ม** นับ `เขียน / ข้าม / สั้นเกินไป`
+   แยกกัน และพิมพ์สาเหตุ 3 รายการแรกให้ดู
+7. **เซลล์ใหม่ "ขั้น 4ก"** หยุดถ้า RIR = 0 ไฟล์ หรือเสียงพื้นหลัง = 0 ไฟล์
+   หรือ `validation_set_features.npy` เล็กกว่า 100 KB (ไฟล์เล็กแบบนั้นมักเป็น
+   หน้า error ที่ถูกบันทึกเป็นไฟล์) — **ก่อน**โหลดไฟล์ feature 2 GB
+8. **CI เป็น matrix 3.12 + 3.13** และเทสต์ตัว parser จริง
+
+### 🔴 CI เคยทดสอบ Python ผิดเวอร์ชัน
+
+Colab ใช้ **Python 3.13** ไม่ใช่ 3.12 (เห็นจาก path ใน traceback:
+`/usr/local/lib/python3.13/dist-packages`) รอบก่อนผมเขียน CI ไว้ที่ 3.12
+และมันเขียว — เพราะวิธีแก้ `--no-deps` ไม่ขึ้นกับเวอร์ชัน Python จึงใช้ได้ทั้งคู่
+แต่ CI ที่ทดสอบเวอร์ชันผิดคือ CI ที่โชคดี ไม่ใช่ CI ที่ถูก ตอนนี้รันทั้ง
+3.13 (ตรงกับ Colab) และ 3.12 (ตรงกับ VPS)
+
+CI เทสต์ parser กับทุกรูปแบบ รวม **AudioDecoder ตัวจริงจาก torchcodec**
+ไม่ใช่ของปลอม และยืนยันว่า `wrapper['path']` **ยังโยน TypeError อยู่** —
+ถ้าวันหนึ่ง datasets เลิกโยน แปลว่าสมมติฐานของเทสต์เปลี่ยน ต้องกลับมาอ่านใหม่
+ถ้า torchcodec ลงไม่ได้ CI จะ **แดง** ไม่ใช่ข้ามเงียบๆ เพราะเทสต์ที่ข้ามเคสที่
+ทำให้ production ล่มคือเทสต์ที่เขียวหลอก
+
+### torchcodec ไม่อยู่ในบรรทัด pip ของ notebook โดยตั้งใจ
+
+มันเป็น extension ที่คอมไพล์คู่กับ torch เวอร์ชันหนึ่งๆ ถ้าให้ pip ลงเอง
+pip อาจลาก torch เวอร์ชันอื่นมาแล้ว **CUDA/T4 หาย** — กับดักเดียวกับ torch
+Colab ติดคู่ที่เข้ากันมาให้แล้ว (หลักฐาน: datasets คืน AudioDecoder ได้)
+จึงอยู่ในรายการ "ตรวจ" ของขั้น 1ก ไม่ใช่รายการ "ติดตั้ง"
+
+### คำเตือน Hugging Face unauthenticated — ไม่ต้องทำอะไร
+
+✅ ทั้งสอง dataset (`davidscripka/MIT_environmental_impulse_responses` และ
+`agkphysics/AudioSet`) เป็น public การไม่ล็อกอินมีผลแค่ rate limit ที่หย่อนกว่า
+**ไม่ต้องใส่ HF_TOKEN** และไม่ควรใส่ เพราะ token ใน notebook คือ token ที่หลุด
+ไปอยู่ใน output cell หรือใน repo ได้ ถ้าวันหนึ่งโดน rate limit จริงค่อยคุยกัน
+
+### ‼️ Poom ต้องทำอะไร — รอบนี้ต้องอัปโหลด zip ใหม่ด้วย
+
+1. **ปิดแท็บ Colab เดิม** แล้วเปิดใหม่จาก main (Colab cache notebook ที่เปิดค้างไว้
+   กด Restart เฉยๆ จะยังได้เซลล์เก่า):
+
+   https://colab.research.google.com/github/mammonrn/phone-ai-kiosk/blob/main/wakeword/train_saifon_colab.ipynb
+
+2. Runtime > Change runtime type > **T4 GPU**
+3. Runtime > **Disconnect and delete runtime**
+4. **‼️ ต้องอัปโหลด `wake-samples.zip` ใหม่** — runtime ใหม่คือเครื่องใหม่
+   `/content` ว่างเปล่า ไฟล์ที่อัปไว้รอบก่อนหายไปพร้อม runtime เดิม
+   **ไม่ต้องสร้าง zip ใหม่บน VPS และไม่เสียเงินเพิ่ม** ใช้ไฟล์เดิมที่ดาวน์โหลด
+   ไว้แล้วได้เลย (ถ้ายังอยู่บนเครื่อง Windows)
+5. รันจากเซลล์แรก แล้วต้องผ่านสองด่านนี้:
+   - **ขั้น 1ก** → "พร้อมเทรน ไปขั้น 2 ได้"
+   - **ขั้น 4ก** → "ข้อมูลเสียงครบ ไปขั้น 5 ได้"
+
+   ถ้าด่านไหนไม่ผ่าน หยุดแล้วส่ง output มาให้ผม อย่ารันต่อ
+
+❓ **ยังไม่ทราบ**: ผมรัน Colab เองไม่ได้ CI พิสูจน์ว่า parser รับ AudioDecoder
+จริงได้บนทั้ง 3.12 และ 3.13 แต่ไม่ได้พิสูจน์ว่า `agkphysics/AudioSet` กับ
+`MIT_environmental_impulse_responses` จะ stream ได้ราบรื่นบน Colab
+(CI ห้ามโหลด dataset ใหญ่) — ขั้น 4ก มีไว้เพื่อจับกรณีนั้นก่อนเสียเวลา
+
 ## ทำไมถึงเลือก openWakeWord (ทวนจากรอบสำรวจ)
 
 ✅ **Porcupine ไม่รองรับภาษาไทย** — มีแค่ en/fr/de/it/ja/ko/zh/pt/es ต้องคุยฝ่ายขายเป็นเคสๆ

@@ -8,8 +8,9 @@ name: Wake word notebook deps
 # So this does — on a runner, never on the VPS, where torch and speechbrain are
 # gigabytes the box does not have the RAM to spare for.
 #
-# Installs and imports only. No dataset, no audio, no training: the failure this
-# guards against happens in the first thirty seconds and needs none of them.
+# Installs and imports only, plus the audio parser run against every row shape
+# `datasets` has ever produced — including a real torchcodec AudioDecoder, which
+# is what broke the notebook the second time. No dataset download, no training.
 
 on:
   push:
@@ -26,8 +27,17 @@ on:
 
 jobs:
   imports:
-    name: notebook dependencies import
+    name: py${{ matrix.python-version }}
     runs-on: ubuntu-latest
+
+    strategy:
+      # Both, and 3.13 is the one that counts: Colab runs 3.13, which the path in
+      # the traceback gave away (/usr/local/lib/python3.13/dist-packages) after
+      # this workflow had been testing 3.12 and passing. 3.12 stays because the
+      # VPS runs it and a second runner costs nothing.
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
 
     steps:
       - name: Check out repository
@@ -36,9 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          # The version Colab runs, and the version that makes tflite-runtime
-          # unavailable. Testing on 3.11 would pass and prove nothing.
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
 
       - name: Clone openWakeWord v0.6.0
         # The same pinned tag the notebook clones. Not main: main has moved.
@@ -52,11 +60,18 @@ jobs:
         # swap in a CPU wheel and lose the GPU silently. A bare runner has none
         # of them, so CI stands them up instead. The CPU index keeps torch to a
         # couple of hundred megabytes; CI is testing imports, not speed.
+        #
+        # torchcodec is in here for the same reason: it is a compiled extension
+        # built against one torch version, so the notebook must not let pip
+        # choose it either. Colab ships a matching pair; CI has to build one.
+        # It decodes through the system FFmpeg, which the runner image has.
         run: |
           python -m pip install --quiet --upgrade pip
           python -m pip install --quiet torch torchaudio \
             --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet torchcodec
           python -m pip install --quiet numpy scipy scikit-learn pyyaml tqdm requests
+          ffmpeg -version | head -1
 
       - name: Run the notebook's own pip lines
         # Read out of the .ipynb rather than copied here, so this cannot pass
