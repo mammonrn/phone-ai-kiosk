@@ -459,7 +459,7 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 | `tts` | `idle` `synthesising` **`speaking`** `ok` **`device-fallback`** `failed` |
 | `capture-mode` | `LISTENING` `CAPTURING` **`BUSY`** (จาก dumpsys) |
 | `last-action` | `none` `open_maps:opened` `open_maps:not_installed` `open_maps:refused` `open_maps:failed` |
-| `maps` | `unknown` `ready` `not-installed` `location-denied` `granted-unconfirmed` `opened` |
+| `maps` | `unknown` `ready` `not-installed` `location-denied` `granted-unconfirmed` **`installed-no-dpm`** **`installed-not-owner`** `opened` |
 
 `stt=empty` แปลว่าอัดแล้วไม่ได้เสียงเลย — ไม่ถูกส่งขึ้นเซิร์ฟเวอร์และไม่เสียเงิน
 
@@ -537,7 +537,7 @@ trigger สั่งจึงถูกต่อคิวหลังงานท
 ผู้ช่วยชื่อ **จาร์วิส** คำปลุกคือ **"Hey Jarvis"** (ภาษาอังกฤษ เพราะโมเดลเป็น
 pretrained ของ openWakeWord) ทุกอย่างรันบนเครื่อง ไม่มีเสียงออกจากห้องก่อนเจอคำปลุก
 
-### ขั้น 0 — ติดตั้ง versionCode 9
+### ขั้น 0 — ติดตั้ง versionCode 10
 
 ```powershell
 adb install -r -t app-debug.apk
@@ -548,7 +548,7 @@ adb install -r -t app-debug.apk
 ```powershell
 adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | Select-String versionCode
 ```
-ต้องเห็น `versionCode=9`
+ต้องเห็น `versionCode=10`
 
 ### ขั้น 1 — detector โหลดโมเดลได้จริงไหม
 
@@ -796,6 +796,29 @@ adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.
 
 ## เฟส 4 — พูดให้เปิดแผนที่
 
+### 🔴 ขั้น M-1 — บั๊กที่แก้ใน versionCode 10 (อ่านก่อนถ้ามาจาก vc9)
+
+**อาการ:** `maps : not-installed` ทั้งที่ `pm list packages` เห็น Maps และ Maps
+รันอยู่จริง
+
+**สาเหตุ ✅ ยืนยันจาก manifest:** ตั้งแต่ Android 11 แอปที่ target API 30+
+**มองไม่เห็นแพ็กเกจอื่น** เว้นแต่ประกาศไว้ใน `<queries>` — และ manifest ของเรา
+**ไม่มี `<queries>` เลย** `getPackageInfo` จึงโยน NameNotFound เหมือนกับว่าไม่ได้
+ติดตั้ง และที่ร้ายกว่าคือ **`startActivity` ที่ `setPackage()` ก็ resolve ไม่ได้
+ด้วยเหตุผลเดียวกัน** — ต่อให้ข้ามการเช็คไป Maps ก็เปิดไม่ขึ้นอยู่ดี
+
+**แก้แล้วใน vc10** ประกาศแพ็กเกจเดียว ไม่ใช้ `QUERY_ALL_PACKAGES`
+
+ตรวจว่า APK ที่ลงมีจริง (ทำบนเครื่อง Windows กับไฟล์ APK):
+```powershell
+$aapt = (Get-ChildItem "$env:LOCALAPPDATA\Android\Sdk\build-tools\*\aapt2.exe" | Select-Object -Last 1).FullName
+& $aapt dump xmltree app-debug.apk --file AndroidManifest.xml | Select-String -Context 0,2 "E: queries"
+```
+ต้องเห็น `E: queries` แล้วตามด้วย `com.google.android.apps.maps`
+
+ถ้าไม่มี aapt2 ให้ดูจากในเครื่องแทน — vc10 เช็คใหม่ทุกครั้งก่อนเปิดแผนที่อยู่แล้ว
+ดังนั้นแค่ดู `maps` ใน dumpsys ก็พอ
+
 ### ขั้น M0 — ตรวจว่ามี Google Maps และได้สิทธิ์ตำแหน่ง
 
 ```powershell
@@ -809,12 +832,27 @@ adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.
   maps-package : com.google.android.apps.maps installed=true
 ```
 
+🔴 ถ้า `installed=false` ทั้งที่ `pm list packages` เห็น Maps — นั่นคือบั๊ก
+package visibility ของ vc9 **ให้ตรวจว่าลง vc10 แล้วจริงหรือยัง** (ขั้น 0)
+
+**ไม่ต้องรีสตาร์ตแอปหลังติดตั้ง Maps แล้ว** vc10 ถามใหม่ทุกครั้งก่อนเปิดแผนที่
+ถ้าติดตั้ง Maps ระหว่างที่ kiosk ทำงานอยู่ ครั้งถัดไปที่สั่งก็ใช้ได้เลย
+(ในเครื่องคุณ Maps ถูก `cmd package install-existing` ให้ user 0 **หลัง** service
+เริ่มไปแล้ว ซึ่งเป็นเหตุผลที่ข้อนี้ถูกแก้ไปด้วย)
+
+ดู log ตอนสั่งจริง จะเห็นผลการตรวจสดๆ:
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "maps readiness"
+```
+
 | ค่า `maps` | แปลว่า | ทำอะไรต่อ |
 |---|---|---|
 | `ready` | Device Owner ให้สิทธิ์ตำแหน่งสำเร็จ ไม่มี dialog | ไปต่อได้ |
 | `not-installed` | เครื่องไม่มี Maps | ติดตั้ง Maps ก่อน แล้วเปิดแอป kiosk ใหม่ |
 | `location-denied` | ให้สิทธิ์ไม่ผ่าน | **หยุด ส่ง output มาให้ผม** |
 | `granted-unconfirmed` | สั่งให้แล้วแต่อ่านกลับมายืนยันไม่ได้ | **หยุด ส่ง output มาให้ผม** |
+| `installed-not-owner` | มี Maps แต่แอปไม่ได้เป็น Device Owner | Maps จะถามสิทธิ์เอง ซึ่งใน lock task กดไม่ได้ — บอกผม |
+| `installed-no-dpm` | อ่าน DevicePolicyManager ไม่ได้ | **หยุด ส่ง output มาให้ผม** |
 
 🔴 **สิทธิ์ ≠ ระบบระบุตำแหน่งเปิดอยู่** Device Owner ให้ "สิทธิ์" ได้ แต่**เปิด
 Location Services ของเครื่องให้ไม่ได้ และล็อกอิน Google ให้ไม่ได้** ถ้า Maps

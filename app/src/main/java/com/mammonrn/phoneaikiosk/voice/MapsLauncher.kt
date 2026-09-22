@@ -86,10 +86,79 @@ object MapsLauncher {
         }
     }
 
+    /**
+     * Whether Google Maps is installed AND this app is allowed to see it.
+     *
+     * Those are one question here, not two, and they cannot be told apart from
+     * the outside: without the <queries> declaration in AndroidManifest.xml the
+     * platform reports a filtered package exactly as it reports an absent one.
+     * That is not a flaw to work around — it is the point of the filtering —
+     * but it is why the manifest entry and this function are two halves of the
+     * same thing, and why a test ties them together.
+     */
     fun isInstalled(context: Context): Boolean = runCatching {
         context.packageManager.getPackageInfo(MAPS_PACKAGE, 0)
         true
     }.getOrDefault(false)
+
+    /**
+     * Re-checks Maps and re-applies its location permission, right now.
+     *
+     * CALLED BEFORE EVERY ACTION, not only when the service starts. On the A07
+     * Maps existed on the device but had never been installed for user 0; it
+     * was added with `cmd package install-existing` while the kiosk was already
+     * running, and a state read once at startup would have said "not-installed"
+     * until somebody restarted the app.
+     *
+     * A Device Owner can set the grant state of a runtime permission for any
+     * package, which is the only reason a kiosk with no touch input can use
+     * Maps at all: a permission dialog has nobody to answer it.
+     *
+     * WHAT THIS CANNOT DO: turn on the device's location services, or sign
+     * anybody into a Google account. Both are settings, not permissions.
+     */
+    fun refreshState(context: Context): String {
+        if (!isInstalled(context)) return "not-installed"
+
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+            as? android.app.admin.DevicePolicyManager
+            ?: return "installed-no-dpm"
+        if (!dpm.isDeviceOwnerApp(context.packageName)) {
+            // Not an error: the app runs outside Device Owner during
+            // development, and Maps will simply ask for itself.
+            return "installed-not-owner"
+        }
+
+        val admin = com.mammonrn.phoneaikiosk.KioskDeviceAdminReceiver.componentName(context)
+        val applied = LOCATION_PERMISSIONS.map { permission ->
+            runCatching {
+                dpm.setPermissionGrantState(
+                    admin, MAPS_PACKAGE, permission,
+                    android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+                )
+            }.getOrDefault(false)
+        }
+        // Read back rather than trust the call: "I asked" and "it is granted"
+        // are different facts, and the one worth reporting is the second.
+        val state = runCatching {
+            dpm.getPermissionGrantState(admin, MAPS_PACKAGE, LOCATION_PERMISSIONS.first())
+        }.getOrDefault(android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT)
+
+        return when {
+            state == android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED -> "ready"
+            applied.all { it } -> "granted-unconfirmed"
+            else -> "location-denied"
+        }
+    }
+
+    /**
+     * What Maps needs to show where you are. Coarse as well as fine: granting
+     * one is not granting the other, and Maps asks for both.
+     */
+    private val LOCATION_PERMISSIONS = arrayOf(
+        android.Manifest.permission.ACCESS_FINE_LOCATION,
+        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+    )
 
     /**
      * Opens Maps. Returns what happened rather than throwing, because the

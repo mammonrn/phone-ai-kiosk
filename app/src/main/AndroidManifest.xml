@@ -14,6 +14,35 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      WHY THIS BLOCK EXISTS, AND WHY IT IS ONE LINE LONG.
+
+      From Android 11, an app that targets API 30 or higher cannot see other
+      installed packages unless it says which ones it cares about. Everything
+      else is filtered: PackageManager.getPackageInfo throws NameNotFound as if
+      the package were absent, and — the part that actually breaks the feature —
+      an Intent with setPackage() fails to resolve for the same reason.
+
+      On the A07 that looked exactly like Google Maps not being installed:
+
+          maps         : not-installed
+          maps-package : com.google.android.apps.maps installed=false
+
+      while `pm list packages` showed it present and running version 26.06.01.
+      The phone was not wrong and the code was not wrong; the app had simply
+      never been told it was allowed to look.
+
+      ONE PACKAGE, NAMED. Not QUERY_ALL_PACKAGES, which is a permission Google
+      Play restricts and which would let this app enumerate everything on the
+      phone to solve a problem about one app. Not an <intent> filter for geo:
+      either: that would make every maps application visible, and this kiosk
+      opens Google Maps specifically — see MapsLauncher.MAPS_PACKAGE, which a
+      test checks against this line.
+    -->
+    <queries>
+        <package android:name="com.google.android.apps.maps" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"

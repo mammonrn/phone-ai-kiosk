@@ -366,6 +366,15 @@ class VoiceService : Service() {
             return null
         }
 
+        // ASKED AGAIN, EVERY TIME. Maps can appear after the service started —
+        // on the A07 it was installed for user 0 with `cmd package
+        // install-existing` while the kiosk was running — and a state read once
+        // at startup would keep saying "not-installed" until somebody thought
+        // to restart the app.
+        val readiness = MapsLauncher.refreshState(this)
+        VoiceState.mapsState = readiness
+        Log.i(TAG, "maps readiness=$readiness")
+
         val result = MapsLauncher.open(this, action.destination)
         // The type and the outcome. Not the destination: where somebody asked
         // to be taken does not belong in a log.

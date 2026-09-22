@@ -175,6 +175,36 @@ jobs:
             echo "  ok   arm64-v8a is the only ABI"
           fi
 
+          # PACKAGE VISIBILITY, CHECKED IN THE MERGED MANIFEST.
+          #
+          # versionCode 9 shipped without a <queries> block and reported Google
+          # Maps as not installed on a phone that had it running. The source
+          # manifest is checked by PackageVisibilityTest; this checks what
+          # actually came out of the manifest merger, which is a different
+          # thing and the one the phone reads.
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | tail -1)
+          if [ -z "$AAPT" ]; then
+            echo "  cannot find aapt2 — unable to check the merged manifest"; fail=1
+          else
+            TREE=$("$AAPT" dump xmltree "$APK" --file AndroidManifest.xml)
+            if echo "$TREE" | grep -q "E: queries"; then
+              echo "  ok   merged manifest has a <queries> block"
+            else
+              echo "  MISSING <queries> in the merged manifest — Maps will be invisible"; fail=1
+            fi
+            if echo "$TREE" | grep -q 'name.*="com.google.android.apps.maps"'; then
+              echo "  ok   com.google.android.apps.maps is declared visible"
+            else
+              echo "  MISSING the maps package in <queries>"; fail=1
+            fi
+            if echo "$TREE" | grep -q "QUERY_ALL_PACKAGES"; then
+              echo "  QUERY_ALL_PACKAGES is in the merged manifest; name one package instead"
+              fail=1
+            else
+              echo "  ok   no QUERY_ALL_PACKAGES"
+            fi
+          fi
+
           SIZE=$(stat -c%s "$APK")
           echo "  APK size: $(( SIZE / 1048576 )) MB"
           # Poom approved roughly +17.7 MB for onnxruntime, and the models add
