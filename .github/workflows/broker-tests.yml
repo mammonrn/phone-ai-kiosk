@@ -42,20 +42,45 @@ jobs:
         working-directory: server
         run: python -m pytest tests/ -q
 
-      - name: Check the pricing file still matches its own source note
+      - name: Check every rate in the pricing file has provenance
         working-directory: server
-        # Not a price check against the live page — that would make the build
-        # depend on a web fetch. It checks the file still carries a source and a
-        # date, so a price can never be edited in without saying where it came
-        # from.
+        # Not a price check against the live pages — that would make the build
+        # depend on a web fetch. It checks that every section carries a source
+        # and a check date, so a rate can never be edited in without saying
+        # where it came from. Three services now share one budget, so all three
+        # have to answer for their numbers.
         run: |
           python - <<'PY'
           import json, sys
+
+          EXPECTED_HOSTS = {
+              "models": "https://platform.claude.com/",
+              "stt": "https://console.groq.com/",
+              "tts": "https://cloud.google.com/",
+          }
+
           data = json.load(open("pricing.json"))
-          missing = [k for k in ("_source", "_checked_at") if not data.get(k)]
-          if missing:
-              sys.exit(f"pricing.json is missing {missing} — a rate with no provenance")
-          if not data["_source"].startswith("https://platform.claude.com/"):
-              sys.exit("pricing.json _source must point at the official pricing page")
-          print(f"pricing from {data['_source']} checked {data['_checked_at']}")
+          problems = []
+
+          for section, host in EXPECTED_HOSTS.items():
+              block = data.get(section)
+              if not isinstance(block, dict):
+                  problems.append(f"{section}: section missing")
+                  continue
+              for key in ("_source", "_checked_at"):
+                  if not block.get(key):
+                      problems.append(f"{section}: {key} missing — a rate with no provenance")
+              source = block.get("_source", "")
+              if source and not source.startswith(host):
+                  problems.append(f"{section}: _source should point at {host}, got {source}")
+              if not any(not k.startswith("_") for k in block):
+                  problems.append(f"{section}: carries no actual rates")
+
+          if problems:
+              sys.exit("\n".join(problems))
+
+          for section in EXPECTED_HOSTS:
+              block = data[section]
+              rates = [k for k in block if not k.startswith("_")]
+              print(f"{section:<7} {block['_source']}  checked {block['_checked_at']}  ({', '.join(rates)})")
           PY
