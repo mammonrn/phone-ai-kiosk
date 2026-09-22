@@ -11,10 +11,105 @@ Poom เลือก **Colab ฟรี** และอนุมัติค่า
 |---|---|
 | เครื่องมือสร้างชุดเสียงบน VPS | ✅ พร้อม (`wake-samples`) |
 | ชุดเสียง 1,050 คลิป | ⏳ รอ Poom รันบน VPS — $0.2952 จากเพดาน $0.50 |
-| Colab notebook | ✅ พร้อม [`wakeword/train_saifon_colab.ipynb`](wakeword/train_saifon_colab.ipynb) |
+| Colab notebook | ✅ พร้อม [`wakeword/train_saifon_colab.ipynb`](wakeword/train_saifon_colab.ipynb) — **แก้แล้ว ต้องเปิดใหม่** ดูหัวข้อถัดไป |
 | เทรนจริง | ⏳ รอ Poom |
 | ต่อเข้าแอป Android | ⏳ รอไฟล์โมเดล |
 | วัดผลบน A07 | ⏳ เครื่องมือพร้อม ยังไม่มีตัวเลข |
+
+## 🔴 notebook รุ่นแรกติดตั้งไม่ผ่าน — แก้แล้ว ต้องเปิดใหม่
+
+### อาการ
+
+```
+ERROR: Could not find a version that satisfies the requirement
+       tflite-runtime<3,>=2.8.0; platform_system == "Linux" (from openwakeword)
+       (from versions: none)
+```
+
+### สาเหตุ ✅ ตรวจจาก PyPI และจาก source ของ v0.6.0 แล้ว
+
+openWakeWord v0.6.0 ประกาศ `tflite-runtime` เป็น **dependency หลัก ไม่ใช่ extra**:
+
+```
+Requires-Dist: tflite-runtime <3,>=2.8.0 ; platform_system == "Linux"
+```
+
+`pip install` บน Linux จึงพยายามลงมันเสมอ แต่ **tflite-runtime ออกรุ่นสุดท้ายคือ
+2.14.0 เมื่อ 3 ต.ค. 2023 และ wheel สูงสุดคือ cp311** ไล่ดูทุกรุ่นบน PyPI แล้ว
+ไม่เคยมี wheel สำหรับ Python 3.12 ขึ้นไปเลยสักรุ่น Colab ตอนนี้ใช้ Python 3.12
+จึงได้ `(from versions: none)` แปลว่า "ไม่มีให้ลงเลย" ไม่ใช่เน็ตมีปัญหา
+ไม่ใช่ pip พัง และรอไปก็ไม่หายเอง
+
+### ทำไมข้ามมันได้ ✅ ตรวจจาก source
+
+| จุด | ต้องใช้ tflite ไหม |
+|---|---|
+| `import openwakeword` | ไม่ — `import tflite_runtime` อยู่ใต้ `if` ไม่ใช่ระดับไฟล์ |
+| ดึง feature ตอนเทรน | ไม่ — `AudioFeatures` default เป็น `inference_framework="onnx"` และ `train.py` เรียกโดยไม่ส่งค่านี้ |
+| ใช้งานบนมือถือ | ไม่ — เราใช้ onnxruntime มาตั้งแต่ต้น |
+| `convert_onnx_to_tflite()` | ใช้ — แต่เราไม่ต้องการ `.tflite` เลย จึงปิดทิ้ง |
+
+ทดลองจริงแล้ว: ลง `--no-deps` แล้ว `import openwakeword` ผ่าน โดยไม่มี
+tflite_runtime ในเครื่อง และ `AudioFeatures` รายงาน framework เป็น `onnx`
+
+### แก้อะไรไปบ้าง
+
+1. **เซลล์ติดตั้ง** เปลี่ยนเป็น `pip install --no-deps` แล้วระบุ dependency
+   ที่ training ใช้จริงเอง ไล่มาจาก import ของ v0.6.0 ทีละไฟล์
+2. **เซลล์ตรวจความพร้อมใหม่ (ขั้น 1ก)** import ทั้ง 21 ตัวรวม
+   `openwakeword.train` แล้วหยุดทันทีถ้าไม่ครบ — จะได้ไม่เสียเวลาโหลด dataset
+   หลายกิกะไบต์แล้วมาพังทีหลัง และตรวจ GPU **หลัง** ติดตั้ง เพราะ pip
+   อาจเผลอสลับ torch เป็น build แบบ CPU แล้ว T4 หายเงียบๆ
+3. **🔴 บั๊กที่สองที่เจอระหว่างทาง** `train.py` ไม่เคยเรียก `download_models()`
+   และทั้ง wheel และ repo **ไม่ได้แถม** `melspectrogram.onnx` กับ
+   `embedding_model.onnx` มาด้วย (ตรวจทั้งสองที่แล้ว) ถ้าแก้แค่เรื่องติดตั้ง
+   มันจะไปพังตอนสร้าง feature แทน — notebook จึงโหลดเองในขั้น 6
+4. **🔴 บั๊กที่สาม** ท้าย `train.py` เรียก `convert_onnx_to_tflite()` แบบ
+   **ไม่มีเงื่อนไข** ทันทีหลัง export `.onnx` เสร็จ และฟังก์ชันนั้นต้องการ
+   `tensorflow-cpu==2.8.1` กับ `onnx-tf==1.10.0` (ปักรุ่นไว้ตั้งแต่ปี 2022
+   ลง Python 3.12 ไม่ได้) ถ้าปล่อยไว้จะได้ traceback ยาวๆ **หลังเทรนเสร็จแล้ว**
+   notebook จึงปิดฟังก์ชันนั้นทิ้งพร้อม assert ว่าแก้ติดจริง
+5. **CI ใหม่** [`wakeword-deps.yml`](.github/workflows/wakeword-deps.yml)
+   ลงและ import จริงบน Ubuntu + Python 3.12 ทุกครั้งที่แตะโฟลเดอร์ `wakeword/`
+   **อ่านคำสั่ง pip และรายชื่อโมดูลออกมาจากตัว notebook เอง** ไม่ได้ก๊อปรายการมาไว้
+   ซ้ำ — รายการที่ก๊อปมาคือรายการที่เขียวทั้งที่ notebook พังแล้ว
+   ไม่โหลด dataset ไม่เทรนจริง และไม่รันบน VPS เพราะ RAM ไม่พอ
+
+### คำเตือน protobuf — ✅ ตรวจแล้วว่าไม่กระทบ
+
+คำเตือนที่เห็นจาก `ydf`, `grpcio-status`, `google-ai-generativelanguage` มาจาก
+package ที่ **Colab ติดมาให้เอง** ซึ่งอยากได้ protobuf คนละช่วงกัน
+source ของ openWakeWord ไม่อ้างถึง protobuf เลยสักบรรทัด (grep แล้ว) และเส้นทาง
+การเทรนไม่ import `google.protobuf` ที่ไหน จึงเป็นคำเตือนที่ไม่กระทบการเทรน
+
+แต่ทำให้มันไม่ต้องโผล่ตั้งแต่แรกดีกว่า จึง **ไม่ลง `onnx`** ด้วย — `onnx` รุ่นใหม่
+บังคับ `protobuf>=6.31.1` ซึ่งเป็นตัวที่ไปดัน protobuf ของ Colab
+และ training ไม่ต้องใช้มันอยู่แล้ว เพราะ `train.py` export ด้วย
+`torch.onnx.export` ซึ่งต้องการแค่ torch
+
+🔶 **ตรงนี้ผมทำต่างจากที่สั่งไว้** Poom บอกให้เซลล์ตรวจความพร้อม import `onnx`
+ด้วย แต่การลง `onnx` คือสาเหตุของคำเตือน protobuf ที่สั่งให้จัดการพอดี
+ผมจึงตรวจโมเดลด้วย `onnxruntime` แทน ซึ่งตรงกว่าเพราะเป็น runtime ตัวเดียวกับที่
+มือถือใช้จริง (เซลล์ขั้น 7 ใช้ `onnxruntime` โหลดโมเดลอยู่แล้ว) **ถ้าอยากได้
+`onnx` จริงๆ บอกได้ เพิ่มกลับให้ในบรรทัดเดียว**
+
+### ‼️ Poom ต้องทำอะไร
+
+**ปิดแท็บ Colab เดิมทิ้ง** แล้วเปิดใหม่จาก main:
+
+https://colab.research.google.com/github/mammonrn/phone-ai-kiosk/blob/main/wakeword/train_saifon_colab.ipynb
+
+Colab **cache notebook ที่เปิดค้างไว้** ถ้ากด Runtime > Restart เฉยๆ จะยังได้
+เซลล์เก่าที่พัง ต้องเปิด URL ใหม่ แล้ว:
+
+1. Runtime > Change runtime type > **T4 GPU**
+2. Runtime > **Disconnect and delete runtime** (ล้างของที่ลงค้างไว้รอบก่อน)
+3. รันจากเซลล์แรกใหม่ทั้งหมด
+4. **ขั้น 1ก ต้องขึ้น "พร้อมเทรน ไปขั้น 2 ได้"** ถ้าไม่ขึ้น หยุดแล้วส่ง output มาให้ผม
+
+❓ **ยังไม่ทราบ**: ผมรัน Colab เองไม่ได้ จึงยังไม่มีหลักฐานว่า notebook ที่แก้แล้ว
+รันผ่านบน Colab จริง CI พิสูจน์ได้แค่ว่า Ubuntu + Python 3.12 ลงและ import ผ่าน
+ซึ่งเป็นจุดที่พังพอดี แต่ไม่ใช่ Colab เอง
 
 ## ทำไมถึงเลือก openWakeWord (ทวนจากรอบสำรวจ)
 

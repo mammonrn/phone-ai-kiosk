@@ -1,0 +1,88 @@
+name: Wake word notebook deps
+
+# The Colab notebook broke on its very first cell: openWakeWord v0.6.0 declares
+# tflite-runtime as a hard dependency, and tflite-runtime has never published a
+# wheel for Python 3.12, which is what Colab runs. Nothing in the repository
+# would have caught that, because nothing in the repository ever installed it.
+#
+# So this does — on a runner, never on the VPS, where torch and speechbrain are
+# gigabytes the box does not have the RAM to spare for.
+#
+# Installs and imports only. No dataset, no audio, no training: the failure this
+# guards against happens in the first thirty seconds and needs none of them.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'wakeword/**'
+      - '.github/workflows/wakeword-deps.yml'
+  pull_request:
+    paths:
+      - 'wakeword/**'
+      - '.github/workflows/wakeword-deps.yml'
+  workflow_dispatch:
+
+jobs:
+  imports:
+    name: notebook dependencies import
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          # The version Colab runs, and the version that makes tflite-runtime
+          # unavailable. Testing on 3.11 would pass and prove nothing.
+          python-version: '3.12'
+
+      - name: Clone openWakeWord v0.6.0
+        # The same pinned tag the notebook clones. Not main: main has moved.
+        run: |
+          git clone --depth 1 --branch v0.6.0 \
+            https://github.com/dscripka/openWakeWord.git "$RUNNER_TEMP/openWakeWord"
+
+      - name: Install what Colab already ships
+        # The notebook deliberately does NOT install these: Colab has them, and
+        # its torch is a build matched to its own CUDA — letting pip touch it can
+        # swap in a CPU wheel and lose the GPU silently. A bare runner has none
+        # of them, so CI stands them up instead. The CPU index keeps torch to a
+        # couple of hundred megabytes; CI is testing imports, not speed.
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet torch torchaudio \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet numpy scipy scikit-learn pyyaml tqdm requests
+
+      - name: Run the notebook's own pip lines
+        # Read out of the .ipynb rather than copied here, so this cannot pass
+        # while the notebook is broken.
+        run: python wakeword/check_notebook_deps.py --clone "$RUNNER_TEMP/openWakeWord" --install
+
+      - name: Import everything the notebook imports
+        run: python wakeword/check_notebook_deps.py --clone "$RUNNER_TEMP/openWakeWord"
+
+      - name: The notebook must still be a valid notebook
+        run: |
+          python - <<'PY'
+          import ast, json, pathlib
+          nb = json.loads(pathlib.Path("wakeword/train_saifon_colab.ipynb").read_text("utf-8"))
+          assert nb["nbformat"] == 4, nb["nbformat"]
+          checked = 0
+          for i, cell in enumerate(nb["cells"]):
+              assert cell["cell_type"] in ("code", "markdown"), i
+              assert isinstance(cell["source"], list), i
+              if cell["cell_type"] != "code":
+                  continue
+              source = "".join(cell["source"])
+              # Cells with ! or % are IPython, not Python, and ast cannot read them.
+              if any(line.lstrip().startswith(("!", "%")) for line in source.splitlines()):
+                  continue
+              ast.parse(source)
+              checked += 1
+          print(f"{len(nb['cells'])} cells, {checked} plain-python cells parsed")
+          PY
