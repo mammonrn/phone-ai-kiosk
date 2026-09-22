@@ -20,15 +20,17 @@ class DashboardStateTest {
 
     private val everything = """
         {"weather":{"ok":true,"age_seconds":0,"credit":"Open-Meteo (CC BY 4.0)",
-                    "temp_c":28.2,"humidity":83,"code":1,"word":"แดดรำไร",
+                    "temp_c":28.2,"humidity":83,"code":1,"is_day":1,"word":"แดดรำไร",
                     "high_c":30.7,"low_c":22.9},
          "gold":{"ok":true,"age_seconds":0,"credit":"x",
                  "ornament_sell":68850.0,"ornament_buy":66491.76,
                  "bar_sell":68050.0,"bar_buy":67850.0,"updated":"22/09/2569"},
-         "crypto":{"ok":true,"age_seconds":0,"credit":"Binance",
-                   "btc":{"usd":85986.58,"change_pct":1.53},
-                   "eth":{"usd":2741.28,"change_pct":-0.63},"quote":"USDT"},
-         "place":"แม่สาย เชียงราย"}
+         "crypto":{"ok":true,"age_seconds":0,"credit":"Binance","quote":"USDT",
+                   "coins":[{"symbol":"BTC","usd":85986.58,"change_pct":1.53},
+                            {"symbol":"ETH","usd":2741.28,"change_pct":-0.63},
+                            {"symbol":"BNB","usd":788.23,"change_pct":-0.98},
+                            {"symbol":"XRP","usd":1.5732,"change_pct":5.25}]},
+         "place":"เชียงราย","location_fallback":false}
     """.trimIndent()
 
     // ------------------------------------------------------------ a good day
@@ -41,8 +43,9 @@ class DashboardStateTest {
         assertTrue(screen.weather.text.contains("แดดรำไร"))
         assertTrue(screen.gold.text.contains("68,850"))
         assertTrue(screen.crypto.text.contains("$85,987"))
-        assertEquals("แม่สาย เชียงราย", screen.place)
+        assertEquals("เชียงราย", screen.place)
         assertFalse(screen.weather.stale)
+        assertFalse(screen.locationFallback)
     }
 
     @Test
@@ -205,9 +208,206 @@ class DashboardStateTest {
     fun `nothing in a rendered screen could be a token`() {
         val screen = DashboardState.parse(everything, unavailable)
         val rendered = listOf(screen.weather.text, screen.gold.text,
-                              screen.crypto.text, screen.place).joinToString(" ")
+                              screen.crypto.text, screen.crypto.text2,
+                              screen.place).joinToString(" ")
         for (word in listOf("Bearer", "token", "key", "http")) {
             assertFalse("$word appeared in: $rendered", rendered.contains(word, ignoreCase = true))
         }
+    }
+
+    @Test
+    fun `and nothing in it could be a coordinate`() {
+        // The phone sends its position and the broker answers with a province
+        // name. Nothing comes back that looks like the numbers that went out,
+        // because there is nothing the screen could do with them.
+        val screen = DashboardState.parse(everything, unavailable)
+        val rendered = listOf(screen.weather.text, screen.gold.text,
+                              screen.crypto.text, screen.crypto.text2,
+                              screen.place).joinToString(" ")
+        for (fragment in listOf("20.05", "99.89", "lat", "lon")) {
+            assertFalse("$fragment appeared in: $rendered", rendered.contains(fragment))
+        }
+    }
+
+    // ------------------------------------------------------ four coins, two columns
+
+    @Test
+    fun `four coins are dealt two to a column, biggest first`() {
+        val screen = DashboardState.parse(everything, unavailable)
+
+        assertTrue("left: ${screen.crypto.text}", screen.crypto.text.startsWith("BTC"))
+        assertTrue("left: ${screen.crypto.text}", screen.crypto.text.contains("ETH"))
+        assertTrue("right: ${screen.crypto.text2}", screen.crypto.text2.startsWith("BNB"))
+        assertTrue("right: ${screen.crypto.text2}", screen.crypto.text2.contains("XRP"))
+        // And neither column has strayed into the other's half.
+        assertFalse(screen.crypto.text.contains("BNB"))
+        assertFalse(screen.crypto.text2.contains("BTC"))
+    }
+
+    @Test
+    fun `a coin is a symbol with its move, then its price underneath`() {
+        val screen = DashboardState.parse(everything, unavailable)
+        // One line is 230dp set in the pixel face and half the window is 170dp,
+        // which is the whole reason for the break.
+        assertTrue("got: ${screen.crypto.text}",
+                   screen.crypto.text.startsWith("BTC  +1.53%\n$85,987"))
+    }
+
+    @Test
+    fun `a price is shown at the precision that coin is quoted at`() {
+        // Whole dollars are right for Bitcoin and wrong for a $1.57 coin: it
+        // would read "$2", which is not a rounding choice but a wrong number.
+        assertEquals("$85,987", DashboardState.coinPrice(85986.58))
+        assertEquals("$1.57", DashboardState.coinPrice(1.5732))
+        assertEquals("$788.23", DashboardState.coinPrice(788.23))
+        assertEquals("$0.0998", DashboardState.coinPrice(0.099796))
+        assertEquals("—", DashboardState.coinPrice(Double.NaN))
+    }
+
+    @Test
+    fun `three coins keep the odd one on the left rather than leaving a hole`() {
+        val three = """
+            {"crypto":{"ok":true,"age_seconds":0,"coins":[
+                {"symbol":"BTC","usd":85986.58,"change_pct":1.0},
+                {"symbol":"ETH","usd":2741.28,"change_pct":1.0},
+                {"symbol":"BNB","usd":788.23,"change_pct":1.0}]}}
+        """.trimIndent()
+        val screen = DashboardState.parse(three, unavailable)
+        assertTrue(screen.crypto.text.contains("BTC"))
+        assertTrue(screen.crypto.text.contains("ETH"))
+        assertEquals(true, screen.crypto.text2.startsWith("BNB"))
+    }
+
+    @Test
+    fun `the old two-coin payload still draws while the broker is being deployed`() {
+        // The APK lands over adb in seconds; the VPS is a separate step by hand
+        // afterwards. In between, this is what the phone is served.
+        val old = """
+            {"crypto":{"ok":true,"age_seconds":0,
+                       "btc":{"usd":85986.58,"change_pct":1.53},
+                       "eth":{"usd":2741.28,"change_pct":-0.63}}}
+        """.trimIndent()
+        val screen = DashboardState.parse(old, unavailable)
+        assertTrue("got: ${screen.crypto.text}", screen.crypto.text.contains("BTC"))
+        assertTrue("got: ${screen.crypto.text2}", screen.crypto.text2.contains("ETH"))
+    }
+
+    @Test
+    fun `a coins array with nothing usable in it is unavailable, not blank`() {
+        val empty = """{"crypto":{"ok":true,"age_seconds":0,"coins":[]}}"""
+        assertEquals(unavailable, DashboardState.parse(empty, unavailable).crypto.text)
+        val junk = """{"crypto":{"ok":true,"age_seconds":0,"coins":[{"usd":1.0}]}}"""
+        assertEquals(unavailable, DashboardState.parse(junk, unavailable).crypto.text)
+    }
+
+    @Test
+    fun `the freshness note lands at the end of the left column`() {
+        // RetroType finds it with a match anchored to the end of the string, so
+        // anywhere else and it is neither dimmed nor shrunk.
+        val stale = """
+            {"crypto":{"ok":false,"age_seconds":420,"stale":{"coins":[
+                {"symbol":"BTC","usd":85986.58,"change_pct":1.0},
+                {"symbol":"ETH","usd":2741.28,"change_pct":1.0}]}}}
+        """.trimIndent()
+        val screen = DashboardState.parse(stale, unavailable)
+        assertTrue("got: ${screen.crypto.text}", screen.crypto.text.endsWith("(7 นาทีก่อน)"))
+        assertFalse(screen.crypto.text2.contains("ก่อน"))
+    }
+
+    // ------------------------------------------------------------- after dark
+
+    @Test
+    fun `the night is reported as night so the icon can follow`() {
+        // THE BUG. Code 0 is "clear sky", which is a statement about cloud; the
+        // screen read it as one about the sun and said "แดดจัด" at 00:15.
+        val night = """
+            {"weather":{"ok":true,"age_seconds":0,"temp_c":23.5,"humidity":92,
+                        "code":0,"is_day":0,"word":"ฟ้าโปร่ง"}}
+        """.trimIndent()
+        val screen = DashboardState.parse(night, unavailable)
+        assertFalse(screen.isDay)
+        assertTrue(screen.weather.text.contains("ฟ้าโปร่ง"))
+        assertFalse("nothing says แดด after dark", screen.weather.text.contains("แดด"))
+    }
+
+    @Test
+    fun `daytime is daytime`() {
+        assertTrue(DashboardState.parse(everything, unavailable).isDay)
+    }
+
+    @Test
+    fun `a stale night reading is still a night reading`() {
+        // is_day has to be read from whichever block is usable, or the icon
+        // flips back to the sun the moment the weather source goes down.
+        val stale = """
+            {"weather":{"ok":false,"error":"OSError","age_seconds":900,
+                        "stale":{"temp_c":23.5,"is_day":0,"word":"ฟ้าโปร่ง"}}}
+        """.trimIndent()
+        assertFalse(DashboardState.parse(stale, unavailable).isDay)
+    }
+
+    @Test
+    fun `no weather at all is not a claim about the sky`() {
+        // Nothing on screen to contradict, so the default costs nothing.
+        assertTrue(DashboardState.parse("""{"weather":{"ok":false}}""", unavailable).isDay)
+    }
+
+    // ---------------------------------------------------------- the gold move
+
+    @Test
+    fun `the gold move is shown with its sign beside the price it belongs to`() {
+        val moved = """
+            {"gold":{"ok":true,"age_seconds":0,"ornament_sell":68800.0,
+                     "bar_sell":68000.0,"ornament_sell_change_pct":0.15,
+                     "bar_sell_change_pct":-0.22,"change_basis":"เทียบครั้งก่อน"}}
+        """.trimIndent()
+        val screen = DashboardState.parse(moved, unavailable)
+        assertTrue("got: ${screen.gold.text}", screen.gold.text.contains("68,800 บ.  +0.15%"))
+        assertTrue("got: ${screen.gold.text}", screen.gold.text.contains("68,000 บ.  -0.22%"))
+        // And the screen is told what the number is measured against, because a
+        // percentage with no stated base is a number pretending to be
+        // information.
+        assertEquals("เทียบครั้งก่อน", screen.goldBasis)
+    }
+
+    @Test
+    fun `no move means no percentage and no basis, not a zero`() {
+        // The source publishes no previous price, so a freshly installed broker
+        // has nothing to compare against. "0.00%" would be a claim with no
+        // evidence behind it.
+        val screen = DashboardState.parse(everything, unavailable)
+        assertFalse("got: ${screen.gold.text}", screen.gold.text.contains("%"))
+        assertEquals("", screen.goldBasis)
+    }
+
+    @Test
+    fun `one price moving does not put a percentage on the other`() {
+        val one = """
+            {"gold":{"ok":true,"age_seconds":0,"ornament_sell":68800.0,
+                     "bar_sell":68000.0,"ornament_sell_change_pct":0.15,
+                     "change_basis":"เทียบครั้งก่อน"}}
+        """.trimIndent()
+        val text = DashboardState.parse(one, unavailable).gold.text
+        assertTrue(text.contains("รูปพรรณ 68,800 บ.  +0.15%"))
+        assertTrue(text.contains("ทองแท่ง 68,000 บ."))
+        assertEquals(1, text.count { it == '%' })
+    }
+
+    // -------------------------------------------------------- the place name
+
+    @Test
+    fun `an unnamed position is empty here so the screen can word it`() {
+        // The broker sends "" when the lookup failed or there was no province
+        // to read. MainActivity turns that into "ตำแหน่งปัจจุบัน" — never a
+        // coordinate, which is the one thing that must not reach a screen
+        // facing a room.
+        val nameless = """{"weather":{"ok":true,"temp_c":28.0},"place":""}"""
+        assertEquals("", DashboardState.parse(nameless, unavailable).place)
+    }
+
+    @Test
+    fun `the screen is told when the broker had to fall back`() {
+        val fallback = """{"weather":{"ok":true,"temp_c":28.0},"location_fallback":true}"""
+        assertTrue(DashboardState.parse(fallback, unavailable).locationFallback)
     }
 }

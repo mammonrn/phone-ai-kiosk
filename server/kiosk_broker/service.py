@@ -549,12 +549,51 @@ def forget_dashboards() -> None:
 
 
 def _dashboard(cfg: Config) -> dashboard_mod.Dashboard:
-    key = (cfg.weather_latitude, cfg.weather_longitude,
-           cfg.dashboard_weather_ttl, cfg.dashboard_gold_ttl,
-           cfg.dashboard_crypto_ttl, cfg.dashboard_timeout)
+    # No latitude in the key any more: one board serves every position, because
+    # the weather and the place name are cached per position inside it.
+    key = (cfg.dashboard_weather_ttl, cfg.dashboard_place_ttl,
+           cfg.dashboard_gold_ttl, cfg.dashboard_crypto_ttl,
+           cfg.dashboard_timeout)
     if key not in _DASHBOARD:
         _DASHBOARD[key] = dashboard_mod.Dashboard(cfg)
     return _DASHBOARD[key]
+
+
+#: Keys in `dashboard_state`. Two rows, both public market data.
+GOLD_MARK_KEY = "gold_mark"
+CRYPTO_SYMBOLS_KEY = "crypto_symbols"
+
+#: The errors a refresh of the coin ranking is allowed to fail with. Anything
+#: else is a bug and should be seen.
+_FETCH_ERRORS = (OSError, ValueError, KeyError, TypeError)
+
+
+def crypto_symbols(conn: sqlite3.Connection, cfg: Config, now: float) -> list[str]:
+    """Which four coins the screen shows, refreshed about once a day.
+
+    CoinGecko says which are the biggest and Binance says which of those it
+    actually quotes; both answers are kept in SQLite. A failed refresh returns
+    what was stored rather than nothing — the ranking being a day stale is not
+    a reason to blank the window, and a brand-new broker that cannot reach
+    CoinGecko returns an empty list, which makes the crypto panel report a
+    failure honestly instead of inventing a list of coins.
+    """
+    stored, written = store.read_state(conn, CRYPTO_SYMBOLS_KEY)
+    symbols = [str(s) for s in stored] if isinstance(stored, list) else []
+    if symbols and now - written < cfg.dashboard_rank_ttl:
+        return symbols
+
+    try:
+        ranked = dashboard_mod.fetch_top_symbols(cfg.dashboard_timeout)
+        resolved = dashboard_mod.resolve_pairs(ranked, cfg.dashboard_timeout)
+    except _FETCH_ERRORS as exc:
+        log.info("crypto ranking refresh failed: %s", type(exc).__name__)
+        return symbols
+
+    if not resolved:
+        return symbols
+    store.write_state(conn, CRYPTO_SYMBOLS_KEY, resolved, now)
+    return resolved
 
 
 def handle_dashboard(
@@ -562,6 +601,8 @@ def handle_dashboard(
     cfg: Config,
     *,
     authorization: str | None,
+    latitude=None,
+    longitude=None,
 ) -> tuple[int, dict]:
     """GET /v1/dashboard: what the kiosk screen shows when nobody is talking.
 
@@ -587,11 +628,25 @@ def handle_dashboard(
         return 429, _error(rate.code, rate.message)
 
     started = time.monotonic()
-    snapshot = _dashboard(cfg).snapshot()
-    # The place NAME is a label on this request's config, not something the
-    # fetcher caches: two configs can share one weather cache and still want
-    # different words under it.
-    snapshot["place"] = cfg.weather_place
+    now = time.time()
+
+    # The gold mark and the coin list are the only state the screen carries
+    # between restarts. Read before, written after, and only when they moved.
+    stored_marks, _ = store.read_state(conn, GOLD_MARK_KEY)
+    marks = dict(stored_marks) if isinstance(stored_marks, dict) else {}
+    marks_before = json.dumps(marks, sort_keys=True)
+
+    snapshot = _dashboard(cfg).snapshot(
+        latitude=latitude,
+        longitude=longitude,
+        now=now,
+        marks=marks,
+        symbols=crypto_symbols(conn, cfg, now),
+    )
+
+    if json.dumps(marks, sort_keys=True) != marks_before:
+        store.write_state(conn, GOLD_MARK_KEY, marks, now)
+
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
     failed = [name for name in ("weather", "gold", "crypto")
@@ -600,9 +655,13 @@ def handle_dashboard(
                          outcome="ok" if not failed else "partial",
                          text_len=None, endpoint="dashboard")
 
-    # Which panels, and how long. Never a price, never a URL — the numbers on
-    # the screen are not a secret, but a log is not where they belong either.
-    log.info("dashboard device=%s failed=%s ms=%d", label, ",".join(failed) or "none",
+    # Which panels, how long, and whether the phone knew where it was. Never a
+    # price, never a URL and NEVER A COORDINATE — the numbers on the screen are
+    # not a secret, but a log is not where they belong either, and a position
+    # does not belong in one at all. `fallback=True` says the phone could not
+    # fix itself; `fallback=False` says it could, and says nothing more.
+    log.info("dashboard device=%s failed=%s fallback=%s ms=%d", label,
+             ",".join(failed) or "none", snapshot.get("location_fallback"),
              elapsed_ms)
 
     return 200, snapshot

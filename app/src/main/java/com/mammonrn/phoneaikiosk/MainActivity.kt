@@ -17,6 +17,7 @@ import android.os.BatteryManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -27,6 +28,7 @@ import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.DashboardState
+import com.mammonrn.phoneaikiosk.voice.KioskLocation
 import com.mammonrn.phoneaikiosk.voice.MapsLauncher
 import com.mammonrn.phoneaikiosk.voice.TokenStore
 import com.mammonrn.phoneaikiosk.voice.VoiceService
@@ -53,6 +55,9 @@ class MainActivity : Activity() {
     private lateinit var weatherBody: TextView
     private lateinit var goldBody: TextView
     private lateinit var cryptoBody: TextView
+    private lateinit var cryptoBodyRight: TextView
+    private lateinit var weatherIcon: ImageView
+    private lateinit var goldTitle: TextView
     private lateinit var jarvisState: TextView
 
     /**
@@ -63,6 +68,12 @@ class MainActivity : Activity() {
      * those would be a file lookup a second for the life of the kiosk.
      */
     private lateinit var pixelFace: android.graphics.Typeface
+
+    /**
+     * Where the kiosk is, coarse and rounded. See KioskLocation for what that
+     * costs and what it deliberately does not do.
+     */
+    private lateinit var location: KioskLocation
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -105,7 +116,9 @@ class MainActivity : Activity() {
             date.text = dateFormat.format(now)
             status.text = statusLine()
             taskbarClock.text = taskbarFormat.format(now)
-            voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine()
+            VoiceState.locationState = location.describe()
+            voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine() +
+                "\n" + VoiceState.thirdLine()
             // An empty box says nothing; the invitation says what to do with
             // the kiosk. Display only — transcriptLine() is untouched.
             transcript.text = RetroType.pixelify(
@@ -138,10 +151,16 @@ class MainActivity : Activity() {
      */
     private val refreshDashboard = object : Runnable {
         override fun run() {
+            // Cheap on almost every call: KioskLocation only goes and looks
+            // when the last fix is over half an hour old.
+            location.refreshIfStale()
+            val fix = location.coordinates()
+
             dashboardThread.execute {
                 val token = TokenStore(this@MainActivity).token()
                 val attempt = if (token.isNullOrEmpty()) null else runCatching {
-                    Broker(VoiceState.brokerBaseUrl, token).dashboard()
+                    Broker(VoiceState.brokerBaseUrl, token)
+                        .dashboard(fix?.first, fix?.second)
                 }
                 // Whether it worked, and nothing else. NOT the payload: it is
                 // a few hundred bytes of numbers today, and a log line that
@@ -173,9 +192,30 @@ class MainActivity : Activity() {
         weatherBody.text = RetroType.pixelifyHeadline(screen.weather.text, pixelFace, dim)
         goldBody.text = RetroType.pixelifyWithAge(screen.gold.text, pixelFace, dim)
         cryptoBody.text = RetroType.pixelifyWithAge(screen.crypto.text, pixelFace, dim)
-        if (screen.place.isNotEmpty()) {
-            weatherTitle.text = "${getString(R.string.window_weather)} · ${screen.place}"
-        }
+        cryptoBodyRight.text = RetroType.pixelify(screen.crypto.text2, pixelFace)
+
+        // Sun or moon, from the same `is_day` the broker chose the word from.
+        // Deciding it here from the phone's own clock would be a second opinion
+        // about the sky, and two opinions disagree the week one of them is
+        // wrong about the timezone.
+        weatherIcon.setImageResource(
+            if (screen.isDay) R.drawable.ic_pixel_sun else R.drawable.ic_pixel_moon,
+        )
+
+        // "อากาศ · เชียงราย", or "อากาศ · ตำแหน่งปัจจุบัน" when the position is
+        // known and its name is not. Never a coordinate: there is nothing a
+        // person standing in front of a kiosk does with one, and a screen faces
+        // a room.
+        VoiceState.weatherFallback = screen.locationFallback
+
+        val place = screen.place.ifEmpty { getString(R.string.place_unknown) }
+        weatherTitle.text = "${getString(R.string.window_weather)} · $place"
+
+        // The gold title says what the percentage is measured against, and only
+        // while there is one to explain. A percentage with no stated base is a
+        // number pretending to be information.
+        goldTitle.text = if (screen.goldBasis.isEmpty()) getString(R.string.window_gold)
+                         else "${getString(R.string.window_gold)} · ${screen.goldBasis}"
     }
 
     private val dpm: DevicePolicyManager
@@ -191,6 +231,8 @@ class MainActivity : Activity() {
         pixelFace = ResourcesCompat.getFont(this, R.font.press_start_2p)
             ?: android.graphics.Typeface.MONOSPACE
 
+        location = KioskLocation(this)
+
         clock = findViewById(R.id.clock)
         date = findViewById(R.id.date)
         status = findViewById(R.id.status)
@@ -201,6 +243,9 @@ class MainActivity : Activity() {
         weatherBody = findViewById(R.id.weather_body)
         goldBody = findViewById(R.id.gold_body)
         cryptoBody = findViewById(R.id.crypto_body)
+        cryptoBodyRight = findViewById(R.id.crypto_body_right)
+        weatherIcon = findViewById(R.id.weather_icon)
+        goldTitle = findViewById(R.id.gold_title)
         jarvisState = findViewById(R.id.jarvis_state)
 
         // The system bars are already off via Samsung's gesture setting, but a
@@ -229,6 +274,12 @@ class MainActivity : Activity() {
 
         applyDeviceOwnerPolicies()
         grantMicrophoneToSelf()
+        grantLocationToSelf()
+
+        // A fix on every fresh start, so a kiosk that was carried somewhere and
+        // plugged back in does not show the old town's weather while it waits
+        // out the half-hour. After this, KioskLocation decides.
+        location.refreshIfStale(force = true)
     }
 
     /**
@@ -357,6 +408,46 @@ class MainActivity : Activity() {
                 // owner set. Recorded rather than fatal.
                 VoiceState.lastError = "grant rejected: ${permission.substringAfterLast('.')}"
             }
+        }
+    }
+
+    /**
+     * Grants this app coarse location, with no dialog, and then checks.
+     *
+     * Same reasoning as the microphone: in lock task mode a permission prompt
+     * is a modal the household cannot dismiss, and on a device with no Google
+     * account there is nobody logged in to dismiss it.
+     *
+     * THE READ-BACK IS THE POINT. setPermissionGrantState returns nothing —
+     * not a boolean, not a state — so "we asked for it" and "we have it" are
+     * two different facts, and only the second one decides whether the weather
+     * is right. checkSelfPermission is asked immediately afterwards and the
+     * answer goes on the status line, where `loc=no-permission` is a visible
+     * symptom rather than a silent fallback to the university.
+     *
+     * COARSE ONLY. ACCESS_FINE_LOCATION is not requested here and is not in the
+     * manifest; granting it would be a change to what this kiosk knows about
+     * the household, not a bug fix.
+     */
+    private fun grantLocationToSelf() {
+        if (!isDeviceOwner) return
+        val permission = android.Manifest.permission.ACCESS_COARSE_LOCATION
+        try {
+            dpm.setPermissionGrantState(
+                KioskDeviceAdminReceiver.componentName(this),
+                packageName,
+                permission,
+                DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+            )
+        } catch (e: SecurityException) {
+            VoiceState.lastError = "grant refused: COARSE_LOCATION"
+        } catch (e: IllegalArgumentException) {
+            VoiceState.lastError = "grant rejected: COARSE_LOCATION"
+        }
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            // Not fatal, and deliberately not retried in a loop: the screen
+            // still works, the weather is the university's, and this says why.
+            VoiceState.lastError = "location not granted"
         }
     }
 

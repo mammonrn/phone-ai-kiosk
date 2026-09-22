@@ -99,3 +99,34 @@ span code is the cost of not having to make that call.
 No Microsoft font, icon or other asset is used anywhere in this app. The
 window chrome is layer-list shapes in this repository and the icons are
 vectors drawn from squares; see res/values/colors_retro.xml.
+
+OpenStreetMap, through Nominatim — the name over the weather window
+-------------------------------------------------------------------
+The kiosk sends the broker its own coarse position, rounded to two decimals,
+and the broker turns that into a province name with Nominatim's reverse
+geocoder (https://nominatim.openstreetmap.org). Nothing is redistributed here:
+no OSM data is stored in this repository or shipped in the APK. What is used is
+the service, one lookup per square kilometre the kiosk has stopped in, cached
+for a day.
+
+    Data © OpenStreetMap contributors, available under the Open Database
+    Licence (ODbL): https://www.openstreetmap.org/copyright
+
+That attribution is carried in the dashboard payload as the "place" credit
+rather than left in somebody's memory, which is the same rule Open-Meteo's
+CC BY 4.0 attribution follows.
+
+Nominatim's usage policy (https://operations.osmfoundation.org/policies/nominatim/)
+asks for a real User-Agent identifying the application, no more than one request
+a second, and no bulk geocoding. All three are met by construction: the
+User-Agent names this repository, the cache means a kiosk that does not move
+asks once a day, and a kiosk that does move asks once per kilometre.
+
+CoinGecko — which coins are the largest
+----------------------------------------
+The market-capitalisation ranking behind the four coins on the screen comes
+from CoinGecko's public API (https://www.coingecko.com/en/api), asked once a
+day: about 30 calls a month against a free tier of 10,000. No key is sent and
+nothing is redistributed. The PRICES are Binance's, as they were before —
+CoinGecko is asked which coins, never what they cost.
+

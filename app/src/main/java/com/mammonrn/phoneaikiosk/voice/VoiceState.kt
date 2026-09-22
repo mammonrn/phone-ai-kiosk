@@ -46,6 +46,29 @@ object VoiceState : VoiceSink {
 
     /** Google Maps: installed, and does it have its location permission. */
     @Volatile var mapsState: String = "unknown"
+
+    /**
+     * The kiosk's OWN position pipeline: whether there is a fix and how it was
+     * obtained. Set by MainActivity from KioskLocation.describe().
+     *
+     * NEVER A COORDINATE, and this is the field where that rule is easiest to
+     * break by accident: it is a free-text status string that goes on a screen
+     * facing a room and into `dumpsys`, which is the first thing anybody pastes
+     * into a bug report. "fix=yes via=last-known age=42s" is everything a
+     * person debugging this needs and nothing a person reading over a shoulder
+     * can use. See KioskLocation.describe, which is the only thing that should
+     * ever write to it.
+     */
+    @Volatile var locationState: String = "fix=none via=not-asked"
+
+    /**
+     * Whether the broker had to fall back to the university for the weather.
+     *
+     * Reported by the broker in the dashboard payload. "THAT the fallback was
+     * used" is the operational fact worth showing; where the phone actually is
+     * stays off the screen either way.
+     */
+    @Volatile var weatherFallback: Boolean = false
     @Volatile var wake: String = "idle"
     @Volatile override var stt: String = "idle"
     @Volatile override var chat: String = "idle"
@@ -75,6 +98,10 @@ object VoiceState : VoiceSink {
         if (lastError.isNotEmpty()) append("  last-error=$lastError")
     }
 
+    /** The third diagnostics line: where the kiosk thinks it is, not where. */
+    fun thirdLine(): String =
+        "loc $locationState weather=${if (weatherFallback) "fallback" else "here"}"
+
     /**
      * Everything, as plain text, for `adb shell dumpsys activity service ...`.
      *
@@ -94,6 +121,8 @@ object VoiceState : VoiceSink {
         if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
         appendLine("  last-action: $lastAction")
         appendLine("  maps       : $mapsState")
+        appendLine("  location   : $locationState")
+        appendLine("  weather-loc: ${if (weatherFallback) "FALLBACK (university)" else "phone"}")
         appendLine("  wake       : $wake")
         appendLine("  stt        : $stt")
         appendLine("  chat       : $chat")

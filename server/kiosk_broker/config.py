@@ -88,11 +88,12 @@ class Config:
     tts_spoken_chars: int = 100
 
     # ---- the kiosk screen ------------------------------------------------
-    #: Mae Sai, Chiang Rai. In config rather than in code because the kiosk
-    #: could move house and a latitude is not a decision worth a deploy.
-    weather_latitude: float = 20.4342
-    weather_longitude: float = 99.8836
-    weather_place: str = "แม่สาย เชียงราย"
+    #: There is no latitude here any more. The phone reports its own coarse
+    #: position on every request and the broker falls back to the university
+    #: when it cannot — see dashboard.FALLBACK_LATITUDE, which is a checked
+    #: constant rather than a setting because it is not a preference: it is
+    #: where the kiosk is. The place NAME is no longer configured either; it is
+    #: read back from the position, so it cannot disagree with the forecast.
 
     #: Cache lifetimes, chosen from each source's own published limits rather
     #: than from what feels responsive:
@@ -104,6 +105,17 @@ class Config:
     dashboard_weather_ttl: int = 600
     dashboard_gold_ttl: int = 300
     dashboard_crypto_ttl: int = 60
+
+    #: A province does not move. A day is short enough that carrying the kiosk
+    #: somewhere else renames the title bar the same day, and long enough that
+    #: Nominatim — whose usage policy asks for exactly this restraint — sees one
+    #: lookup per square kilometre the kiosk has stopped in.
+    dashboard_place_ttl: int = 86_400
+
+    #: How often to ask CoinGecko which coins are the biggest. Daily, because
+    #: the top four change about twice a year and the free tier is 10,000 calls
+    #: a MONTH: this is 30 of them, plus one Binance probe per candidate.
+    dashboard_rank_ttl: int = 86_400
 
     #: Short. A slow source must not hold the phone's request open: the panel
     #: fails, the screen says so, and the other panels still arrive.

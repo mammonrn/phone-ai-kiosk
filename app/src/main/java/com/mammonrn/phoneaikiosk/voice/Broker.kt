@@ -60,9 +60,18 @@ class Broker(private val baseUrl: String, private val token: String) {
     /**
      * What the screen shows when nobody is talking. Raw JSON: DashboardState
      * does the reading, and it does it without Android so it can be tested.
+     *
+     * The coordinates are the phone's own coarse position, already rounded to
+     * two decimals by KioskLocation. Sent as query parameters rather than in a
+     * body because this is a GET and has to stay one — the phone retries it
+     * freely. They are omitted entirely when there is no fix, and the broker
+     * falls back to the university for that.
      */
-    fun dashboard(): String =
-        String(get("/v1/dashboard").bytes, Charsets.UTF_8)
+    fun dashboard(latitude: Double? = null, longitude: Double? = null): String {
+        val path = if (latitude == null || longitude == null) "/v1/dashboard"
+                   else "/v1/dashboard?lat=$latitude&lon=$longitude"
+        return String(get(path).bytes, Charsets.UTF_8)
+    }
 
     /** Text in, audio out, ready to play — with where the time went. */
     fun speak(text: String): SpokenAudio {

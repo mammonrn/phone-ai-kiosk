@@ -137,7 +137,11 @@
                 android:paddingTop="2dp"
                 android:paddingBottom="2dp">
 
+                <!-- Swapped for the moon after dark — see MainActivity, which
+                     reads the same `is_day` the broker chose the word from, so
+                     the picture and the word cannot disagree with each other. -->
                 <ImageView
+                    android:id="@+id/weather_icon"
                     android:layout_width="13dp"
                     android:layout_height="13dp"
                     android:src="@drawable/ic_pixel_sun"
@@ -203,10 +207,16 @@
                     android:src="@drawable/ic_pixel_gold"
                     android:contentDescription="@string/window_gold" />
 
+                <!-- Gains " · เทียบครั้งก่อน" at runtime once there is a
+                     percentage beside the prices, and loses it again if there
+                     is not. One line, cut at the end if it has to be. -->
                 <TextView
+                    android:id="@+id/gold_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:text="@string/window_gold"
                     android:textColor="@color/retro_title_text"
                     android:textSize="11sp"
@@ -268,20 +278,45 @@
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/crypto_body"
+            <!-- TWO COLUMNS, AND THE ONLY LAYOUT CHANGE THIS WINDOW NEEDED.
+                 Four coins instead of two, and a coin set on one line reads
+                 "BTC  $86,509  +0.67%" — about 230dp in the pixel face, where
+                 half of this window is 170dp. So each coin is two lines and the
+                 four are dealt two and two. Not one TextView with spaces
+                 between the columns: the pixel font is monospaced and the Thai
+                 font beside it is not, so nothing would line up. -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
-                android:padding="7dp"
-                android:lineSpacingExtra="1dp"
-                android:textColor="@color/retro_text"
-                android:textSize="15sp"
-                android:fontFamily="@font/plex_thai"
-                android:text="@string/data_loading" />
+                android:padding="7dp">
+
+                <TextView
+                    android:id="@+id/crypto_body"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:lineSpacingExtra="1dp"
+                    android:textColor="@color/retro_text"
+                    android:textSize="15sp"
+                    android:fontFamily="@font/plex_thai"
+                    android:text="@string/data_loading" />
+
+                <TextView
+                    android:id="@+id/crypto_body_right"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:lineSpacingExtra="1dp"
+                    android:textColor="@color/retro_text"
+                    android:textSize="15sp"
+                    android:fontFamily="@font/plex_thai" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===================================================== jarvis window -->

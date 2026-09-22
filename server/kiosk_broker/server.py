@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import store
@@ -19,6 +20,18 @@ from .config import Config
 from .service import handle_chat, handle_dashboard, handle_stt, handle_tts
 
 log = logging.getLogger("kiosk_broker")
+
+
+def _one(params: dict, name: str):
+    """The single value of a query parameter, or None.
+
+    `parse_qs` gives lists, and a caller repeating `?lat=` twice should not be
+    able to turn a float into one. The value is not validated here — that is
+    dashboard.clean_coords, which has to handle absent and nonsense identically
+    anyway and is the one place that decision belongs.
+    """
+    values = params.get(name) or []
+    return values[0] if len(values) == 1 else None
 
 # Read before the body is, so a lying Content-Length cannot make us allocate.
 HARD_BODY_CEILING = 1024 * 1024
@@ -98,15 +111,26 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
-        if self.path == "/v1/dashboard":
+        route, _, query = self.path.partition("?")
+        if route == "/v1/dashboard":
             # A GET because it reads and changes nothing, which also means the
             # phone can retry it freely when the screen comes back.
+            #
+            # THE QUERY STRING CARRIES THE PHONE'S COARSE POSITION, which is
+            # why it is pulled apart here and handed on as two values rather
+            # than passed around as a URL. Nothing downstream logs either of
+            # them, and nginx's access log is the one place they would
+            # otherwise appear — see server/install/nginx-kiosk.conf, which
+            # logs this route without its query string for exactly that reason.
+            params = urllib.parse.parse_qs(query, keep_blank_values=False)
             conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
             conn.row_factory = sqlite3.Row
             try:
                 status, payload = handle_dashboard(
                     conn, self.config,
                     authorization=self.headers.get("Authorization"),
+                    latitude=_one(params, "lat"),
+                    longitude=_one(params, "lon"),
                 )
             except Exception:
                 log.exception("unhandled error")
@@ -117,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(status, payload)
             return
 
-        if self.path == "/healthz":
+        if route == "/healthz":
             # Deliberately says nothing about tokens, spend or the model: it is
             # reachable from nginx and exists only to answer "is it up".
             self._send(200, {"status": "ok"})

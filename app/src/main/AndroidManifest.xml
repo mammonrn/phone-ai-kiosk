@@ -15,6 +15,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+      WHERE THE KIOSK IS, TO ABOUT THREE KILOMETRES.
+
+      COARSE AND ONLY COARSE. ACCESS_FINE_LOCATION is deliberately not here and
+      should not be added: fine location is metres, and metres is which room of
+      the house. The weather is not reported more finely than a kilometre, so
+      there is nothing fine location would buy — see voice/KioskLocation.kt,
+      which rounds even the coarse answer to two decimals before it leaves.
+
+      Granted by the Device Owner without a dialog for the same reason
+      RECORD_AUDIO is: in lock task mode a permission prompt is a modal nobody
+      in the house can get past. And read back afterwards, because the grant
+      call returns nothing to say whether it worked.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
       WHY THIS BLOCK EXISTS, AND WHY IT IS ONE LINE LONG.
 
       From Android 11, an app that targets API 30 or higher cannot see other

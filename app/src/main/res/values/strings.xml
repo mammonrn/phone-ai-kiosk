@@ -29,6 +29,12 @@
     <string name="window_crypto">คริปโต</string>
     <string name="taskbar_button">จาร์วิส</string>
 
+    <!-- The weather window's title when the position is known but its name is
+         not: a reverse lookup that failed, or somewhere with no province in
+         OpenStreetMap. Honest about both halves — it knows where it is, it
+         just cannot name it — and never a coordinate. -->
+    <string name="place_unknown">ตำแหน่งปัจจุบัน</string>
+
     <string name="data_loading">กำลังโหลด…</string>
     <!-- Shown in a panel whose source failed. Short: it shares a box with the
          last good value, which matters more than the reason. -->

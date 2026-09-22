@@ -1,11 +1,11 @@
 """What the kiosk screen shows when nobody is talking to it.
 
-Weather, the Thai gold price and two crypto prices, fetched HERE and never by
-the phone. Not because any of them needs a key — none of the three does, which
-is most of why they were chosen — but because a kiosk that makes its own
-outbound calls to four hosts is a kiosk whose network exposure is four hosts.
-This way the phone talks to one server, which is the same rule the rest of the
-system already follows.
+Weather, the Thai gold price and four crypto prices, fetched HERE and never by
+the phone. Not because any of them needs a key — none of them does, which is
+most of why they were chosen — but because a kiosk that makes its own outbound
+calls to five hosts is a kiosk whose network exposure is five hosts. This way
+the phone talks to one server, which is the same rule the rest of the system
+already follows.
 
 EVERY PANEL FAILS ON ITS OWN. A dashboard where a gold API timing out takes the
 clock down with it is worse than no dashboard. Each source is fetched
@@ -19,21 +19,48 @@ to somebody glancing at a kitchen wall than an empty box, as long as the screen
 says how old it is — which is why `age_seconds` is in the payload and not
 optional.
 
+THE PHONE'S POSITION IS A ROUNDED PAIR OF NUMBERS AND NOTHING ELSE. The kiosk
+sends a coarse latitude and longitude already rounded to two decimals — about a
+kilometre, which is the resolution weather is reported at anyway — and this
+module rounds them again on arrival rather than trusting that it happened. They
+are never written to a log, never put in an error message, and never keyed into
+anything that leaves this process except the two upstream requests that need
+them. `_get` raises `http <status>` rather than letting urllib's exception carry
+the URL, because the URL has the coordinates in it.
+
 THE SOURCES, checked before they were chosen:
 
 * Open-Meteo — no key, CC-BY 4.0, under 10,000 calls a day free. Attribution is
   required by the licence and is in the payload so the screen can show it.
+* Nominatim (OpenStreetMap) — no key, for turning the rounded position into a
+  province name. Its usage policy allows this shape of use and forbids bulk
+  geocoding: one lookup per square kilometre the kiosk has ever been in, cached
+  for a day, is not bulk. ODbL attribution is in the payload.
 * Binance public market data — no key, and the reason it is preferred over
-  CoinGecko for this: CoinGecko's free tier is capped at 10,000 calls a MONTH,
-  about 333 a day, which a 60-second refresh would exceed four times over.
-  Binance quotes USDT, which tracks the dollar closely enough for a wall
+  CoinGecko for prices: CoinGecko's free tier is capped at 10,000 calls a
+  MONTH, about 333 a day, which a 60-second refresh would exceed four times
+  over. Binance quotes USDT, which tracks the dollar closely enough for a wall
   display and is labelled honestly in the payload.
+* CoinGecko — no key, used ONCE A DAY and only to ask which coins are the
+  largest. 30 calls a month against a 10,000 cap.
 * api.chnwt.dev/thai-gold-api — Poom's decision, made knowing what it is: an
   unofficial third party that scrapes the Gold Traders Association, because the
   association publishes no API at all and its own site is a JavaScript
   application. It answered three of three probes in under 0.1 s with the
   association's own update number. It could also disappear tomorrow without
   telling anyone, which is exactly why the stale-value handling above exists.
+
+WHAT THE GOLD PERCENTAGE IS MEASURED AGAINST, because a percentage with no
+stated base is a number pretending to be information. `/latest` is the only
+endpoint that API has, and it returns four prices and a timestamp: no previous
+price, no previous close, no change field. Probed on 2026-09-23 — /history,
+/yesterday and /all are all 404. So the broker keeps its own mark: the last
+price it saw that was DIFFERENT from the current one, persisted in SQLite so a
+restart does not lose it, and the percentage is the move from that mark to now.
+In the association's terms that is the move since the previous announcement of
+the day — "เทียบครั้งก่อน", which is what the screen says. It is NOT the move
+since yesterday's close, and until the broker has seen the price change once it
+reports no percentage at all rather than a made-up zero.
 """
 
 from __future__ import annotations
@@ -43,6 +70,7 @@ import logging
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
@@ -55,19 +83,53 @@ USER_AGENT = "phone-ai-kiosk/1.0 (+https://github.com/mammonrn/phone-ai-kiosk)"
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude={lat}&longitude={lon}"
-    "&current=temperature_2m,relative_humidity_2m,weather_code"
+    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day"
     "&daily=temperature_2m_max,temperature_2m_min"
     "&timezone=Asia%2FBangkok&forecast_days=1"
 )
-CRYPTO_URL = 'https://api.binance.com/api/v3/ticker/24hr?symbols=["BTCUSDT","ETHUSDT"]'
+PLACE_URL = (
+    "https://nominatim.openstreetmap.org/reverse"
+    "?lat={lat}&lon={lon}&format=jsonv2&zoom=10&accept-language=th"
+)
 GOLD_URL = "https://api.chnwt.dev/thai-gold-api/latest"
+BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/24hr?symbols={symbols}"
+BINANCE_PRICE_URL = "https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+COINGECKO_MARKETS_URL = (
+    "https://api.coingecko.com/api/v3/coins/markets"
+    "?vs_currency=usd&order=market_cap_desc&per_page={per_page}&page=1"
+)
+COINGECKO_STABLES_URL = (
+    "https://api.coingecko.com/api/v3/coins/markets"
+    "?vs_currency=usd&category=stablecoins&order=market_cap_desc&per_page=50&page=1"
+)
+
+#: Mae Fah Luang University, Chiang Rai — where the kiosk lives, and what the
+#: weather falls back to when the phone cannot fix its own position.
+#:
+#: CHECKED, NOT GUESSED, against two independent sources on 2026-09-23:
+#:   Wikidata Q958942 (P625)            20.045147, 99.894883
+#:   OpenStreetMap, "Mae Fah Luang University"  20.044948, 99.896844
+#: Rounded to the two decimals everything else here uses, both give 20.05 and
+#: 99.89 to within about a kilometre, which is finer than weather is reported.
+FALLBACK_LATITUDE = 20.05
+FALLBACK_LONGITUDE = 99.89
+
+#: Two decimals ≈ 1.1 km of latitude. Fine enough that the forecast is the
+#: right one, coarse enough that the number is not a home address.
+COORD_DECIMALS = 2
+
+#: How many coins the screen has room for, and how far down the market-cap list
+#: to look for that many with a Binance pair.
+CRYPTO_COINS = 4
+CRYPTO_CANDIDATES = 25
 
 #: Attribution the licences ask for, carried to the screen rather than
 #: remembered in somebody's head.
 CREDITS = {
     "weather": "Open-Meteo (CC BY 4.0)",
-    "crypto": "Binance",
+    "crypto": "Binance · อันดับจาก CoinGecko",
     "gold": "สมาคมค้าทองคำ ผ่าน chnwt.dev",
+    "place": "© OpenStreetMap contributors (ODbL)",
 }
 
 
@@ -78,8 +140,7 @@ class Panel:
     ok: bool
     data: dict = field(default_factory=dict)
     #: A SHORT CODE, never a URL and never an exception message. Those can carry
-    #: a query string, and a query string can carry things that do not belong on
-    #: a wall.
+    #: a query string, and here a query string carries the phone's position.
     error: str = ""
     #: How old the numbers are. Non-zero means this is the last good value and
     #: the newest fetch failed; the screen shows the age so nobody reads a stale
@@ -101,6 +162,9 @@ class Panel:
         return payload
 
 
+MAX_RESPONSE_BYTES = 256 * 1024
+
+
 def _get(url: str, timeout: float) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -114,26 +178,63 @@ def _get(url: str, timeout: float) -> dict:
     return json.loads(body.decode("utf-8"))
 
 
-MAX_RESPONSE_BYTES = 256 * 1024
+# ---------------------------------------------------------------- position ---
+
+def round_coord(value: float) -> float:
+    """Two decimals, and never "-0.0", which is a real float and an odd label."""
+    rounded = round(float(value), COORD_DECIMALS)
+    return rounded + 0.0
+
+
+def clean_coords(latitude, longitude) -> tuple[float, float, bool]:
+    """The position to use, and whether it is the fallback.
+
+    Anything that is not a pair of numbers inside the real range of the globe
+    becomes the fallback. That covers the phone having no permission, location
+    being switched off, a cold GPS with nothing cached, and a garbled query
+    string, all of which arrive here looking the same and all of which should
+    do the same thing: show Poom the weather where the kiosk lives.
+    """
+    try:
+        lat = float(latitude)
+        lon = float(longitude)
+    except (TypeError, ValueError):
+        return FALLBACK_LATITUDE, FALLBACK_LONGITUDE, True
+    if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+        return FALLBACK_LATITUDE, FALLBACK_LONGITUDE, True
+    # 0,0 is Null Island: the value a broken fix produces, not a place anyone
+    # asks for the weather in.
+    if lat == 0.0 and lon == 0.0:
+        return FALLBACK_LATITUDE, FALLBACK_LONGITUDE, True
+    return round_coord(lat), round_coord(lon), False
+
+
+# ----------------------------------------------------------------- weather ---
 
 #: Open-Meteo's WMO codes, grouped into the handful a wall display needs. The
 #: full table has a hundred entries and a kiosk has room for two words.
+#:
+#: TWO WORDS PER GROUP, because the screen said "แดดจัด" at one in the morning.
+#: Code 0 is "clear sky", which is a statement about cloud and not about the
+#: sun, and the first version read it as a statement about the sun. Open-Meteo
+#: answers `is_day` in the same `current` block for nothing extra, so the fix is
+#: to ask. Nothing below uses the word "แดด" after dark.
 _WEATHER_WORDS = (
-    ((0,), "แดดจัด"),
-    ((1, 2), "แดดรำไร"),
-    ((3,), "เมฆมาก"),
-    ((45, 48), "หมอก"),
-    ((51, 53, 55, 56, 57), "ฝนปรอย"),
-    ((61, 63, 65, 66, 67, 80, 81, 82), "ฝนตก"),
-    ((71, 73, 75, 77, 85, 86), "หิมะ"),
-    ((95, 96, 99), "ฝนฟ้าคะนอง"),
+    ((0,), "แดดจัด", "ฟ้าโปร่ง"),
+    ((1, 2), "แดดรำไร", "เมฆบางส่วน"),
+    ((3,), "เมฆมาก", "เมฆมาก"),
+    ((45, 48), "หมอก", "หมอก"),
+    ((51, 53, 55, 56, 57), "ฝนปรอย", "ฝนปรอย"),
+    ((61, 63, 65, 66, 67, 80, 81, 82), "ฝนตก", "ฝนตก"),
+    ((71, 73, 75, 77, 85, 86), "หิมะ", "หิมะ"),
+    ((95, 96, 99), "ฝนฟ้าคะนอง", "ฝนฟ้าคะนอง"),
 )
 
 
-def weather_word(code: int) -> str:
-    for codes, word in _WEATHER_WORDS:
+def weather_word(code: int, is_day: bool = True) -> str:
+    for codes, day, night in _WEATHER_WORDS:
         if code in codes:
-            return word
+            return day if is_day else night
     return "ไม่ทราบ"
 
 
@@ -141,11 +242,18 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
     raw = _get(WEATHER_URL.format(lat=latitude, lon=longitude), timeout)
     current = raw["current"]
     daily = raw.get("daily", {})
+    code = int(current["weather_code"])
+    # Open-Meteo sends 1 or 0. Missing would mean the field was dropped from the
+    # API, and daytime is the safer thing to assume about a word like "แดดจัด"
+    # only if it is actually day — so a missing value is treated as night-safe
+    # by falling through to the neutral words wherever the pair differs.
+    is_day = bool(int(current.get("is_day", 1)))
     return {
         "temp_c": round(float(current["temperature_2m"]), 1),
         "humidity": int(current["relative_humidity_2m"]),
-        "code": int(current["weather_code"]),
-        "word": weather_word(int(current["weather_code"])),
+        "code": code,
+        "is_day": 1 if is_day else 0,
+        "word": weather_word(code, is_day),
         "high_c": _first_number(daily.get("temperature_2m_max")),
         "low_c": _first_number(daily.get("temperature_2m_min")),
     }
@@ -157,24 +265,49 @@ def _first_number(values) -> float | None:
     return None
 
 
-def fetch_crypto(timeout: float) -> dict:
-    raw = _get(CRYPTO_URL, timeout)
-    by_symbol = {row["symbol"]: row for row in raw}
-    out = {}
-    for symbol, key in (("BTCUSDT", "btc"), ("ETHUSDT", "eth")):
-        row = by_symbol.get(symbol)
-        if row is None:
-            raise ValueError(f"missing {symbol}")
-        out[key] = {
-            "usd": round(float(row["lastPrice"]), 2),
-            # The day's move, which is most of why anybody looks.
-            "change_pct": round(float(row["priceChangePercent"]), 2),
-        }
-    # Said plainly rather than rounded off into a claim we did not check: the
-    # quote is USDT, which is not the dollar, only very close to it.
-    out["quote"] = "USDT"
-    return out
+# ------------------------------------------------------------------- place ---
 
+#: What Thai administrative names are prefixed with. Stripped so the title bar
+#: says "เชียงราย" rather than "จังหวัดเชียงราย", which is the same information
+#: and four characters of an eleven-point title bar.
+_PLACE_PREFIXES = ("จังหวัด", "อำเภอ", "เขต", "แขวง", "ตำบล")
+
+
+def short_place(address: dict) -> str:
+    """A province, or failing that a district, with its prefix taken off.
+
+    Empty when neither can be read. The screen says "ตำแหน่งปัจจุบัน" then,
+    which is honest: it knows where it is, it just cannot name it.
+    """
+    if not isinstance(address, dict):
+        return ""
+    for key in ("province", "state"):
+        value = _strip_prefix(address.get(key))
+        if value:
+            return value
+    for key in ("county", "city", "town", "village", "state_district"):
+        value = _strip_prefix(address.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _strip_prefix(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    for prefix in _PLACE_PREFIXES:
+        if text.startswith(prefix) and len(text) > len(prefix):
+            return text[len(prefix):].strip()
+    return text
+
+
+def fetch_place(latitude: float, longitude: float, timeout: float) -> dict:
+    raw = _get(PLACE_URL.format(lat=latitude, lon=longitude), timeout)
+    return {"place": short_place(raw.get("address", {}))}
+
+
+# -------------------------------------------------------------------- gold ---
 
 def fetch_gold(timeout: float) -> dict:
     raw = _get(GOLD_URL, timeout)
@@ -197,12 +330,175 @@ def _baht(value: str) -> float:
     return float(str(value).replace(",", "").strip())
 
 
+def advance_mark(mark: dict | None, price: float) -> dict:
+    """Moves the "price before this one" along, and only when it really moved.
+
+    Called on every successful gold fetch. The association announces a few
+    times a day and the broker asks every five minutes, so nearly every call
+    sees the same price it saw last time — and on those calls the mark must not
+    budge, or the percentage would be zero for ever.
+    """
+    if mark is None or "current" not in mark:
+        return {"current": price, "previous": None}
+    if price == mark["current"]:
+        return dict(mark)
+    return {"current": price, "previous": mark["current"]}
+
+
+def mark_change_pct(mark: dict | None) -> float | None:
+    """The move from the previous announcement to this one, or None.
+
+    None until the broker has watched the price change at least once. A freshly
+    installed broker therefore shows no percentage rather than "0.00%", which
+    would be a claim it has no evidence for.
+    """
+    if not mark:
+        return None
+    previous = mark.get("previous")
+    current = mark.get("current")
+    if previous in (None, 0) or current is None:
+        return None
+    return round((float(current) - float(previous)) / float(previous) * 100.0, 2)
+
+
+#: What the percentage is measured against, in the words the screen uses. Kept
+#: next to the arithmetic so the label cannot drift away from the meaning.
+GOLD_CHANGE_BASIS = "เทียบครั้งก่อน"
+
+
+# ------------------------------------------------------------------ crypto ---
+
+#: Symbols that are dollar-pegged by design. The list from CoinGecko's
+#: "stablecoins" category is the real filter; this is what stands behind it if
+#: that call is the one that fails.
+STABLE_SYMBOLS = frozenset({
+    "USDT", "USDC", "USDS", "USDE", "DAI", "USD1", "USDG", "PYUSD", "RLUSD",
+    "USDD", "TUSD", "FDUSD", "BUSD", "USDP", "GUSD", "LUSD", "FRAX", "SUSD",
+})
+
+#: How close to a dollar counts as pegged. Poom's rule was "stablecoins and
+#: anything pinned to the dollar", and a tokenised dollar-denominated asset —
+#: FIGR_HELOC sat at $1.025 and rank 10 on the day this was written — is pinned
+#: to the dollar whatever category it files under. The nearest real coin to the
+#: band is XRP at about $1.57, which is 57% away from it.
+PEG_BAND = 0.05
+
+
+def is_pegged(price) -> bool:
+    try:
+        value = float(price)
+    except (TypeError, ValueError):
+        return False
+    return abs(value - 1.0) <= PEG_BAND
+
+
+def pick_symbols(markets, stablecoins=()) -> list[str]:
+    """Market-cap order, with the dollar-pegged taken out.
+
+    Pure, and the whole of the "which coins" decision. Everything above it is
+    fetching and everything below it is Binance.
+    """
+    excluded = set(STABLE_SYMBOLS) | {str(s).upper() for s in stablecoins}
+    out: list[str] = []
+    for row in markets or ():
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol", "")).upper().strip()
+        if not symbol or symbol in out:
+            continue
+        if symbol in excluded or is_pegged(row.get("current_price")):
+            continue
+        out.append(symbol)
+    return out
+
+
+def fetch_top_symbols(timeout: float) -> list[str]:
+    """CoinGecko's market-cap ranking, minus the stablecoins. Once a day."""
+    markets = _get(COINGECKO_MARKETS_URL.format(per_page=CRYPTO_CANDIDATES), timeout)
+    try:
+        stables = [row.get("symbol", "") for row in
+                   _get(COINGECKO_STABLES_URL, timeout)]
+    except (urllib.error.URLError, OSError, ValueError, TypeError) as exc:
+        # The category list is the better filter and the optional one. Losing it
+        # leaves STABLE_SYMBOLS and the peg band, which caught every stablecoin
+        # in the top 25 on the day this was written.
+        log.info("stablecoin list unavailable: %s", type(exc).__name__)
+        stables = []
+    return pick_symbols(markets, stables)
+
+
+def binance_pair(symbol: str, timeout: float) -> str | None:
+    """`<SYM>USDT` if Binance trades it, else None.
+
+    One request per candidate, and only when the daily ranking is refreshed.
+    Binance answers 400 `-1121 Invalid symbol` for a pair it does not list,
+    which is a clean answer to a yes-or-no question and cheaper than pulling
+    the whole of exchangeInfo, a response far past MAX_RESPONSE_BYTES.
+    """
+    pair = f"{symbol}USDT"
+    try:
+        _get(BINANCE_PRICE_URL.format(symbol=pair), timeout)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 400:
+            return None
+        raise
+    return pair
+
+
+def resolve_pairs(symbols, timeout: float, want: int = CRYPTO_COINS) -> list[str]:
+    """The first `want` symbols that Binance actually quotes against USDT.
+
+    ZEC and HYPE were both in the top fifteen when this was written and only one
+    of them has a USDT pair, which is why this walks down the list instead of
+    taking the first four and hoping.
+    """
+    out: list[str] = []
+    for symbol in symbols:
+        if len(out) >= want:
+            break
+        if binance_pair(symbol, timeout):
+            out.append(symbol)
+    return out
+
+
+def fetch_crypto(symbols, timeout: float) -> dict:
+    """One Binance call for every coin on the screen."""
+    wanted = [str(s).upper() for s in symbols if str(s).strip()]
+    if not wanted:
+        raise ValueError("no symbols")
+    pairs = json.dumps([f"{s}USDT" for s in wanted], separators=(",", ":"))
+    raw = _get(BINANCE_TICKER_URL.format(symbols=urllib.parse.quote(pairs)), timeout)
+    by_symbol = {row["symbol"]: row for row in raw}
+
+    coins = []
+    for symbol in wanted:
+        row = by_symbol.get(f"{symbol}USDT")
+        if row is None:
+            raise ValueError(f"missing {symbol}")
+        coins.append({
+            "symbol": symbol,
+            "usd": round(float(row["lastPrice"]), 6),
+            # The day's move, which is most of why anybody looks.
+            "change_pct": round(float(row["priceChangePercent"]), 2),
+        })
+    # Said plainly rather than rounded off into a claim we did not check: the
+    # quote is USDT, which is not the dollar, only very close to it.
+    return {"coins": coins, "quote": "USDT"}
+
+
+# --------------------------------------------------------------- the board ---
+
 class Dashboard:
     """Fetches each panel on its own schedule and remembers the last good one.
 
     One instance per process, shared by every request thread, so the lock is
     real rather than decorative: two phones asking at once must not become two
     outbound requests to the same source.
+
+    The weather and the place name are cached PER ROUNDED POSITION. A kiosk that
+    does not move has one entry; one carried around town has one per square
+    kilometre it has stopped in, and each is a plain pair of floats in a dict on
+    this process — not a track, not a history, and not written anywhere.
     """
 
     def __init__(self, cfg):
@@ -215,41 +511,98 @@ class Dashboard:
         with self._lock:
             self._cache.clear()
 
-    def snapshot(self, now: float | None = None) -> dict:
+    def snapshot(self, latitude=None, longitude=None, now: float | None = None,
+                 marks=None, symbols=None) -> dict:
+        """The whole screen.
+
+        `marks` and `symbols` are the two things that have to outlive the
+        process — the gold price the percentage is measured from, and yesterday's
+        market-cap ranking — so they are passed in and handed back rather than
+        kept here. See service.handle_dashboard, which reads and writes them in
+        SQLite.
+        """
         now = time.time() if now is None else now
+        lat, lon, fallback = clean_coords(latitude, longitude)
+
+        weather = self._panel(
+            f"weather:{lat}:{lon}", now, self.cfg.dashboard_weather_ttl,
+            lambda: fetch_weather(lat, lon, self.cfg.dashboard_timeout),
+            credit=CREDITS["weather"])
+        place = self._panel(
+            f"place:{lat}:{lon}", now, self.cfg.dashboard_place_ttl,
+            lambda: fetch_place(lat, lon, self.cfg.dashboard_timeout),
+            credit=CREDITS["place"])
+        gold = self._panel(
+            "gold", now, self.cfg.dashboard_gold_ttl,
+            lambda: self._gold_with_change(marks), credit=CREDITS["gold"])
+        crypto = self._panel(
+            "crypto", now, self.cfg.dashboard_crypto_ttl,
+            lambda: fetch_crypto(symbols or [], self.cfg.dashboard_timeout),
+            credit=CREDITS["crypto"])
+
         return {
-            "weather": self._panel("weather", now, self.cfg.dashboard_weather_ttl,
-                                   lambda: fetch_weather(self.cfg.weather_latitude,
-                                                         self.cfg.weather_longitude,
-                                                         self.cfg.dashboard_timeout)).as_json(),
-            "gold": self._panel("gold", now, self.cfg.dashboard_gold_ttl,
-                                lambda: fetch_gold(self.cfg.dashboard_timeout)).as_json(),
-            "crypto": self._panel("crypto", now, self.cfg.dashboard_crypto_ttl,
-                                  lambda: fetch_crypto(self.cfg.dashboard_timeout)).as_json(),
+            "weather": weather.as_json(),
+            "gold": gold.as_json(),
+            "crypto": crypto.as_json(),
+            # Empty string when the lookup failed or the name could not be read.
+            # The phone shows "ตำแหน่งปัจจุบัน" for that, never a coordinate.
+            "place": place.data.get("place", "") if place.ok else "",
+            # For dumpsys and the broker log. Says THAT the fallback was used,
+            # which is the operational fact; the position itself stays out of
+            # both, which is the private one.
+            "location_fallback": fallback,
         }
 
-    def _panel(self, name: str, now: float, ttl: int, fetch) -> Panel:
+    def _gold_with_change(self, marks) -> dict:
+        """The gold panel, with the move since the previous announcement.
+
+        `marks` is mutated in place so the caller can persist it after the
+        snapshot — it is the only state in this module that has to survive a
+        restart, and threading it back through every return value would be
+        worse than this one documented side effect.
+        """
+        data = fetch_gold(self.cfg.dashboard_timeout)
+        if marks is None:
+            return data
+        for key in ("ornament_sell", "bar_sell"):
+            price = data.get(key)
+            if price is None:
+                continue
+            marks[key] = advance_mark(marks.get(key), price)
+            change = mark_change_pct(marks[key])
+            if change is not None:
+                data[f"{key}_change_pct"] = change
+        if any(f"{k}_change_pct" in data for k in ("ornament_sell", "bar_sell")):
+            data["change_basis"] = GOLD_CHANGE_BASIS
+        return data
+
+    def _panel(self, name: str, now: float, ttl: int, fetch, credit: str = "") -> Panel:
         with self._lock:
             cached = self._cache.get(name)
             if cached and now - cached[0] < ttl and cached[1].ok:
                 fresh = cached[1]
                 # Age is measured from when it was fetched, every time it is
                 # served — not stored once and left to go quietly out of date.
-                return Panel(True, fresh.data, "", int(now - cached[0]), CREDITS.get(name, ""))
+                return Panel(True, fresh.data, "", int(now - cached[0]), credit)
 
             try:
                 data = fetch()
             except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as exc:
                 # The TYPE, never the message: an exception from urllib can
-                # quote the URL, and a URL can carry a query string.
+                # quote the URL, and this module's URLs carry a position.
                 reason = type(exc).__name__
-                log.warning("dashboard panel %s failed: %s", name, reason)
+                log.warning("dashboard panel %s failed: %s", _log_name(name), reason)
                 if cached:
                     # Stale beats empty on a wall, as long as it says so.
                     return Panel(False, cached[1].data, reason,
-                                 int(now - cached[0]), CREDITS.get(name, ""))
-                return Panel(False, {}, reason, 0, CREDITS.get(name, ""))
+                                 int(now - cached[0]), credit)
+                return Panel(False, {}, reason, 0, credit)
 
-            panel = Panel(True, data, "", 0, CREDITS.get(name, ""))
+            panel = Panel(True, data, "", 0, credit)
             self._cache[name] = (now, panel)
             return panel
+
+
+def _log_name(name: str) -> str:
+    """"weather:20.05:99.89" is a cache key; "weather" is what a log may say."""
+    return name.split(":", 1)[0]

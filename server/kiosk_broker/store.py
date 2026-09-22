@@ -6,6 +6,7 @@ whole point of this service is that a person can read it end to end.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -66,6 +67,24 @@ CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
 -- `usage` on purpose: that one is the phone's $5 and `month_spend_usd` sums it,
 -- so putting training spend in it would quietly eat the household's questions.
 -- This has its own ceiling and its own report.
+-- The two things the kiosk screen has to remember across a restart.
+--
+-- `gold_mark` is the price the gold percentage is measured FROM: the last
+-- announcement whose number differed from the current one. Without it a
+-- restarted broker would have nothing to compare against and would either show
+-- no move for the rest of the day or, worse, invent a zero.
+--
+-- `crypto_symbols` is yesterday's market-cap ranking, so a CoinGecko outage at
+-- the wrong minute does not blank the crypto window.
+--
+-- Values are JSON. This table holds no prices anybody said and no positions —
+-- it is public market data and a list of four ticker symbols.
+CREATE TABLE IF NOT EXISTS dashboard_state (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS training_usage (
     id        INTEGER PRIMARY KEY,
     ts        REAL NOT NULL,
@@ -285,3 +304,33 @@ def prune_messages(conn: sqlite3.Connection, *, conversation_id: str, turns: int
         (conversation_id, conversation_id, max(0, turns) * 2),
     )
     conn.execute("DELETE FROM messages WHERE ts < ?", (time.time() - ttl_hours * 3600,))
+
+
+# ------------------------------------------------------- the kiosk screen ---
+
+def read_state(conn: sqlite3.Connection, key: str) -> tuple[object, float]:
+    """The stored value and when it was written, or (None, 0.0).
+
+    Never raises on a damaged row: a value that will not parse is treated as
+    absent, because a corrupt cache entry must not be able to stop the screen
+    drawing. It will simply be rewritten on the next successful fetch.
+    """
+    row = conn.execute(
+        "SELECT value, updated_at FROM dashboard_state WHERE key = ?", (key,)
+    ).fetchone()
+    if row is None:
+        return None, 0.0
+    try:
+        return json.loads(row["value"]), float(row["updated_at"])
+    except (ValueError, TypeError):
+        return None, 0.0
+
+
+def write_state(conn: sqlite3.Connection, key: str, value, now: float | None = None) -> None:
+    conn.execute(
+        "INSERT INTO dashboard_state (key, value, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+        "updated_at = excluded.updated_at",
+        (key, json.dumps(value, ensure_ascii=False),
+         time.time() if now is None else now),
+    )

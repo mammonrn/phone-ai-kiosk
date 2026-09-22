@@ -22,8 +22,18 @@ import org.json.JSONObject
  */
 object DashboardState {
 
-    /** What one window shows. */
-    class Panel(val text: String, val stale: Boolean)
+    /**
+     * What one window shows.
+     *
+     * [text2] is the SECOND COLUMN, and only the crypto window has one. Four
+     * coins stacked in a single column ran off the bottom of a panel sized for
+     * two, so they are laid out two and two — and two columns cannot be one
+     * string, because the pixel font is monospaced and the Thai font beside it
+     * is not, so padding with spaces would not line anything up. Two TextViews
+     * side by side is the only honest way to do it. Empty for every other
+     * window and for an error, which is why it has a default.
+     */
+    class Panel(val text: String, val stale: Boolean, val text2: String = "")
 
     /** Everything the screen needs, already formatted. */
     class Screen(
@@ -31,6 +41,21 @@ object DashboardState {
         val gold: Panel,
         val crypto: Panel,
         val place: String,
+        /** Day or night, for the icon. The WORD is chosen by the broker. */
+        val isDay: Boolean = true,
+        /**
+         * What the gold percentage is measured against, in the words the title
+         * bar shows — empty when there is no percentage to explain. A
+         * percentage with no stated base is a number pretending to be
+         * information, so the two travel together or neither is shown.
+         */
+        val goldBasis: String = "",
+        /**
+         * Whether the broker used its own fallback position because the phone
+         * sent none. THAT it happened, never where: the screen and the dump
+         * both say "fallback", and neither ever says a coordinate.
+         */
+        val locationFallback: Boolean = false,
     )
 
     /**
@@ -39,15 +64,33 @@ object DashboardState {
      */
     fun parse(json: String, unavailable: String): Screen = try {
         val root = JSONObject(json)
+        val weather = root.optJSONObject("weather")
+        val gold = root.optJSONObject("gold")
         Screen(
-            weather = weatherPanel(root.optJSONObject("weather"), unavailable),
-            gold = goldPanel(root.optJSONObject("gold"), unavailable),
+            weather = weatherPanel(weather, unavailable),
+            gold = goldPanel(gold, unavailable),
             crypto = cryptoPanel(root.optJSONObject("crypto"), unavailable),
             place = root.optString("place", ""),
+            isDay = isDay(weather),
+            goldBasis = usable(gold)?.first?.optString("change_basis", "") ?: "",
+            locationFallback = root.optBoolean("location_fallback", false),
         )
     } catch (e: Exception) {
         val panel = Panel(unavailable, false)
         Screen(panel, panel, panel, "")
+    }
+
+    /**
+     * Day or night, read from whichever block of the weather panel is usable.
+     *
+     * Defaults to day only when there is no weather at all — with no panel
+     * there is no word on screen either, so nothing can contradict it. When
+     * there IS a reading, `is_day` comes with it: the broker puts it there
+     * precisely so the icon and the word cannot disagree.
+     */
+    private fun isDay(panel: JSONObject?): Boolean {
+        val data = usable(panel)?.first ?: return true
+        return data.optInt("is_day", 1) != 0
     }
 
     /**
@@ -99,29 +142,97 @@ object DashboardState {
 
         return Panel(buildString {
             // Sell prices: the number people mean by "ราคาทอง".
-            if (!ornament.isNaN()) append("รูปพรรณ ${baht(ornament)}")
+            if (!ornament.isNaN()) {
+                append("รูปพรรณ ${baht(ornament)}")
+                append(goldMove(data, "ornament_sell_change_pct"))
+            }
             if (!bar.isNaN()) {
                 if (isNotEmpty()) append("\n")
                 append("ทองแท่ง ${baht(bar)}")
+                append(goldMove(data, "bar_sell_change_pct"))
             }
             append(age(panel))
         }, stale)
     }
 
+    /**
+     * The move on a gold price, or nothing at all.
+     *
+     * NOTHING AT ALL is the important half. The source publishes no previous
+     * price — /latest is its only endpoint and it carries four prices and a
+     * timestamp — so the broker measures against the last announcement it
+     * watched go by, and until it has seen one change there is nothing to
+     * measure. "0.00%" would be a claim with no evidence behind it, so the
+     * absence is passed through rather than filled in.
+     */
+    private fun goldMove(data: JSONObject, key: String): String {
+        if (!data.has(key)) return ""
+        val change = data.optDouble(key, Double.NaN)
+        if (change.isNaN()) return ""
+        val sign = if (change >= 0) "+" else ""
+        return "  $sign${percent(change)}%"
+    }
+
+    /**
+     * Four coins, split into two columns of two.
+     *
+     * The order is the broker's, which is market capitalisation with the
+     * dollar-pegged taken out, so the left column holds the two biggest.
+     *
+     * TWO LINES PER COIN, because "BTC  $86,509  +0.67%" is about 230dp set in
+     * the pixel face and half of this window is 170dp. Splitting the symbol and
+     * its move off from the price is what makes four coins fit without
+     * shrinking the type — which is the thing Poom asked not to touch.
+     */
     private fun cryptoPanel(panel: JSONObject?, unavailable: String): Panel {
         val (data, stale) = usable(panel) ?: return Panel(unavailable, false)
-        val btc = data.optJSONObject("btc")
-        val eth = data.optJSONObject("eth")
-        if (btc == null && eth == null) return Panel(unavailable, false)
+        val coins = coinList(data)
+        if (coins.isEmpty()) return Panel(unavailable, false)
 
-        return Panel(buildString {
-            btc?.let { append("BTC  ${dollars(it.optDouble("usd", 0.0))}${move(it)}") }
-            eth?.let {
-                if (isNotEmpty()) append("\n")
-                append("ETH  ${dollars(it.optDouble("usd", 0.0))}${move(it)}")
+        val left = StringBuilder()
+        val right = StringBuilder()
+        // Odd counts keep the extra coin on the left, so a three-coin day reads
+        // top-left, bottom-left, top-right rather than leaving a hole.
+        val inLeft = (coins.size + 1) / 2
+        for ((index, coin) in coins.withIndex()) {
+            val column = if (index < inLeft) left else right
+            if (column.isNotEmpty()) column.append("\n\n")
+            column.append(coin.optString("symbol", "?"))
+            column.append(move(coin))
+            column.append("\n")
+            column.append(coinPrice(coin.optDouble("usd", Double.NaN)))
+        }
+        // The freshness note goes under the left column, where it reads as the
+        // footnote it is. It has to be LAST in the string it lands in: the
+        // renderer finds it with a match anchored to the end. See ui/RetroType.
+        left.append(age(panel))
+        return Panel(left.toString(), stale, right.toString())
+    }
+
+    /**
+     * The coins to show, newest payload shape first.
+     *
+     * The `btc`/`eth` branch is for the minutes between installing this APK and
+     * deploying the broker that goes with it — the phone updates over adb in
+     * seconds and the VPS is a separate step, by hand, afterwards. Without it
+     * the crypto window reads "ข้อมูลไม่พร้อม" in between, which looks exactly
+     * like a broken kiosk rather than a half-finished deploy.
+     */
+    private fun coinList(data: JSONObject): List<JSONObject> {
+        val array = data.optJSONArray("coins")
+        if (array != null) {
+            val out = ArrayList<JSONObject>(array.length())
+            for (index in 0 until array.length()) {
+                val coin = array.optJSONObject(index) ?: continue
+                if (coin.optString("symbol").isNotEmpty()) out.add(coin)
             }
-            append(age(panel))
-        }, stale)
+            return out
+        }
+        val out = ArrayList<JSONObject>(2)
+        for (key in listOf("btc", "eth")) {
+            data.optJSONObject(key)?.let { out.add(it.put("symbol", key.uppercase())) }
+        }
+        return out
     }
 
     /** The day's move, with a sign, because the direction is most of the point. */
@@ -139,6 +250,27 @@ object DashboardState {
 
     /** 85986.58 -> "$85,987" for the same reason. */
     fun dollars(value: Double): String = "$" + group(Math.round(value))
+
+    /**
+     * A coin price at the precision that coin is actually quoted at.
+     *
+     * [dollars] rounds to whole dollars, which was right while the screen showed
+     * Bitcoin and Ether and is wrong the moment it does not: of the top four on
+     * the day this was written, one is $1.57. Whole dollars would print that as
+     * "$2", which is not a rounding choice but a wrong number, and a coin under
+     * a dollar as "$0". So: no decimals above a thousand, two below it, four
+     * below a dollar. Nobody reads cents on Bitcoin at arm's length and
+     * everybody needs them on XRP.
+     */
+    fun coinPrice(value: Double): String {
+        if (value.isNaN()) return "—"
+        val magnitude = Math.abs(value)
+        return "$" + when {
+            magnitude >= 1000 -> group(Math.round(value))
+            magnitude >= 1 -> String.format(java.util.Locale.US, "%.2f", value)
+            else -> String.format(java.util.Locale.US, "%.4f", value)
+        }
+    }
 
     private fun group(value: Long): String {
         val digits = value.toString()
