@@ -15,7 +15,7 @@ import sqlite3
 import time
 from typing import Any
 
-from . import actions, auth, limits, store
+from . import actions, auth, limits, register, store
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -147,16 +147,21 @@ def handle_chat(
                        cache_write_tokens=answer.usage.cache_write_tokens,
                        cache_read_tokens=answer.usage.cache_read_tokens,
                        cost_usd=cost)
-    store.record_request(conn, device_id=device_id, day=day, outcome="ok", text_len=len(text))
-
     # ---- reply -----------------------------------------------------------
     reply, raw_action = actions.extract(answer.text)
     action = actions.sanitize(raw_action)
+
+    # After the action marker is stripped, before anything is stored or spoken:
+    # the reply goes out in one voice whether or not the prompt managed it.
+    reply, register_fixes = register.enforce(reply)
     if raw_action is not None and action is None:
         # Worth a line: in phase 2 the model has not been told actions exist, so
         # one appearing means either a prompt-injection attempt in the incoming
         # text or a persona that has drifted.
         log.warning("dropped action type=%r device=%s", raw_action.get("type"), label)
+
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok",
+                         text_len=len(text), register_fixes=register_fixes)
 
     store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
                          role="user", content=text)
@@ -167,9 +172,10 @@ def handle_chat(
     store.prune_requests(conn)
 
     log.info(
-        "ok device=%s conv=%s chars_in=%d chars_out=%d in_tok=%d out_tok=%d cost=%.6f ms=%d%s",
+        "ok device=%s conv=%s chars_in=%d chars_out=%d in_tok=%d out_tok=%d cost=%.6f"
+        " register_fixes=%d ms=%d%s",
         label, conversation_id, len(text), len(reply),
-        answer.usage.input_tokens, answer.usage.output_tokens, cost, elapsed_ms,
+        answer.usage.input_tokens, answer.usage.output_tokens, cost, register_fixes, elapsed_ms,
         f" text={text!r}" if cfg.log_prompts else "",
     )
 

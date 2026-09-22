@@ -303,3 +303,62 @@ def test_the_request_log_does_not_grow_forever(conn, cfg, client):
 
     # The money ledger is not pruned, whatever happens to the request log.
     assert conn.execute("SELECT COUNT(*) c FROM usage").fetchone()["c"] == 1
+
+
+# ------------------------------------------------------- register enforcement
+
+def test_a_mixed_register_reply_goes_out_in_one_voice(conn, cfg):
+    """End to end, with the exact sentence production returned."""
+    client = FakeClient(reply="สวัสดีครับ ผมพร้อมช่วยเหลือค่ะ มีอะไรให้ผมช่วยได้บ้างครับ")
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "สวัสดี"})
+
+    assert status == 200
+    assert body["reply"] == "สวัสดีครับ ผมพร้อมช่วยเหลือครับ มีอะไรให้ผมช่วยได้บ้างครับ"
+    assert "ค่ะ" not in body["reply"]
+
+
+def test_the_number_of_corrections_is_recorded_but_not_the_text(conn, cfg):
+    client = FakeClient(reply="สวัสดีค่ะ ดิฉันชื่อสายฝนนะคะ")
+    token = _token(conn)
+    _post(conn, cfg, client, token, {"text": "คุณชื่ออะไร"})
+
+    row = conn.execute("SELECT * FROM requests WHERE outcome = 'ok'").fetchone()
+    assert row["register_fixes"] == 3
+
+    dumped = " ".join(str(v) for v in tuple(row))
+    assert "สายฝน" not in dumped, "the reply text must not be in the request log"
+
+
+def test_a_correct_reply_records_zero_corrections(conn, cfg):
+    client = FakeClient(reply="ผมยังดูให้ไม่ได้ครับ")
+    token = _token(conn)
+    _post(conn, cfg, client, token, {"text": "อากาศ"})
+
+    row = conn.execute("SELECT register_fixes FROM requests WHERE outcome = 'ok'").fetchone()
+    assert row["register_fixes"] == 0
+
+
+def test_the_corrected_reply_is_what_goes_into_history(conn, cfg, client):
+    """Not the original — the model must not see its own ค่ะ replayed back and
+    take it as licence."""
+    client.reply = "ได้เลยค่ะ"
+    token = _token(conn)
+    _, body = _post(conn, cfg, client, token, {"text": "หนึ่ง"})
+    conv = body["conversation_id"]
+
+    _post(conn, cfg, client, token, {"text": "สอง", "conversation_id": conv})
+    replayed = json.dumps(client.calls[-1]["messages"], ensure_ascii=False)
+    assert "ค่ะ" not in replayed
+    assert "ได้เลยครับ" in replayed
+
+
+def test_register_stats_report_how_often_the_prompt_failed(conn, cfg):
+    token = _token(conn)
+    _post(conn, cfg, FakeClient(reply="ได้ครับ"), token, {"text": "ก"})
+    _post(conn, cfg, FakeClient(reply="ได้ค่ะ"), token, {"text": "ข"})
+
+    stats = store.register_fix_stats(conn)
+    assert stats["replies"] == 2
+    assert stats["touched"] == 1
+    assert stats["fixes"] == 1

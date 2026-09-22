@@ -121,36 +121,47 @@ def main(argv: list[str] | None = None) -> int:
                 "SELECT COUNT(*) c, COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o"
                 " FROM usage WHERE month = ?", (month,)).fetchone()
             print(f"calls        : {row['c']}  in_tokens={row['i']}  out_tokens={row['o']}")
+
+            # How often the prompt failed to hold ผม/ครับ on its own. Counts
+            # only; the replies themselves are not kept.
+            stats = store.register_fix_stats(conn)
+            print()
+            print(f"replies      : {stats['replies']}")
+            print(f"  needed the register corrected : {stats['touched']} "
+                  f"({stats['fixes']} particles in total)")
+            if stats["replies"] and stats["touched"]:
+                share = stats["touched"] / stats["replies"] * 100
+                print(f"  that is {share:.0f}% of replies — the prompt is not holding on its own")
             return 0
 
         if args.cmd == "prompt-size":
-            # count_tokens is free and rate-limited separately from message
-            # creation, so this can be run as often as it takes to tune the
-            # prompt without spending a cent of the phone's budget.
-            # https://platform.claude.com/docs/en/build-with-claude/token-counting
-            client = _client(cfg)
-            sample = "สวัสดี"
+            from .measure import measure_prompt
 
-            system_only = client.messages.count_tokens(
-                model=cfg.model, system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": ""}],
-            ).input_tokens
-            with_question = client.messages.count_tokens(
-                model=cfg.model, system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": sample}],
-            ).input_tokens
-
+            size = measure_prompt(_client(cfg), model=cfg.model, system=SYSTEM_PROMPT,
+                                  sample="วันนี้อากาศเป็นยังไง")
             pricing = Pricing.load(cfg.pricing_path)
             rate = pricing.models[cfg.model]["input"]
-            print(f"model                  : {cfg.model}")
-            print(f"prompt characters      : {len(SYSTEM_PROMPT)}")
-            print(f"INPUT TOKENS, prompt   : {system_only}")
-            print(f"INPUT TOKENS, + {sample!r} : {with_question}")
-            print(f"cost of those in-tokens: ${with_question * rate / 1e6:.6f} per question")
+
+            print(f"model                       : {cfg.model}")
+            print(f"prompt characters           : {len(SYSTEM_PROMPT)}")
             print()
-            print("Free to call — token counting is not billed. Run it before and after")
-            print("editing persona.py to see what an edit actually costs.")
-            print(f"For reference, the first production prompt measured 1107 input tokens.")
+            print(f"prompt + {size.placeholder!r} placeholder    : {size.with_prompt} tokens")
+            print(f"  the {size.placeholder!r} placeholder alone : {size.baseline} tokens"
+                  "   (message framing, no system prompt)")
+            print(f"  => PROMPT ITSELF          : {size.prompt_only} tokens"
+                  "   (by subtraction)")
+            print()
+            print(f"prompt + {size.sample!r}")
+            print(f"  = REAL INPUT TOKENS       : {size.with_sample}")
+            print(f"  cost of those in-tokens   : ${size.with_sample * rate / 1e6:.6f} per question")
+            print()
+            print("A user message cannot be empty — the API rejects that with")
+            print("\"messages.0: user messages must have non-empty content\" — so the prompt")
+            print("is measured with a placeholder and the placeholder is subtracted back out.")
+            print()
+            print("Free to call: token counting is not billed and is rate-limited separately.")
+            print("Measured on production 22 Sep 2026: 1107 input tokens before the prompt was")
+            print("shortened, 656 after.")
             return 0
 
         if args.cmd == "selftest":

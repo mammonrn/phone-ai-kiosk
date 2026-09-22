@@ -64,6 +64,22 @@ CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
 """
 
 
+# Columns added after the first release. ALTER TABLE ADD COLUMN is the only
+# migration shape used here: it is additive, it cannot lose a row, and a
+# database that already has the column is skipped. Production is already
+# running, so a migration that could fail on real data is not an option.
+MIGRATIONS = [
+    ("requests", "register_fixes", "INTEGER"),
+]
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in MIGRATIONS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +90,7 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
 
     if fresh:
         # The database holds token hashes and what the phone said. Nobody but
@@ -84,11 +101,30 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 def record_request(conn: sqlite3.Connection, *, device_id: int | None, day: str,
-                   outcome: str, text_len: int | None) -> None:
+                   outcome: str, text_len: int | None, register_fixes: int | None = None) -> None:
+    """One row per request. `register_fixes` counts the politeness particles the
+    reply had to have corrected — a number, never the text."""
     conn.execute(
-        "INSERT INTO requests (device_id, ts, day, outcome, text_len) VALUES (?,?,?,?,?)",
-        (device_id, time.time(), day, outcome, text_len),
+        "INSERT INTO requests (device_id, ts, day, outcome, text_len, register_fixes)"
+        " VALUES (?,?,?,?,?,?)",
+        (device_id, time.time(), day, outcome, text_len, register_fixes),
     )
+
+
+def register_fix_stats(conn: sqlite3.Connection, day: str | None = None) -> dict:
+    """How often the prompt failed to hold the register.
+
+    Zero means the prompt is doing its job on its own; a rising number is the
+    signal to go and reword it.
+    """
+    where = "WHERE outcome = 'ok'" + (" AND day = ?" if day else "")
+    params = (day,) if day else ()
+    row = conn.execute(
+        f"SELECT COUNT(*) AS replies,"
+        f" COALESCE(SUM(CASE WHEN register_fixes > 0 THEN 1 ELSE 0 END), 0) AS touched,"
+        f" COALESCE(SUM(register_fixes), 0) AS fixes"
+        f" FROM requests {where}", params).fetchone()
+    return {"replies": row["replies"], "touched": row["touched"], "fixes": row["fixes"]}
 
 
 def record_usage(conn: sqlite3.Connection, *, device_id: int, month: str, model: str,

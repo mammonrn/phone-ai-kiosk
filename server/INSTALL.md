@@ -14,8 +14,18 @@
 > | HTTPS `/healthz` | 200 ทั้งผ่านชื่อโดเมนจริงและ `--resolve` |
 > | จากคอม Windows | token ถูก → reply ไทย + `action=null` · ไม่มี token → 401 · token ผิด → 401 · `/` → 404 · http → 301 |
 >
-> สิ่งที่แก้ตามหลังจากรอบนั้น: บุคลิกใช้ "ผม/ครับ" แล้ว · system prompt เล็กลง 44% ·
-> มี certbot deploy hook reload nginx เองหลังต่ออายุ
+> **รอบ deploy ที่สอง (22 ก.ย. 2569):** service active · `/healthz` ตอบ ok ·
+> **INPUT TOKENS ลดจาก 1107 เหลือ 656** (−41%) cost $0.000941 ·
+> `certbot renew --dry-run --run-deploy-hooks` สำเร็จทั้งสามใบ (kiosk, ubet89.house,
+> xn--l3cgts1b3bzcvf.com) · หลังทดสอบ certbot: thaitrack 200 · monthreport 302 ·
+> kiosk healthz 200
+>
+> **สองอย่างที่รอบนั้นเจอและแก้แล้ว:**
+> 1. `prompt-size` พังกับ API จริง — `400 messages.0: user messages must have
+>    non-empty content` เพราะส่ง user message ว่างเพื่อวัด prompt ตัวเดียว
+>    **stub ในเทสต์ยอมรับ แต่ของจริงไม่ยอม = เขียวหลอก** ตอนนี้ stub ปฏิเสธเหมือนของจริงแล้ว
+> 2. คำตอบจริงยังปน "ค่ะ": `"สวัสดีครับ ผมพร้อมช่วยเหลือค่ะ มีอะไรให้ผมช่วยได้บ้างครับ"`
+>    → เพิ่มการบังคับถ้อยคำด้วยโค้ดหลังได้คำตอบ ไม่พึ่ง prompt อย่างเดียว
 
 ทุกขั้นในไฟล์นี้ **Poom ต้องรันเองบน VPS** เพราะต้องใช้ sudo
 
@@ -120,8 +130,18 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
 ใช้ `count_tokens` ซึ่ง[เอกสารทางการระบุว่าฟรี](https://platform.claude.com/docs/en/build-with-claude/token-counting)
 และมี rate limit แยกจากการสร้างข้อความ รันกี่ครั้งก็ได้
 
-**ค่าอ้างอิงที่วัดได้จาก production รอบแรก: 1107 input tokens**
-รอบนี้ prompt เล็กลง 44% (1132 → 631 ตัวอักษร) รันคำสั่งนี้เทียบก่อน/หลังได้เลย
+ตัวเลขที่วัดได้จริงบน production:
+
+| | input tokens |
+|---|---|
+| prompt เดิม (1,132 ตัวอักษร) | **1,107** |
+| prompt ปัจจุบัน (631 ตัวอักษร) | **656** |
+
+**−41%** ต่อคำถาม
+
+คำสั่งจะแยกให้เห็นสามตัวเลข: prompt + placeholder, placeholder ตัวเดียว,
+และ prompt ล้วนที่ได้จากการลบกัน — เพราะ **API ไม่ยอมรับ user message ว่าง**
+(`messages.0: user messages must have non-empty content`) จึงวัด prompt เดี่ยวๆ ตรงๆ ไม่ได้
 
 ### ทำไมไม่ใช้ prompt caching (ตรวจจากเอกสารทางการแล้ว)
 
@@ -252,11 +272,34 @@ sudo certbot renew --dry-run --run-deploy-hooks
 **ต้องมี `--run-deploy-hooks`** — `--dry-run` เฉยๆ **ไม่รัน** deploy hook
 (certbot 2.9.0 บนเครื่องนี้ระบุไว้ใน `certbot renew --help all` ตรงๆ)
 
-ดูว่า hook พูดอะไร:
+### อ่าน log ของ hook
+
+hook เขียนทุกเหตุการณ์ลง journal ด้วย tag `kiosk-cert-hook`
 
 ```bash
-sudo journalctl -t kiosk-cert-hook -n 20 --no-pager
+sudo journalctl -t kiosk-cert-hook -n 30 --no-pager
 ```
+
+สิ่งที่ควรเห็นหลัง `certbot renew --dry-run --run-deploy-hooks` (สามใบ):
+
+```
+kiosk-cert-hook: skipping 'ubet89.house' — not kiosk.xn--... and that certificate reloads itself
+kiosk-cert-hook: skipping 'xn--l3cgts1b3bzcvf.com' — not kiosk.xn--... and that certificate reloads itself
+kiosk-cert-hook: renewed kiosk.xn--l3cgts1b3bzcvf.com — testing nginx configuration before reloading
+kiosk-cert-hook: nginx reloaded — kiosk.xn--l3cgts1b3bzcvf.com is serving the renewed certificate
+```
+
+บรรทัด `skipping` มีไว้ให้เห็นว่า hook **ทำงานแล้วและตั้งใจไม่ทำอะไร** กับใบของ
+thaitrack/monthreport ไม่ใช่ว่า hook ไม่ถูกเรียก
+
+กรองเฉพาะที่ผิดพลาด:
+
+```bash
+sudo journalctl -t kiosk-cert-hook -p err -n 20 --no-pager
+```
+
+hook **ไม่เคยอ่านไฟล์ใบรับรองหรือ private key เลย** มันดูแค่ *ชื่อ* lineage ที่
+certbot ส่งมาให้ จึงไม่มีความลับอะไรให้หลุดลง log
 
 ถ้าอยากทดสอบทีละกิ่งโดยไม่ยุ่งกับ certbot เลย เรียก hook ตรงๆ ได้:
 
@@ -328,6 +371,19 @@ curl.exe -s -o NUL -w "%{http_code}`n" http://kiosk.xn--l3cgts1b3bzcvf.com/v1/ch
 ```
 
 ---
+
+## ตรวจว่า prompt คุมถ้อยคำได้เองไหม
+
+คำสั่ง `usage` รายงานด้วยว่ามีคำตอบกี่ครั้งที่โค้ดต้องเข้าไปแก้คำลงท้าย
+
+```
+replies      : 12
+  needed the register corrected : 3 (4 particles in total)
+  that is 25% of replies — the prompt is not holding on its own
+```
+
+ตัวเลขนี้เก็บเป็น**จำนวนครั้งเท่านั้น ไม่เก็บข้อความ** ถ้าเลขนี้สูงต่อเนื่อง
+แปลว่าควรไปปรับถ้อยคำใน `persona.py` ถ้าเป็น 0 แปลว่า prompt เอาอยู่เองแล้ว
 
 ## ดูงบที่ใช้ไป
 

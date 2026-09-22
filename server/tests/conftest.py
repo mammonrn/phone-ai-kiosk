@@ -57,6 +57,19 @@ class FakeClient:
         if self.raises:
             raise self.raises
 
+        # Mirrors the real API's rule. A fake that is more permissive than the
+        # thing it stands in for turns a test suite into a source of false
+        # confidence — which is exactly how the empty-message bug reached
+        # production.
+        for i, message in enumerate(kwargs.get("messages", [])):
+            content = message.get("content")
+            if message.get("role") == "user" and not (
+                content.strip() if isinstance(content, str) else content
+            ):
+                raise AssertionError(
+                    f"messages.{i}: user messages must have non-empty content"
+                )
+
         class Block:
             type = "text"
 

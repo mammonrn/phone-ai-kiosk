@@ -9,7 +9,9 @@ read aloud. It has no tools and returns `action: null` on every response.
 real HTTPS: a valid token gets a Thai reply with `action: null`, no token and a
 wrong token both get 401, `/` gets 404, and plain HTTP redirects. The API key is
 readable only by `kioskbroker` — `linuxuser` gets Permission denied, which is
-the point. [INSTALL.md](INSTALL.md) carries the measurements.
+the point. Renewal reloads nginx on its own, verified with
+`certbot renew --dry-run --run-deploy-hooks` across all three certificates on
+the host. [INSTALL.md](INSTALL.md) carries the measurements.
 
 Install and operate: **[INSTALL.md](INSTALL.md)** (Thai).
 
@@ -95,11 +97,21 @@ and the length. History is kept separately, as conversation state rather than a
 log: a few turns, pruned by count and by age, because every turn is resent as
 input tokens and history is the quiet way to spend a monthly budget.
 
+**The register is enforced in code, not only asked for in the prompt.** The
+prompt says ผม and ครับ, and production still answered
+`"สวัสดีครับ ผมพร้อมช่วยเหลือค่ะ มีอะไรให้ผมช่วยได้บ้างครับ"` — three clauses,
+two genders. Replies are now corrected on the way out, and the count of
+corrections is recorded (never the text) so `usage` can say whether the prompt
+is holding on its own. The hard part is that Thai has no spaces: a plain
+replace of `คะ` turns `คะแนน` (score) into `ครับแนน`, so the particles are only
+replaced where no Thai letter follows them. `test_register.py` is mostly a list
+of words that must survive.
+
 **The prompt is the running cost.** Thai runs near one token per character on
 this model, and the system prompt is resent on every request — the first
 production version measured 1,107 input tokens for a one-line question, which
-was most of what each answer cost. It is now 44% smaller, with a test holding
-the ceiling. Prompt caching cannot help: Haiku 4.5 will not cache a prefix
+was most of what each answer cost. Shortening it to 631 characters measured
+656 on production, 41% less per question, and a test holds the ceiling. Prompt caching cannot help: Haiku 4.5 will not cache a prefix
 under 4,096 tokens and returns no error when it declines, and padding the
 prompt up to that floor needs more than 24 questions inside every 5-minute
 cache window before it breaks even. `prompt-size` measures the prompt through

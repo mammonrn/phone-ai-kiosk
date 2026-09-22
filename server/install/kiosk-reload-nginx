@@ -6,7 +6,7 @@
 # per successfully renewed lineage. The certificate was issued with
 # `certonly --webroot`, so there is no installer plugin to reload nginx for it;
 # without this the renewed file sits on disk while nginx keeps serving the old
-# one in memory until something else restarts it.
+# one from memory until something else restarts it.
 #
 # The lineage guard is the important line. This directory runs for EVERY
 # renewed certificate, including thaitrack's and monthreport's, and those were
@@ -14,28 +14,55 @@
 # unguarded would be acting on somebody else's certificate.
 #
 # It never edits any nginx configuration — the whole action is `nginx -t` and a
-# reload, and the reload only happens if the test passes.
+# reload, and the reload only happens if the test passes. It never reads a key
+# or a certificate file either: it only ever looks at the NAME of the lineage
+# certbot hands it, so there is nothing secret for it to log.
+#
+# Read what it did with:  journalctl -t kiosk-cert-hook
 set -euo pipefail
 
 DOMAIN=kiosk.xn--l3cgts1b3bzcvf.com
+TAG=kiosk-cert-hook
 
-log() { logger -t kiosk-cert-hook -- "$*"; echo "kiosk-cert-hook: $*"; }
+# Every line goes to the journal and to stdout: the journal is what survives,
+# stdout is what shows up under `certbot renew` while someone is watching.
+log() {
+    local level=$1; shift
+    logger -t "$TAG" -p "user.$level" -- "$*"
+    echo "$TAG: $*"
+}
 
-# certbot sets RENEWED_LINEAGE to /etc/letsencrypt/live/<name> for the
-# certificate it just renewed.
-if [[ "$(basename "${RENEWED_LINEAGE:-}")" != "$DOMAIN" ]]; then
+lineage="$(basename "${RENEWED_LINEAGE:-}")"
+
+if [[ -z "${RENEWED_LINEAGE:-}" ]]; then
+    # certbot always sets it; being run by hand without it is the other way in.
+    log notice "no RENEWED_LINEAGE in the environment — nothing to do"
     exit 0
 fi
 
-log "renewed $DOMAIN; testing nginx configuration"
+if [[ "$lineage" != "$DOMAIN" ]]; then
+    # Logged rather than silent, so a renewal run shows why nothing happened
+    # for the other two sites instead of looking like the hook never fired.
+    log info "skipping '$lineage' — not $DOMAIN, and that certificate reloads itself"
+    exit 0
+fi
 
-if ! nginx -t 2>/dev/null; then
+log notice "renewed $DOMAIN — testing nginx configuration before reloading"
+
+if ! nginx_test_output="$(nginx -t 2>&1)"; then
     # Loud and non-zero: a reload now would take the other two sites down with
-    # it, so the old certificate keeping the kiosk offline is the better failure.
-    log "ERROR nginx -t failed — NOT reloading. Fix the config, then: systemctl reload nginx"
-    nginx -t || true
+    # it, so an expired certificate keeping the kiosk offline is the better
+    # failure. certbot reports a failed deploy hook in its own output too.
+    log err "nginx -t FAILED — did NOT reload. Fix the config, then: systemctl reload nginx"
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && log err "nginx -t: $line"
+    done <<< "$nginx_test_output"
     exit 1
 fi
 
-systemctl reload nginx
-log "nginx reloaded"
+if systemctl reload nginx; then
+    log notice "nginx reloaded — $DOMAIN is serving the renewed certificate"
+else
+    log err "systemctl reload nginx failed; the old certificate is still being served"
+    exit 1
+fi

@@ -32,6 +32,25 @@ class StubMessages(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
         RECEIVED.append({"body": body, "headers": dict(self.headers)})
 
+        # The real API refuses this, and a stub that does not lets a bug ship.
+        # It did once: prompt-size sent an empty user message, the old stub
+        # accepted it, and production answered with a 400.
+        for i, message in enumerate(body.get("messages", [])):
+            content = message.get("content")
+            if message.get("role") == "user" and not (
+                content.strip() if isinstance(content, str) else content
+            ):
+                err = json.dumps({"type": "error", "error": {
+                    "type": "invalid_request_error",
+                    "message": f"messages.{i}: user messages must have non-empty content"}}
+                ).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
         if BEHAVIOUR["mode"] == "overloaded":
             payload = {"type": "error", "error": {"type": "overloaded_error", "message": "busy"}}
             status = 529
@@ -130,6 +149,15 @@ def test_an_empty_reply_is_an_error_not_an_empty_string(stub):
         ask(stub, model="claude-haiku-4-5", system="s", max_tokens=400,
             messages=[{"role": "user", "content": "hi"}])
     assert "max_tokens" in exc.value.detail
+
+
+def test_an_empty_message_is_rejected_by_the_stub_as_it_is_by_the_api(stub):
+    """Guards the guard: if this ever passes, the stub has gone soft again."""
+    from kiosk_broker.llm import UpstreamError
+
+    with pytest.raises(UpstreamError):
+        ask(stub, model="claude-haiku-4-5", system="s", max_tokens=400,
+            messages=[{"role": "user", "content": ""}])
 
 
 def test_the_key_never_appears_in_the_url_or_body(stub):
