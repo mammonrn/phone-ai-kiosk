@@ -74,7 +74,10 @@ def module_names() -> list[str]:
             continue
         names: list[str] = []
         for node in ast.walk(ast.parse(source)):
-            if isinstance(node, ast.For) and isinstance(node.iter, ast.Tuple):
+            # Only loops that import what they iterate over: the cell also
+            # loops over model file names, which are not modules.
+            if (isinstance(node, ast.For) and isinstance(node.iter, ast.Tuple)
+                    and "import_module" in ast.unparse(node)):
                 for element in node.iter.elts:
                     if isinstance(element, ast.Constant) and isinstance(element.value, str):
                         names.append(element.value)

@@ -50,6 +50,23 @@ def test_every_positive_contains_the_phrase_and_no_negative_does(plan):
             assert "สายฝน" not in utterance.text, utterance.text
 
 
+def test_every_positive_ends_with_the_wake_word(plan):
+    """Nothing after it: the model scores windows that end where the word ends,
+    and "สายฝนครับ" / "สายฝน ช่วยหน่อย" were what sank the first model."""
+    positives = [u.text for u in plan.utterances if u.label == "positive"]
+    assert positives
+    for text in positives:
+        assert " ".join(text.split()).endswith("สายฝน"), text
+    assert "สายฝนครับ" not in wakesamples.POSITIVE_TEXTS
+    assert "สายฝน ช่วยหน่อย" not in wakesamples.POSITIVE_TEXTS
+
+
+def test_a_positive_with_words_after_it_is_refused(monkeypatch):
+    monkeypatch.setattr(wakesamples, "POSITIVE_TEXTS", ("สายฝนครับ",))
+    with pytest.raises(ValueError):
+        build_plan(tts.ALL_VOICES)
+
+
 def test_the_near_misses_cover_the_ways_thai_collides_with_the_name():
     """Same first syllable, same second syllable, and the two swapped."""
     texts = wakesamples.NEAR_MISS_TEXTS
@@ -91,19 +108,17 @@ def test_the_whole_plan_fits_inside_the_approved_ceiling(plan, home):
 
 
 def test_a_second_full_run_would_be_refused_and_that_is_worth_knowing(plan, home):
-    """$0.2952 twice is $0.59, over the $0.50 ceiling.
+    """The first run spent $0.2952 of the approved $0.50. The corrected plan
+    (positives that end with the wake word only) costs $0.2304, and the two
+    together are $0.5256 — over the ceiling.
 
-    So the approved budget buys ONE full generation plus about $0.20 of top-up,
-    not two attempts. If the first model misses the 90% target, the choice is a
-    partial second run (more positives only) or a higher ceiling from Poom —
-    and the guard refuses rather than quietly spending it.
+    So the next generation is refused until Poom approves a higher ceiling or a
+    smaller plan. The guard refuses rather than quietly spending it.
     """
     cost = plan.cost(Pricing.load(home / "pricing.json"), "chirp3-hd")
+    assert cost == pytest.approx(0.2304)
     with pytest.raises(BudgetExceeded):
-        check_ceiling(planned_usd=cost, already_spent_usd=cost, ceiling_usd=0.50)
-
-    headroom = 0.50 - cost
-    assert 0.15 < headroom < 0.25, f"headroom is ${headroom:.4f}"
+        check_ceiling(planned_usd=cost, already_spent_usd=0.2952, ceiling_usd=0.50)
 
 
 def test_the_cost_is_the_characters_times_the_official_rate(plan, home):

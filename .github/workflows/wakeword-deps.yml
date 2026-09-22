@@ -1,4 +1,4 @@
-name: Wake word notebook deps
+name: Wake word notebook
 
 # The Colab notebook broke on its very first cell: openWakeWord v0.6.0 declares
 # tflite-runtime as a hard dependency, and tflite-runtime has never published a
@@ -86,7 +86,7 @@ jobs:
         # is why the notebook must not install any of these itself.
         run: |
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet torch torchaudio torchcodec \
+          python -m pip install --quiet torch==2.11.0 torchaudio==2.11.0 torchcodec \
             --index-url https://download.pytorch.org/whl/cpu
           python -m pip install --quiet numpy scipy scikit-learn pyyaml tqdm requests
           python -c "import torchcodec; print('torchcodec', torchcodec.__version__)"
@@ -119,3 +119,56 @@ jobs:
               checked += 1
           print(f"{len(nb['cells'])} cells, {checked} plain-python cells parsed")
           PY
+
+  run-all:
+    # The notebook itself, every cell, top to bottom, through a real Jupyter
+    # kernel — what Colab's Run all does. `python -m openwakeword.train` runs
+    # as __main__ twice (augment, then train), so its piper import, the
+    # /content/saifon path, torchaudio.info, the 16-frame feature shape and
+    # the ONNX export are all on this path. Seconds of synthetic audio, a
+    # 4000-row fake ACAV file (never the real 17 GB), 60 training steps, CPU.
+    name: run all (py3.13, torch 2.11 = Colab)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install FFmpeg
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      - name: Install what Colab already ships
+        # Pinned to what Colab reported (torch 2.11.0, whose torchaudio has no
+        # info()). CPU build: the runner has no GPU. The notebook installs
+        # everything else itself with its own !pip lines.
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet torch==2.11.0 torchaudio==2.11.0 torchcodec \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet numpy nbclient nbformat ipykernel
+          python -c "import torchaudio; print('torchaudio', torchaudio.__version__, 'info():', hasattr(torchaudio, 'info'))"
+
+      - name: Make /content, like Colab
+        run: sudo mkdir -p /content && sudo chown "$USER" /content
+
+      - name: Run all
+        run: python wakeword/ci_run_notebook.py
+
+      - name: Keep the executed notebook
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: executed-notebook
+          path: /content/executed.ipynb
+          if-no-files-found: ignore
+          retention-days: 7

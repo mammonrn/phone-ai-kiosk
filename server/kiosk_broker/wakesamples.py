@@ -23,16 +23,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-#: The phrase, and short carriers around it. A wake word is almost never said in
-#: isolation, so a model trained only on the bare word learns the silence around
-#: it as much as the word.
+#: The phrase, and short carriers BEFORE it — never after. openWakeWord's
+#: create_fixed_size_clip right-aligns every clip in a 2 s window and the phone
+#: scores windows that end where the word ends, so a positive that goes on
+#: ("สายฝนครับ", "สายฝน ช่วยหน่อย") teaches the model that more speech follows
+#: the wake word, and a long one gets its wake word truncated. The first round
+#: had both and scored 18% recall; the notebook now drops them from old zips,
+#: and this list stops them being bought again.
 POSITIVE_TEXTS = (
     "สายฝน",
-    "สายฝนครับ",
     "นี่สายฝน",
-    "สายฝน ช่วยหน่อย",
     "โอเค สายฝน",
 )
+
+WAKE_WORD = "สายฝน"
 
 #: Things that must NOT wake it. Chosen for the specific ways Thai can collide
 #: with this name: the same first syllable (สาย…), the same second syllable
@@ -117,6 +121,9 @@ def build_plan(voices: tuple[str, ...]) -> Plan:
 
     Deterministic and pure so the cost can be known — and refused — in advance.
     """
+    for text in POSITIVE_TEXTS:
+        if not " ".join(text.split()).endswith(WAKE_WORD):
+            raise ValueError(f"positive {text!r} does not end with {WAKE_WORD!r}")
     plan = Plan()
 
     for text in POSITIVE_TEXTS:
