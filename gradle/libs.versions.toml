@@ -3,10 +3,25 @@
 agp = "9.3.1"
 coreKtx = "1.19.0"
 junit = "4.13.2"
+# Same version for the Android runtime and the JVM one used by the parity
+# test, so the test and the phone run the identical kernels.
+#
+# PINNED FOR SIZE, and the size is the whole reason this number is not "latest".
+# Measured, arm64-v8a native libraries only:
+#     1.17.3 -> 16.0 MB    1.22.0 -> 17.5 MB
+#     1.19.2 -> 17.6 MB    1.26.0 -> 26.2 MB
+#     1.20.0 -> 17.6 MB    1.30.0 -> 31.6 MB
+# Poom approved roughly +17.7 MB of APK. 1.30.0 would have been +31.6 MB — near
+# double the agreed figure, for a runtime whose extra megabytes are operators
+# and execution providers three small models do not touch. 1.22.0 lands on the
+# number that was actually agreed.
+onnxruntime = "1.22.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
+onnxruntime-jvm = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

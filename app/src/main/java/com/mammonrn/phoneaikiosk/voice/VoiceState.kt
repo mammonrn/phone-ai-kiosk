@@ -16,6 +16,13 @@ object VoiceState : VoiceSink {
 
     @Volatile var mic: String = "off"
     @Volatile var detector: String = "unknown"
+
+    /** The wake word model's last score, and the bar it has to clear. */
+    @Volatile var wakeScore: Float = 0f
+    @Volatile var threshold: Float = 0f
+
+    /** How many times the wake word has fired since the service started. */
+    @Volatile var detections: Int = 0
     @Volatile var wake: String = "idle"
     @Volatile override var stt: String = "idle"
     @Volatile override var chat: String = "idle"
@@ -41,7 +48,7 @@ object VoiceState : VoiceSink {
         "mic=$mic wake=$wake stt=$stt chat=$chat tts=$tts"
 
     fun secondLine(): String = buildString {
-        append("detector=$detector level=$level")
+        append("detector=$detector score=%.3f level=%d".format(wakeScore, level))
         if (lastError.isNotEmpty()) append("  last-error=$lastError")
     }
 
@@ -58,6 +65,8 @@ object VoiceState : VoiceSink {
         appendLine("kiosk voice state")
         appendLine("  mic        : $mic")
         appendLine("  detector   : $detector")
+        appendLine("  score      : %.4f  (threshold %.2f)".format(wakeScore, threshold))
+        appendLine("  detections : $detections")
         appendLine("  wake       : $wake")
         appendLine("  stt        : $stt")
         appendLine("  chat       : $chat")

@@ -14,8 +14,21 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.7.0"
+
+        // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
+        // onnxruntime-android carries a native library for every architecture
+        // it supports — armeabi-v7a, x86 and x86_64 as well. Shipping the
+        // three that this phone can never load would roughly double the APK
+        // for nothing. Poom accepted ~17.7 MB for arm64 alone.
+        //
+        // The cost of being wrong here is loud rather than subtle: on any other
+        // architecture the app fails to load the native library at startup, so
+        // it cannot ship a silently broken build.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     // Optional pinned debug keystore.
@@ -88,5 +101,14 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
 
+    // The wake word runs here, on the phone: no audio may leave the room
+    // before "Hey Jarvis" has been heard, so the three ONNX models have to be
+    // executed locally.
+    implementation(libs.onnxruntime.android)
+
     testImplementation(libs.junit)
+    // The JVM build of the SAME runtime version, so WakeWordParityTest exercises
+    // the identical kernels the phone will run rather than an approximation of
+    // them. Without this the parity test could only check our own arithmetic.
+    testImplementation(libs.onnxruntime.jvm)
 }

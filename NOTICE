@@ -1,0 +1,51 @@
+Third-party components in phone-ai-kiosk
+========================================
+
+openWakeWord — wake word detection
+----------------------------------
+The three ONNX files under app/src/main/assets/models/ come from openWakeWord,
+by David Scripka: https://github.com/dscripka/openWakeWord
+
+    melspectrogram.onnx        release v0.5.1
+    embedding_model.onnx       release v0.5.1
+    hey_jarvis_v0.1.onnx       release v0.5.1
+
+THESE MODELS ARE NOT APACHE-LICENSED. openWakeWord's own README draws the line
+in its License section, quoted here in full so nobody has to go and look:
+
+    All of the code in this repository is licensed under the Apache 2.0
+    license. All of the included pre-trained models are licensed under the
+    Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+    license due to the inclusion of datasets with unknown or restrictive
+    licensing as part of the training data. If you are interested in
+    pre-trained models with more permissive licensing, please raise an issue
+    and we will try to add them to a future release.
+
+So: the code is Apache-2.0, the models are CC BY-NC-SA 4.0
+(https://creativecommons.org/licenses/by-nc-sa/4.0/), and the models are what
+this repository redistributes.
+
+WHAT THAT MEANS HERE. This project is a personal home kiosk and is not
+commercial, which is what NonCommercial asks. ShareAlike is why the repository
+as a whole is under CC BY-NC-SA 4.0 rather than a permissive licence: the models
+are shipped inside the APK, so the simplest way to be certainly compliant is for
+the whole thing to carry the same terms. See LICENSE.
+
+If this project is ever sold, put behind a paywall, or used in a business, these
+model files must come out first. That is not a nice-to-have reading of the
+licence; NonCommercial is the term the models are offered under.
+
+The Kotlin wake word pipeline in app/src/main/java/.../voice/WakeWord.kt is a
+re-implementation of openWakeWord's streaming feature extraction, written from
+its Apache-2.0 source (utils.py, model.py) and held to its numbers by
+app/src/test/java/.../WakeWordParityTest.kt.
+
+Google speech_embedding
+-----------------------
+embedding_model.onnx is openWakeWord's re-implementation of Google's
+speech_embedding model (https://tfhub.dev/google/speech_embedding/1, described
+in https://arxiv.org/abs/2002.01322), which Google publishes under Apache-2.0.
+openWakeWord's README states that upstream licence for the original TFHub
+module; the weights redistributed here arrive through openWakeWord, whose
+README places all its included pre-trained models under CC BY-NC-SA 4.0. Where
+the two readings differ, this repository follows the stricter one.

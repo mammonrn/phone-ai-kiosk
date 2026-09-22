@@ -453,7 +453,7 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "ht
 | ช่อง | ค่าที่เป็นไปได้ |
 |---|---|
 | `mic` | `off` `open` `closed` `error` **`no-permission`** |
-| `wake` | `idle` `listening` `detected` `triggered` **`no-model`** |
+| `wake` | `idle` `listening` `detected` `triggered` **`no-model`** **`model-load-failed`** |
 | `stt` | `idle` `recording` `sending` `ok` `error` **`empty`** |
 | `chat` | `idle` `asking` `ok` `error` |
 | `tts` | `idle` `synthesising` **`speaking`** `ok` **`device-fallback`** `failed` |
@@ -529,6 +529,148 @@ trigger สั่งจึงถูกต่อคิวหลังงานท
 ขณะลูปแรกยังถืออยู่ ซึ่งจะพังทันทีที่มีโมเดลคำปลุก
 
 ---
+
+## คำปลุก "Hey Jarvis" — ทดสอบทีละขั้นบน A07
+
+ผู้ช่วยชื่อ **จาร์วิส** คำปลุกคือ **"Hey Jarvis"** (ภาษาอังกฤษ เพราะโมเดลเป็น
+pretrained ของ openWakeWord) ทุกอย่างรันบนเครื่อง ไม่มีเสียงออกจากห้องก่อนเจอคำปลุก
+
+### ขั้น 0 — ติดตั้ง versionCode 7
+
+```powershell
+adb install -r -t app-debug.apk
+```
+
+`-t` จำเป็นเพราะ debug build เป็น `testOnly` และ `-r` เพื่อไม่ให้เสีย Device Owner
+
+```powershell
+adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | Select-String versionCode
+```
+ต้องเห็น `versionCode=7`
+
+### ขั้น 1 — detector โหลดโมเดลได้จริงไหม
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService
+```
+
+ต้องเห็น:
+
+```
+  detector   : hey_jarvis
+  score      : 0.0000  (threshold 0.50)
+  detections : 0
+  deaf-for-ms  : 0
+```
+
+🔴 ถ้าเห็น `detector : model-load-failed` แปลว่าไฟล์โมเดลไม่ได้เข้า APK
+หรือ onnxruntime โหลดไม่ขึ้น **หยุดแล้วบอกผม** อย่าทดสอบต่อ
+
+### ขั้น 2 — เปิด log แล้วพูด
+
+```powershell
+adb logcat -c
+adb logcat -s KioskVoice:I
+```
+
+แล้วพูด **"Hey Jarvis"** ห่างจากเครื่องประมาณ 1 เมตรก่อน ควรเห็น:
+
+```
+wake word detected score=0.812 threshold=0.50
+capture started
+capture finished reason=end-of-speech bytes=...
+stt ok ... chat ok ... tts ok ...
+turn finished outcome=COMPLETED
+```
+
+log มีแต่ **คะแนนกับจำนวนไบต์ ไม่มีเสียงดิบ ไม่มีข้อความเต็ม ไม่มี token**
+
+### ขั้น 3 — ดูคะแนนสดตอนพูด
+
+```powershell
+while ($true) {
+  adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+    Select-String "score|detections"
+  Start-Sleep -Milliseconds 700
+}
+```
+
+พูด "Hey Jarvis" แล้วดูว่า `score` กระโดดขึ้นแค่ไหน ถ้าขึ้นไปแค่ 0.3 แต่ threshold
+เป็น 0.5 แปลว่าต้องลด threshold ไม่ใช่ว่าโมเดลพัง
+
+### ขั้น 4 — ปรับ threshold โดยไม่ต้อง build ใหม่
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es value 0.4
+adb logcat -s KioskStats:I -d | Select-Object -Last 3
+```
+
+ต้องเห็น `wake threshold now 0.4` · ค่าถูกบีบอยู่ในช่วง 0.01–0.999
+และ **กลับเป็น 0.5 เมื่อรีสตาร์ต service** (ตั้งใจ: ค่าที่ปรับระหว่างวัดต้องไม่
+กลายเป็นค่าถาวรโดยไม่มีใครตัดสินใจ)
+
+### ขั้น 5 — วัดความแม่นที่ 3 เมตร
+
+รีเซ็ตตัวนับ แล้วพูด "Hey Jarvis" **20 ครั้ง** ห่าง 3 เมตร เว้นแต่ละครั้ง ~5 วินาที
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_RESET_STATS `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+# ... พูด 20 ครั้ง ...
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_STATS `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+adb logcat -s KioskStats:I -d
+```
+
+**เกณฑ์: ปลุกติด ≥18 จาก 20 ครั้ง (90%)** · ถ้าไม่ถึง ลด threshold ทีละ 0.05
+แล้ววัดใหม่ **แล้วต้องกลับไปวัดปลุกผิดใหม่ด้วย** — ลด threshold คือแลกกันตรงๆ
+
+### ขั้น 6 — วัดปลุกผิด 8 ชั่วโมง
+
+รีเซ็ตตัวนับ แล้วปล่อยไว้ 8 ชั่วโมงในห้องที่ใช้งานปกติ (มีทีวี มีคนคุย)
+**ห้ามพูด "Hey Jarvis"** ระหว่างนั้น
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_RESET_STATS `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+```
+
+ครบ 8 ชั่วโมงแล้วอ่านด้วยคำสั่ง `TEST_STATS` ข้างบน
+**เกณฑ์: ปลุกผิด ≤1 ครั้ง** · ถ้าเกิน เพิ่ม threshold ทีละ 0.05 แล้ววัดขั้น 5 ใหม่
+
+ตัวนับอยู่รอดการรีบูต ถ้าเครื่องรีสตาร์ตกลางทางก็อ่านต่อได้
+
+### ขั้น 7 — เครื่องต้องไม่ปลุกตัวเอง
+
+อันนี้สำคัญ เพราะคำตอบของจาร์วิสออกลำโพงเข้าไมค์ตัวเอง
+
+```powershell
+adb logcat -c
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+```
+
+ถามอะไรก็ได้ที่ทำให้ตอบยาวๆ เช่น "เล่าเรื่องแมวให้ฟังหน่อย" แล้วดู log:
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "wake word detected|listening again"
+```
+
+**ต้องเห็น `listening again after speaking` และต้องไม่เห็น `wake word detected`
+ระหว่างที่กำลังพูดตอบ** ถ้าเห็น แปลว่าการปิดหูไม่ทำงาน — บอกผม
+
+ดูค่าถอยหลังได้ระหว่างเล่นเสียง:
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "deaf-for-ms"
+```
+
+### ขั้น 8 — พูดซ้ำๆ ต้องปลุกครั้งเดียว
+
+พูด "Hey Jarvis Hey Jarvis Hey Jarvis" รัวๆ ติดกัน — `detections` ควรเพิ่ม
+**1 ครั้ง ไม่ใช่ 3** เพราะมี cooldown 25 เฟรม (2 วินาที)
 
 ## สรุปคำสั่งตรวจสถานะ
 

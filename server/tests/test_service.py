@@ -320,7 +320,7 @@ def test_a_mixed_register_reply_goes_out_in_one_voice(conn, cfg):
 
 
 def test_the_number_of_corrections_is_recorded_but_not_the_text(conn, cfg):
-    client = FakeClient(reply="สวัสดีค่ะ ดิฉันชื่อสายฝนนะคะ")
+    client = FakeClient(reply="สวัสดีค่ะ ดิฉันชื่อจาร์วิสนะคะ")
     token = _token(conn)
     _post(conn, cfg, client, token, {"text": "คุณชื่ออะไร"})
 
@@ -328,7 +328,7 @@ def test_the_number_of_corrections_is_recorded_but_not_the_text(conn, cfg):
     assert row["register_fixes"] == 3
 
     dumped = " ".join(str(v) for v in tuple(row))
-    assert "สายฝน" not in dumped, "the reply text must not be in the request log"
+    assert "จาร์วิส" not in dumped, "the reply text must not be in the request log"
 
 
 def test_a_correct_reply_records_zero_corrections(conn, cfg):

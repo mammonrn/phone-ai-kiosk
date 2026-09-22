@@ -228,7 +228,7 @@ def test_budget_exhaustion_refuses_before_synthesising(conn, cfg):
 
 def test_cost_is_per_character_sent(conn, cfg):
     token = _token(conn)
-    text = "สวัสดีครับ ผมสายฝน"
+    text = "สวัสดีครับ ผมจาร์วิส"
     _post(conn, cfg, token, {"text": text})
 
     row = conn.execute("SELECT * FROM usage WHERE service = 'tts'").fetchone()
@@ -262,10 +262,10 @@ def test_a_forbidden_key_says_what_to_check(conn, cfg):
 def test_the_spoken_text_is_corrected_before_it_is_synthesised(conn, cfg):
     """Last line of defence: whatever gets read aloud is in one voice."""
     token = _token(conn)
-    _post(conn, cfg, token, {"text": "สวัสดีค่ะ ดิฉันชื่อสายฝน"})
+    _post(conn, cfg, token, {"text": "สวัสดีค่ะ ดิฉันชื่อจาร์วิส"})
 
     spoken = REQUESTS[0]["body"]["input"]["text"]
-    assert spoken == "สวัสดีครับ ผมชื่อสายฝน"
+    assert spoken == "สวัสดีครับ ผมชื่อจาร์วิส"
 
     row = conn.execute("SELECT register_fixes FROM requests WHERE endpoint = 'tts'").fetchone()
     assert row["register_fixes"] == 2

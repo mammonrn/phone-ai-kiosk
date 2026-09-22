@@ -15,12 +15,12 @@ import com.mammonrn.phoneaikiosk.voice.VoiceStats
  * reason it is a separate source set rather than a flag: an exported receiver
  * that can make the phone record is not something to ship behind a boolean.
  *
- * It exists because the wake word model does not yet, and the rest of the
- * pipeline — record, transcribe, answer, speak — has to be testable before it
- * arrives. There is no button for this on the screen and there never will be.
+ * It exists so the pipeline — record, transcribe, answer, speak — can be
+ * exercised without saying anything, and so the wake word threshold can be
+ * moved while measuring false wakes without rebuilding the app. There is no
+ * button for any of this on the screen and there never will be.
  *
- * Usage is in TESTING.md. The three actions are: take a question now, print the
- * counters, and reset them.
+ * Usage is in TESTING.md.
  */
 class TestTriggerReceiver : BroadcastReceiver() {
 
@@ -46,6 +46,20 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "counters reset")
             }
 
+            ACTION_SET_THRESHOLD -> {
+                // Tuning this is a measurement, not a guess: too low and the
+                // kiosk wakes to the television, too high and it ignores you
+                // from across the room. Being able to move it without a rebuild
+                // is what makes an eight-hour false-wake run worth doing.
+                val value = intent.getStringExtra("value")?.toFloatOrNull()
+                if (value == null) {
+                    android.util.Log.i("KioskStats", "threshold unchanged: pass --es value 0.5")
+                } else {
+                    val applied = VoiceService.setWakeThreshold(value)
+                    android.util.Log.i("KioskStats", "wake threshold now $applied")
+                }
+            }
+
             ACTION_SET_BROKER -> {
                 val url = intent.getStringExtra("url")
                 if (!url.isNullOrBlank()) {
@@ -61,5 +75,6 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_STATS = "com.mammonrn.phoneaikiosk.TEST_STATS"
         const val ACTION_RESET_STATS = "com.mammonrn.phoneaikiosk.TEST_RESET_STATS"
         const val ACTION_SET_BROKER = "com.mammonrn.phoneaikiosk.TEST_SET_BROKER"
+        const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
     }
 }

@@ -38,7 +38,7 @@ def test_final_particles_are_corrected(before, after):
 
 @pytest.mark.parametrize("pronoun_sentence, expected", [
     ("ดิฉันไม่ทราบ", "ผมไม่ทราบ"),
-    ("ดิฉันชื่อสายฝน", "ผมชื่อสายฝน"),
+    ("ดิฉันชื่อจาร์วิส", "ผมชื่อจาร์วิส"),
     ("ดิฉันไม่ทราบค่ะ", "ผมไม่ทราบครับ"),
 ])
 def test_female_pronouns_become_male(pronoun_sentence, expected):
@@ -75,7 +75,7 @@ def test_a_score_question_answered_politely_fixes_only_the_particle():
 
 @pytest.mark.parametrize("sentence", [
     "ผมยังดูให้ไม่ได้ครับ",
-    "สวัสดีครับ ผมสายฝน",
+    "สวัสดีครับ ผมจาร์วิส",
     "",
     "ไม่ทราบ",
 ])
@@ -95,7 +95,7 @@ def test_the_tone_marked_particle_is_matched_before_the_plain_one():
 
 
 def test_the_count_is_the_number_of_substitutions():
-    _, fixes = enforce("สวัสดีค่ะ ดิฉันชื่อสายฝนนะคะ")
+    _, fixes = enforce("สวัสดีค่ะ ดิฉันชื่อจาร์วิสนะคะ")
     assert fixes == 3  # ค่ะ, ดิฉัน, คะ
 
 

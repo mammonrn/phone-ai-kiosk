@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Phone AI Kiosk</string>
-    <string name="phase_1_title">Phase 1 Kiosk</string>
+    <!-- What the person standing in front of the kiosk is told to do.
+         The wake word is English because the model is openWakeWord's
+         "hey_jarvis"; the assistant answers in Thai. -->
+    <string name="kiosk_prompt">พูด Hey Jarvis แล้วถามได้เลย</string>
 
     <string name="yes">yes</string>
     <string name="no">no</string>
@@ -16,5 +19,6 @@
     <string name="device_admin_description">Keeps this device on the kiosk screen.</string>
 
     <string name="voice_channel">Kiosk microphone</string>
-    <string name="voice_notification">สายฝนกำลังฟังอยู่</string>
+    <string name="voice_notification">จาร์วิสกำลังฟังอยู่</string>
+    <string name="wake_hint">พูด \"Hey Jarvis\" เพื่อเริ่ม</string>
 </resources>

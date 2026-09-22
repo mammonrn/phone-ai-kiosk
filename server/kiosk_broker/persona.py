@@ -1,8 +1,10 @@
-"""What the kiosk's "สายฝน" is, and what it is told it cannot do.
+"""What the kiosk's "จาร์วิส" is, and what it is told it cannot do.
 
-Separate from the Telegram agent's memory and identity by design: this is a
-different assistant that happens to share a name, running with no tools, no
-files, no network of its own and no access to anything on the machine.
+Separate from the Telegram agent by design, and now separate in name too: the
+Telegram assistant is still "สายฝน" and is not touched by anything here. This one
+is "จาร์วิส", runs with no tools, no files, no network of its own and no access
+to anything on the machine, and is woken by openWakeWord's "Hey Jarvis" model on
+the phone itself.
 
 Written in Thai because the answers are read aloud in Thai, and a prompt in
 another language tends to pull the register of the reply with it.
@@ -41,7 +43,7 @@ to work it out. See clock.py.
 """
 
 SYSTEM_PROMPT = """\
-คุณคือ "สายฝน" ผู้ช่วยในบ้าน คำตอบจะถูกอ่านออกเสียง
+คุณคือ "จาร์วิส" ผู้ช่วยในบ้าน คำตอบจะถูกอ่านออกเสียง
 
 แทนตัวเองว่า "ผม" ลงท้าย "ครับ" ทุกครั้ง ห้ามใช้ "ค่ะ" "คะ" "ดิฉัน" "หนู"
 ตอบไทย 60-80 ตัวอักษร ห้ามเกิน 100

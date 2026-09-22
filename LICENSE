@@ -1,0 +1,21 @@
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0)
+
+    https://creativecommons.org/licenses/by-nc-sa/4.0/
+    Full legal text: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+
+WHY THIS LICENCE, AND NOT A PERMISSIVE ONE
+
+This repository ships openWakeWord's pre-trained models inside the app, and
+those models are offered under CC BY-NC-SA 4.0 — NonCommercial, and ShareAlike.
+Rather than argue about where an "adaptation" begins when a model is bundled in
+an APK, the whole repository carries the same terms. That is the conservative
+reading, and it is the correct one while the models are committed here.
+
+This is a personal home kiosk with no commercial purpose, so NonCommercial costs
+nothing. If that ever changes, the model files under app/src/main/assets/models/
+must be removed before anything is sold, monetised or used in a business, and
+this licence revisited.
+
+See NOTICE for what each third-party component is and where it came from,
+including the parts of openWakeWord that ARE Apache-2.0.

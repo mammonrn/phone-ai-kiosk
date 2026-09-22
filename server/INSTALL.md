@@ -279,40 +279,14 @@ scp "poom@45.76.157.64:/tmp/say/*.ogg" .
 ไม่มีช่องว่างระหว่างคำ ถ้าใส่คำสั้นอย่าง "ดี" มันจะไปโดน "ดีใจ" และ "ดีเซล"
 โดยไม่มีทางแยกแยะได้ — ระบบจะปฏิเสธไม่โหลดไฟล์ถ้าใส่คำสั้นกว่านั้น
 
-### ชุดเสียงสำหรับเทรนคำปลุก (งบแยก $0.50)
+### ~~ชุดเสียงสำหรับเทรนคำปลุก~~ — ยกเลิกแล้ว
 
-```bash
-# ดูแผนและราคาก่อน ไม่ยิงอะไรเลย
-sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
-  PYTHONPATH=/home/kioskbroker/app \
-  /home/kioskbroker/venv/bin/python -m kiosk_broker wake-samples --out /tmp/wake-samples --dry-run
+คำปลุกเปลี่ยนเป็น **"Hey Jarvis"** ใช้โมเดล pretrained ของ openWakeWord
+ไม่ต้องเทรนเอง ไม่ต้องสร้างเสียง **ไม่มีค่าใช้จ่ายส่วนนี้อีกแล้ว**
 
-# สร้างจริง
-sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
-  PYTHONPATH=/home/kioskbroker/app \
-  /home/kioskbroker/venv/bin/python -m kiosk_broker wake-samples --out /tmp/wake-samples
-```
-
-แผนปัจจุบัน: 870 คลิป · 7,680 ตัวอักษร · **$0.2304**
-(positive มีแต่ประโยคที่ **จบด้วย "สายฝน"**: "สายฝน", "นี่สายฝน", "โอเค สายฝน")
-
-รอบแรก (ก.ย. 2026) ใช้ไปแล้ว **$0.2952** จากเพดาน $0.50 — รวมกับแผนนี้เป็น $0.5256
-**เกินเพดาน ระบบจะปฏิเสธโดยไม่ยิงอะไรเลย** รอบหน้าต้องให้ Poom อนุมัติเพดานใหม่ก่อน
-ตอนนี้ไม่ต้องสร้างใหม่: notebook คัดประโยคที่ใช้ได้ออกจาก zip เดิมให้เอง
-เพดานถูกตรวจ**ก่อน**ยิงคำขอแรก และนับรวมรอบก่อนหน้า
-
-```bash
-# ดูว่าใช้งบเทรนไปเท่าไร (แยกจากงบมือถือคนละตาราง)
-... -m kiosk_broker training-usage
-```
-
-จบแล้วจะได้ `wake-samples.zip` พร้อมคำสั่ง `scp` ให้ดึงลงคอม
-🔶 ขนาดจริงประมาณ 20–30 MB (ทดสอบด้วย stub ได้ 0.3 MB เพราะเสียงปลอมสั้น)
-ไฟล์ zip **ไม่มีคีย์ ไม่มี token** มีแค่ WAV, manifest.csv และ README.txt
-
-จากนั้นไปต่อที่ [`wakeword/train_saifon_colab.ipynb`](../wakeword/train_saifon_colab.ipynb)
-
----
+คำสั่ง `wake-samples` ถูกถอดออกจาก CLI แล้ว ของเดิมย้ายไป
+`archive/wakeword-saifon/` ค่าใช้จ่ายที่เคยลงบัญชีไว้ยังอ่านได้ด้วย
+`training-usage` รายละเอียดอยู่ใน [WAKEWORD.md](../WAKEWORD.md)
 
 ## ขั้น 4 — เริ่มบริการ
 
@@ -594,7 +568,7 @@ tts ok device=a07 voice=Schedar chars=37 truncated=False respellings=0 bytes=213
 ไม่มีไฟล์ไหนในนี้บันทึก path พร้อม query string, header, token หรือข้อความภาษาไทย
 (`$uri` ไม่ใช่ `$request`) — ทดลองแล้วว่าไม่มี
 
-## สายฝนรู้เวลาแล้ว
+## จาร์วิสรู้เวลาแล้ว
 
 broker เติมวันเวลาของ Asia/Bangkok ลงท้าย system prompt ทุกคำขอ **ไม่ได้เพิ่ม tool
 ให้โมเดล และโมเดลไม่ได้คิดเวลาเอง**
@@ -803,7 +777,7 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
   /home/kioskbroker/venv/bin/python -m kiosk_broker usage
 ```
 
-ยอดนี้เป็นของมือถือเครื่องเดียว แยกฐานข้อมูลจากของสายฝนใน Telegram คนละไฟล์
+ยอดนี้เป็นของมือถือเครื่องเดียว แยกฐานข้อมูลจากสายฝนใน Telegram คนละไฟล์
 คนละ user คิดจาก `usage` ที่ Anthropic ส่งกลับมาจริง ไม่ใช่การประมาณ
 
 เมื่อชนเพดาน broker จะตอบ **402** พร้อมข้อความว่ากลับมาใช้ได้วันที่ 1 ของเดือนหน้า
@@ -837,6 +811,29 @@ sudo systemctl restart kiosk-broker
 ข้อนี้ไม่ยิง API เลยเพราะด่านงบอยู่**ก่อน**การเรียกโมเดล จึงไม่เสียเงินแม้แต่บาทเดียว
 
 ---
+
+## deploy รอบนี้ (เปลี่ยนชื่อเป็นจาร์วิส)
+
+รอบนี้แก้เฉพาะ **persona ของ broker** (ชื่อผู้ช่วยในคำสั่งระบบ) ไม่ได้แตะ
+endpoint, nginx, คีย์ หรือฐานข้อมูล จึงไม่ต้อง reload nginx:
+
+```bash
+cd ~/phone-ai-kiosk && git pull && sudo systemctl restart kiosk-broker
+```
+
+ยืนยันว่าขึ้นแล้วและชื่อเปลี่ยนจริง:
+
+```bash
+systemctl is-active kiosk-broker && curl -s -o /dev/null -w '%{http_code}\n' https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+```
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -c "from kiosk_broker.persona import SYSTEM_PROMPT; print(SYSTEM_PROMPT.splitlines()[0])"
+```
+ต้องได้บรรทัดที่ขึ้นต้นด้วย `คุณคือ "จาร์วิส"`
+
+**ไม่ต้องแตะ Hermes** ผู้ช่วยใน Telegram ยังชื่อสายฝนเหมือนเดิม คนละ service
+คนละฐานข้อมูล งานนี้ไม่ได้ restart อะไรของ Hermes เลย
 
 ## อัปเดตโค้ดรอบต่อไป
 

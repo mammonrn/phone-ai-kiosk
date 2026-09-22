@@ -142,7 +142,7 @@ def test_the_result_is_never_longer_than_the_limit():
         "คำ " * 200,
         "เกิดเหตุ" * 80,
         "1234567890" * 40,
-        "สายฝนครับ " * 40,
+        "จาร์วิสครับ " * 40,
     ]
     for text in samples:
         for limit in (1, 5, 37, 100, 499):

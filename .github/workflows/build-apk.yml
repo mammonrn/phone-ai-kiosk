@@ -139,6 +139,54 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: The wake word must actually be in the APK
+        # The detector is useless without its three models, and the native
+        # runtime is useless on this phone unless it is the arm64 one. Both are
+        # things a build can lose quietly: a moved assets folder, or an
+        # abiFilters line dropped in a merge. Checked on the artifact that is
+        # about to be published, not on the source that produced it.
+        run: |
+          set -o pipefail
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "checking $APK"
+          LIST=$(unzip -l "$APK")
+
+          fail=0
+          for model in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx; do
+            if echo "$LIST" | grep -q "assets/models/$model"; then
+              echo "  ok   assets/models/$model"
+            else
+              echo "  MISSING assets/models/$model"; fail=1
+            fi
+          done
+
+          if echo "$LIST" | grep -q 'lib/arm64-v8a/libonnxruntime.so'; then
+            echo "  ok   lib/arm64-v8a/libonnxruntime.so"
+          else
+            echo "  MISSING lib/arm64-v8a/libonnxruntime.so"; fail=1
+          fi
+
+          # Any other ABI means abiFilters stopped working and the APK just
+          # grew by tens of megabytes for architectures this phone cannot run.
+          OTHER=$(echo "$LIST" | grep -oE 'lib/[^/]+/' | sort -u | grep -v 'lib/arm64-v8a/' || true)
+          if [ -n "$OTHER" ]; then
+            echo "  UNEXPECTED ABIs:"; echo "$OTHER"; fail=1
+          else
+            echo "  ok   arm64-v8a is the only ABI"
+          fi
+
+          SIZE=$(stat -c%s "$APK")
+          echo "  APK size: $(( SIZE / 1048576 )) MB"
+          # Poom approved roughly +17.7 MB for onnxruntime, and the models add
+          # about 3.7 MB on top. 28 MB leaves room for the app to grow without
+          # letting a runtime upgrade silently double it again: 1.30.0 would
+          # have landed at about 37 MB.
+          if [ "$SIZE" -gt 29360128 ]; then
+            echo "  APK is over 28 MB — check the onnxruntime version before raising this"; fail=1
+          fi
+
+          exit $fail
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
