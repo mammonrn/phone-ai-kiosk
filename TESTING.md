@@ -1333,7 +1333,14 @@ sudo journalctl -u kiosk-broker -n 50 | grep dashboard
 
 - ไอคอนสี่ตัวบนจอ (ดวงอาทิตย์ ทอง เหรียญ จาร์วิส) **วาดเองในโปรเจกต์นี้**
   เป็น vector จากสี่เหลี่ยมล้วน ไม่มีไฟล์ภาพและไม่ได้โหลดจากที่ไหน
-- ฟอนต์ใช้ `monospace` ของเครื่องเอง ไม่ได้ฝังฟอนต์ใดๆ
+- ฟอนต์ฝังมาสองตัว ทั้งคู่เป็น SIL Open Font License 1.1 และไฟล์ license
+  อยู่ใน `licenses/fonts/`
+  - **Press Start 2P** (CodeMan38, Google Fonts) — ตัวเลขและอักษรละติน
+  - **IBM Plex Sans Thai Looped** (IBM / Bold Monday, Google Fonts) — ภาษาไทย
+  Press Start 2P ไม่มีภาษาไทย การสลับฟอนต์ในบรรทัดเดียวทำใน
+  `ui/RetroType.kt` ไม่ได้ปล่อยให้ Android fallback เอง
+- **ไม่ได้ใช้ฟอนต์พิกเซลไทย** เพราะตัวที่ใกล้เคียงที่สุด (TA Chai Lai_Pixel)
+  แจกฟรีเฉพาะใช้ส่วนตัวไม่เชิงพาณิชย์ และ repo นี้เป็น public — ดู NOTICE
 - กรอบหน้าต่างทำจาก layer-list ในโปรเจกต์ ไม่ได้ใช้ asset ของ Microsoft
 - อากาศมาจาก Open-Meteo (CC BY 4.0) — เครดิตติดมากับข้อมูลใน payload
 
