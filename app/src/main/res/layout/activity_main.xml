@@ -25,6 +25,21 @@
 
   WHAT IS BIGGEST IS WHAT MATTERS: the clock, then what Jarvis is doing and
   what it heard, then the numbers, then their labels, then the diagnostics.
+
+  THE SPARE HEIGHT IS SHARED, NOT HOARDED. Smaller type left about a third of
+  the screen over, and the Jarvis window — the only one with a weight — took
+  all of it, so the kiosk sat there with a grey box the size of a postcard and
+  one line of text in the middle of it. Every window now carries a weight and
+  gets a share: one each for the four that hold data, two for Jarvis, which
+  still needs the most because it is the one that fills up when somebody talks
+  to it. Inside each window the sunken panel carries the same weight again, so
+  the share lands in the panel and the content centres in it, rather than
+  pooling as dead grey under the last line.
+
+  Those inner panels are wrap_content AND weighted on purpose. A child of a
+  wrap_content LinearLayout that asks for 0dp measures to nothing; asking for
+  wrap_content and a weight measures to its content first and then grows when
+  the parent is re-measured with the share it was given.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -41,6 +56,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:padding="5dp">
@@ -63,6 +79,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
                 android:paddingTop="7dp"
@@ -102,6 +120,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"
@@ -145,6 +164,8 @@
                 android:id="@+id/weather_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
                 android:padding="7dp"
@@ -159,6 +180,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"
@@ -196,6 +218,8 @@
                 android:id="@+id/gold_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
                 android:padding="7dp"
@@ -210,6 +234,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"
@@ -247,6 +272,8 @@
                 android:id="@+id/crypto_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
                 android:padding="7dp"
@@ -264,8 +291,8 @@
              thing on this screen you actually stand in front of. -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:layout_weight="2"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"
