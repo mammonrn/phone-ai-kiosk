@@ -1,19 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The kiosk screen: a 1995-flavoured desktop, portrait, read from two metres.
+  The kiosk screen: a 1995-flavoured desktop, portrait, read from about 20 cm.
 
   EVERY ID THE ACTIVITY ALREADY USED IS STILL HERE — clock, date, status,
   voice_status, transcript and exit_corner. The last one is the only way off
   this device without a factory reset (ten taps, bottom right), and a redesign
   that quietly dropped it would strand the phone.
 
-  No image files, no icon pack and no downloaded font. The chrome is layer-list
-  shapes in this repository and the icons are vectors drawn from squares, so
-  there is nothing here whose licence has to be checked. The typeface is
-  "monospace", which is whatever the device already has.
+  THE DISTANCE CHANGED, AND WITH IT EVERY SIZE IN THIS FILE. The first version
+  was set for two metres: a 64sp clock, nothing with a number in it under 20sp.
+  Poom reads this the way anyone reads a phone — in the hand, a hand's length
+  away — and at 20 cm that scale is a motorway sign. On this device (720x1600
+  at 300 dpi, so 384dp wide) a 64sp clock was 4 cm of glass for eight digits,
+  and the gold price wrapped its own freshness note onto a second line.
+  Everything here is now set for arm's length: 28sp for the hero, 14-15sp for
+  numbers you read, 11sp for labels, 8sp for diagnostics.
 
-  Sizes are chosen for distance, not for density: the clock is 64sp and nothing
-  that carries a number is under 20sp.
+  TWO FONTS, BOTH SIL OFL, BOTH IN THIS REPOSITORY. Press Start 2P carries the
+  digits and Latin; IBM Plex Sans Thai Looped carries Thai and the small print.
+  Neither is a Microsoft font and neither is an icon pack — the chrome is still
+  layer-list shapes and the icons are still vectors drawn from squares. See
+  NOTICE for where the two faces come from and what their licence asks for.
+  The mixing inside one line is done in code: see ui/RetroType.kt.
+
+  WHAT IS BIGGEST IS WHAT MATTERS: the clock, then what Jarvis is doing and
+  what it heard, then the numbers, then their labels, then the diagnostics.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -24,7 +35,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="8dp">
+        android:padding="7dp">
 
         <!-- ===================================================== clock window -->
         <LinearLayout
@@ -32,7 +43,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
-            android:padding="6dp">
+            android:padding="5dp">
 
             <TextView
                 android:layout_width="match_parent"
@@ -40,40 +51,50 @@
                 android:background="@drawable/retro_titlebar"
                 android:paddingStart="6dp"
                 android:paddingEnd="6dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
                 android:text="@string/window_clock"
                 android:textColor="@color/retro_title_text"
-                android:textSize="14sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
-                android:fontFamily="monospace" />
+                android:fontFamily="@font/plex_thai" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/retro_sunken"
-                android:layout_marginTop="4dp"
-                android:padding="8dp">
+                android:layout_marginTop="3dp"
+                android:paddingTop="7dp"
+                android:paddingBottom="6dp"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp">
 
+                <!-- Press Start 2P is monospaced by construction: every glyph is
+                     exactly one em wide. That is the reason it is on the clock
+                     and not a prettier proportional pixel face — a clock with
+                     seconds on it redraws once a second, and in a proportional
+                     font the whole line would shuffle sideways every time a 1
+                     became a 2. Eight glyphs at 28sp is 224dp of the 360dp this
+                     window has, so it will not overrun. -->
                 <TextView
                     android:id="@+id/clock"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:textColor="@color/retro_text"
-                    android:textSize="64sp"
-                    android:textStyle="bold"
-                    android:fontFamily="monospace" />
+                    android:textSize="28sp"
+                    android:fontFamily="@font/press_start_2p" />
 
                 <TextView
                     android:id="@+id/date"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
+                    android:layout_marginTop="3dp"
                     android:textColor="@color/retro_dim"
-                    android:textSize="20sp"
-                    android:fontFamily="monospace" />
+                    android:textSize="11sp"
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
         </LinearLayout>
 
@@ -83,8 +104,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
-            android:layout_marginTop="8dp"
-            android:padding="6dp">
+            android:layout_marginTop="7dp"
+            android:padding="5dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -94,25 +115,30 @@
                 android:gravity="center_vertical"
                 android:paddingStart="6dp"
                 android:paddingEnd="6dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp">
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp">
 
                 <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
                     android:src="@drawable/ic_pixel_sun"
                     android:contentDescription="@string/window_weather" />
 
+                <!-- The place name is appended here at runtime, so this one can
+                     grow. One line, cut at the end if it has to be: a title bar
+                     that wraps stops looking like a title bar. -->
                 <TextView
                     android:id="@+id/weather_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
+                    android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:text="@string/window_weather"
                     android:textColor="@color/retro_title_text"
-                    android:textSize="14sp"
+                    android:textSize="11sp"
                     android:textStyle="bold"
-                    android:fontFamily="monospace" />
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
             <TextView
@@ -120,12 +146,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/retro_sunken"
-                android:layout_marginTop="4dp"
-                android:padding="8dp"
+                android:layout_marginTop="3dp"
+                android:padding="7dp"
+                android:lineSpacingExtra="1dp"
                 android:textColor="@color/retro_text"
-                android:textSize="26sp"
-                android:textStyle="bold"
-                android:fontFamily="monospace"
+                android:textSize="14sp"
+                android:fontFamily="@font/plex_thai"
                 android:text="@string/data_loading" />
         </LinearLayout>
 
@@ -135,8 +161,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
-            android:layout_marginTop="8dp"
-            android:padding="6dp">
+            android:layout_marginTop="7dp"
+            android:padding="5dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -146,24 +172,24 @@
                 android:gravity="center_vertical"
                 android:paddingStart="6dp"
                 android:paddingEnd="6dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp">
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp">
 
                 <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
                     android:src="@drawable/ic_pixel_gold"
                     android:contentDescription="@string/window_gold" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
+                    android:layout_marginStart="5dp"
                     android:text="@string/window_gold"
                     android:textColor="@color/retro_title_text"
-                    android:textSize="14sp"
+                    android:textSize="11sp"
                     android:textStyle="bold"
-                    android:fontFamily="monospace" />
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
             <TextView
@@ -171,12 +197,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/retro_sunken"
-                android:layout_marginTop="4dp"
-                android:padding="8dp"
+                android:layout_marginTop="3dp"
+                android:padding="7dp"
+                android:lineSpacingExtra="1dp"
                 android:textColor="@color/retro_text"
-                android:textSize="24sp"
-                android:textStyle="bold"
-                android:fontFamily="monospace"
+                android:textSize="15sp"
+                android:fontFamily="@font/plex_thai"
                 android:text="@string/data_loading" />
         </LinearLayout>
 
@@ -186,8 +212,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
-            android:layout_marginTop="8dp"
-            android:padding="6dp">
+            android:layout_marginTop="7dp"
+            android:padding="5dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -197,24 +223,24 @@
                 android:gravity="center_vertical"
                 android:paddingStart="6dp"
                 android:paddingEnd="6dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp">
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp">
 
                 <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
                     android:src="@drawable/ic_pixel_coin"
                     android:contentDescription="@string/window_crypto" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
+                    android:layout_marginStart="5dp"
                     android:text="@string/window_crypto"
                     android:textColor="@color/retro_title_text"
-                    android:textSize="14sp"
+                    android:textSize="11sp"
                     android:textStyle="bold"
-                    android:fontFamily="monospace" />
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
             <TextView
@@ -222,24 +248,28 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/retro_sunken"
-                android:layout_marginTop="4dp"
-                android:padding="8dp"
+                android:layout_marginTop="3dp"
+                android:padding="7dp"
+                android:lineSpacingExtra="1dp"
                 android:textColor="@color/retro_text"
-                android:textSize="24sp"
-                android:textStyle="bold"
-                android:fontFamily="monospace"
+                android:textSize="15sp"
+                android:fontFamily="@font/plex_thai"
                 android:text="@string/data_loading" />
         </LinearLayout>
 
         <!-- ===================================================== jarvis window -->
+        <!-- Second only to the clock, and the one window that grows: it takes
+             whatever the four above leave behind. That is deliberate. The
+             question "is it listening, and did it hear me right" is the one
+             thing on this screen you actually stand in front of. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
-            android:layout_marginTop="8dp"
-            android:padding="6dp">
+            android:layout_marginTop="7dp"
+            android:padding="5dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -253,8 +283,8 @@
                 android:paddingBottom="3dp">
 
                 <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
                     android:src="@drawable/ic_pixel_jarvis"
                     android:contentDescription="@string/app_name" />
 
@@ -262,12 +292,12 @@
                     android:id="@+id/jarvis_state"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
+                    android:layout_marginStart="5dp"
                     android:text="@string/jarvis_ready"
                     android:textColor="@color/retro_title_text"
-                    android:textSize="14sp"
+                    android:textSize="12sp"
                     android:textStyle="bold"
-                    android:fontFamily="monospace" />
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
             <TextView
@@ -276,11 +306,13 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@drawable/retro_sunken"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="3dp"
                 android:padding="8dp"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
                 android:textColor="@color/retro_text"
-                android:textSize="20sp"
-                android:fontFamily="monospace"
+                android:textSize="15sp"
+                android:fontFamily="@font/plex_thai"
                 android:text="@string/kiosk_prompt" />
 
             <!-- Diagnostics, deliberately small and at the bottom: useful with a
@@ -290,10 +322,10 @@
                 android:id="@+id/voice_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="3dp"
                 android:textColor="@color/retro_dim"
-                android:textSize="10sp"
-                android:fontFamily="monospace" />
+                android:textSize="8sp"
+                android:fontFamily="@font/plex_thai" />
         </LinearLayout>
 
         <!-- ========================================================== taskbar -->
@@ -303,22 +335,22 @@
             android:orientation="horizontal"
             android:background="@drawable/retro_raised"
             android:gravity="center_vertical"
-            android:layout_marginTop="8dp"
-            android:padding="4dp">
+            android:layout_marginTop="7dp"
+            android:padding="3dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/retro_raised"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
-                android:paddingTop="4dp"
-                android:paddingBottom="4dp"
+                android:paddingStart="9dp"
+                android:paddingEnd="9dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
                 android:text="@string/taskbar_button"
                 android:textColor="@color/retro_text"
-                android:textSize="15sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
-                android:fontFamily="monospace" />
+                android:fontFamily="@font/plex_thai" />
 
             <TextView
                 android:id="@+id/status"
@@ -327,21 +359,21 @@
                 android:layout_weight="1"
                 android:layout_marginStart="6dp"
                 android:textColor="@color/retro_dim"
-                android:textSize="10sp"
-                android:fontFamily="monospace" />
+                android:textSize="8sp"
+                android:fontFamily="@font/plex_thai" />
 
             <TextView
                 android:id="@+id/taskbar_clock"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/retro_sunken"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
                 android:paddingTop="4dp"
                 android:paddingBottom="4dp"
                 android:textColor="@color/retro_text"
-                android:textSize="15sp"
-                android:fontFamily="monospace" />
+                android:textSize="11sp"
+                android:fontFamily="@font/press_start_2p" />
         </LinearLayout>
     </LinearLayout>
 

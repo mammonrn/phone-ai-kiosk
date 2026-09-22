@@ -49,3 +49,53 @@ openWakeWord's README states that upstream licence for the original TFHub
 module; the weights redistributed here arrive through openWakeWord, whose
 README places all its included pre-trained models under CC BY-NC-SA 4.0. Where
 the two readings differ, this repository follows the stricter one.
+
+Press Start 2P — the pixel face
+-------------------------------
+app/src/main/res/font/press_start_2p.ttf is Press Start 2P by CodeMan38,
+taken from Google Fonts (https://fonts.google.com/specimen/Press+Start+2P,
+source of the exact file: https://github.com/google/fonts, ofl/pressstart2p).
+
+    Copyright 2012 The Press Start 2P Project Authors (cody@zone38.net),
+    with Reserved Font Name "Press Start 2P".
+
+Licensed under the SIL Open Font License, Version 1.1. The full text as
+shipped with the font is at licenses/fonts/PressStart2P-OFL.txt.
+
+The OFL permits bundling the font in an application, including a commercial
+one, and asks three things of anyone doing it: do not sell the font on its
+own, keep this notice with it, and do not release a modified version under
+the Reserved Font Name. The file here is unmodified, which is the simplest
+way to hold to the third.
+
+It carries no Thai. That is deliberate and is why ui/RetroType.kt exists: the
+Latin and the digits are set in this face and the Thai in the one below, with
+the sizes and the baseline reconciled in code rather than left to whatever
+font the device would have fallen back to.
+
+IBM Plex Sans Thai Looped — the Thai face
+------------------------------------------
+app/src/main/res/font/plex_thai_regular.ttf and plex_thai_semibold.ttf are
+IBM Plex Sans Thai Looped (Regular and SemiBold) by Mike Abbink and Bold
+Monday, from Google Fonts (https://fonts.google.com/specimen/IBM+Plex+Sans+Thai+Looped,
+source of the exact files: https://github.com/google/fonts,
+ofl/ibmplexsansthailooped).
+
+    Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+
+Licensed under the SIL Open Font License, Version 1.1, on the same terms as
+above. The full text is at licenses/fonts/IBMPlexSansThaiLooped-OFL.txt. Both
+files are unmodified.
+
+A NOTE ON WHAT WAS NOT USED. A Thai pixel font would have been the neater
+answer, and there are several. The closest fit found was TA Chai Lai_Pixel by
+Taweechai Assawrangsithaeng (https://www.f0nt.com/release/ta-chai-lai-pixel/),
+which is offered free for personal, non-commercial use, with commercial use by
+paid written permission. This repository is published on GitHub, so shipping
+that font would be redistributing it, which its terms do not clearly allow —
+and "probably fine" is not a licence. Two OFL faces and a hundred lines of
+span code is the cost of not having to make that call.
+
+No Microsoft font, icon or other asset is used anywhere in this app. The
+window chrome is layer-list shapes in this repository and the icons are
+vectors drawn from squares; see res/values/colors_retro.xml.

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Thai (and small-Latin) face for the kiosk: IBM Plex Sans Thai Looped,
+  SIL Open Font License 1.1. Looped Thai on purpose — the loops are what make
+  ที่ and ท่ี tellable apart at 15sp in a hand, and they are also what Thai
+  screens of the era this screen imitates actually used.
+
+  Two weights only. Every extra weight is ~125 kB in an APK that ships ONNX
+  models already, and nothing here needs a third.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:font="@font/plex_thai_regular"
+        android:fontStyle="normal"
+        android:fontWeight="400" />
+    <font
+        android:font="@font/plex_thai_semibold"
+        android:fontStyle="normal"
+        android:fontWeight="600" />
+</font-family>

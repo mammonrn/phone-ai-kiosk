@@ -23,6 +23,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.content.res.ResourcesCompat
+import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.DashboardState
 import com.mammonrn.phoneaikiosk.voice.MapsLauncher
@@ -52,6 +54,15 @@ class MainActivity : Activity() {
     private lateinit var goldBody: TextView
     private lateinit var cryptoBody: TextView
     private lateinit var jarvisState: TextView
+
+    /**
+     * Press Start 2P, loaded once.
+     *
+     * Every panel is redrawn every second, and each redraw asks RetroType to
+     * span the digits into this face. Resolving the font resource on each of
+     * those would be a file lookup a second for the life of the kiosk.
+     */
+    private lateinit var pixelFace: android.graphics.Typeface
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -95,7 +106,12 @@ class MainActivity : Activity() {
             status.text = statusLine()
             taskbarClock.text = taskbarFormat.format(now)
             voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine()
-            transcript.text = transcriptLine()
+            // An empty box says nothing; the invitation says what to do with
+            // the kiosk. Display only — transcriptLine() is untouched.
+            transcript.text = RetroType.pixelify(
+                transcriptLine().ifEmpty { getString(R.string.kiosk_prompt) },
+                pixelFace,
+            )
             jarvisState.text = DashboardState.jarvisState(
                 VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
                 getString(R.string.jarvis_ready),
@@ -150,9 +166,13 @@ class MainActivity : Activity() {
 
     private fun applyDashboard(payload: String) {
         val screen = DashboardState.parse(payload, getString(R.string.data_unavailable))
-        weatherBody.text = screen.weather.text
-        goldBody.text = screen.gold.text
-        cryptoBody.text = screen.crypto.text
+        // Numbers into the pixel face, the freshness note turned down. The
+        // strings themselves are DashboardState's business and are not touched
+        // here — this only decides what they look like.
+        val dim = ContextCompat.getColor(this, R.color.retro_dim)
+        weatherBody.text = RetroType.pixelifyHeadline(screen.weather.text, pixelFace, dim)
+        goldBody.text = RetroType.pixelifyWithAge(screen.gold.text, pixelFace, dim)
+        cryptoBody.text = RetroType.pixelifyWithAge(screen.crypto.text, pixelFace, dim)
         if (screen.place.isNotEmpty()) {
             weatherTitle.text = "${getString(R.string.window_weather)} · ${screen.place}"
         }
@@ -167,6 +187,9 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        pixelFace = ResourcesCompat.getFont(this, R.font.press_start_2p)
+            ?: android.graphics.Typeface.MONOSPACE
 
         clock = findViewById(R.id.clock)
         date = findViewById(R.id.date)
