@@ -43,6 +43,22 @@ class Config:
     max_audio_seconds: float = 30.0
 
     # ---- text to speech -------------------------------------------------
+    # ---- which voice vendor ---------------------------------------------
+    #: "google" or "botnoi". DEFAULT IS GOOGLE AND PRODUCTION IS NOT CHANGING:
+    #: Poom chose Chirp 3 HD, voice Schedar. The other value exists so a switch
+    #: is a config edit rather than a code change, once there is a reason.
+    tts_provider: str = "google"
+
+    #: Botnoi speaker id. 4 is Max, a Thai male voice, from the example Poom
+    #: quoted. Unused while tts_provider is "google".
+    botnoi_speaker: str = "4"
+    botnoi_language: str = "th"
+    #: v2 is the premium voice set. v1 is the classic one.
+    botnoi_v2: bool = True
+    #: Hosts an audio_url may point at. See botnoi.DEFAULT_ALLOWED_HOSTS for why
+    #: this starts wider than it should end up.
+    botnoi_audio_hosts: tuple[str, ...] = ("botnoi.ai", "amazonaws.com")
+
     tts_language: str = "th-TH"
     tts_voice: str = "Charon"
     #: OGG_OPUS: smallest of the formats Chirp 3 HD offers for batch synthesis,

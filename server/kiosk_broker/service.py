@@ -15,7 +15,7 @@ import sqlite3
 import time
 from typing import Any
 
-from . import actions, auth, limits, pronounce, register, shorten, stt, store, tts
+from . import actions, auth, botnoi, limits, pronounce, register, shorten, stt, store, tts
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -352,6 +352,7 @@ def handle_tts(
     *,
     authorization: str | None,
     body: bytes,
+    botnoi_token: str = "",
 ) -> tuple[int, dict]:
     """One POST /v1/tts: text in, audio out.
 
@@ -418,11 +419,38 @@ def handle_tts(
     if refusal:
         return refusal
 
+    # One switch, defaulting to the voice that was chosen. Botnoi is wired up so
+    # a comparison does not need a code change; nothing selects it today.
+    if cfg.tts_provider == "botnoi" and not botnoi_token:
+        store.record_request(conn, device_id=device_id, day=day, outcome="tts_unconfigured",
+                             text_len=len(text), endpoint="tts")
+        log.error("tts_provider is 'botnoi' but BOTNOI_TOKEN is not set; refusing")
+        return 502, _error(
+            "tts_not_configured",
+            "ระบบเสียงตั้งค่าไว้ไม่ครบครับ",
+        )
+
     started = time.monotonic()
     try:
-        speech = tts.synthesize(api_key=api_key, text=spoken_text, language_code=cfg.tts_language,
-                                voice=cfg.tts_voice, encoding=cfg.tts_encoding,
-                                endpoint=cfg.tts_endpoint)
+        if cfg.tts_provider == "botnoi":
+            generated = botnoi.generate(
+                botnoi_token, text=spoken_text, speaker=cfg.botnoi_speaker,
+                language=cfg.botnoi_language, v2=cfg.botnoi_v2,
+                allowed_hosts=cfg.botnoi_audio_hosts,
+            )
+            speech = tts.Speech(audio=generated.audio, content_type="audio/mpeg",
+                                billed_characters=len(spoken_text))
+        else:
+            speech = tts.synthesize(api_key=api_key, text=spoken_text,
+                                    language_code=cfg.tts_language,
+                                    voice=cfg.tts_voice, encoding=cfg.tts_encoding,
+                                    endpoint=cfg.tts_endpoint)
+    except botnoi.BotnoiError as exc:
+        store.record_request(conn, device_id=device_id, day=day, outcome="tts_error",
+                             text_len=len(text), endpoint="tts")
+        log.warning("botnoi tts failed device=%s chars=%d detail=%s",
+                    label, len(text), exc.detail)
+        return 502, _error("tts_error", "สร้างเสียงไม่สำเร็จครับ")
     except tts.TtsError as exc:
         # Nothing is billed for a failed synthesis: Google charges on characters
         # processed, and these were not.

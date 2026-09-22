@@ -530,6 +530,102 @@ replies      : 12
 ตัวเลขนี้เก็บเป็น**จำนวนครั้งเท่านั้น ไม่เก็บข้อความ** ถ้าเลขนี้สูงต่อเนื่อง
 แปลว่าควรไปปรับถ้อยคำใน `persona.py` ถ้าเป็น 0 แปลว่า prompt เอาอยู่เองแล้ว
 
+## ทดลอง Botnoi Voice (ไม่แตะ production)
+
+**production ยังใช้ Google Chirp 3 HD เสียง Schedar และงานนี้ไม่เปลี่ยนมัน**
+`tts_provider` ค่าเริ่มต้นคือ `google` และไม่ได้แก้ `config.json` บนเครื่องจริง
+
+### ใส่ BOTNOI_TOKEN โดยไม่ให้ค้างใน history
+
+อย่าพิมพ์ token ลงบรรทัดคำสั่ง ใช้ `read -rsp` ซึ่งไม่แสดงตัวอักษรและไม่ลง history:
+
+```bash
+sudo -u kioskbroker bash -c '
+  read -rsp "BOTNOI_TOKEN: " T; echo
+  F=/home/kioskbroker/.config/kiosk-broker/env
+  grep -v "^BOTNOI_TOKEN=" "$F" > "$F.new" 2>/dev/null || true
+  printf "BOTNOI_TOKEN=%s\n" "$T" >> "$F.new"
+  mv "$F.new" "$F"; chmod 600 "$F"
+  unset T
+'
+```
+
+ตรวจว่าเข้าไปแล้วโดยไม่แสดงค่า:
+
+```bash
+sudo -u kioskbroker grep -c '^BOTNOI_TOKEN=' /home/kioskbroker/.config/kiosk-broker/env
+sudo ls -l /home/kioskbroker/.config/kiosk-broker/env   # ต้องเป็น -rw------- kioskbroker
+```
+
+### ดูรายชื่อเสียงก่อน (ไม่สร้างเสียง ไม่ใช้ point)
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
+  PYTHONPATH=/home/kioskbroker/app \
+  /home/kioskbroker/venv/bin/python -m kiosk_broker botnoi-voices --list-only
+```
+
+### สร้างเสียงเทียบกับ Google Schedar
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker \
+  PYTHONPATH=/home/kioskbroker/app \
+  /home/kioskbroker/venv/bin/python -m kiosk_broker botnoi-voices --out /tmp/tts-compare --max 6
+```
+
+ประโยคที่ใช้ทั้งสองฝั่งเหมือนกัน เพื่อให้เทียบกันได้จริง:
+
+> วันนี้อากาศดีครับ ผมพร้อมช่วยเหลือครับ ตอนนี้เวลา 10 โมงครึ่ง
+
+ดึงลง Windows แล้วฟัง:
+
+```powershell
+scp "poom@45.76.157.64:/tmp/tts-compare/*" .
+```
+
+`save_file` ถูกตั้งเป็น `"False"` ทุกครั้ง — ไม่ทิ้งไฟล์ทดสอบไว้บนสตอเรจของเขา
+
+### ความปลอดภัยตอนโหลดไฟล์เสียง
+
+`audio_url` ที่ Botnoi ส่งกลับมาคือ URL จากบริการภายนอก การโหลด URL ที่คนอื่นให้มา
+คือช่องทาง SSRF โดยธรรมชาติ จึงบังคับไว้ห้าชั้น:
+
+| ด่าน | ค่า |
+|---|---|
+| ต้องเป็น HTTPS | ไม่ใช่ = ปฏิเสธ |
+| โดเมนต้องอยู่ใน allowlist | `botnoi.ai` และ `amazonaws.com` (ตรวจแบบ anchor ที่จุด) |
+| redirect | ตามได้ไม่เกิน 3 ครั้ง **และตรวจโดเมนใหม่ทุกครั้ง** |
+| ขนาดไฟล์ | ไม่เกิน 8 MB อ่านเกินเพดาน 1 ไบต์เพื่อไม่เชื่อ Content-Length |
+| timeout | มี |
+
+**ไม่มีที่ไหนพิมพ์ URL เต็ม** เพราะ presigned S3 URL มี credential อยู่ใน query string
+แสดงแค่โดเมน
+
+🔶 **allowlist ตั้งไว้กว้างกว่าที่ควรจะเป็น** เพราะผมไม่มี token จึงยังไม่เคยเห็น
+bucket จริง คำสั่งจะพิมพ์โดเมนที่ใช้ทุกครั้ง (`from=...`) เอาโดเมนนั้นมาใส่
+`botnoi_audio_hosts` ใน `config.json` แล้วมันจะแคบลงเหลือของจริงอันเดียว
+
+### ❓ ที่ยังไม่ทราบ
+
+- **ราคาต่อ point** ยังไม่ทราบ ระบบจึงบันทึกเป็น **point ไม่ใช่ดอลลาร์**
+  ในบัญชีเทรน และไม่แปลงเป็นเงิน เพราะจะเป็นการเดา
+- **Botnoi เก็บไฟล์เสียงไว้นานแค่ไหน** แม้ตั้ง `save_file=False` แล้ว ❓
+- **Botnoi รองรับจำกัด IP ต่อ token ไหม** ❓ เท่าที่หาไม่พบ ต่างจาก Google API key
+  ที่จำกัดได้ทั้ง API และ IP — ถ้า token หลุดต้องเพิกถอนที่หน้า console
+- **โดเมน S3 จริง** ❓ (ดูด้านบน)
+- ราคาเทียบกับ Google ยังเทียบไม่ได้จนรู้ราคา point
+
+### ถ้าจะเปลี่ยนไปใช้ Botnoi จริง (ยังไม่ทำ)
+
+โค้ดพร้อมสลับแล้ว แต่**ต้องให้ Poom ตัดสินก่อน** เปลี่ยนสองบรรทัดใน `config.json`:
+
+```json
+{ "tts_provider": "botnoi", "botnoi_speaker": "4" }
+```
+
+ถ้าตั้งเป็น `botnoi` แต่ไม่มี `BOTNOI_TOKEN` ระบบจะ **ปฏิเสธชัดเจน** (502
+`tts_not_configured`) และเขียน error ลง log ตอนสตาร์ท ไม่ใช่เงียบๆ
+
 ## ค่าใช้จ่ายจริงต่อคำถามหนึ่งครั้ง 🔶
 
 จากราคาทางการที่ตรวจแล้ว:

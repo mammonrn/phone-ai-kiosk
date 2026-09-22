@@ -209,6 +209,24 @@ single shared counter would have the voice path eating the allowance
 as the only third-party dependency. One phone, two routes, and a dependency
 tree is a thing to keep patched.
 
+## Voice vendor
+
+`tts_provider` selects it. **The default is `google`, and production runs Chirp 3
+HD with voice Schedar** — Poom chose it and this is not the code that changes it.
+
+`botnoi` is wired up so a comparison does not need a code change. Selecting it
+without a `BOTNOI_TOKEN` is refused loudly rather than silently: a 502 with
+`tts_not_configured`, and an error at start-up.
+
+The risky part of the Botnoi integration is not its API, it is the `audio_url`
+it answers with. Fetching a URL a remote service handed you is request forgery
+waiting to happen, so a download must be HTTPS, must land on an allow-listed
+host with the suffix match anchored at a dot (a plain `endswith("botnoi.ai")`
+would accept `evil-botnoi.ai`), must re-check the host on every redirect, must
+stop a byte past its size limit rather than trusting `Content-Length`, and must
+give up on a timer. Nothing prints a whole URL: a presigned S3 link carries
+credentials in its query string.
+
 ## Operator commands
 
 Run as `kioskbroker` on the VPS; none of them are reachable over HTTP.
@@ -221,6 +239,8 @@ Run as `kioskbroker` on the VPS; none of them are reachable over HTTP.
 | `usage` | This month's spend, the cap, and where the prices came from |
 | `selftest` | One real call, printing input tokens and the measured cost. Not written to the ledger |
 | `prompt-size` | The prompt's size in tokens, through the free token-counting endpoint. No answer generated, nothing billed |
+| `wake-samples` | Builds the wake word training set under its own $0.50 ceiling |
+| `botnoi-voices` | EXPERIMENT: the same Thai sentence in several Botnoi voices and in Google's, for a listening comparison. Changes nothing |
 
 ## Development
 

@@ -58,6 +58,125 @@ def _stt_client():
 
 
 JOB_WAKE_SAMPLES = "wake-samples"
+JOB_BOTNOI_TRIAL = "botnoi-trial"
+
+#: The line both vendors say, so the comparison is of voices and nothing else.
+COMPARISON_TEXT = "วันนี้อากาศดีครับ ผมพร้อมช่วยเหลือครับ ตอนนี้เวลา 10 โมงครึ่ง"
+
+
+def _botnoi_voices(conn, cfg, args) -> int:
+    """Synthesises one sentence in several Botnoi voices, and in Google's.
+
+    An experiment. It does not touch tts_provider, and the audio it writes is
+    for listening to, not for the kiosk.
+    """
+    from pathlib import Path as _Path
+
+    from . import botnoi as botnoi_mod, tts as tts_mod
+
+    token = _secret("BOTNOI_TOKEN")
+    if not token:
+        print("No BOTNOI_TOKEN in the broker's env file.")
+        print("Add it as described in INSTALL.md, then run this again.")
+        return 1
+
+    out = _Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    try:
+        speakers = botnoi_mod.list_speakers(token, v2=not args.v1)
+    except botnoi_mod.BotnoiError as exc:
+        print(f"could not list voices: {exc}  ({exc.detail})")
+        return 1
+
+    thai_male = [s for s in speakers if s.is_thai and s.is_male]
+    print(f"voices on the account : {len(speakers)}")
+    print(f"Thai, male            : {len(thai_male)}")
+    print()
+    for speaker in thai_male:
+        print(f"  {speaker.speaker_id:<6} {speaker.eng_name:<16} {speaker.thai_name:<16} "
+              f"price={speaker.price}")
+
+    if args.list_only:
+        print()
+        print("--list-only: nothing was synthesised.")
+        return 0
+
+    chosen = ([s for s in speakers if s.speaker_id in
+               {v.strip() for v in args.speakers.split(",") if v.strip()}]
+              if args.speakers else thai_male[: args.max])
+    if not chosen:
+        print()
+        print("No Thai male voices matched. Use --speakers with ids from the list above.")
+        return 1
+
+    print()
+    print(f"sentence: {COMPARISON_TEXT}")
+    print()
+
+    total_points = 0.0
+    monthly_left = 0.0
+    for speaker in chosen:
+        try:
+            generated = botnoi_mod.generate(
+                token, text=COMPARISON_TEXT, speaker=speaker.speaker_id,
+                language=cfg.botnoi_language, v2=not args.v1,
+                allowed_hosts=cfg.botnoi_audio_hosts,
+            )
+        except botnoi_mod.BotnoiError as exc:
+            print(f"  botnoi-{speaker.label():<22} FAILED  {exc}  ({exc.detail})")
+            continue
+
+        path = out / f"botnoi-{speaker.label()}.{generated.media_type}"
+        path.write_bytes(generated.audio)
+        total_points += generated.point
+        monthly_left = generated.monthly_point or monthly_left
+        # Host only. A presigned S3 link carries credentials in its query string.
+        print(f"  {path.name:<34} {len(generated.audio):>7} bytes  "
+              f"point={generated.point:g}  from={generated.host}")
+
+    # The voice already chosen, saying the same line, so the comparison is fair.
+    google_key = _secret("GOOGLE_TTS_API_KEY")
+    if google_key:
+        try:
+            speech = tts_mod.synthesize(
+                api_key=google_key, text=COMPARISON_TEXT, language_code=cfg.tts_language,
+                voice=cfg.tts_voice, encoding=cfg.tts_encoding, endpoint=cfg.tts_endpoint)
+            suffix = {"OGG_OPUS": "ogg", "MP3": "mp3", "LINEAR16": "wav"}.get(
+                cfg.tts_encoding, "bin")
+            path = out / f"google-{cfg.tts_voice}.{suffix}"
+            path.write_bytes(speech.audio)
+            pricing = Pricing.load(cfg.pricing_path)
+            cost = pricing.tts_cost(cfg.tts_voice_family, speech.billed_characters)
+            print(f"  {path.name:<34} {len(speech.audio):>7} bytes  ${cost:.6f}"
+                  f"  (production voice)")
+            store.record_training_usage(conn, job=JOB_BOTNOI_TRIAL, service="tts",
+                                        quantity=speech.billed_characters, unit="characters",
+                                        cost_usd=cost, note="google side of the comparison")
+        except tts_mod.TtsError as exc:
+            print(f"  google-{cfg.tts_voice:<27} FAILED  {exc.detail}")
+    else:
+        print("  (no GOOGLE_TTS_API_KEY, so no Google side to compare against)")
+
+    # Points, not dollars: what a Botnoi point costs is not something this code
+    # knows, so it is recorded in their unit and priced at zero rather than
+    # guessed at.
+    store.record_training_usage(conn, job=JOB_BOTNOI_TRIAL, service="botnoi",
+                               quantity=total_points, unit="points", cost_usd=0.0,
+                               note=f"{len(chosen)} voices; price per point unknown")
+
+    print()
+    print(f"Botnoi points used this run : {total_points:g}")
+    if monthly_left:
+        print(f"monthly points remaining    : {monthly_left:g}")
+    print("Recorded against the training ledger in POINTS — the price of a point is not")
+    print("something this code knows, so it is not converted to dollars. NOT the phone's $5.")
+    print()
+    print("Listen to them side by side:")
+    print(f"  scp \"poom@45.76.157.64:{out.resolve()}/*\" .")
+    print()
+    print(f"Production is unchanged: tts_provider={cfg.tts_provider}, voice={cfg.tts_voice}.")
+    return 0
 
 
 def _wake_samples(conn, cfg, args) -> int:
@@ -211,6 +330,17 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("training-usage", help="what has been spent building training data")
 
+    p = sub.add_parser("botnoi-voices",
+                       help="EXPERIMENT: Thai male voices from Botnoi, next to Google's, "
+                            "for a listening comparison. Does not change production.")
+    p.add_argument("--out", default="/tmp/tts-compare", help="where to write the audio")
+    p.add_argument("--max", type=int, default=6, help="how many Botnoi voices to try")
+    p.add_argument("--speakers", default="",
+                   help="comma-separated speaker ids, instead of auto-picking male Thai ones")
+    p.add_argument("--list-only", action="store_true",
+                   help="print the voices and synthesise nothing")
+    p.add_argument("--v1", action="store_true", help="use the classic v1 voice set")
+
     p = sub.add_parser("say", help="synthesise one line with the current voice, before and after "
                                    "the pronunciation dictionary, so both can be heard")
     p.add_argument("text")
@@ -253,7 +383,17 @@ def main(argv: list[str] | None = None) -> int:
             logging.getLogger("kiosk_broker").warning(
                 "no GOOGLE_TTS_API_KEY — /v1/tts will fail until one is configured")
 
-        httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key)
+        # Read but never logged. Only used when tts_provider is "botnoi", which
+        # it is not by default.
+        botnoi_token = _secret("BOTNOI_TOKEN") or ""
+        if cfg.tts_provider == "botnoi" and not botnoi_token:
+            logging.getLogger("kiosk_broker").error(
+                "tts_provider is 'botnoi' but BOTNOI_TOKEN is not set — /v1/tts will refuse")
+
+        logging.getLogger("kiosk_broker").info("tts provider=%s", cfg.tts_provider)
+
+        httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key,
+                            botnoi_token=botnoi_token)
         logging.getLogger("kiosk_broker").info(
             "listening on http://%s:%d model=%s budget=$%.2f/month",
             cfg.host, cfg.port, cfg.model, cfg.monthly_budget_usd,
@@ -384,6 +524,9 @@ def main(argv: list[str] | None = None) -> int:
             print("This is NOT the phone's $5 — separate table, separate ceiling, and")
             print("`usage` does not count it.")
             return 0
+
+        if args.cmd == "botnoi-voices":
+            return _botnoi_voices(conn, cfg, args)
 
         if args.cmd == "say":
             from pathlib import Path as _Path
