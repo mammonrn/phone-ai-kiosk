@@ -40,6 +40,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_HOME" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_MARGIN" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_WAIT" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_SILENCE" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE" />
             </intent-filter>

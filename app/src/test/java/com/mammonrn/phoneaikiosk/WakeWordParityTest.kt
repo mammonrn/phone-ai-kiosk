@@ -224,6 +224,75 @@ class WakeWordParityTest {
         subject.close()
     }
 
+    /**
+     * The versionCode 11 bug: the detector was reset after every interaction,
+     * and a reset empties the window the classifier reads.
+     *
+     * Sixteen 80 ms chunks have to arrive before a score exists at all — not a
+     * low score, NONE — so for 1.28 seconds a wake word was not missed, it was
+     * unheard. That is why "Hey Jarvis" so often had to be said twice. The fix
+     * is to feed silence rather than nothing, and this is the property that
+     * makes the fix safe: silence keeps the window full and never wakes it.
+     */
+    @Test
+    fun `silence keeps the detector warm without ever waking it`() {
+        assumeTrue("fixtures missing", haveFixtures())
+        val subject = detector(threshold = HeyJarvisDetector.DEFAULT_THRESHOLD)
+        val silence = ShortArray(HeyJarvisDetector.CHUNK)
+
+        var fired = false
+        var peak = 0f
+        repeat(60) {
+            if (subject.accept(silence, silence.size)) fired = true
+            peak = maxOf(peak, subject.lastScore)
+        }
+
+        assertTrue("silence must never wake the kiosk", !fired)
+        assertTrue("silence scored $peak", peak < 0.1f)
+        // AND THE POINT OF IT: the window is full, so the very next real chunk
+        // produces a score instead of nothing.
+        assertTrue("the detector should be warm after 60 chunks of silence",
+                   subject.warm)
+        assertEquals(HeyJarvisDetector.CLASSIFIER_FRAMES,
+                     minOf(subject.featureCount, HeyJarvisDetector.CLASSIFIER_FRAMES))
+        subject.close()
+    }
+
+    /** A reset is what made the kiosk deaf; this records how deaf. */
+    @Test
+    fun `a reset leaves the detector unable to score anything for sixteen chunks`() {
+        assumeTrue("fixtures missing", haveFixtures())
+        val subject = detector(threshold = 2f)
+        val samples = audio()
+
+        var at = 0
+        while (at + HeyJarvisDetector.CHUNK <= samples.size) {
+            subject.accept(samples.copyOfRange(at, at + HeyJarvisDetector.CHUNK),
+                           HeyJarvisDetector.CHUNK)
+            at += HeyJarvisDetector.CHUNK
+        }
+        assertTrue(subject.warm)
+
+        subject.reset()
+        assertEquals(0, subject.featureCount)
+        assertTrue("a reset detector cannot answer", !subject.warm)
+
+        // 1.28 seconds at 80 ms a chunk, during which no score exists at all.
+        repeat(HeyJarvisDetector.CLASSIFIER_FRAMES - 1) {
+            subject.accept(samples.copyOfRange(0, HeyJarvisDetector.CHUNK),
+                           HeyJarvisDetector.CHUNK)
+            assertTrue(!subject.warm)
+        }
+        subject.close()
+    }
+
+    @Test
+    fun `the default threshold is the one measured on the A07`() {
+        // Approved by Poom from measurement: 0.50 needed the wake word twice,
+        // 0.40 lands on the first call.
+        assertEquals(0.40f, HeyJarvisDetector.DEFAULT_THRESHOLD, 0f)
+    }
+
     private companion object {
         /** Our fixture writer emits a canonical 44-byte header. */
         const val WAV_HEADER = 44

@@ -97,6 +97,22 @@ class HeyJarvisDetector private constructor(
     var lastDetectionAt: Long = 0
         private set
 
+    /**
+     * How many 80 ms embeddings are in the window the classifier reads.
+     *
+     * Below CLASSIFIER_FRAMES the detector produces NO score at all — not a low
+     * one, none — so a wake word spoken then is not missed, it is unheard. That
+     * distinction is invisible from a score of 0.0, which is why this is
+     * reported.
+     */
+    val featureCount: Int get() = features.size
+
+    /** Whether a score from this detector means anything yet. */
+    val warm: Boolean get() = features.size >= CLASSIFIER_FRAMES && chunksSeen > WARMUP_CHUNKS
+
+    /** 80 ms chunks seen since the last reset, for the same reason. */
+    val chunksProcessed: Int get() = chunksSeen
+
     override val ready: Boolean = true
     override val state: String get() = "listening"
 
@@ -311,7 +327,23 @@ class HeyJarvisDetector private constructor(
         /** Room for one chunk plus the overlap, with slack. */
         const val RECENT_SAMPLES = 4096
 
-        const val DEFAULT_THRESHOLD = 0.5f
+        /**
+         * Measured on the A07 and approved by Poom, not chosen here.
+         *
+         * 0.50 needed "Hey Jarvis" said twice more often than not. At 0.40 one
+         * call lands reliably, at a distance of one to two metres. The
+         * false-wake side of that trade is now counted rather than assumed —
+         * see VoiceStats.falseWakeCandidates — so if 0.40 turns out to wake the
+         * kiosk at the television there will be a number saying so.
+         */
+        const val DEFAULT_THRESHOLD = 0.40f
+
+        /**
+         * Scores above this but below the threshold are worth a log line: they
+         * are the ones that say "it nearly heard you" rather than "nothing
+         * happened", and they are how a threshold gets chosen from evidence.
+         */
+        const val NEAR_MISS_FLOOR = 0.20f
 
         /** 2 s of chunks. One "Hey Jarvis" must wake the kiosk once, not six times. */
         const val DEFAULT_COOLDOWN_FRAMES = 25

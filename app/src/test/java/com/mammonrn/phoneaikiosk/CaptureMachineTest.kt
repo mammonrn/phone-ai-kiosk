@@ -174,6 +174,66 @@ class CaptureMachineTest {
  */
 class CaptureMachineTurnLockTest {
 
+    // ---- versionCode 12: the faster end-of-speech, and where a wake came from
+
+    @Test
+    fun `the default silence window is the shorter one`() {
+        // 1,200 ms was a fifth of the whole wait after a question, spent doing
+        // nothing. Changing this is a measurement, so it is written down.
+        assertEquals(900, CaptureMachine.DEFAULT_SILENCE_MILLIS)
+        assertEquals(900, CaptureMachine(frameMillis = 62).silenceMillis)
+    }
+
+    @Test
+    fun `the silence window is clamped to something sane`() {
+        val m = CaptureMachine(frameMillis = 62)
+        m.silenceMillis = 10
+        assertEquals("too short would cut people off mid-sentence", 300, m.silenceMillis)
+        m.silenceMillis = 99_999
+        assertEquals(3_000, m.silenceMillis)
+    }
+
+    @Test
+    fun `a shorter silence window really does end the capture sooner`() {
+        fun framesToFinish(silence: Int): Int {
+            val m = CaptureMachine(frameMillis = 62, silenceMillis = silence)
+            m.frames(60, 200)
+            m.onFrame(200, true)
+            m.frames(6, 200)            // the beep guard
+            m.frames(10, 9000)          // the question
+            var frames = 0
+            var step: CaptureMachine.Step = CaptureMachine.Step.CAPTURING
+            while (step == CaptureMachine.Step.CAPTURING && frames < 200) {
+                step = m.onFrame(200, false); frames += 1
+            }
+            assertEquals(CaptureMachine.Step.FINISHED, step)
+            return frames
+        }
+        assertTrue("900 ms must finish sooner than 1200 ms",
+                   framesToFinish(900) < framesToFinish(1_200))
+    }
+
+    @Test
+    fun `a capture knows whether the wake word started it`() {
+        val m = machine()
+        m.frames(20, 200)
+        m.onFrame(200, true)
+        assertTrue("a wake word started this one", m.startedByWakeWord)
+    }
+
+    @Test
+    fun `an adb armed capture is not counted as a wake`() {
+        val m = machine()
+        m.frames(20, 200)
+        m.arm()
+        m.onFrame(200, false)
+        // Only wake-started captures count towards false-wake candidates: a
+        // capture somebody armed over adb and then said nothing into says
+        // nothing at all about the wake word.
+        assertFalse(m.startedByWakeWord)
+    }
+
+
     private val frameMs = 62
     private val quiet = 100
     private val speech = 9000

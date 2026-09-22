@@ -27,6 +27,22 @@ class VoiceStats(context: Context) {
     private val turns = AtomicInteger(prefs.getInt(KEY_TURNS, 0))
     private val errors = AtomicInteger(prefs.getInt(KEY_ERRORS, 0))
 
+    /**
+     * Wakes that nobody followed with a question.
+     *
+     * THE CHEAPEST FALSE-WAKE EVIDENCE THERE IS, and it needs no observer. A
+     * detection followed by "no-speech-after-wake" is either the television
+     * saying something that sounded enough like the wake word, or a person who
+     * changed their mind. The second is rare; the first is what lowering the
+     * threshold to 0.40 risks. If this number climbs while nobody is in the
+     * room, 0.40 is too low, and that is an argument from a counter rather than
+     * from an impression.
+     */
+    private val falseWakeCandidates = AtomicInteger(prefs.getInt(KEY_FALSE_WAKE, 0))
+
+    /** Scores that came close to the threshold and did not reach it. */
+    private val nearMisses = AtomicInteger(prefs.getInt(KEY_NEAR_MISS, 0))
+
     fun recordWake() = bump(KEY_WAKES, wakes)
 
     /** Called when a human says "yes, that one was me". */
@@ -36,6 +52,16 @@ class VoiceStats(context: Context) {
 
     fun recordError() = bump(KEY_ERRORS, errors)
 
+    /** A wake with no question behind it. See the field. */
+    fun recordFalseWakeCandidate() = bump(KEY_FALSE_WAKE, falseWakeCandidates)
+
+    /** A score above the near-miss floor that did not reach the threshold. */
+    fun recordNearMiss() = bump(KEY_NEAR_MISS, nearMisses)
+
+    fun falseWakeCandidates(): Int = falseWakeCandidates.get()
+
+    fun nearMisses(): Int = nearMisses.get()
+
     private fun bump(key: String, counter: AtomicInteger) {
         prefs.edit().putInt(key, counter.incrementAndGet()).apply()
     }
@@ -44,9 +70,11 @@ class VoiceStats(context: Context) {
 
     fun reset() {
         wakes.set(0); confirmed.set(0); turns.set(0); errors.set(0)
+        falseWakeCandidates.set(0); nearMisses.set(0)
         prefs.edit()
             .putInt(KEY_WAKES, 0).putInt(KEY_CONFIRMED, 0)
             .putInt(KEY_TURNS, 0).putInt(KEY_ERRORS, 0)
+            .putInt(KEY_FALSE_WAKE, 0).putInt(KEY_NEAR_MISS, 0)
             .putLong(KEY_STARTED, System.currentTimeMillis())
             .apply()
     }
@@ -73,6 +101,10 @@ class VoiceStats(context: Context) {
             appendLine("  elapsed hours      : %.2f".format(hours))
             appendLine("  detections         : ${wakes.get()}")
             appendLine("  confirmed by human : ${confirmed.get()}")
+            appendLine("  woke, nobody spoke : ${falseWakeCandidates.get()}"
+                + "   <- false-wake candidates")
+            appendLine("  near misses        : ${nearMisses.get()}"
+                + "   <- heard, scored under the threshold")
             appendLine("  unconfirmed        : $unconfirmed")
             appendLine("  unconfirmed per 8h : %.2f   (target: at most 1)".format(perEightHours))
             appendLine("  completed turns    : ${turns.get()}")
@@ -88,6 +120,8 @@ class VoiceStats(context: Context) {
         const val KEY_CONFIRMED = "confirmed"
         const val KEY_TURNS = "turns"
         const val KEY_ERRORS = "errors"
+        const val KEY_FALSE_WAKE = "false_wake_candidates"
+        const val KEY_NEAR_MISS = "near_misses"
         const val KEY_STARTED = "started_at"
     }
 }

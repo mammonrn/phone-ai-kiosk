@@ -67,6 +67,20 @@ class VoiceService : Service() {
     /** Capture-thread only: whether the previous frame was during playback. */
     private var wasDeaf = false
 
+    /** Capture-thread only: the best score of the phrase being spoken now. */
+    private var bestScore = 0f
+    private var bestScoreAt = 0L
+    private var lastNearMissLog = 0L
+
+    /**
+     * A frame of nothing, reused.
+     *
+     * Fed to the detector while the kiosk is busy or talking, so its buffers
+     * stay warm without ever containing the kiosk's own voice. Allocated once:
+     * this is on the capture thread, sixteen times a second.
+     */
+    private val silence = ShortArray(Recorder.SAMPLE_RATE / 16)
+
     /** The wake acknowledgement beep. Created on first use, released on stop. */
     @Volatile
     private var tone: android.media.ToneGenerator? = null
@@ -163,30 +177,63 @@ class VoiceService : Service() {
                 // recorded the first answer.
                 val busy = machine.mode != CaptureMachine.Mode.LISTENING
                 val deaf = busy || android.os.SystemClock.elapsedRealtime() < hearingFrom.get()
-                if (deaf) {
-                    wasDeaf = true
-                } else if (wasDeaf) {
-                    wasDeaf = false
-                    detector.reset()
-                    // Not always "after speaking" — this also fires after a
-                    // cancelled capture, where nothing was said at all. Naming
-                    // the state rather than guessing the cause.
-                    Log.i(TAG, "listening again (mode=${machine.mode})")
-                }
 
-                val fired = !deaf && detector.ready && detector.accept(frame, read)
+                // SILENCE, NOT NOTHING. This used to skip the detector entirely
+                // while deaf and then reset() it on the way back — and reset
+                // empties the feature buffer, which needs SIXTEEN 80 ms chunks
+                // to refill. For 1.28 seconds afterwards the detector produced
+                // no score at all: a wake word spoken then was not missed, it
+                // was unheard. With the 700 ms settle on top, the kiosk was
+                // deaf for about two seconds after every single interaction,
+                // which is why "Hey Jarvis" so often had to be said twice.
+                //
+                // Feeding silence keeps every buffer full and advancing while
+                // still guaranteeing the kiosk's own voice never enters them —
+                // which was the entire point of not feeding it. When hearing
+                // resumes the window holds a quiet room, which is exactly what
+                // precedes a wake word in normal use.
+                val fired = if (deaf) {
+                    wasDeaf = true
+                    // The result is discarded on purpose: silence must not wake
+                    // anything. The call is for its effect on the buffers.
+                    if (detector.ready) detector.accept(silence, read)
+                    false
+                } else {
+                    if (wasDeaf) {
+                        wasDeaf = false
+                        // Naming the state rather than guessing the cause: this
+                        // also fires after a cancelled capture, where nothing
+                        // was said at all.
+                        Log.i(TAG, "listening again (mode=${machine.mode} " +
+                            "features=${(detector as? HeyJarvisDetector)?.featureCount ?: 0})")
+                    }
+                    detector.ready && detector.accept(frame, read)
+                }
                 (detector as? HeyJarvisDetector)?.let {
                     VoiceState.wakeScore = it.lastScore
                     VoiceState.detections = it.detections
+                    if (!deaf) noteScore(it)
                 }
                 if (fired) {
                     stats.recordWake()
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    // How long the phrase took to cross the line, measured from
+                    // the first frame that was clearly on its way. If this is
+                    // large the detector is hearing the word late, which is a
+                    // different problem from hearing it quietly.
+                    val climb = if (bestScoreAt > 0) now - bestScoreAt else 0
+                    val warm = (detector as? HeyJarvisDetector)?.warm ?: false
                     // The score, never the audio.
-                    Log.i(TAG, "wake word detected score=%.3f threshold=%.2f"
-                        .format(VoiceState.wakeScore, VoiceState.threshold))
+                    Log.i(TAG, "wake word detected score=%.3f threshold=%.2f "
+                        .format(VoiceState.wakeScore, VoiceState.threshold) +
+                        "best_before=%.3f climb_ms=%d warm=%s"
+                            .format(bestScore, climb, warm))
+                    clearScoreWatch()
                     // Something has to tell the person it heard them, or the
                     // only feedback is an answer several seconds later.
                     acknowledge()
+                    Log.i(TAG, "beep %d ms after the best score"
+                        .format(android.os.SystemClock.elapsedRealtime() - now + climb))
                 }
 
                 if (VoiceState.wakeOnly) {
@@ -231,6 +278,15 @@ class VoiceService : Service() {
                         buffer.reset()
                         VoiceState.stt = "idle"
                         VoiceState.lastCancel = machine.lastStopReason
+                        if (machine.startedByWakeWord &&
+                            machine.lastStopReason == "no-speech-after-wake") {
+                            // A wake with no question behind it. Either the
+                            // room said something that sounded like the wake
+                            // word, or somebody changed their mind. Counted so
+                            // that lowering the threshold to 0.40 can be judged
+                            // on evidence rather than on how it feels.
+                            stats.recordFalseWakeCandidate()
+                        }
                         VoiceState.heard = ""
                         VoiceState.reply = ""
                         // EVERY NUMBER NEEDED TO TELL THE TWO CASES APART.
@@ -244,7 +300,6 @@ class VoiceService : Service() {
                             "peak_while_waiting=${machine.peakWhileWaiting} " +
                             "margin=%.2f wait_ms=%d"
                                 .format(machine.speechMargin, machine.speechWaitMillis))
-                        detector.reset()
                         VoiceState.wake = if (detector.ready) "listening" else detector.state
                     }
 
@@ -252,12 +307,13 @@ class VoiceService : Service() {
                         recorder.appendPcm(buffer, frame, read)
                         val wav = recorder.wrapAsWav(buffer.toByteArray())
                         buffer.reset()
+                        val captureEndedAt = android.os.SystemClock.elapsedRealtime()
                         Log.i(TAG, "capture finished reason=${machine.lastStopReason} " +
-                            "bytes=${wav.size}")
+                            "bytes=${wav.size} silence_ms=${machine.silenceMillis}")
                         VoiceState.wake = if (detector.ready) "listening" else detector.state
                         // Straight to the other executor. This loop must not
                         // wait for the network.
-                        network.execute { runTurn(wav) }
+                        network.execute { runTurn(wav, captureEndedAt) }
                     }
                 }
                 true
@@ -273,7 +329,7 @@ class VoiceService : Service() {
     }
 
     /** Runs on the network executor. Never reads the microphone. */
-    private fun runTurn(wav: ByteArray) {
+    private fun runTurn(wav: ByteArray, captureEndedAt: Long) {
         val token = TokenStore(this).token()
         VoiceState.hasToken = token != null
         if (token == null) {
@@ -298,7 +354,12 @@ class VoiceService : Service() {
         try {
             val (outcome, conversationId) = pipeline.run(wav, VoiceState.conversationId)
             VoiceState.conversationId = conversationId
-            Log.i(TAG, "turn finished outcome=$outcome")
+            // ONE LINE WITH THE WHOLE WAIT IN IT, measured from the moment the
+            // person stopped talking — which is when they start waiting, and is
+            // not the same as when this class started working. The silence
+            // window is part of it and is the only part spent doing nothing.
+            Log.i(TAG, "turn finished outcome=$outcome " +
+                "since_capture_end_ms=${android.os.SystemClock.elapsedRealtime() - captureEndedAt}")
 
             when (outcome) {
                 TurnPipeline.Outcome.COMPLETED, TurnPipeline.Outcome.SPOKEN_LOCALLY -> {
@@ -319,7 +380,11 @@ class VoiceService : Service() {
             // back, or the kiosk goes deaf for good and looks like the wake
             // word stopped working.
             machine.turnFinished()
-            detector.reset()
+            // NO detector.reset() HERE. The detector was fed silence for the
+            // whole turn, so it holds nothing of the answer that was just
+            // spoken — and resetting would empty the window it needs, leaving
+            // the kiosk deaf for the 1.28 seconds right after an answer, which
+            // is exactly when somebody is most likely to speak again.
             VoiceState.wake = if (detector.ready) "listening" else detector.state
         }
     }
@@ -339,8 +404,13 @@ class VoiceService : Service() {
         writer.println("  deaf-for-ms  : ${if (deafFor > 0) deafFor else 0}")
         writer.println("  speech-floor : ${machine.speechThreshold} " +
             "(ambient ${machine.ambientLevel()}, room now ${machine.currentRoomLevel()})")
-        writer.println("  wake-tuning  : margin %.2f  wait %d ms  (adb, resets on restart)"
-            .format(machine.speechMargin, machine.speechWaitMillis))
+        writer.println("  wake-tuning  : margin %.2f  wait %d ms  silence %d ms"
+            .format(machine.speechMargin, machine.speechWaitMillis, machine.silenceMillis)
+            + "  (adb, resets on restart)")
+        val heyJarvis = detector as? HeyJarvisDetector
+        writer.println("  detector-warm: ${heyJarvis?.warm ?: false} "
+            + "(features ${heyJarvis?.featureCount ?: 0}/${HeyJarvisDetector.CLASSIFIER_FRAMES}, "
+            + "chunks ${heyJarvis?.chunksProcessed ?: 0})")
         writer.println("  peak-waiting : ${machine.peakWhileWaiting}")
         writer.println()
         writer.println("microphone")
@@ -422,6 +492,50 @@ class VoiceService : Service() {
             return null
         }
         return MapsLauncher.spokenFailure(result)
+    }
+
+    /**
+     * Watches scores that do not quite make it.
+     *
+     * A miss and a blind spot look identical from outside — both are silence —
+     * so this separates them. A near miss says the detector heard the phrase
+     * and scored it below the bar, which is an argument about the threshold. No
+     * score at all while `warm` is false says the detector was not able to
+     * answer yet, which is an argument about something else entirely.
+     *
+     * Rate limited: this runs sixteen times a second and a log line per frame
+     * would bury everything else.
+     */
+    private fun noteScore(detector: HeyJarvisDetector) {
+        val score = detector.lastScore
+        if (score < HeyJarvisDetector.NEAR_MISS_FLOOR) {
+            // Far enough below to be room noise. If the climb has gone quiet,
+            // forget it so the next phrase is measured from its own start.
+            if (bestScoreAt > 0 &&
+                android.os.SystemClock.elapsedRealtime() - bestScoreAt > CLIMB_FORGET_MILLIS) {
+                clearScoreWatch()
+            }
+            return
+        }
+
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (score > bestScore) {
+            bestScore = score
+            bestScoreAt = now
+        }
+        if (score >= detector.threshold) return          // about to fire; not a miss
+
+        if (now - lastNearMissLog < NEAR_MISS_LOG_INTERVAL_MILLIS) return
+        lastNearMissLog = now
+        stats.recordNearMiss()
+        Log.i(TAG, "wake near miss score=%.3f threshold=%.2f warm=%s features=%d chunks=%d"
+            .format(score, detector.threshold, detector.warm,
+                    detector.featureCount, detector.chunksProcessed))
+    }
+
+    private fun clearScoreWatch() {
+        bestScore = 0f
+        bestScoreAt = 0
     }
 
     /**
@@ -587,6 +701,19 @@ class VoiceService : Service() {
             return machine.speechMargin
         }
 
+        /**
+         * How long a pause ends the question. Returns what is now in force.
+         *
+         * The one piece of the wait between a question ending and an answer
+         * starting that is pure doing-nothing, so it is the first place to look
+         * for a faster kiosk — and the easiest to make too short.
+         */
+        fun setSilenceWindow(millis: Int): Int {
+            val machine = liveMachine?.get() ?: return -1
+            machine.silenceMillis = millis
+            return machine.silenceMillis
+        }
+
         /** Returns the wait actually in force, which may have been clamped. */
         fun setSpeechWait(millis: Int): Int {
             val machine = liveMachine?.get() ?: return -1
@@ -610,6 +737,12 @@ class VoiceService : Service() {
          * that; short enough that somebody who replies immediately is heard.
          */
         const val SETTLE_MILLIS = 700L
+
+        /** At most one near-miss line a second; this runs sixteen times. */
+        const val NEAR_MISS_LOG_INTERVAL_MILLIS = 1_000L
+
+        /** How long a rising score stays interesting before it is a new phrase. */
+        const val CLIMB_FORGET_MILLIS = 2_000L
 
         /**
          * The ceiling on how long the detector stays deaf if playback never

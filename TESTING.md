@@ -537,7 +537,7 @@ trigger สั่งจึงถูกต่อคิวหลังงานท
 ผู้ช่วยชื่อ **จาร์วิส** คำปลุกคือ **"Hey Jarvis"** (ภาษาอังกฤษ เพราะโมเดลเป็น
 pretrained ของ openWakeWord) ทุกอย่างรันบนเครื่อง ไม่มีเสียงออกจากห้องก่อนเจอคำปลุก
 
-### ขั้น 0 — ติดตั้ง versionCode 11
+### ขั้น 0 — ติดตั้ง versionCode 12
 
 ```powershell
 adb install -r -t app-debug.apk
@@ -548,7 +548,7 @@ adb install -r -t app-debug.apk
 ```powershell
 adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | Select-String versionCode
 ```
-ต้องเห็น `versionCode=11`
+ต้องเห็น `versionCode=12`
 
 ### ขั้น 1 — detector โหลดโมเดลได้จริงไหม
 
@@ -560,7 +560,7 @@ adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.
 
 ```
   detector   : hey_jarvis
-  score      : 0.0000  (threshold 0.50)
+  score      : 0.0000  (threshold 0.40)
   detections : 0
   deaf-for-ms  : 0
 ```
@@ -610,7 +610,7 @@ adb logcat -s KioskStats:I -d | Select-Object -Last 3
 ```
 
 ต้องเห็น `wake threshold now 0.4` · ค่าถูกบีบอยู่ในช่วง 0.01–0.999
-และ **กลับเป็น 0.5 เมื่อรีสตาร์ต service** (ตั้งใจ: ค่าที่ปรับระหว่างวัดต้องไม่
+และ **กลับเป็น 0.40 (ค่าเริ่มต้นใหม่) เมื่อรีสตาร์ต service** (ตั้งใจ: ค่าที่ปรับระหว่างวัดต้องไม่
 กลายเป็นค่าถาวรโดยไม่มีใครตัดสินใจ)
 
 ### ขั้น 5 — โหมดทดสอบคำปลุกอย่างเดียว แล้ววัด 20 ครั้งที่ 3 เมตร
@@ -1129,6 +1129,111 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE `
 ✅ **การสลับทุกแบบไม่เปิด AudioRecord ซ้อน** — คำสั่ง adb แค่ตั้งธง เธรดที่ถือไมค์
 เป็นคนปิดตัวเก่าแล้วเปิดตัวใหม่ทีละอัน มีเทสต์นับจำนวนที่เปิดพร้อมกันยืนยัน
 (`switching the source never leaves two microphones open`)
+
+## 🔴 versionCode 12 — ทำไมต้องพูดสองครั้ง และทำไมช้า
+
+### สาเหตุของ "ต้องพูดสองครั้ง" ✅ คำนวณจากโค้ดได้ตรงๆ
+
+`detector.reset()` ถูกเรียกทุกครั้งที่กลับมาฟัง และ reset **ล้าง feature buffer ทิ้ง**
+
+classifier อ่าน **16 embedding ย้อนหลัง** และได้ 1 embedding ต่อ 80 ms
+→ หลัง reset ต้องรอ **16 × 80 = 1,280 ms ถึงจะมีคะแนนออกมาเลยสักค่า**
+ไม่ใช่คะแนนต่ำ แต่**ไม่มีคะแนนเลย** บวก settle 700 ms = **เงียบสนิทราว 2 วินาที
+หลังทุกครั้งที่ใช้งาน** พูดตอนนั้นคือพูดใส่เครื่องที่ยังไม่ตื่น
+
+**แก้:** ป้อน**ความเงียบ**ให้ detector แทนการไม่ป้อนอะไรเลย บัฟเฟอร์จึงเต็มและ
+เดินหน้าตลอด โดย**เสียงของจาร์วิสเองไม่เคยเข้าไป** ซึ่งเป็นเหตุผลเดียวที่เคยไม่ป้อน
+— ไม่ต้อง reset อีกต่อไป
+
+### threshold เป็น 0.40 ถาวรแล้ว
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "threshold|detector-warm"
+```
+ต้องเห็น `(threshold 0.40)` **หลังรีสตาร์ต service ด้วย** (ไม่ใช่ค่าที่ตั้งผ่าน adb ค้างอยู่):
+```powershell
+adb shell am force-stop com.mammonrn.phoneaikiosk.debug
+adb shell am start -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.MainActivity
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "threshold"
+```
+
+และต้องเห็น `detector-warm: true (features 16/16, ...)` ตอนอยู่เฉยๆ
+**ถ้าเป็น false ตอนไม่ได้ทำอะไร แปลว่ามีอะไรยัง reset อยู่ — บอกผม**
+
+### ตรวจว่าพูดครั้งเดียวติด
+
+```powershell
+adb logcat -c
+```
+ถาม-ตอบให้จบหนึ่งรอบ **แล้วพูด "Hey Jarvis" อีกครั้งทันทีหลังจาร์วิสพูดจบ**
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "listening again|wake word detected|near miss"
+```
+`listening again (mode=LISTENING features=16)` — **features ต้องเป็น 16 ไม่ใช่ 0**
+
+### log near-miss — ตัวที่บอกว่าควรลด threshold อีกไหม
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "near miss"
+```
+```
+wake near miss score=0.312 threshold=0.40 warm=true features=16 chunks=812
+```
+
+| อ่านยังไง | แปลว่า |
+|---|---|
+| near miss เยอะ score 0.30–0.39 | ยังลด threshold ได้อีก **แต่ดูตัวนับ false-wake ก่อน** |
+| ไม่มี near miss เลยตอนที่พูดแล้วไม่ติด | detector ไม่ได้ยินเลย ไม่ใช่เรื่อง threshold — ดู `warm` |
+| `warm=false` | บัฟเฟอร์ยังไม่เต็ม **นั่นคือบั๊กที่เพิ่งแก้ ถ้ายังเจอให้บอกผม** |
+
+บรรทัดตอนปลุกติดมีเวลาด้วย:
+```
+wake word detected score=0.726 threshold=0.40 best_before=0.726 climb_ms=180 warm=true
+beep 12 ms after the best score
+```
+
+### ตัวนับ false-wake candidate
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_STATS `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver
+adb logcat -s KioskStats:I -d | Select-String "woke, nobody spoke|near misses|detections"
+```
+```
+  detections         : 14
+  woke, nobody spoke : 2   <- false-wake candidates
+  near misses        : 31  <- heard, scored under the threshold
+```
+
+**`woke, nobody spoke` คือหลักฐานว่า 0.40 ต่ำไปหรือยัง** — ปลุกติดแล้วไม่มีใครถาม
+แปลว่าทีวีหรือเสียงห้องผ่านเกณฑ์ **ถ้าเลขนี้ไต่ขึ้นตอนไม่มีคนอยู่ในห้อง 0.40 ต่ำไป**
+นับเฉพาะที่ปลุกด้วยเสียงจริง ไม่นับที่สั่งผ่าน adb
+
+### ลด delay หลังพูดจบ
+
+เวลารอความเงียบ **ลดจาก 1,200 → 900 ms** = เร็วขึ้น 300 ms ทุกรอบ และเป็นส่วนเดียว
+ในความหน่วงที่**ไม่ได้ทำอะไรเลย** (ที่เหลือเป็น STT/chat/TTS ซึ่งอยู่ที่ผู้ให้บริการ)
+
+ดูเวลารวมจากตอนพูดจบ:
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "capture finished|turn finished"
+```
+```
+capture finished reason=end-of-speech bytes=... silence_ms=900
+turn finished outcome=COMPLETED since_capture_end_ms=3980
+```
+`since_capture_end_ms` คือเวลาที่คุณรอจริงตั้งแต่หยุดพูด
+
+ลองสั้นกว่านี้ได้ (บีบอยู่ในช่วง 300–3000 ms):
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_SILENCE `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver --es value 700
+```
+🔶 **ต่ำกว่า 700 ms เริ่มเสี่ยงตัดคนที่เว้นจังหวะกลางประโยค** ถ้าลดแล้วเจอคำถามขาดกลาง
+ให้เพิ่มกลับ ค่านี้หายเมื่อ restart
 
 ## สรุปคำสั่งตรวจสถานะ
 

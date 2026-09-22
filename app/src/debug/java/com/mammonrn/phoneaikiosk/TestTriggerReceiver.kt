@@ -60,6 +60,16 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }
             }
 
+            ACTION_SET_SILENCE -> {
+                val value = intent.getStringExtra("value")?.toIntOrNull()
+                if (value == null) {
+                    android.util.Log.i("KioskStats", "silence unchanged: pass --es value 900")
+                } else {
+                    android.util.Log.i("KioskStats",
+                                       "silence window now ${VoiceService.setSilenceWindow(value)} ms")
+                }
+            }
+
             ACTION_AUDIO_EFFECT -> {
                 // One effect at a time, on purpose: turning two on together and
                 // seeing an improvement says nothing about which one did it.
@@ -152,6 +162,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
         const val ACTION_SET_MARGIN = "com.mammonrn.phoneaikiosk.TEST_SET_MARGIN"
         const val ACTION_SET_WAIT = "com.mammonrn.phoneaikiosk.TEST_SET_WAIT"
+        const val ACTION_SET_SILENCE = "com.mammonrn.phoneaikiosk.TEST_SET_SILENCE"
         const val ACTION_AUDIO_EFFECT = "com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT"
         const val ACTION_AUDIO_SOURCE = "com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE"
     }

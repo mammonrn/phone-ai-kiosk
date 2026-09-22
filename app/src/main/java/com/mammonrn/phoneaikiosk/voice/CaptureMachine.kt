@@ -44,7 +44,7 @@ package com.mammonrn.phoneaikiosk.voice
 class CaptureMachine(
     private val frameMillis: Int,
     private val maxCaptureMillis: Int = 12_000,
-    private val silenceMillis: Int = 1_200,
+    silenceMillis: Int = DEFAULT_SILENCE_MILLIS,
     /**
      * The floor under the adaptive threshold. A silent room must not make the
      * machine so sensitive that its own hiss counts as speech.
@@ -112,6 +112,30 @@ class CaptureMachine(
         set(value) {
             field = value.coerceIn(500, 10_000)
         }
+
+    /**
+     * How long a pause has to last before the question counts as finished.
+     *
+     * The single biggest piece of delay this side of the network: it is pure
+     * waiting, after the person has already stopped talking. Adjustable over
+     * adb so the shortest value that does not cut people off can be found in
+     * the room rather than guessed here.
+     */
+    @Volatile
+    var silenceMillis: Int = silenceMillis
+        set(value) {
+            field = value.coerceIn(300, 3_000)
+        }
+
+    /**
+     * Whether the capture in progress was started by the wake word rather than
+     * by the adb trigger.
+     *
+     * Only the first kind counts towards false-wake candidates: an adb-armed
+     * capture that nobody spoke into says nothing about the wake word.
+     */
+    var startedByWakeWord: Boolean = false
+        private set
 
     private var armed = false
     private var elapsed = 0
@@ -194,6 +218,7 @@ class CaptureMachine(
         if (mode == Mode.LISTENING) {
             rememberPeak(peak)
             if (!armed && !wakeWordFired) return Step.IDLE
+            startedByWakeWord = !armed && wakeWordFired
             armed = false
             mode = Mode.CAPTURING
             elapsed = 0
@@ -350,6 +375,18 @@ class CaptureMachine(
     }
 
     companion object {
+        /**
+         * How long a pause has to be before the question is over.
+         *
+         * Was 1,200 ms, which is a fifth of the whole wait between finishing a
+         * question and hearing an answer — and unlike the network part it is
+         * spent doing nothing at all. 900 ms still leaves room for the pause in
+         * the middle of a Thai sentence, and takes 300 ms off every single turn.
+         * Adjustable over adb; the value that is right here is a measurement,
+         * not a preference.
+         */
+        const val DEFAULT_SILENCE_MILLIS = 900
+
         /**
          * 2.5x amplitude, about 8 dB above the room. Above a television at
          * conversational volume and under a person addressing the kiosk.
