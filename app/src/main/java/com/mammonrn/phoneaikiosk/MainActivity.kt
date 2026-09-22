@@ -158,9 +158,29 @@ class MainActivity : Activity() {
 
             dashboardThread.execute {
                 val token = TokenStore(this@MainActivity).token()
-                val attempt = if (token.isNullOrEmpty()) null else runCatching {
-                    Broker(VoiceState.brokerBaseUrl, token)
-                        .dashboard(fix?.first, fix?.second)
+                val broker = if (token.isNullOrEmpty()) null
+                             else Broker(VoiceState.brokerBaseUrl, token)
+                var attempt = broker?.let {
+                    runCatching { it.dashboard(fix?.first, fix?.second) }
+                }
+
+                // A BROKER THAT HAS NOT BEEN DEPLOYED YET ROUTES ON THE PATH
+                // ALONE. Before this phase its handler compared self.path to
+                // "/v1/dashboard" exactly, so the moment a query string is
+                // appended the route stops matching and the answer is 404 —
+                // checked against the live host, which returns 401 without the
+                // query string and 404 with it.
+                //
+                // The APK lands over adb in seconds and the VPS is a separate
+                // step by hand afterwards, so without this the kiosk sits on
+                // "กำลังโหลด…" in every window until somebody SSHes in. One
+                // retry without the position covers that gap: the weather is
+                // the fallback town's for a while, which is what it was for
+                // the whole of the last phase anyway, and everything else is
+                // correct. Costs one extra request a minute and only while the
+                // first one is failing.
+                if (attempt?.isFailure == true && fix != null) {
+                    attempt = broker?.let { runCatching { it.dashboard() } }
                 }
                 // Whether it worked, and nothing else. NOT the payload: it is
                 // a few hundred bytes of numbers today, and a log line that
