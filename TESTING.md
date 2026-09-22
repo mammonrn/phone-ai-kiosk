@@ -537,7 +537,7 @@ trigger สั่งจึงถูกต่อคิวหลังงานท
 ผู้ช่วยชื่อ **จาร์วิส** คำปลุกคือ **"Hey Jarvis"** (ภาษาอังกฤษ เพราะโมเดลเป็น
 pretrained ของ openWakeWord) ทุกอย่างรันบนเครื่อง ไม่มีเสียงออกจากห้องก่อนเจอคำปลุก
 
-### ขั้น 0 — ติดตั้ง versionCode 10
+### ขั้น 0 — ติดตั้ง versionCode 11
 
 ```powershell
 adb install -r -t app-debug.apk
@@ -548,7 +548,7 @@ adb install -r -t app-debug.apk
 ```powershell
 adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | Select-String versionCode
 ```
-ต้องเห็น `versionCode=10`
+ต้องเห็น `versionCode=11`
 
 ### ขั้น 1 — detector โหลดโมเดลได้จริงไหม
 
@@ -955,6 +955,180 @@ while ($true) {
 | `level` ขยับตามเสียง | ✅ ไมค์ทำงาน — ลองพูด "Hey Jarvis" ได้เลย |
 | `level` ค้างที่ 0 หรือใกล้ 0 ตลอด | 🔴 Android ปิดไมค์ให้ **ส่ง output มา ผมจะหาทางแก้** |
 | `mic` เป็น `error` | service โดนหยุด — ส่ง `adb logcat -s KioskVoice:I -d` มาด้วย |
+
+## 🔴 บั๊กที่แก้ใน versionCode 11 — เรียกแล้วถามทันทีแต่ถูกยกเลิก
+
+**สาเหตุ ✅ ยืนยันจากโค้ดและเลขใน log ของคุณ:** `9742 × 2.5 = 24355` ตรงเป๊ะ
+แปลว่าเลขคณิตถูก แต่ **ambient = 9742 เองคือความผิด** — นั่นคือ ~30% ของสเกลเต็ม
+ซึ่งเป็นระดับ**คนพูดติดไมค์ ไม่ใช่เสียงห้อง**
+
+โค้ดเดิมอัปเดต ambient ทุกเฟรมที่ฟังอยู่ **รวมเฟรมที่มีเสียง "Hey Jarvis" เอง**
+และคำปลุกถูกตรวจพบ**ตอนจบประโยค** ค่า ambient จึงถูกดันขึ้นไปเท่าความดังของคำปลุก
+ก่อนจะถูกใช้ตั้งเกณฑ์ → **คำปลุกยิ่งดังชัด เกณฑ์ยิ่งสูง จนคำถามปกติผ่านไม่ได้**
+(0.958 → ambient 9742, 0.502 → ambient 8501 สอดคล้องกัน)
+
+**แก้แล้ว:** วัดห้องจากเฟรมที่อยู่**ก่อน**คำปลุก (ข้ามย้อนหลัง ~2 วินาที) ใช้
+**median** ไม่ใช่ค่าเฉลี่ย (ประตูกระแทกทีเดียวไม่ขยับ median) · กันเสียงบี๊บ
+300 ms แรก · ขยายเวลารอเป็น 3.5 วินาที นับจาก**หลังบี๊บจบ**
+
+### ตรวจว่าหายจริง
+
+```powershell
+adb logcat -c
+```
+พูด **"Hey Jarvis"** รอบี๊บ แล้วถาม **"พาไปเซ็นทรัลเชียงราย"**
+
+```powershell
+adb logcat -s KioskVoice:I -d | Select-String "capture started|capture cancelled|stt ok"
+```
+
+ต้องเห็น `capture started ambient=... threshold=...` โดย **ambient ควรเป็นหลักร้อย
+ไม่ใช่หลักพันปลายๆ** และต้อง**ไม่เห็น** `capture cancelled`
+
+ถ้ายังถูกยกเลิก บรรทัด cancelled มีทุกอย่างที่ต้องใช้วินิจฉัย:
+```
+capture cancelled reason=no-speech-after-wake ambient=250 threshold=2000 peak_while_waiting=1800 margin=2.50 wait_ms=3500
+```
+
+| อ่านยังไง | แปลว่า | แก้ยังไง |
+|---|---|---|
+| `peak_while_waiting` ใกล้ `threshold` | **มีคนพูด แต่เบาไปนิดเดียว** | ลด margin (ขั้นถัดไป) |
+| `peak_while_waiting` ใกล้ `ambient` | ไม่มีใครพูดจริง | ปกติ ไม่ต้องแก้ |
+| `ambient` สูงผิดปกติ (>3000) | ห้องดังจริง หรือยังมีเสียงปนเข้ามา | ส่ง log มาให้ผม |
+
+### ปรับ margin และเวลารอชั่วคราว
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_MARGIN `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver --es value 1.8
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_WAIT `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver --es value 5000
+adb logcat -s KioskStats:I -d | Select-Object -Last 2
+```
+ค่าถูกบีบอยู่ในช่วง margin 1.2–10 และ wait 500–10000 ms
+**ทั้งคู่กลับเป็นค่าเริ่มต้นเมื่อ service restart** ตั้งใจให้เป็นแบบนั้น
+
+ยืนยันจาก dumpsys:
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "speech-floor|wake-tuning|peak-waiting"
+```
+
+### ตรวจว่าเรียกแล้วเงียบยังถูกยกเลิกอยู่ (ต้องไม่เสียเงิน)
+
+พูด "Hey Jarvis" แล้วเงียบเลย → ต้องเห็น `capture cancelled` และ**ต้องไม่เห็น `stt ok`**
+
+## ตัวช่วยเสียงของไมค์ — ทดลองบน A07
+
+🔴 **ทั้งสามตัวปิดเป็นค่าเริ่มต้น และจะไม่เปลี่ยนจนกว่าคุณจะวัดแล้วอนุมัติ**
+สวิตช์ทั้งหมดหายเมื่อ service restart
+
+### ขั้น A0 — ดูว่าเครื่องรองรับตัวไหนบ้าง
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String -Context 0,6 "microphone"
+```
+
+ควรเห็น:
+```
+microphone
+  source       : voice_recognition  (requested voice_recognition)
+  asked for    : echo=off noise=off gain=off
+  echo-canceler: not available on this device
+  noise-suppressor: off
+  auto-gain: off
+  (all adb switches reset when the service restarts)
+```
+
+**`not available on this device` คือคำตอบที่มีความหมาย** — ถ้า A07 ไม่มีตัวไหน
+ก็ไม่ต้องเสียเวลาทดสอบตัวนั้น ส่ง output นี้มาให้ผมด้วย
+
+### ขั้น A1 — Echo Canceler ก่อน (ตัวที่มีเหตุผลชัดที่สุด)
+
+kiosk เล่นเสียงตอบของตัวเองเข้าไมค์ตัวเอง echo canceler จึงเป็นตัวที่**มีเหตุผล
+ทางทฤษฎีชัดที่สุด**ว่าจะช่วย
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es name echo --es value on
+adb logcat -s KioskStats:I -d | Select-Object -Last 1
+```
+ต้องเห็น `audio effects now echo=on noise=off gain=off`
+
+ยืนยันว่า**ติดจริง** ไม่ใช่แค่ขอไว้:
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "echo-canceler"
+```
+ต้องเป็น `echo-canceler: ON` — ถ้าเป็น `off` ทั้งที่ available แปลว่าสร้างไม่สำเร็จ **บอกผม**
+
+แล้ววัดสามอย่าง **ทีละอย่าง อย่าเปลี่ยนสองตัวพร้อมกัน**:
+
+| วัดอะไร | ทำยังไง | ดูที่ไหน |
+|---|---|---|
+| คำปลุกยังติดไหม | เปิดโหมด wake-only พูด 10 ครั้ง | `detections` |
+| ปลุกตัวเองไหม | ถามอะไรยาวๆ ฟังคำตอบจนจบ | ไม่ควรมี `wake word detected` ระหว่างพูด |
+| คำถามยังผ่านไหม | ถามปกติ 5 ครั้ง | ไม่ควรมี `capture cancelled` |
+
+**จดตัวเลขไว้เทียบกับตอนปิด** ถ้าไม่ดีขึ้นให้ปิดกลับ:
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es name echo --es value off
+```
+
+### ขั้น A2 — Noise Suppressor (ทำหลัง A1 เสร็จแล้วเท่านั้น)
+
+🔶 **ตัวนี้อาจทำให้แย่ลง** openWakeWord เทรนด้วยเสียงที่**ไม่ได้ผ่าน** noise
+suppression การลดเสียงรบกวนที่ฟังดีขึ้นสำหรับหู อาจทำให้คะแนนคำปลุกตกก็ได้
+ต้องวัด ไม่ใช่เดา
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es name noise --es value on
+```
+แล้ววัดสามอย่างเดิม **เทียบกับตัวเลขตอนปิด** โดยเฉพาะ **คะแนนคำปลุก** —
+ถ้า score ตกลงชัดเจน ปิดทิ้งเลย
+
+### ขั้น A3 — Auto Gain (ทางเลือก คาดว่าจะแย่ลง)
+
+🔶 auto-gain ดันเสียงห้องเงียบให้ดังเท่าเสียงคน ซึ่งเป็น**สิ่งตรงข้าม**กับที่
+ขั้นตอนแยกเสียงพูดต้องการ ลองได้แต่ผมคาดว่าจะทำให้ `capture cancelled` บ่อยขึ้น
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es name gain --es value on
+```
+
+### ขั้น A4 — สลับ audio source
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es name voice_communication
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "source"
+```
+ต้องเห็น `source : voice_communication (requested voice_communication)`
+
+🔶 `voice_communication` คือเส้นทางโทรศัพท์ มักมาพร้อม echo cancel + ลดเสียงรบกวน
+แบบหนักไม่ว่าจะขอหรือไม่ — อาจดีมากสำหรับ kiosk ที่คุยกับตัวเอง หรืออาจประมวลผล
+หนักจนคำปลุกจำไม่ได้ **วัดคะแนนคำปลุกด้วยโหมด wake-only เป็นอย่างแรก**
+
+กลับค่าเดิม:
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es name voice_recognition
+```
+
+✅ **การสลับทุกแบบไม่เปิด AudioRecord ซ้อน** — คำสั่ง adb แค่ตั้งธง เธรดที่ถือไมค์
+เป็นคนปิดตัวเก่าแล้วเปิดตัวใหม่ทีละอัน มีเทสต์นับจำนวนที่เปิดพร้อมกันยืนยัน
+(`switching the source never leaves two microphones open`)
 
 ## สรุปคำสั่งตรวจสถานะ
 

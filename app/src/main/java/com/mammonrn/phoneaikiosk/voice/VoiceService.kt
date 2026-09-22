@@ -79,6 +79,8 @@ class VoiceService : Service() {
         speaker = Speaker(this).also { it.warmUp() }
         machine = CaptureMachine(frameMillis = recorder.frameSamples * 1000 / Recorder.SAMPLE_RATE)
         liveDetector = java.lang.ref.WeakReference(detector as? HeyJarvisDetector)
+        liveMachine = java.lang.ref.WeakReference(machine)
+        liveRecorder = java.lang.ref.WeakReference(recorder)
         VoiceState.detector = if (detector.ready) DETECTOR_NAME else detector.state
         VoiceState.threshold = (detector as? HeyJarvisDetector)?.threshold ?: 0f
         VoiceState.hasToken = TokenStore(this).hasToken()
@@ -127,6 +129,10 @@ class VoiceService : Service() {
      */
     private fun captureLoop() {
         VoiceState.mic = "open"
+        // Status only: which source, which effects. No audio, no levels beyond
+        // the peak the status line already shows.
+        Log.i(TAG, "microphone source=${AudioHelpers.sourceName(recorder.requestedSource)} " +
+            "${recorder.helpers.requested()}")
         VoiceState.wake = if (detector.ready) "listening" else detector.state
         Log.i(TAG, "capture loop started")
 
@@ -162,7 +168,10 @@ class VoiceService : Service() {
                 } else if (wasDeaf) {
                     wasDeaf = false
                     detector.reset()
-                    Log.i(TAG, "listening again after speaking")
+                    // Not always "after speaking" — this also fires after a
+                    // cancelled capture, where nothing was said at all. Naming
+                    // the state rather than guessing the cause.
+                    Log.i(TAG, "listening again (mode=${machine.mode})")
                 }
 
                 val fired = !deaf && detector.ready && detector.accept(frame, read)
@@ -195,7 +204,12 @@ class VoiceService : Service() {
                     CaptureMachine.Step.STARTED -> {
                         buffer.reset()
                         VoiceState.stt = "recording"
-                        Log.i(TAG, "capture started")
+                        // Logged at the start as well, so the calibration is
+                        // visible on the turns that WORK, not only the ones
+                        // that fail. A threshold that is quietly drifting up is
+                        // easier to catch before it cancels anything.
+                        Log.i(TAG, "capture started ambient=${machine.ambientLevel()} " +
+                            "threshold=${machine.speechThreshold}")
                         // If Maps is on top, saying the wake word should bring
                         // the kiosk back so the person can see what it heard.
                         // Only then: calling this on every capture would be a
@@ -219,8 +233,17 @@ class VoiceService : Service() {
                         VoiceState.lastCancel = machine.lastStopReason
                         VoiceState.heard = ""
                         VoiceState.reply = ""
+                        // EVERY NUMBER NEEDED TO TELL THE TWO CASES APART.
+                        // "The room was silent" and "the bar was set too high"
+                        // look identical without peak_while_waiting: if it is
+                        // near the threshold somebody spoke and was not heard;
+                        // if it is near the ambient level, nobody spoke.
                         Log.i(TAG, "capture cancelled reason=${machine.lastStopReason} " +
-                            "threshold=${machine.speechThreshold} ambient=${machine.ambientLevel()}")
+                            "ambient=${machine.ambientLevel()} " +
+                            "threshold=${machine.speechThreshold} " +
+                            "peak_while_waiting=${machine.peakWhileWaiting} " +
+                            "margin=%.2f wait_ms=%d"
+                                .format(machine.speechMargin, machine.speechWaitMillis))
                         detector.reset()
                         VoiceState.wake = if (detector.ready) "listening" else detector.state
                     }
@@ -315,7 +338,19 @@ class VoiceService : Service() {
         val deafFor = hearingFrom.get() - android.os.SystemClock.elapsedRealtime()
         writer.println("  deaf-for-ms  : ${if (deafFor > 0) deafFor else 0}")
         writer.println("  speech-floor : ${machine.speechThreshold} " +
-            "(ambient ${machine.ambientLevel()})")
+            "(ambient ${machine.ambientLevel()}, room now ${machine.currentRoomLevel()})")
+        writer.println("  wake-tuning  : margin %.2f  wait %d ms  (adb, resets on restart)"
+            .format(machine.speechMargin, machine.speechWaitMillis))
+        writer.println("  peak-waiting : ${machine.peakWhileWaiting}")
+        writer.println()
+        writer.println("microphone")
+        writer.println("  source       : ${AudioHelpers.sourceName(recorder.activeSource)}"
+            + "  (requested ${AudioHelpers.sourceName(recorder.requestedSource)})")
+        writer.println("  asked for    : ${recorder.helpers.requested()}")
+        for (state in recorder.helpers.states()) {
+            writer.println("  $state")
+        }
+        writer.println("  (all adb switches reset when the service restarts)")
         writer.println("  stop-reason  : ${machine.lastStopReason}")
         writer.println("  maps-package : ${MapsLauncher.MAPS_PACKAGE} " +
             "installed=${MapsLauncher.isInstalled(this)}")
@@ -500,6 +535,64 @@ class VoiceService : Service() {
          */
         @Volatile
         private var liveDetector: java.lang.ref.WeakReference<HeyJarvisDetector>? = null
+
+        /**
+         * The live capture machine, so the debug receiver can retune the room
+         * calibration without a rebuild. Same weak reference and same reason as
+         * liveDetector.
+         */
+        @Volatile
+        private var liveMachine: java.lang.ref.WeakReference<CaptureMachine>? = null
+
+        /**
+         * The live recorder, so the adb switches can ask for a different audio
+         * source or a different set of effects.
+         *
+         * They only ever SET A FLAG. The capture thread is the single owner of
+         * the AudioRecord and is what closes one and opens the next, so no
+         * switch can produce two open recorders — which is the failure mode
+         * this whole design exists to avoid.
+         */
+        @Volatile
+        private var liveRecorder: java.lang.ref.WeakReference<Recorder>? = null
+
+        /** Switches one microphone effect. Returns what is now requested. */
+        fun setAudioEffect(name: String, on: Boolean): String {
+            val recorder = liveRecorder?.get() ?: return "no recorder"
+            when (name) {
+                AudioHelpers.ECHO -> recorder.helpers.wantEcho = on
+                AudioHelpers.NOISE -> recorder.helpers.wantNoise = on
+                AudioHelpers.GAIN -> recorder.helpers.wantGain = on
+                else -> return "unknown effect $name"
+            }
+            // Effects bind to a recording session, so they take hold when the
+            // next one opens. Asking for that here, not doing it here.
+            recorder.reopenRequested = true
+            return recorder.helpers.requested()
+        }
+
+        /** Switches the audio source. Returns what is now requested. */
+        fun setAudioSource(name: String): String {
+            val recorder = liveRecorder?.get() ?: return "no recorder"
+            val source = AudioHelpers.SOURCES[name] ?: return "unknown source $name"
+            recorder.requestedSource = source
+            recorder.reopenRequested = true
+            return name
+        }
+
+        /** Returns the margin actually in force, which may have been clamped. */
+        fun setSpeechMargin(value: Float): Float {
+            val machine = liveMachine?.get() ?: return -1f
+            machine.speechMargin = value
+            return machine.speechMargin
+        }
+
+        /** Returns the wait actually in force, which may have been clamped. */
+        fun setSpeechWait(millis: Int): Int {
+            val machine = liveMachine?.get() ?: return -1
+            machine.speechWaitMillis = millis
+            return machine.speechWaitMillis
+        }
 
         /** Returns the threshold actually in force, which may have been clamped. */
         fun setWakeThreshold(value: Float): Float {

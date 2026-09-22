@@ -60,6 +60,58 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }
             }
 
+            ACTION_AUDIO_EFFECT -> {
+                // One effect at a time, on purpose: turning two on together and
+                // seeing an improvement says nothing about which one did it.
+                // TESTING.md walks the echo canceler first, then the noise
+                // suppressor, for that reason.
+                val name = intent.getStringExtra("name")
+                val on = intent.getStringExtra("value")?.lowercase() in setOf("on", "1", "true")
+                if (name == null) {
+                    android.util.Log.i("KioskStats",
+                                       "pass --es name echo|noise|gain --es value on|off")
+                } else {
+                    android.util.Log.i("KioskStats",
+                                       "audio effects now ${VoiceService.setAudioEffect(name, on)}")
+                }
+            }
+
+            ACTION_AUDIO_SOURCE -> {
+                val name = intent.getStringExtra("name")
+                if (name == null) {
+                    android.util.Log.i("KioskStats",
+                                       "pass --es name voice_recognition|voice_communication|mic")
+                } else {
+                    android.util.Log.i("KioskStats",
+                                       "audio source now ${VoiceService.setAudioSource(name)}")
+                }
+            }
+
+            ACTION_SET_MARGIN -> {
+                // How far above the room a voice has to be. Too high and the
+                // question is cancelled as silence — which is exactly what
+                // versionCode 10 did once the room level was wrong. Tunable
+                // here so the right number can be found by measuring in the
+                // actual room rather than guessed from a desk.
+                val value = intent.getStringExtra("value")?.toFloatOrNull()
+                if (value == null) {
+                    android.util.Log.i("KioskStats", "margin unchanged: pass --es value 1.8")
+                } else {
+                    android.util.Log.i("KioskStats",
+                                       "speech margin now ${VoiceService.setSpeechMargin(value)}")
+                }
+            }
+
+            ACTION_SET_WAIT -> {
+                val value = intent.getStringExtra("value")?.toIntOrNull()
+                if (value == null) {
+                    android.util.Log.i("KioskStats", "wait unchanged: pass --es value 4000")
+                } else {
+                    android.util.Log.i("KioskStats",
+                                       "speech wait now ${VoiceService.setSpeechWait(value)} ms")
+                }
+            }
+
             ACTION_HOME -> {
                 // The route back to the kiosk that does not depend on Android
                 // letting a service start an activity, and does not depend on
@@ -98,5 +150,9 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
+        const val ACTION_SET_MARGIN = "com.mammonrn.phoneaikiosk.TEST_SET_MARGIN"
+        const val ACTION_SET_WAIT = "com.mammonrn.phoneaikiosk.TEST_SET_WAIT"
+        const val ACTION_AUDIO_EFFECT = "com.mammonrn.phoneaikiosk.TEST_AUDIO_EFFECT"
+        const val ACTION_AUDIO_SOURCE = "com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE"
     }
 }

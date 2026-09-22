@@ -200,7 +200,10 @@ class CaptureMachineTurnLockTest {
         val m = machine()
         m.frames(20, quiet)                       // settle the ambient level
         assertEquals(CaptureMachine.Step.STARTED, m.onFrame(quiet, true))
-        m.frames(5, speech)
+        // Long enough to outlast the acknowledgement-tone guard and then be
+        // heard: the first GUARD_MILLIS of every capture is the kiosk's own
+        // beep and cannot count as the question starting.
+        m.frames(15, speech)
         // End the question.
         var step = CaptureMachine.Step.CAPTURING
         repeat(40) { if (step != CaptureMachine.Step.FINISHED) step = m.onFrame(quiet, false) }
@@ -223,7 +226,7 @@ class CaptureMachineTurnLockTest {
         val m = machine()
         m.frames(20, quiet)
         m.onFrame(quiet, true)
-        m.frames(5, speech)
+        m.frames(15, speech)
         repeat(40) { m.onFrame(quiet, false) }
         assertEquals(CaptureMachine.Mode.BUSY, m.mode)
 
@@ -237,7 +240,7 @@ class CaptureMachineTurnLockTest {
         val m = machine()
         m.frames(20, quiet)
         m.onFrame(quiet, true)
-        m.frames(5, speech)
+        m.frames(15, speech)
         repeat(40) { m.onFrame(quiet, false) }
 
         m.arm()
@@ -337,17 +340,129 @@ class CaptureMachineTurnLockTest {
         assertFalse(steps.contains(CaptureMachine.Step.FINISHED))
     }
 
+    /**
+     * REPLACES an exponential-average test. versionCode 10 tracked the room
+     * with an EMA that rose fast, and it rose fast enough to swallow the wake
+     * word before the wake word was recognised — which set the bar for the
+     * question at two and a half times the voice that asked for it. The room is
+     * now a median over frames that predate the wake word.
+     */
     @Test
-    fun `the ambient level follows the room up quickly and down slowly`() {
+    fun `the room level is a median and ignores brief noises`() {
         val m = machine()
-        m.frames(40, 100)
-        val quietRoom = m.ambientLevel()
-        m.frames(20, 4000)              // the television comes on
-        val loudRoom = m.ambientLevel()
-        assertTrue("$quietRoom -> $loudRoom", loudRoom > quietRoom * 5)
+        // A quiet room with one slammed door in it.
+        m.frames(40, 120)
+        m.onFrame(28000, false)
+        m.frames(40, 120)
+        assertEquals("one loud frame must not move a median", 120, m.currentRoomLevel())
+    }
 
-        m.frames(5, 100)                // one brief gap
-        assertTrue("a short gap must not drop the floor straight back",
-                   m.ambientLevel() > loudRoom / 2)
+    @Test
+    fun `the room level follows a television that stays on`() {
+        val m = machine()
+        m.frames(20, 120)
+        assertEquals(120, m.currentRoomLevel())
+        m.frames(60, 3000)              // the television, continuously
+        assertEquals("a sustained change must move it", 3000, m.currentRoomLevel())
+    }
+
+    /**
+     * THE versionCode 10 BUG, as a test.
+     *
+     * The wake word is loud and immediately precedes the trigger. If those
+     * frames reach the calculation, the threshold is built from the voice of
+     * the person asking rather than from the room, and their question cannot
+     * clear it. On the A07 that produced ambient=9742 and threshold=24355 in a
+     * room that was not remotely that loud.
+     */
+    @Test
+    fun `the wake word does not set the bar against the question after it`() {
+        val m = machine()
+        m.frames(50, 300)                       // a quiet room
+        m.frames(16, 12000)                     // "Hey Jarvis", loudly
+        assertEquals(CaptureMachine.Step.STARTED, m.onFrame(12000, true))
+
+        assertTrue("ambient ${m.ambientLevel()} came from the wake word, not the room",
+                   m.ambientLevel() < 1000)
+        assertTrue("threshold ${m.speechThreshold} is too high for an ordinary question",
+                   m.speechThreshold < 4000)
+
+        // And the question that follows is heard rather than cancelled.
+        m.frames(6, 300)                        // the beep guard
+        val steps = m.frames(20, 7000)
+        assertTrue(steps.all { it == CaptureMachine.Step.CAPTURING })
+        var step: CaptureMachine.Step = CaptureMachine.Step.CAPTURING
+        repeat(60) { if (step != CaptureMachine.Step.FINISHED) step = m.onFrame(300, false) }
+        assertEquals(CaptureMachine.Step.FINISHED, step)
+        assertEquals("end-of-speech", m.lastStopReason)
+    }
+
+    /** The beep the kiosk plays must not be mistaken for the question. */
+    @Test
+    fun `the acknowledgement tone is not the start of speech`() {
+        val m = machine()
+        m.frames(60, 200)
+        m.onFrame(200, true)
+
+        // The tone, loud, right at the start of the capture.
+        val duringGuard = m.frames(4, 30000)
+        assertTrue("the tone must not start the question",
+                   duringGuard.all { it == CaptureMachine.Step.CAPTURING })
+        assertTrue("and it must not have counted as speech", m.heardNothing())
+
+        // Then nothing. The capture is cancelled, not sent.
+        var step: CaptureMachine.Step = CaptureMachine.Step.CAPTURING
+        var frames = 0
+        while (step == CaptureMachine.Step.CAPTURING && frames < 200) {
+            step = m.onFrame(200, false); frames += 1
+        }
+        assertEquals(CaptureMachine.Step.CANCELLED, step)
+        assertEquals("no-speech-after-wake", m.lastStopReason)
+    }
+
+    @Test
+    fun `the peak heard while waiting is recorded for diagnosis`() {
+        val m = machine()
+        m.frames(60, 200)
+        m.onFrame(200, true)
+        m.frames(6, 200)                      // past the guard
+        m.frames(4, 1500)                     // somebody spoke, but too quietly
+        var step: CaptureMachine.Step = CaptureMachine.Step.CAPTURING
+        var frames = 0
+        while (step == CaptureMachine.Step.CAPTURING && frames < 200) {
+            step = m.onFrame(200, false); frames += 1
+        }
+        assertEquals(CaptureMachine.Step.CANCELLED, step)
+        // This is what says "somebody DID speak and was not heard" rather than
+        // "the room was silent", which is the difference between lowering the
+        // margin and looking somewhere else entirely.
+        assertEquals(1500, m.peakWhileWaiting)
+    }
+
+    @Test
+    fun `an unknown room gets the floor and not a guess`() {
+        val m = machine()
+        // Triggered immediately, with no history at all: the only frames that
+        // exist are the wake word, and their median is the wake word.
+        assertEquals(CaptureMachine.Step.STARTED, m.onFrame(20000, true))
+        assertEquals(0, m.ambientLevel())
+        assertEquals(Recorder.SPEECH_THRESHOLD, m.speechThreshold)
+    }
+
+    /** A hard cap has to hold whatever the wait is set to. */
+    @Test
+    fun `the maximum length outlasts no wait window`() {
+        val m = CaptureMachine(frameMillis = frameMs, maxCaptureMillis = 1_000,
+                               speechWaitMillis = 9_000)
+        m.frames(60, 200)
+        m.onFrame(200, true)
+        var step: CaptureMachine.Step = CaptureMachine.Step.CAPTURING
+        var frames = 0
+        while (step == CaptureMachine.Step.CAPTURING && frames < 500) {
+            step = m.onFrame(200, false); frames += 1
+        }
+        assertEquals(CaptureMachine.Step.CANCELLED, step)
+        assertTrue("stopped after ${frames * frameMs} ms, the cap is 1000",
+                   frames * frameMs <= 1_100)
     }
 }

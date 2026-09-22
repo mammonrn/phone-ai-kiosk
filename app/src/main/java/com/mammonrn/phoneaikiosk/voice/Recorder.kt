@@ -16,10 +16,31 @@ import java.io.ByteArrayOutputStream
  * Nothing here writes a file. Audio exists as a byte array for as long as one
  * question takes and is then dropped.
  */
-class Recorder {
+class Recorder(val helpers: AudioHelpers = AudioHelpers()) {
 
     /** One frame, ~64 ms. Small enough for a wake word stage to work on. */
     val frameSamples = SAMPLE_RATE / 16
+
+    /**
+     * The audio source to use NEXT time the microphone is opened.
+     *
+     * Not applied in place: an AudioRecord's source is fixed when it is
+     * constructed, so changing this asks the capture loop to close the one it
+     * has and open another. That is the only safe way to do it — the loop is
+     * the single owner of the recorder, and two AudioRecords open at once is
+     * the bug that shipped in versionCode 4.
+     */
+    @Volatile
+    var requestedSource: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION
+
+    /** The source actually in use right now. */
+    @Volatile
+    var activeSource: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION
+        private set
+
+    /** Set by the adb switches; read by the capture loop between frames. */
+    @Volatile
+    var reopenRequested: Boolean = false
 
     @SuppressLint("MissingPermission") // the service checks before it starts
     private fun open(): AudioRecord {
@@ -27,11 +48,13 @@ class Recorder {
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
         )
         val buffer = maxOf(minBuffer, frameSamples * 2 * 8)
+        // VOICE_RECOGNITION by default rather than MIC: the platform applies
+        // capture tuned for speech, which is what a device across the room
+        // needs. Overridable over adb so the alternatives can be MEASURED on
+        // the A07 — see AudioHelpers.SOURCES — without the default moving.
+        activeSource = requestedSource
         return AudioRecord(
-            // VOICE_RECOGNITION rather than MIC: the platform applies the noise
-            // suppression tuned for speech, which is what a device across the
-            // room needs.
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            activeSource,
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, buffer,
         )
     }
@@ -45,18 +68,63 @@ class Recorder {
      * bug would come from.
      */
     fun listen(shouldStop: () -> Boolean, onFrame: (ShortArray, Int) -> Boolean) {
-        val record = open()
-        try {
-            record.startRecording()
-            val frame = ShortArray(frameSamples)
-            while (!shouldStop()) {
-                val read = record.read(frame, 0, frame.size)
-                if (read <= 0) continue
-                if (!onFrame(frame, read)) return
+        runLoop(
+            shouldStop = shouldStop,
+            openSession = {
+                val record = open()
+                helpers.attach(record.audioSessionId)
+                record.startRecording()
+                object : Session {
+                    override fun read(into: ShortArray) = record.read(into, 0, into.size)
+                    override fun close() {
+                        helpers.release()
+                        runCatching { record.stop() }
+                        record.release()
+                    }
+                }
+            },
+            onFrame = onFrame,
+        )
+    }
+
+    /** One open microphone. Exists so the loop below can be tested. */
+    interface Session {
+        fun read(into: ShortArray): Int
+        fun close()
+    }
+
+    /**
+     * The capture loop, with the microphone behind an interface.
+     *
+     * THE INVARIANT THIS SHAPE EXISTS FOR: at most one session open at any
+     * moment, and a session is always closed before the next is opened. The
+     * adb switches for the audio source and the microphone effects both work by
+     * setting [reopenRequested], and both arrive on the binder thread — so the
+     * thing that must not happen is a switch opening a recorder while this
+     * thread still holds one. Two AudioRecords at once is the bug that shipped
+     * in versionCode 4 and it is not shipping again.
+     *
+     * Separated from [listen] so a test can count the overlap with no Android
+     * in the room; the real implementation is four lines above it.
+     */
+    internal fun runLoop(
+        shouldStop: () -> Boolean,
+        openSession: () -> Session,
+        onFrame: (ShortArray, Int) -> Boolean,
+    ) {
+        val frame = ShortArray(frameSamples)
+        while (!shouldStop()) {
+            reopenRequested = false
+            val session = openSession()
+            try {
+                while (!shouldStop() && !reopenRequested) {
+                    val read = session.read(frame)
+                    if (read <= 0) continue
+                    if (!onFrame(frame, read)) return
+                }
+            } finally {
+                session.close()
             }
-        } finally {
-            runCatching { record.stop() }
-            record.release()
         }
     }
 
