@@ -1,7 +1,10 @@
 package com.mammonrn.phoneaikiosk
 
+import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.KioskLocation
+import com.mammonrn.phoneaikiosk.voice.VoiceState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -60,5 +63,61 @@ class KioskLocationTest {
         // kind of change that looks harmless in a diff and is noticed as a flat
         // phone a week later.
         assertEquals(30L * 60L * 1000L, KioskLocation.INTERVAL_MILLIS)
+    }
+
+    // ---- the three ways of having no position --------------------------------
+    //
+    // Each of these must end the same way: no fix held, no query string sent,
+    // and the broker's fallback. Which one it was is what the status line says.
+
+    @Test
+    fun `no permission asks for nothing`() {
+        assertEquals("no-permission",
+                     KioskLocation.blocker(permission = false, service = true, enabled = true))
+    }
+
+    @Test
+    fun `location switched off asks for nothing`() {
+        assertEquals("location-off",
+                     KioskLocation.blocker(permission = true, service = true, enabled = false))
+    }
+
+    @Test
+    fun `no location service asks for nothing`() {
+        assertEquals("no-service",
+                     KioskLocation.blocker(permission = true, service = false, enabled = false))
+    }
+
+    @Test
+    fun `permission is reported first, because it is the first thing to fix`() {
+        assertEquals("no-permission",
+                     KioskLocation.blocker(permission = false, service = false, enabled = false))
+    }
+
+    @Test
+    fun `with all three a fix is asked for`() {
+        assertNull(KioskLocation.blocker(permission = true, service = true, enabled = true))
+    }
+
+    @Test
+    fun `no fix sends no position at all`() {
+        // Not "?lat=null", not "?lat=0.0": nothing, which the broker reads as
+        // "use the university".
+        assertEquals("/v1/dashboard", Broker.dashboardPath(null, null))
+        assertEquals("/v1/dashboard", Broker.dashboardPath(20.05, null))
+        assertEquals("/v1/dashboard", Broker.dashboardPath(null, 99.89))
+    }
+
+    @Test
+    fun `a fix is sent rounded even if the caller forgot`() {
+        assertEquals("/v1/dashboard?lat=13.76&lon=100.5",
+                     Broker.dashboardPath(13.7563309, 100.5017651))
+    }
+
+    @Test
+    fun `the status line does not claim local weather before there is any`() {
+        assertEquals("none", VoiceState.weatherSource(null))
+        assertEquals("fallback", VoiceState.weatherSource(true))
+        assertEquals("here", VoiceState.weatherSource(false))
     }
 }

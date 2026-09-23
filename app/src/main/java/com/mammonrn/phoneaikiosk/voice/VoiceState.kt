@@ -67,8 +67,12 @@ object VoiceState : VoiceSink {
      * Reported by the broker in the dashboard payload. "THAT the fallback was
      * used" is the operational fact worth showing; where the phone actually is
      * stays off the screen either way.
+     *
+     * Null until a dashboard has actually arrived. It was a plain false, which
+     * made the status line say "weather=here" all morning on a phone whose
+     * every refresh was failing — there was no weather, from anywhere.
      */
-    @Volatile var weatherFallback: Boolean = false
+    @Volatile var weatherFallback: Boolean? = null
     @Volatile var wake: String = "idle"
     @Volatile override var stt: String = "idle"
     @Volatile override var chat: String = "idle"
@@ -100,7 +104,14 @@ object VoiceState : VoiceSink {
 
     /** The third diagnostics line: where the kiosk thinks it is, not where. */
     fun thirdLine(): String =
-        "loc $locationState weather=${if (weatherFallback) "fallback" else "here"}"
+        "loc $locationState weather=${weatherSource(weatherFallback)}"
+
+    /** "here", "fallback", or "none" before any dashboard has arrived. */
+    fun weatherSource(fallback: Boolean?): String = when (fallback) {
+        null -> "none"
+        true -> "fallback"
+        false -> "here"
+    }
 
     /**
      * Everything, as plain text, for `adb shell dumpsys activity service ...`.
@@ -122,7 +133,11 @@ object VoiceState : VoiceSink {
         appendLine("  last-action: $lastAction")
         appendLine("  maps       : $mapsState")
         appendLine("  location   : $locationState")
-        appendLine("  weather-loc: ${if (weatherFallback) "FALLBACK (university)" else "phone"}")
+        appendLine("  weather-loc: " + when (weatherFallback) {
+            null -> "none yet (no dashboard received)"
+            true -> "FALLBACK (university)"
+            false -> "phone"
+        })
         appendLine("  wake       : $wake")
         appendLine("  stt        : $stt")
         appendLine("  chat       : $chat")

@@ -101,17 +101,19 @@ class KioskLocation(private val context: Context) {
      * cycle instead of waiting for the next thirty minutes.
      */
     private fun request() {
-        if (!hasPermission()) {
-            lastOutcome = "no-permission"
-            return
-        }
         val manager = manager()
-        if (manager == null) {
-            lastOutcome = "no-service"
-            return
-        }
-        if (!manager.isLocationEnabled) {
-            lastOutcome = "location-off"
+        val blocked = blocker(
+            permission = hasPermission(),
+            service = manager != null,
+            enabled = manager?.isLocationEnabled == true,
+        )
+        if (blocked != null || manager == null) {
+            // AND FORGET THE OLD FIX. Returning early used to leave the last
+            // position in place, so a phone whose permission was taken away, or
+            // whose owner switched location off, went on sending where it had
+            // been — for as long as the app ran. Off means off.
+            fix = null
+            lastOutcome = blocked ?: "no-service"
             return
         }
 
@@ -217,6 +219,20 @@ class KioskLocation(private val context: Context) {
 
     companion object {
         const val INTERVAL_MILLIS = 30L * 60L * 1000L
+
+        /**
+         * Why no fix will be asked for, or null when one can be.
+         *
+         * Pulled out of [request] so the three ways of having no position can
+         * be tested without a phone. Checked in this order because it is the
+         * order a person would fix them in, and the status line says the first.
+         */
+        fun blocker(permission: Boolean, service: Boolean, enabled: Boolean): String? = when {
+            !permission -> "no-permission"
+            !service -> "no-service"
+            !enabled -> "location-off"
+            else -> null
+        }
 
         /** Two decimals: about 1.1 km, and the same rounding the broker redoes. */
         fun round(value: Double): Double = (value * 100.0).roundToLong() / 100.0

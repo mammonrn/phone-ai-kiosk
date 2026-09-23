@@ -22,6 +22,16 @@ class Broker(private val baseUrl: String, private val token: String) {
 
     companion object {
         /**
+         * The dashboard request's path. No position means no query string at
+         * all, and the broker falls back to the university; a position is
+         * rounded again here, so no caller can send more than two decimals.
+         */
+        fun dashboardPath(latitude: Double?, longitude: Double?): String =
+            if (latitude == null || longitude == null) "/v1/dashboard"
+            else "/v1/dashboard?lat=${KioskLocation.round(latitude)}" +
+                "&lon=${KioskLocation.round(longitude)}"
+
+        /**
          * A failure, for logcat: the HTTP status and the broker's error code
          * when there is one, otherwise the exception type.
          *
@@ -85,11 +95,8 @@ class Broker(private val baseUrl: String, private val token: String) {
      * freely. They are omitted entirely when there is no fix, and the broker
      * falls back to the university for that.
      */
-    fun dashboard(latitude: Double? = null, longitude: Double? = null): String {
-        val path = if (latitude == null || longitude == null) "/v1/dashboard"
-                   else "/v1/dashboard?lat=$latitude&lon=$longitude"
-        return String(get(path).bytes, Charsets.UTF_8)
-    }
+    fun dashboard(latitude: Double? = null, longitude: Double? = null): String =
+        String(get(dashboardPath(latitude, longitude)).bytes, Charsets.UTF_8)
 
     /** Text in, audio out, ready to play — with where the time went. */
     fun speak(text: String): SpokenAudio {
