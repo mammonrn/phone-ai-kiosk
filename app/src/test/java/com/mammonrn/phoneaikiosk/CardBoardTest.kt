@@ -101,4 +101,58 @@ class CardBoardTest {
         assertFalse(b.slot("gold", 92 * MINUTE).open)
         assertEquals(order, b.ids(92 * MINUTE))
     }
+
+    // ---- 0.36.0: the kiosk's fixed order (DESIGN.md, ก and ข) ------------
+
+    private fun kiosk() = CardBoard(fixedOrder = true).apply {
+        register(CardBoard.Spec("weather", 60 * MINUTE, alwaysOpen = true))
+        register(CardBoard.Spec("alarms", 10 * MINUTE))
+        register(CardBoard.Spec("gold", 120 * MINUTE))
+        register(CardBoard.Spec("crypto", 60 * MINUTE, openOnFirst = false))
+    }
+
+    @Test
+    fun `news never moves a card in the fixed order`() {
+        val b = kiosk()
+        b.report("weather", "29", 0); b.report("gold", "a", 0); b.report("crypto", "move:1", 0)
+        b.report("crypto", "move:2", 30 * MINUTE)
+        assertEquals(listOf("weather", "alarms", "gold", "crypto"), b.ids(31 * MINUTE))
+        assertTrue("the news shows as the badge", b.slot("crypto", 31 * MINUTE).fresh)
+    }
+
+    @Test
+    fun `a ringing alarm still comes first in the fixed order`() {
+        val b = kiosk()
+        b.pin("alarms", true)
+        assertEquals("alarms", b.ids(0).first())
+        b.pin("alarms", false)
+        assertEquals("weather", b.ids(0).first())
+    }
+
+    @Test
+    fun `the weather is open even after hours without news`() {
+        val b = kiosk()
+        b.report("weather", "29", 0)
+        assertTrue(b.slot("weather", 10 * 60 * MINUTE).open)
+        assertTrue("open before any data too", kiosk().slot("weather", 0).open)
+    }
+
+    @Test
+    fun `crypto stays folded on its first prices and opens on a real move`() {
+        val b = kiosk()
+        b.report("crypto", "move:1", 0)
+        assertFalse(b.slot("crypto", 0).open)
+        b.report("crypto", "move:2", 5 * MINUTE)
+        assertTrue(b.slot("crypto", 5 * MINUTE).open)
+        assertFalse("folds again after its hour", b.slot("crypto", 66 * MINUTE).open)
+    }
+
+    @Test
+    fun `a tap opens folded crypto`() {
+        val b = kiosk()
+        b.report("crypto", "move:1", 0)
+        b.touch("crypto", MINUTE)
+        assertTrue(b.slot("crypto", 2 * MINUTE).open)
+        assertFalse(b.slot("crypto", 4 * MINUTE).open)
+    }
 }

@@ -266,7 +266,7 @@
                     android:layout_height="wrap_content"
                     android:lineSpacingExtra="1dp"
                     android:textColor="@color/retro_text"
-                    android:textSize="14sp"
+                    android:textSize="@dimen/type_now"
                     android:fontFamily="@font/plex_thai"
                     android:text="@string/data_loading" />
 
@@ -303,7 +303,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="4dp"
                         android:textColor="@color/retro_text"
-                        android:textSize="12sp"
+                        android:textSize="@dimen/type_minor"
                         android:fontFamily="@font/plex_thai" />
 
                     <ImageView
@@ -319,7 +319,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="4dp"
                         android:textColor="@color/retro_text"
-                        android:textSize="12sp"
+                        android:textSize="@dimen/type_minor"
                         android:fontFamily="@font/plex_thai" />
                 </LinearLayout>
 
@@ -333,7 +333,7 @@
                     android:maxLines="2"
                     android:ellipsize="end"
                     android:textColor="@color/retro_text"
-                    android:textSize="12sp"
+                    android:textSize="@dimen/type_minor"
                     android:fontFamily="@font/plex_thai"
                     android:visibility="gone" />
             </LinearLayout>
@@ -428,7 +428,7 @@
                     android:maxLines="1"
                     android:ellipsize="end"
                     android:textColor="@color/retro_dim"
-                    android:textSize="11sp"
+                    android:textSize="@dimen/type_label"
                     android:fontFamily="@font/plex_thai"
                     android:text="@string/data_loading" />
 
@@ -447,7 +447,7 @@
                     android:maxLines="1"
                     android:ellipsize="end"
                     android:textColor="@color/retro_dim"
-                    android:textSize="11sp"
+                    android:textSize="@dimen/type_label"
                     android:fontFamily="@font/plex_thai"
                     android:visibility="gone" />
 
@@ -546,7 +546,7 @@
                     android:layout_height="wrap_content"
                     android:lineSpacingExtra="1dp"
                     android:textColor="@color/retro_text"
-                    android:textSize="15sp"
+                    android:textSize="@dimen/type_minor"
                     android:fontFamily="@font/plex_thai"
                     android:text="@string/data_loading" />
 
@@ -557,7 +557,7 @@
                     android:layout_marginStart="28dp"
                     android:lineSpacingExtra="1dp"
                     android:textColor="@color/retro_text"
-                    android:textSize="15sp"
+                    android:textSize="@dimen/type_minor"
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
         </LinearLayout>
@@ -659,7 +659,7 @@
                     android:layout_height="wrap_content"
                     android:lineSpacingExtra="1dp"
                     android:textColor="@color/retro_text"
-                    android:textSize="14sp"
+                    android:textSize="@dimen/type_secondary"
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
         </LinearLayout>
@@ -903,7 +903,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/retro_text"
-                    android:textSize="9sp"
+                    android:textSize="12sp"
                     android:fontFamily="@font/press_start_2p" />
             </LinearLayout>
         </LinearLayout>

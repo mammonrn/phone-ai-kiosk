@@ -29,15 +29,33 @@ package com.mammonrn.phoneaikiosk.ui
  *  * PINNED cards (an alarm ringing) are always open and always first.
  *  * TOUCH: tapping a bar opens it for [touchOpenMs] without counting as an
  *    update, so it does not jump to the top under the finger.
+ *
+ * FIXED ORDER (0.36.0, [fixedOrder]): the kiosk now keeps every card in its
+ * registered place — weather, alarms, commodities, crypto — and news shows as
+ * a card opening and its "เพิ่งอัปเดต" badge, never as a card moving. A
+ * screen read at a glance from across a room is read by position; a price
+ * that moves the weather down makes the person look for it (DESIGN.md, ก).
+ * Pinned cards still come first. Per card, [Spec.alwaysOpen] keeps one open
+ * whatever happens (the weather), and [Spec.openOnFirst] = false keeps one
+ * folded until real news or a tap (crypto: its first prices are not news).
  */
 class CardBoard(
     private val freshMs: Long = FRESH_MS,
     private val reorderGapMs: Long = REORDER_GAP_MS,
     private val touchOpenMs: Long = TOUCH_OPEN_MS,
+    private val fixedOrder: Boolean = false,
 ) {
 
-    /** One card, as registered: its id and how long it stays open unchanged. */
-    class Spec(val id: String, val collapseAfterMs: Long)
+    /**
+     * One card, as registered: its id, how long it stays open unchanged,
+     * whether it is never folded, and whether its first report opens it.
+     */
+    class Spec(
+        val id: String,
+        val collapseAfterMs: Long,
+        val alwaysOpen: Boolean = false,
+        val openOnFirst: Boolean = true,
+    )
 
     /** What the screen should do with one card right now. */
     data class Slot(val id: String, val open: Boolean, val fresh: Boolean)
@@ -79,7 +97,9 @@ class CardBoard(
     }
 
     fun layout(nowMs: Long): List<Slot> {
-        if (orderedAt == Long.MIN_VALUE || nowMs - orderedAt >= reorderGapMs) {
+        if (fixedOrder) {
+            order = cards.values.sortedBy { it.rank }.map { it.spec.id }
+        } else if (orderedAt == Long.MIN_VALUE || nowMs - orderedAt >= reorderGapMs) {
             order = cards.values
                 .sortedWith(compareByDescending<State> { it.changedAt }.thenBy { it.rank })
                 .map { it.spec.id }
@@ -89,13 +109,19 @@ class CardBoard(
         val pinned = order.filter { cards.getValue(it).pinned }
         return (pinned + order.filterNot { it in pinned }).map { id ->
             val card = cards.getValue(id)
-            val sinceChange = if (card.changedAt == Long.MIN_VALUE) Long.MAX_VALUE
-                              else nowMs - card.changedAt
+            val sinceChange = when {
+                card.changedAt == Long.MIN_VALUE -> Long.MAX_VALUE
+                // The first report is not news; a card that asks to wait for
+                // news stays folded through it.
+                card.firstOnly && !card.spec.openOnFirst -> Long.MAX_VALUE
+                else -> nowMs - card.changedAt
+            }
             val touched = card.openedByTouchAt != Long.MIN_VALUE &&
                 nowMs - card.openedByTouchAt < touchOpenMs
             Slot(
                 id = id,
-                open = card.pinned || touched || sinceChange < card.spec.collapseAfterMs,
+                open = card.spec.alwaysOpen || card.pinned || touched ||
+                    sinceChange < card.spec.collapseAfterMs,
                 fresh = !card.firstOnly && sinceChange < freshMs,
             )
         }

@@ -64,7 +64,7 @@ class SettingsActivity : Activity() {
     /** The page on screen, so Back can go up one level before leaving. */
     private var page = Page.HOME
 
-    private enum class Page { HOME, ALARMS, EDIT }
+    private enum class Page { HOME, ALARMS, EDIT, SOURCES }
 
     private class Category(val icon: Int, val label: Int, val open: (SettingsActivity) -> Unit)
 
@@ -89,7 +89,7 @@ class SettingsActivity : Activity() {
     private fun goBack() {
         when (page) {
             Page.EDIT -> showAlarms()
-            Page.ALARMS -> showHome()
+            Page.ALARMS, Page.SOURCES -> showHome()
             Page.HOME -> goHome()
         }
     }
@@ -217,6 +217,25 @@ class SettingsActivity : Activity() {
         list.addView(button(getString(if (full) R.string.alarms_full else R.string.alarm_add),
                             big = true, enabled = !full) { showEdit(null) },
                      LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(12) })
+        setPage(ScrollView(this).apply { addView(list) })
+    }
+
+    /**
+     * Where each number on the screen comes from, with its licence — the
+     * attribution Open-Meteo (CC BY 4.0), CAMS and OpenStreetMap (ODbL) ask
+     * for. Read-only: a heading and a line per source.
+     */
+    private fun showSources() {
+        page = Page.SOURCES
+        titleText.text = getString(R.string.window_sources)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        list.addView(button(getString(R.string.settings_back_to_panel)) { showHome() },
+                     LinearLayout.LayoutParams(WRAP, dp(48)))
+        for (entry in resources.getStringArray(R.array.data_sources)) {
+            val (heading, detail) = entry.split("|", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+            list.addView(label(heading), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            list.addView(text(detail, 13f))
+        }
         setPage(ScrollView(this).apply { addView(list) })
     }
 
@@ -537,6 +556,7 @@ class SettingsActivity : Activity() {
          */
         private val CATEGORIES = listOf(
             Category(R.drawable.ic_pixel_alarm_clock, R.string.window_alarms) { it.showAlarms() },
+            Category(R.drawable.ic_pixel_sources, R.string.window_sources) { it.showSources() },
         )
     }
 }

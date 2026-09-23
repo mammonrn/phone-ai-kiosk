@@ -100,4 +100,17 @@
     <string name="jarvis_thinking">จาร์วิส · กำลังคิด</string>
     <string name="jarvis_speaking">จาร์วิส · กำลังพูด</string>
     <string name="jarvis_offline">จาร์วิส · ยังไม่พร้อม</string>
+    <!-- Control Panel: where the numbers come from (0.36.0). Open-Meteo's
+         CC BY 4.0, CAMS/Copernicus and OpenStreetMap's ODbL ask for credit
+         where the data is shown; this page is that credit, one tap away.
+         Kept in step with CREDITS in server/kiosk_broker/dashboard.py. -->
+    <string name="window_sources">ที่มาข้อมูล</string>
+    <string-array name="data_sources">
+        <item>อากาศและพยากรณ์|Open-Meteo (open-meteo.com) สัญญาอนุญาต CC BY 4.0 แบบจำลอง ECMWF</item>
+        <item>ฝุ่น PM2.5|Open-Meteo Air Quality สัญญาอนุญาต CC BY 4.0 ข้อมูลจาก CAMS, Copernicus Atmosphere Monitoring Service ระดับตามเกณฑ์กรมควบคุมมลพิษ พ.ศ. 2566</item>
+        <item>ชื่อพื้นที่|© OpenStreetMap contributors สัญญาอนุญาต ODbL</item>
+        <item>ราคาทอง|สมาคมค้าทองคำ ผ่าน chnwt.dev</item>
+        <item>ราคาน้ำมัน|ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev</item>
+        <item>คริปโต|ราคาจาก Binance อันดับจาก CoinGecko</item>
+    </string-array>
 </resources>

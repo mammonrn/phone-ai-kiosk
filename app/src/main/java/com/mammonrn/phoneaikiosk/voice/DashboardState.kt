@@ -109,7 +109,7 @@ object DashboardState {
             goldPurity = goldPurity(usable(gold)?.first),
             locationFallback = root.optBoolean("location_fallback", false),
             oil = if (root.has("oil")) oilPanel(root.optJSONObject("oil"), unavailable) else null,
-            weatherStats = weatherStats(usable(weather)?.first),
+            weatherStats = weatherStats(usable(weather)?.first, root.optJSONObject("air")),
             outlook = usable(weather)?.first?.optString("outlook", "")
                 ?.takeUnless { it == "null" }.orEmpty(),
             sunrise = clock12(usable(weather)?.first?.optString("sunrise", "") ?: ""),
@@ -440,9 +440,10 @@ object DashboardState {
      *  every time is a worse lie than one that is occasionally a baht high. */
     // ------------------------------------------------------ today's weather
 
-    fun weatherStats(data: JSONObject?): List<Pair<String, String>> {
-        if (data == null) return emptyList()
+    fun weatherStats(data: JSONObject?, air: JSONObject? = null): List<Pair<String, String>> {
         val out = ArrayList<Pair<String, String>>()
+        val dust = pm25(air)
+        if (data == null) return if (dust == null) out else listOf(dust)
         val high = data.optDouble("high_c", Double.NaN)
         val low = data.optDouble("low_c", Double.NaN)
         if (!high.isNaN() && !low.isNaN()) out += "สูง/ต่ำ" to "${Math.round(high)}°/${Math.round(low)}°"
@@ -454,7 +455,28 @@ object DashboardState {
         }
         val uv = data.optDouble("uv", Double.NaN)
         if (!uv.isNaN()) out += "UV" to "${Math.round(uv)} ${uvWord(uv)}"
+        if (dust != null) out += dust
         return out
+    }
+
+    /** Older than this, PM2.5 is not shown as now: it is an hourly reading. */
+    const val MAX_PM25_AGE_SECONDS = 3 * 3600
+
+    /**
+     * PM2.5 from the broker's `air` panel (Open-Meteo air quality, CAMS):
+     * "PM2.5 มคก./ลบ.ม." to "8.8 ดีมาก" — the value and the PCD level word,
+     * never a colour alone. Null (so no cell at all) when the panel is absent
+     * (an older broker), failed with nothing kept, or too old to be "now".
+     */
+    fun pm25(air: JSONObject?): Pair<String, String>? {
+        val (data, _) = usable(air) ?: return null
+        if ((air?.optInt("age_seconds", 0) ?: 0) > MAX_PM25_AGE_SECONDS) return null
+        val value = data.optDouble("pm25", Double.NaN)
+        if (value.isNaN() || value < 0) return null
+        val word = data.optString("pm25_word", "").takeUnless { it == "null" }.orEmpty()
+        val number = if (value == Math.floor(value)) value.toLong().toString()
+                     else String.format(java.util.Locale.US, "%.1f", value)
+        return "PM2.5 มคก./ลบ.ม." to "$number $word".trim()
     }
 
     /** The WHO UV index bands, in Thai — the same words Jarvis is given. */

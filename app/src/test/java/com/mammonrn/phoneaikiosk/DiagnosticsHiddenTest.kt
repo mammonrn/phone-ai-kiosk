@@ -53,8 +53,10 @@ class DiagnosticsHiddenTest {
     }
 
     @Test
-    fun `the clock tray is one line and smaller than before`() {
+    fun `the taskbar clock is 12sp, the size DESIGN_md section 4 gives it`() {
+        // 9sp until 0.36.0: the time, the thing looked for most often, was
+        // smaller than numbers that matter less (DESIGN.md, ง).
         val clock = view("taskbar_clock")
-        assertTrue(clock.contains("android:textSize=\"9sp\""))
+        assertTrue(clock.contains("android:textSize=\"12sp\""))
     }
 }

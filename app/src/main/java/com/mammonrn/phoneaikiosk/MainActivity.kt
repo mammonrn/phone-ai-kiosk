@@ -97,7 +97,8 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------- the card stack
     // Which window is open, folded or first: ui/CardBoard decides, this moves
     // the views. The Jarvis window and the taskbar are not in the stack.
-    private val board = CardBoard()
+    /** Fixed order since 0.36.0: news opens a card, it never moves one (DESIGN.md, ก). */
+    private val board = CardBoard(fixedOrder = true)
     private lateinit var cardStack: android.widget.LinearLayout
 
     private class Card(val id: String, val root: android.view.View, val body: android.view.View,
@@ -410,24 +411,28 @@ class MainActivity : Activity() {
      */
     private fun setUpCards() {
         fun card(id: String, root: Int, body: Int, badge: Int, titlebar: Int, weight: Float,
-                 foldAfterMs: Long) {
+                 foldAfterMs: Long, alwaysOpen: Boolean = false, openOnFirst: Boolean = true) {
             cards[id] = Card(id, findViewById(root), findViewById(body), findViewById(badge), weight)
-            board.register(CardBoard.Spec(id, foldAfterMs))
+            board.register(CardBoard.Spec(id, foldAfterMs, alwaysOpen, openOnFirst))
             // Tapping a folded window's bar opens it for two minutes.
             findViewById<android.view.View>(titlebar).setOnClickListener {
                 board.touch(id, SystemClock.elapsedRealtime())
                 renderCards(SystemClock.elapsedRealtime())
             }
         }
+        // Registered in the order the screen keeps (DESIGN.md, ก): the weather,
+        // always open; the alarms, the only thing a person acts on; the
+        // commodities; crypto, folded until a 3% move or a tap (ข); Google
+        // Home, hidden until it can really do something (ค).
         val minute = CardBoard.MINUTE
         card("weather", R.id.card_weather, R.id.weather_panel, R.id.weather_badge,
-             R.id.weather_titlebar, 1f, 60 * minute)
+             R.id.weather_titlebar, 1f, 60 * minute, alwaysOpen = true)
+        card("alarms", R.id.card_alarms, R.id.alarms_panel, R.id.alarms_badge,
+             R.id.alarms_titlebar, 0.5f, 10 * minute)
         card("gold", R.id.card_gold, R.id.commodity_panel, R.id.gold_badge, R.id.gold_titlebar,
              1f, 120 * minute)
         card("crypto", R.id.card_crypto, R.id.crypto_panel, R.id.crypto_badge,
-             R.id.crypto_titlebar, 0.25f, 60 * minute)
-        card("alarms", R.id.card_alarms, R.id.alarms_panel, R.id.alarms_badge,
-             R.id.alarms_titlebar, 0.5f, 10 * minute)
+             R.id.crypto_titlebar, 0.25f, 60 * minute, openOnFirst = false)
         card("home", R.id.card_home, R.id.home_body, R.id.home_badge, R.id.home_titlebar,
              0.7f, 0)
         summaries["home"] = getString(R.string.home_not_connected)
@@ -442,7 +447,12 @@ class MainActivity : Activity() {
      * nothing — the "no flicker" rule is here as much as in CardBoard.
      */
     private fun renderCards(nowMs: Long) {
-        val slots = board.layout(nowMs).filter { it.id != "alarms" || alarmsVisible }
+        // A card with nothing to be yet is not on the screen at all: the alarms
+        // with no alarm set, Google Home until it can control something (ค —
+        // it comes back by itself the day HomeControl says it is available).
+        fun hidden(id: String) = (id == "alarms" && !alarmsVisible) ||
+            (id == "home" && !homeControl.available)
+        val slots = board.layout(nowMs).filterNot { hidden(it.id) }
         val ids = slots.map { it.id }
         if (ids != shownOrder) {
             for ((index, id) in ids.withIndex()) {
@@ -454,9 +464,11 @@ class MainActivity : Activity() {
             }
             shownOrder = ids
         }
-        val alarmsRoot = cards.getValue("alarms").root
-        val alarmsState = if (alarmsVisible) android.view.View.VISIBLE else android.view.View.GONE
-        if (alarmsRoot.visibility != alarmsState) alarmsRoot.visibility = alarmsState
+        for (id in listOf("alarms", "home")) {
+            val root = cards.getValue(id).root
+            val state = if (hidden(id)) android.view.View.GONE else android.view.View.VISIBLE
+            if (root.visibility != state) root.visibility = state
+        }
 
         for (slot in slots) {
             val card = cards.getValue(slot.id)
@@ -502,7 +514,21 @@ class MainActivity : Activity() {
         board.pin("alarms", ringing.isNotEmpty())
     }
 
-    /** Today's weather: a row of labels over a row of values, four even columns. */
+    /** A size from res/values/type_scale.xml, in sp — the one type scale. */
+    private fun sp(id: Int): Float {
+        val value = android.util.TypedValue()
+        resources.getValue(id, value, true)
+        return android.util.TypedValue.complexToFloat(value.data)
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    /**
+     * Today's weather: labels over values, three even columns, as many rows as
+     * it takes (0.36.0 — five numbers with PM2.5 did not fit four columns).
+     * The last cell of a short row spans what is left, so a long level word
+     * ("เริ่มมีผลต่อสุขภาพ") has room instead of being cut.
+     */
     private var shownStats: List<Pair<String, String>> = emptyList()
 
     private fun showWeatherStats(stats: List<Pair<String, String>>) {
@@ -521,13 +547,30 @@ class MainActivity : Activity() {
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
         }
-        weatherStats.addView(android.widget.TableRow(this).apply {
-            for ((label, _) in stats) addView(cell(label, 11f, R.color.retro_dim))
-        })
-        weatherStats.addView(android.widget.TableRow(this).apply {
-            isBaselineAligned = true
-            for ((_, value) in stats) addView(cell(RetroType.pixelify(value, pixelFace), 14f, R.color.retro_text))
-        })
+        val labelSp = sp(R.dimen.type_label)
+        val valueSp = sp(R.dimen.type_secondary)
+        for ((rowIndex, row) in stats.chunked(STAT_COLUMNS).withIndex()) {
+            fun spanned(view: TextView, index: Int) = view.apply {
+                if (index == row.lastIndex && row.size < STAT_COLUMNS) {
+                    layoutParams = android.widget.TableRow.LayoutParams().apply {
+                        span = STAT_COLUMNS - row.lastIndex
+                    }
+                }
+            }
+            weatherStats.addView(android.widget.TableRow(this).apply {
+                if (rowIndex > 0) setPadding(0, dp(4), 0, 0)
+                for ((index, stat) in row.withIndex()) {
+                    addView(spanned(cell(stat.first, labelSp, R.color.retro_dim), index))
+                }
+            })
+            weatherStats.addView(android.widget.TableRow(this).apply {
+                isBaselineAligned = true
+                for ((index, stat) in row.withIndex()) {
+                    addView(spanned(cell(RetroType.pixelify(stat.second, pixelFace), valueSp,
+                                         R.color.retro_text), index))
+                }
+            })
+        }
     }
 
     /**
@@ -546,13 +589,15 @@ class MainActivity : Activity() {
         shownCommodities = key
 
         goldHeader.text = RetroType.pixelify(c.goldHeader, pixelFace)
-        fillTable(goldTable, c.gold, labelSp = 15f, extraSp = 13f, extraDim = true)
+        fillTable(goldTable, c.gold, labelSp = sp(R.dimen.type_primary), extraSp = sp(R.dimen.type_minor),
+                  extraDim = true)
         val oilState = if (c.oilHeader == null) android.view.View.GONE else android.view.View.VISIBLE
         oilHeader.visibility = oilState
         oilTable.visibility = oilState
         if (c.oilHeader != null) {
             oilHeader.text = RetroType.pixelify(c.oilHeader, pixelFace)
-            fillTable(oilTable, c.oil.orEmpty(), labelSp = 14f, extraSp = 13f, extraDim = false)
+            fillTable(oilTable, c.oil.orEmpty(), labelSp = sp(R.dimen.type_secondary),
+                      extraSp = sp(R.dimen.type_minor), extraDim = false)
         }
     }
 
@@ -1262,6 +1307,9 @@ class MainActivity : Activity() {
 
         /** A blank line between two coins, as a fraction of a full one. */
         const val COIN_GAP = 0.4f
+
+        /** Today's weather numbers per row. */
+        const val STAT_COLUMNS = 3
 
         /** How often the Jarvis window checks where the voice has got to. */
         const val FOLLOW_INTERVAL_MILLIS = 250L

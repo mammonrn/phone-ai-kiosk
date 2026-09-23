@@ -64,4 +64,37 @@ class ScreenDateAndMovesTest {
         val partial = JSONObject("""{"high_c":31.4,"low_c":23.4,"uv":null}""")
         assertEquals(listOf("สูง/ต่ำ" to "31°/23°"), DashboardState.weatherStats(partial))
     }
+
+    @Test
+    fun `PM2_5 is the value and its level word, after the weather's own numbers`() {
+        val weather = JSONObject("""{"high_c":31.4,"low_c":23.4,"rain_chance":12,"wind_kmh":8,"uv":8.3}""")
+        val air = JSONObject("""{"ok":true,"age_seconds":60,"pm25":41.3,"pm25_word":"เริ่มมีผลต่อสุขภาพ"}""")
+        val stats = DashboardState.weatherStats(weather, air)
+        assertEquals(5, stats.size)
+        assertEquals("PM2.5 มคก./ลบ.ม." to "41.3 เริ่มมีผลต่อสุขภาพ", stats.last())
+        val whole = JSONObject("""{"ok":true,"age_seconds":0,"pm25":9.0,"pm25_word":"ดีมาก"}""")
+        assertEquals("9 ดีมาก", DashboardState.pm25(whole)?.second)
+    }
+
+    @Test
+    fun `no air data means no PM2_5 cell, and the rest of the card is untouched`() {
+        val weather = JSONObject("""{"high_c":31.4,"low_c":23.4}""")
+        val failed = JSONObject("""{"ok":false,"age_seconds":0,"error":"upstream"}""")
+        val old = JSONObject("""{"ok":false,"age_seconds":20000,"stale":{"pm25":12.0,"pm25_word":"ดีมาก"}}""")
+        val staleButRecent = JSONObject("""{"ok":false,"age_seconds":1800,"stale":{"pm25":12.0,"pm25_word":"ดีมาก"}}""")
+        val expected = listOf("สูง/ต่ำ" to "31°/23°")
+        assertEquals(expected, DashboardState.weatherStats(weather, null))
+        assertEquals(expected, DashboardState.weatherStats(weather, failed))
+        assertEquals(expected, DashboardState.weatherStats(weather, old))
+        assertEquals(expected + ("PM2.5 มคก./ลบ.ม." to "12 ดีมาก"),
+                     DashboardState.weatherStats(weather, staleButRecent))
+        assertEquals(expected, DashboardState.weatherStats(weather,
+            JSONObject("""{"ok":true,"age_seconds":0,"pm25":null}""")))
+    }
+
+    @Test
+    fun `the dust shows even while the weather is missing`() {
+        val air = JSONObject("""{"ok":true,"age_seconds":0,"pm25":8.8,"pm25_word":"ดีมาก"}""")
+        assertEquals(listOf("PM2.5 มคก./ลบ.ม." to "8.8 ดีมาก"), DashboardState.weatherStats(null, air))
+    }
 }

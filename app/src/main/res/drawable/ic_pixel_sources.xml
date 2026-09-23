@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art: an open book, for the Control Panel's data sources
+     page. 16x16 grid, the palette of the other panel icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFF" android:pathData="M2,3h5v10h-5z M9,3h5v10h-5z" />
+    <path android:fillColor="#000080" android:pathData="M3,5h3v1h-3z M3,7h3v1h-3z M3,9h3v1h-3z
+        M10,5h3v1h-3z M10,7h3v1h-3z M10,9h3v1h-3z" />
+    <path android:fillColor="#000000" android:pathData="M1,2h6v1h-6z M9,2h6v1h-6z M1,3h1v11h-1z
+        M14,3h1v11h-1z M7,3h2v11h-2z M1,13h6v1h-6z M9,13h6v1h-6z" />
+</vector>

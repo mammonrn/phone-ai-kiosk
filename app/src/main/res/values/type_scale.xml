@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- THE TYPE SCALE BY IMPORTANCE (Poom, 2026-09-23: "ให้ลำดับความสำคัญสะท้อน
+     ผ่านขนาดจริง"). One size per tier, larger = more important, and every
+     data text on the dashboard takes its size from here — never a literal.
+     TypeScaleTest holds the order and checks the layout uses these names.
+     DESIGN.md section 4 is the same table in words.
+
+     Pixel-face numbers (Press Start 2P) are drawn at 0.8 of these sizes by
+     RetroType.pixelify, so tiers compare like for like. -->
+<resources>
+    <!-- 1. The weather now: the first thing a glance is for. -->
+    <dimen name="type_now">16sp</dimen>
+    <!-- 2. A card's main numbers: gold prices; Jarvis's words (fixed, 15). -->
+    <dimen name="type_primary">15sp</dimen>
+    <!-- 3. Supporting numbers: today's weather, fuel prices, the alarm list. -->
+    <dimen name="type_secondary">14sp</dimen>
+    <!-- 4. Minor data: crypto, gold's +/−, pump names, sun times, outlook. -->
+    <dimen name="type_minor">12sp</dimen>
+    <!-- 5. Labels and section headers, dimmed; window titles in bold. -->
+    <dimen name="type_label">11sp</dimen>
+    <!-- 6. Chrome: badges, battery and date. -->
+    <dimen name="type_chrome">10sp</dimen>
+</resources>
