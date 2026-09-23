@@ -23,7 +23,16 @@
     <string name="wake_hint">พูด \"Hey Jarvis\" เพื่อเริ่ม</string>
 
     <!-- Window titles on the kiosk screen. -->
-    <string name="window_clock">นาฬิกา</string>
+    <string name="window_home">Google Home</string>
+    <string name="home_button">เปิดเมนู Google Home</string>
+    <!-- Under the button until it is tapped. -->
+    <string name="home_not_connected">ยังไม่ได้เชื่อมต่อ</string>
+    <!-- What a tap says, this phase. Nothing is connected behind the button. -->
+    <string name="home_disabled">ยังไม่เปิดใช้งาน · จะเชื่อมต่อในเฟสสุดท้าย</string>
+    <!-- Title bar of the gold window when the broker sends the purity. The
+         WORD is there on purpose: the body carries a price move that is also a
+         percentage, and the two must not be read as one another. -->
+    <string name="gold_purity">ความบริสุทธิ์ %1$s%%</string>
     <string name="window_weather">อากาศ</string>
     <string name="window_gold">ราคาทอง</string>
     <string name="window_crypto">คริปโต</string>

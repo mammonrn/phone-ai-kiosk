@@ -25,6 +25,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
+import com.mammonrn.phoneaikiosk.home.HomeControl
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.DashboardState
@@ -45,12 +46,12 @@ import java.util.Locale
  */
 class MainActivity : Activity() {
 
-    private lateinit var clock: TextView
-    private lateinit var date: TextView
     private lateinit var status: TextView
     private lateinit var voiceStatus: TextView
     private lateinit var transcript: TextView
     private lateinit var taskbarClock: TextView
+    private lateinit var taskbarDate: TextView
+    private lateinit var homeNote: TextView
     private lateinit var weatherTitle: TextView
     private lateinit var weatherBody: TextView
     private lateinit var goldBody: TextView
@@ -91,31 +92,47 @@ class MainActivity : Activity() {
     private val tapGate = TapGate()
 
     /**
-     * Keeps the screen on while the phone is charging, and only then.
+     * Whether the phone is on its charger, as the power broadcasts last said.
      *
-     * A kiosk nobody can see is not a kiosk, but a phone held awake on battery
-     * is a phone that is flat by morning — and on OLED, a clock burnt into the
-     * panel. Charging is the line Poom drew, so the screen follows the cable.
+     * THE SCREEN NO LONGER SIMPLY FOLLOWS THE CABLE. It used to stay on for as
+     * long as the phone was charging; Poom changed that, and now it goes off
+     * after five idle minutes whatever the cable says — see IdleScreen, which
+     * owns the rule. Charging still matters in one place: while somebody is
+     * using it, a charging kiosk holds its screen on and one on battery lets
+     * the system's own timeout decide, which is what it always did.
      */
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            applyKeepScreenOn(intent.action == Intent.ACTION_POWER_CONNECTED)
+            charging = intent.action == Intent.ACTION_POWER_CONNECTED
         }
     }
 
+    @Volatile
+    private var charging = false
+
     private var keepingScreenOn = false
 
-    private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-    private val dateFormat = SimpleDateFormat("EEEE d MMMM yyyy", Locale.getDefault())
-    private val taskbarFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val idleScreen = IdleScreen()
+
+    /** What the Google Home button does. Not connected this phase. */
+    private val homeControl: HomeControl = HomeControl.NotConnected
+
+    /**
+     * 12-hour with AM/PM, as Poom asked, and in Locale.US on purpose: under the
+     * phone's Thai locale "a" is "ก่อนเที่ยง"/"หลังเที่ยง", which is correct Thai
+     * and not what was asked for. No leading zero on the hour, like any
+     * 12-hour clock: "7:05 AM", not "07:05 AM".
+     */
+    private val taskbarFormat = SimpleDateFormat("h:mm a", Locale.US)
+    private val dateFormat = SimpleDateFormat("EEE d MMM", Locale.US)
 
     private val tick = object : Runnable {
         override fun run() {
             val now = Date()
-            clock.text = clockFormat.format(now)
-            date.text = dateFormat.format(now)
+            applyScreenRule()
             status.text = statusLine()
             taskbarClock.text = taskbarFormat.format(now)
+            taskbarDate.text = dateFormat.format(now)
             VoiceState.locationState = location.describe()
             voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine() +
                 "\n" + VoiceState.thirdLine()
@@ -220,8 +237,13 @@ class MainActivity : Activity() {
         val dim = ContextCompat.getColor(this, R.color.retro_dim)
         weatherBody.text = RetroType.pixelifyHeadline(screen.weather.text, pixelFace, dim)
         goldBody.text = RetroType.pixelifyWithAge(screen.gold.text, pixelFace, dim)
-        cryptoBody.text = RetroType.pixelifyWithAge(screen.crypto.text, pixelFace, dim)
-        cryptoBodyRight.text = RetroType.pixelify(screen.crypto.text2, pixelFace)
+        // The blank line between two coins at under half height: enough to
+        // tell the pairs apart, not the full empty line that spread four coins
+        // over the whole window.
+        cryptoBody.text = RetroType.tightenBlankLines(
+            RetroType.pixelifyWithAge(screen.crypto.text, pixelFace, dim), COIN_GAP)
+        cryptoBodyRight.text = RetroType.tightenBlankLines(
+            RetroType.pixelify(screen.crypto.text2, pixelFace), COIN_GAP)
 
         // Sun or moon, from the same `is_day` the broker chose the word from.
         // Deciding it here from the phone's own clock would be a second opinion
@@ -240,11 +262,13 @@ class MainActivity : Activity() {
         val place = screen.place.ifEmpty { getString(R.string.place_unknown) }
         weatherTitle.text = "${getString(R.string.window_weather)} · $place"
 
-        // The gold title says what the percentage is measured against, and only
-        // while there is one to explain. A percentage with no stated base is a
-        // number pretending to be information.
-        goldTitle.text = if (screen.goldBasis.isEmpty()) getString(R.string.window_gold)
-                         else "${getString(R.string.window_gold)} · ${screen.goldBasis}"
+        // The gold title carries the PURITY, as a word and a number:
+        // "ราคาทอง · ความบริสุทธิ์ 96.5%". What the price move is measured
+        // against moved down into the panel's footnote, next to the moves it
+        // explains, so each percentage on this window sits beside its label.
+        goldTitle.text = if (screen.goldPurity.isEmpty()) getString(R.string.window_gold)
+                         else "${getString(R.string.window_gold)} · " +
+                             getString(R.string.gold_purity, screen.goldPurity)
     }
 
     private val dpm: DevicePolicyManager
@@ -262,12 +286,12 @@ class MainActivity : Activity() {
 
         location = KioskLocation(this)
 
-        clock = findViewById(R.id.clock)
-        date = findViewById(R.id.date)
         status = findViewById(R.id.status)
         voiceStatus = findViewById(R.id.voice_status)
         transcript = findViewById(R.id.transcript)
         taskbarClock = findViewById(R.id.taskbar_clock)
+        taskbarDate = findViewById(R.id.taskbar_date)
+        homeNote = findViewById(R.id.home_note)
         weatherTitle = findViewById(R.id.weather_title)
         weatherBody = findViewById(R.id.weather_body)
         goldBody = findViewById(R.id.gold_body)
@@ -286,6 +310,17 @@ class MainActivity : Activity() {
         findViewById<android.view.View>(R.id.exit_corner).setOnClickListener {
             onCornerTap()
         }
+
+        findViewById<android.view.View>(R.id.home_button).setOnClickListener {
+            onHomeTap()
+        }
+
+        // If the platform ever puts a keyguard between a dark screen and this
+        // one, the kiosk is still what lights up. In lock task mode without
+        // LOCK_TASK_FEATURE_KEYGUARD there is no keyguard to show over, so
+        // today this changes nothing; it is here so that "Hey Jarvis" wakes to
+        // the kiosk rather than to a lock screen if that ever stops being true.
+        setShowWhenLocked(true)
 
         // Back is swallowed unconditionally. There is nothing behind this
         // screen to go back to: the activity is the root of its task and the
@@ -356,7 +391,11 @@ class MainActivity : Activity() {
         // to be read directly — otherwise a kiosk that was already plugged in
         // when it launched (which is every reboot on a charger) would sit
         // there letting its screen time out.
-        applyKeepScreenOn(isCharging())
+        charging = isCharging()
+        // Coming back on — a touch, a wake word, the power key — is use, and
+        // restarts the five minutes.
+        idleScreen.used(SystemClock.elapsedRealtime())
+        applyScreenRule()
 
         enterLockTaskIfWanted()
 
@@ -387,12 +426,88 @@ class MainActivity : Activity() {
     }
 
     private fun applyKeepScreenOn(on: Boolean) {
+        if (on == keepingScreenOn) return
         keepingScreenOn = on
         if (on) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    /** Every touch anywhere is use. Seen here, before any view can eat it. */
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        idleScreen.used(SystemClock.elapsedRealtime())
+        return super.dispatchTouchEvent(event)
+    }
+
+    /**
+     * IdleScreen's decision for this second, carried out. Runs from the tick,
+     * so only while this activity is resumed: when Maps or another launcher is
+     * on top, their screen is the system's business, not this timer's.
+     */
+    private fun applyScreenRule() {
+        val now = SystemClock.elapsedRealtime()
+        val busy = IdleScreen.voiceBusy(
+            VoiceState.wake, VoiceState.stt, VoiceState.chat, VoiceState.tts)
+        when (idleScreen.decide(now, charging, busy)) {
+            IdleScreen.Action.KEEP_ON -> applyKeepScreenOn(true)
+            IdleScreen.Action.RELEASE -> applyKeepScreenOn(false)
+            IdleScreen.Action.SLEEP -> {
+                applyKeepScreenOn(false)
+                sleepNow()
+            }
+        }
+        VoiceState.screenIdleSeconds = idleScreen.idleFor(now) / 1000
+    }
+
+    /**
+     * Turns the screen off. The Device Owner's lockNow() is the one call an app
+     * can make that does it immediately — PowerManager.goToSleep is a system
+     * permission — and it needs `force-lock` in device_admin.xml, which is the
+     * one policy that file now asks for.
+     *
+     * "LOCK" IS A MISNOMER HERE. In lock task mode the keyguard is off unless
+     * LOCK_TASK_FEATURE_KEYGUARD is set, which this kiosk never sets, so this
+     * is the display going dark and nothing else: the task stays locked, the
+     * microphone keeps listening, and the next thing on screen is this activity.
+     *
+     * If the platform refuses, the flag is already cleared and the system's own
+     * timeout turns the screen off later instead; the status line says
+     * `lock-refused` so the difference is visible rather than silent.
+     */
+    private fun sleepNow() {
+        if (!isDeviceOwner) {
+            VoiceState.screenNote = "not-owner"
+            return
+        }
+        try {
+            dpm.lockNow()
+            VoiceState.screenSleeps += 1
+            VoiceState.screenNote = "slept"
+            Log.i(SCREEN_TAG, "screen off after ${IdleScreen.IDLE_MS / 1000}s idle")
+        } catch (e: SecurityException) {
+            VoiceState.screenNote = "lock-refused"
+            Log.w(SCREEN_TAG, "lockNow refused: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * The Google Home button. Says it is not switched on yet, in its own window
+     * rather than a toast, and puts the old line back after a few seconds.
+     */
+    private fun onHomeTap() {
+        if (homeControl.available) {
+            homeControl.open(this)?.let { homeNote.text = it }
+            return
+        }
+        homeNote.text = getString(R.string.home_disabled)
+        handler.removeCallbacks(restoreHomeNote)
+        handler.postDelayed(restoreHomeNote, HOME_NOTE_MILLIS)
+    }
+
+    private val restoreHomeNote = Runnable {
+        homeNote.text = getString(R.string.home_not_connected)
     }
 
     /**
@@ -655,6 +770,15 @@ class MainActivity : Activity() {
          *  shows the screen refreshing without the voice pipeline's
          *  traffic on top of it. */
         const val DASHBOARD_TAG = "KioskDashboard"
+
+        /** `adb logcat -s KioskScreen:*` for the idle rule on its own. */
+        const val SCREEN_TAG = "KioskScreen"
+
+        /** How long "ยังไม่เปิดใช้งาน" stays under the Google Home button. */
+        const val HOME_NOTE_MILLIS = 4_000L
+
+        /** A blank line between two coins, as a fraction of a full one. */
+        const val COIN_GAP = 0.4f
 
 
         /**

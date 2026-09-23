@@ -310,6 +310,24 @@ def fetch_place(latitude: float, longitude: float, timeout: float) -> dict:
 
 # -------------------------------------------------------------------- gold ---
 
+#: THE PURITY OF THE TWO PRICES, which the source does not send and this module
+#: therefore states. api.chnwt.dev answers numbers only; the page it scrapes,
+#: classic.goldtraders.or.th/default.aspx, heads the two rows it reads with
+#: "ทองคำแท่ง 96.5%" (lblBLSell/lblBLBuy, which it returns as `gold_bar`) and
+#: "ทองรูปพรรณ 96.5%" (lblOMSell/lblOMBuy, returned as `gold`). Checked by
+#: fetching that page on 2026-09-23 and matching each label to the element ids
+#: in the scraper's own selector file, src/config/price.ts. 96.5% is the Thai
+#: standard both kinds of gold are announced at; international bullion is
+#: 99.99% and is not what these prices are for.
+#:
+#: A CONSTANT, NOT A GUESS AND NOT A FETCH: no API returns this, and scraping
+#: a label that has not changed in decades would be a moving part added to
+#: re-read a fixed fact. If the association ever announces another purity it
+#: will be a new row with its own price, and this is where it would go.
+GOLD_PURITY_PCT = 96.5
+GOLD_PURITY_SOURCE = "https://classic.goldtraders.or.th/default.aspx"
+
+
 def fetch_gold(timeout: float) -> dict:
     raw = _get(GOLD_URL, timeout)
     if raw.get("status") != "success":
@@ -324,6 +342,11 @@ def fetch_gold(timeout: float) -> dict:
         "bar_buy": _baht(price["gold_bar"]["buy"]),
         "updated": f"{raw['response'].get('update_date', '')} "
                    f"{raw['response'].get('update_time', '')}".strip(),
+        # Purity, per product, as a number the phone labels "ความบริสุทธิ์".
+        # Kept apart from every *_change_pct key on purpose: two percentages
+        # on one panel are only safe if nothing can mistake one for the other.
+        "ornament_purity_pct": GOLD_PURITY_PCT,
+        "bar_purity_pct": GOLD_PURITY_PCT,
     }
 
 

@@ -398,6 +398,21 @@ class VoiceService : Service() {
      */
     override fun dump(fd: FileDescriptor, writer: PrintWriter, args: Array<out String>?) {
         writer.print(VoiceState.dump())
+        // The two facts that matter once the screen can go dark: is it dark,
+        // and is the phone paying for the microphone in heat or charge. Read
+        // here, where there is a Context, rather than kept in VoiceState.
+        val power = getSystemService(android.os.PowerManager::class.java)
+        writer.println("  screen-on    : ${power?.isInteractive}")
+        val battery = registerReceiver(null,
+            android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        if (battery != null) {
+            val level = battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = battery.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100)
+            val tenths = battery.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0)
+            val plugged = battery.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0)
+            writer.println("  battery      : ${level * 100 / scale.coerceAtLeast(1)}%  " +
+                "%.1f°C  plugged=%s".format(tenths / 10.0, plugged != 0))
+        }
         writer.println("  capture-mode : ${machine.mode}")
         writer.println("  armed        : ${machine.isArmed()}")
         val deafFor = hearingFrom.get() - android.os.SystemClock.elapsedRealtime()
@@ -555,6 +570,10 @@ class VoiceService : Service() {
         VoiceState.heard = ""
         VoiceState.reply = ""
         VoiceState.wake = "heard"
+        // A dark kiosk lights up the moment it hears its name, before the tone,
+        // so the screen is already there by the time the question starts. See
+        // ScreenWaker; a failure here must not cost the turn.
+        runCatching { ScreenWaker.wakeIfAsleep(this) }
         runCatching {
             if (tone == null) {
                 tone = android.media.ToneGenerator(

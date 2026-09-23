@@ -15,6 +15,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+      WAKE_LOCK, for one thing: "Hey Jarvis" turning a dark screen back on
+      (voice/ScreenWaker). The screen goes off after five idle minutes and the
+      microphone keeps listening; a wake lock with ACQUIRE_CAUSES_WAKEUP is how
+      a service, rather than a touch, brings the display back. Normal
+      protection level, granted at install, no dialog.
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
       WHERE THE KIOSK IS, TO ABOUT THREE KILOMETRES.
 
       COARSE AND ONLY COARSE. ACCESS_FINE_LOCATION is deliberately not here and

@@ -187,6 +187,31 @@ object RetroType {
     }
 
     /**
+     * The line breaks that make up an empty line: each "\n" straight after
+     * another one. Pure, so the choice of WHICH characters shrink is testable.
+     */
+    fun blankLineBreaks(text: CharSequence): List<Int> =
+        (1 until text.length).filter { text[it] == '\n' && text[it - 1] == '\n' }
+
+    /**
+     * [text] with every empty line shrunk to [factor] of its height.
+     *
+     * The crypto columns separate two coins with an empty line, and at full
+     * height that empty line was as tall as a price — four coins spread over
+     * the whole window and read as loose. A line's height comes from the text
+     * on it, and the only thing on an empty line is its own break, so a size
+     * span on that one character is what sets it.
+     */
+    fun tightenBlankLines(text: CharSequence, factor: Float): CharSequence {
+        val out = SpannableStringBuilder(text)
+        for (index in blankLineBreaks(text)) {
+            out.setSpan(RelativeSizeSpan(factor), index, index + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return out
+    }
+
+    /**
      * One span, three jobs: swap the face, shrink it to match, put it back on
      * the baseline. They have to travel together — change the size without the
      * shift and the digits float; do either in a plain CharacterStyle and the

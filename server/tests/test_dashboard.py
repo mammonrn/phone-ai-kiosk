@@ -600,6 +600,22 @@ def _earlier_today(conn, cfg, device_id, n, endpoint):
         [(device_id, ts, day, endpoint)] * n)
 
 
+def test_gold_carries_its_purity_apart_from_its_move(monkeypatch):
+    """The source sends prices only; the page it scrapes labels both rows
+    96.5%. The phone must get that as purity — a key no one could read as the
+    price change, which also ends in a percent sign."""
+    body = {"status": "success", "response": {
+        "update_date": "22/09/2569", "update_time": "เวลา 17:19 น. (ครั้งที่ 33)",
+        "price": {"gold": {"buy": "66,446.28", "sell": "68,800.00"},
+                  "gold_bar": {"buy": "67,800.00", "sell": "68,000.00"}}}}
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
+    got = dashboard_mod.fetch_gold(timeout=1)
+    assert got["ornament_purity_pct"] == 96.5
+    assert got["bar_purity_pct"] == 96.5
+    assert not any(k.endswith("_change_pct") for k in got)
+    assert dashboard_mod.GOLD_PURITY_SOURCE.startswith("https://classic.goldtraders.or.th/")
+
+
 def test_a_minute_poll_outlives_the_question_allowance(conn, cfg, fake_sources):
     """The screen polls every minute. Under the questions' daily cap it froze
     at five in the morning — on the A07 it answered 429 rate_limited_daily at

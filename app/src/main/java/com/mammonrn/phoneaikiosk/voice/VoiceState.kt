@@ -102,9 +102,25 @@ object VoiceState : VoiceSink {
         if (lastError.isNotEmpty()) append("  last-error=$lastError")
     }
 
+    /**
+     * The screen's side of the idle rule, for the status line and the dump.
+     *
+     * Written by MainActivity (idle time, sleeps, why a sleep was refused) and
+     * by ScreenWaker (wakes, and whether the last one actually lit the display).
+     * `screenNote` is the one to read when something is wrong: "lock-refused"
+     * means the Device Owner could not turn the screen off, "wake-denied"
+     * means the platform would not let a wake lock turn it back on.
+     */
+    @Volatile var screenIdleSeconds: Long = 0
+    @Volatile var screenSleeps: Int = 0
+    @Volatile var screenWakes: Int = 0
+    @Volatile var screenNote: String = ""
+
     /** The third diagnostics line: where the kiosk thinks it is, not where. */
     fun thirdLine(): String =
-        "loc $locationState weather=${weatherSource(weatherFallback)}"
+        "loc $locationState weather=${weatherSource(weatherFallback)}" +
+            "  idle=${screenIdleSeconds}s sleeps=$screenSleeps wakes=$screenWakes" +
+            (if (screenNote.isEmpty()) "" else " $screenNote")
 
     /** "here", "fallback", or "none" before any dashboard has arrived. */
     fun weatherSource(fallback: Boolean?): String = when (fallback) {
@@ -138,6 +154,8 @@ object VoiceState : VoiceSink {
             true -> "FALLBACK (university)"
             false -> "phone"
         })
+        appendLine("  screen-idle: ${screenIdleSeconds}s  sleeps=$screenSleeps  " +
+            "wakes=$screenWakes  note=${screenNote.ifEmpty { "none" }}")
         appendLine("  wake       : $wake")
         appendLine("  stt        : $stt")
         appendLine("  chat       : $chat")

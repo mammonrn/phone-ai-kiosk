@@ -96,4 +96,16 @@ class RetroTypeTest {
     fun `a double space between a number and Thai is left alone`() {
         assertEquals(emptyList<String>(), gaps("27.4°C  แดดจัด"))
     }
+
+    @Test
+    fun `only the break that makes an empty line is shrunk`() {
+        // In "A\nB\n\nC" the break after B ends a line of text and stays full
+        // height; the one after it is the whole of an empty line.
+        assertEquals(listOf(4), RetroType.blankLineBreaks("A\nB\n\nC"))
+    }
+
+    @Test
+    fun `text with no empty line is left alone`() {
+        assertEquals(emptyList<Int>(), RetroType.blankLineBreaks("BTC +1.53%\n\$85,987"))
+    }
 }

@@ -250,7 +250,7 @@ class DashboardStateTest {
         // One line is 230dp set in the pixel face and half the window is 170dp,
         // which is the whole reason for the break.
         assertTrue("got: ${screen.crypto.text}",
-                   screen.crypto.text.startsWith("BTC  +1.53%\n$85,987"))
+                   screen.crypto.text.startsWith("BTC +1.53%\n$85,987"))
     }
 
     @Test
@@ -391,6 +391,53 @@ class DashboardStateTest {
         assertTrue(text.contains("รูปพรรณ 68,800 บ.  +0.15%"))
         assertTrue(text.contains("ทองแท่ง 68,000 บ."))
         assertEquals(1, text.count { it == '%' })
+    }
+
+    // ------------------------------------------------------- the gold purity
+
+    private val withPurity = """
+        {"gold":{"ok":true,"age_seconds":200,"ornament_sell":68800.0,
+                 "bar_sell":68000.0,"ornament_sell_change_pct":0.15,
+                 "bar_sell_change_pct":-0.22,"change_basis":"เทียบครั้งก่อน",
+                 "ornament_purity_pct":96.5,"bar_purity_pct":96.5}}
+    """.trimIndent()
+
+    @Test
+    fun `purity reaches the title and never the body`() {
+        val screen = DashboardState.parse(withPurity, unavailable)
+        assertEquals("96.5", screen.goldPurity)
+        // The body's percentages are moves, and only moves.
+        assertFalse("got: ${screen.gold.text}", screen.gold.text.contains("96.5"))
+    }
+
+    @Test
+    fun `a move on screen always comes with what it is measured against`() {
+        val text = DashboardState.parse(withPurity, unavailable).gold.text
+        val footnote = text.substringAfterLast("\n")
+        assertEquals("(+/− เทียบครั้งก่อน · 3 นาทีก่อน)", footnote)
+    }
+
+    @Test
+    fun `no move means no footnote, and the age stays where it was`() {
+        val still = """
+            {"gold":{"ok":true,"age_seconds":200,"ornament_sell":68800.0,
+                     "bar_sell":68000.0,"ornament_purity_pct":96.5,"bar_purity_pct":96.5}}
+        """.trimIndent()
+        val text = DashboardState.parse(still, unavailable).gold.text
+        assertFalse("got: $text", text.contains("+/−"))
+        assertTrue("got: $text", text.endsWith("ทองแท่ง 68,000 บ.  (3 นาทีก่อน)"))
+    }
+
+    @Test
+    fun `an older broker with no purity leaves the title as it was`() {
+        assertEquals("", DashboardState.parse(everything, unavailable).goldPurity)
+    }
+
+    @Test
+    fun `two different purities are not squeezed into one title`() {
+        val mixed = """{"gold":{"ok":true,"ornament_sell":1.0,"bar_sell":2.0,
+                        "ornament_purity_pct":96.5,"bar_purity_pct":99.99}}"""
+        assertEquals("", DashboardState.parse(mixed, unavailable).goldPurity)
     }
 
     // -------------------------------------------------------- the place name

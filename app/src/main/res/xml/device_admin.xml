@@ -2,11 +2,20 @@
 <!--
   Device admin policy declaration.
 
-  Empty <uses-policies> on purpose: Device Owner status is what lock task mode
-  needs, and that is granted by `adb shell dpm set-device-owner` rather than by
-  anything listed here. Adding policies we do not use would only widen what the
-  app is allowed to do to the device.
+  ONE POLICY, and only because it is used. Device Owner status is what lock
+  task mode needs, and that is granted by `adb shell dpm set-device-owner`
+  rather than by anything listed here. Adding policies we do not use would only
+  widen what the app is allowed to do to the device.
+
+  force-lock is the exception, added when Poom asked for the screen to go off
+  after five idle minutes: DevicePolicyManager.lockNow() is the only call an app
+  can make that turns the display off at once, and both of its permission paths
+  in DevicePolicyManagerService check USES_POLICY_FORCE_LOCK (checked in the
+  AOSP source, 2026-09-23). In lock task mode it locks nothing — the keyguard is
+  off there — so what it does on this kiosk is switch the screen off.
 -->
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-policies />
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
 </device-admin>

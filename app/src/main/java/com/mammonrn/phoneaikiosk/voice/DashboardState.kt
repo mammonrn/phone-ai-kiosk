@@ -51,6 +51,17 @@ object DashboardState {
          */
         val goldBasis: String = "",
         /**
+         * The purity the two gold prices are announced at, "96.5", or empty.
+         *
+         * The title bar says it as "ความบริสุทธิ์ 96.5%" — the word, not just
+         * the number — because the body of the same window carries a second
+         * percentage, the price's move, and a reader has to be able to tell
+         * the two apart at a glance. Empty when the broker does not send it
+         * (one deployed before it did) or when the two products differ, which
+         * one line in a title bar could not say honestly.
+         */
+        val goldPurity: String = "",
+        /**
          * Whether the broker used its own fallback position because the phone
          * sent none. THAT it happened, never where: the screen and the dump
          * both say "fallback", and neither ever says a coordinate.
@@ -73,6 +84,7 @@ object DashboardState {
             place = root.optString("place", ""),
             isDay = isDay(weather),
             goldBasis = usable(gold)?.first?.optString("change_basis", "") ?: "",
+            goldPurity = goldPurity(usable(gold)?.first),
             locationFallback = root.optBoolean("location_fallback", false),
         )
     } catch (e: Exception) {
@@ -108,12 +120,28 @@ object DashboardState {
     }
 
     private fun age(panel: JSONObject?): String {
+        val words = ageWords(panel)
+        return if (words.isEmpty()) "" else "  ($words)"
+    }
+
+    /** "3 นาทีก่อน", "2 ชม.ก่อน", or empty when it is fresh. */
+    private fun ageWords(panel: JSONObject?): String {
         val seconds = panel?.optInt("age_seconds", 0) ?: 0
         return when {
             seconds < 90 -> ""
-            seconds < 3600 -> "  (${seconds / 60} นาทีก่อน)"
-            else -> "  (${seconds / 3600} ชม.ก่อน)"
+            seconds < 3600 -> "${seconds / 60} นาทีก่อน"
+            else -> "${seconds / 3600} ชม.ก่อน"
         }
+    }
+
+    /** Both products' purity when they agree, else empty. See [Screen.goldPurity]. */
+    private fun goldPurity(data: JSONObject?): String {
+        if (data == null) return ""
+        val ornament = data.optDouble("ornament_purity_pct", Double.NaN)
+        val bar = data.optDouble("bar_purity_pct", Double.NaN)
+        val known = listOf(ornament, bar).filterNot { it.isNaN() }
+        if (known.isEmpty() || known.any { it != known[0] }) return ""
+        return percent(known[0])
     }
 
     private fun weatherPanel(panel: JSONObject?, unavailable: String): Panel {
@@ -140,18 +168,35 @@ object DashboardState {
         val bar = data.optDouble("bar_sell", Double.NaN)
         if (ornament.isNaN() && bar.isNaN()) return Panel(unavailable, false)
 
+        val ornamentMove = goldMove(data, "ornament_sell_change_pct")
+        val barMove = goldMove(data, "bar_sell_change_pct")
+        val basis = data.optString("change_basis", "")
+
         return Panel(buildString {
             // Sell prices: the number people mean by "ราคาทอง".
             if (!ornament.isNaN()) {
                 append("รูปพรรณ ${baht(ornament)}")
-                append(goldMove(data, "ornament_sell_change_pct"))
+                append(ornamentMove)
             }
             if (!bar.isNaN()) {
                 if (isNotEmpty()) append("\n")
                 append("ทองแท่ง ${baht(bar)}")
-                append(goldMove(data, "bar_sell_change_pct"))
+                append(barMove)
             }
-            append(age(panel))
+            // TWO PERCENTAGES LIVE IN THIS WINDOW and they must never be read
+            // as one another. Purity is in the title, spelt out as a word. The
+            // move is always signed, and whenever one is on screen this
+            // footnote says what it is measured against, in the broker's own
+            // words — so "+0.37%" can only be a move and "96.5%" only purity.
+            // It ends in ")" on purpose: RetroType dims a trailing
+            // parenthesis as a footnote, which is what this is.
+            val movement = ornamentMove.isNotEmpty() || barMove.isNotEmpty()
+            if (movement && basis.isNotEmpty()) {
+                val note = listOf("+/− $basis", ageWords(panel)).filter { it.isNotEmpty() }
+                append("\n(${note.joinToString(" · ")})")
+            } else {
+                append(age(panel))
+            }
         }, stale)
     }
 
@@ -235,12 +280,18 @@ object DashboardState {
         return out
     }
 
-    /** The day's move, with a sign, because the direction is most of the point. */
+    /**
+     * The day's move, with a sign, because the direction is most of the point.
+     *
+     * ONE space, not two. Poom found the crypto window too loose, and the
+     * double space between "BTC" and its move was part of it: on a two-line
+     * coin the symbol and its move are one thing and should read as one.
+     */
     private fun move(coin: JSONObject): String {
         val change = coin.optDouble("change_pct", Double.NaN)
         if (change.isNaN()) return ""
         val sign = if (change >= 0) "+" else ""
-        return "  $sign${percent(change)}%"
+        return " $sign${percent(change)}%"
     }
 
     /** 68850.0 -> "68,850" — no decimals, because nobody reads satang at 2 m.
