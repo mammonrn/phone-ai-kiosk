@@ -63,9 +63,14 @@
       either: that would make every maps application visible, and this kiosk
       opens Google Maps specifically — see MapsLauncher.MAPS_PACKAGE, which a
       test checks against this line.
+
+      TWO PACKAGES NOW, each named for one action. Xiaomi Home joined for
+      "ขอดูกล้อง" (CameraAppLauncher.PACKAGE, also checked by a test). Still
+      named one by one, still no QUERY_ALL_PACKAGES.
     -->
     <queries>
         <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.xiaomi.smarthome" />
     </queries>
 
     <application

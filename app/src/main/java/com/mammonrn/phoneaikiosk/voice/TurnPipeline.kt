@@ -209,6 +209,14 @@ class TurnPipeline(
 class KioskAction(val type: String, val destination: String) {
     companion object {
         const val OPEN_MAPS = "open_maps"
+
+        /**
+         * Opens the Xiaomi Home app, and nothing else. No destination, no
+         * argument of any kind: the package is fixed on the phone
+         * (CameraAppLauncher) and the broker only ever sends the type, which
+         * it decides from a phrase in code rather than from a model's reply.
+         */
+        const val OPEN_CAMERA_APP = "open_camera_app"
     }
 }
 

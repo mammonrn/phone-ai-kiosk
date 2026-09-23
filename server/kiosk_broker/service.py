@@ -167,6 +167,26 @@ def handle_chat(
     if refusal:
         return refusal
 
+    # ---- "ขอดูกล้อง": answered in code, no model --------------------------
+    # Recognised on the transcript itself, so no prompt is involved in
+    # deciding it and no model call is paid for. The reply is fixed and the
+    # action has no arguments. Rate limits and caps above still applied.
+    if actions.camera_request(text):
+        reply = actions.CAMERA_REPLY
+        store.record_request(conn, device_id=device_id, day=day, outcome="ok",
+                             text_len=len(text))
+        store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
+                             role="user", content=text)
+        store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
+                             role="assistant", content=reply)
+        store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
+                             ttl_hours=cfg.history_ttl_hours)
+        # The type and how it was reached. Nothing about which camera or whose
+        # account: the broker knows neither and the log should not either.
+        log.info("action device=%s type=open_camera_app via=phrase", label)
+        return 200, {"reply": reply, "action": actions.camera_action(),
+                     "conversation_id": conversation_id}
+
     pricing = Pricing.load(cfg.pricing_path)
 
     # ---- ask -------------------------------------------------------------

@@ -647,10 +647,11 @@ class MainActivity : Activity() {
         //
         // Google Maps is on the list because phase 4 opens it, and an app that
         // is not on the list cannot appear at all while the task is locked.
-        // TWO PACKAGES, NAMED. Not "every Google app", not a prefix: the list
+        // THREE PACKAGES, NAMED. Not "every Google app", not a prefix: the list
         // is the boundary of what this kiosk can ever put on screen, and it is
-        // worth having to edit it deliberately.
-        dpm.setLockTaskPackages(admin, arrayOf(packageName, MapsLauncher.MAPS_PACKAGE))
+        // worth having to edit it deliberately. Xiaomi Home is the third, for
+        // "ขอดูกล้อง" — Poom's decision, one package, nothing Xiaomi else.
+        dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(packageName))
 
         // Re-checked before every action too: Maps can be installed while the
         // kiosk is already running, which is exactly what happened on the A07.

@@ -72,10 +72,16 @@ class PackageVisibilityTest {
      * declaration should say only that.
      */
     @Test
-    fun `visibility is granted to exactly one package`() {
+    fun `visibility is granted to exactly the packages the actions open`() {
+        // Two now: Google Maps, and Xiaomi Home for "ขอดูกล้อง". Each is named,
+        // each belongs to one action, and a third is a decision.
         val declared = Regex("""<package\s+android:name="([^"]+)"""")
             .findAll(manifest).map { it.groupValues[1] }.toList()
-        assertEquals(listOf(MapsLauncher.MAPS_PACKAGE), declared)
+        assertEquals(
+            listOf(MapsLauncher.MAPS_PACKAGE,
+                   com.mammonrn.phoneaikiosk.voice.CameraAppLauncher.PACKAGE),
+            declared,
+        )
     }
 
     @Test

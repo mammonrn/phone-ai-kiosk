@@ -22,6 +22,27 @@ class Broker(private val baseUrl: String, private val token: String) {
 
     companion object {
         /**
+         * The two actions the phone understands, and null for everything else.
+         *
+         * Maps needs a destination. The camera app takes NOTHING: whatever else
+         * arrives beside its type is ignored rather than forwarded, so a
+         * package name or a URL smuggled into the payload has nowhere to go.
+         * Public for the tests; the broker's own allowlist is the first check
+         * and this is the second.
+         */
+        fun parseAction(json: JSONObject?): KioskAction? {
+            if (json == null) return null
+            return when (val type = json.optString("type")) {
+                KioskAction.OPEN_MAPS -> {
+                    val destination = json.optString("destination").trim()
+                    if (destination.isEmpty()) null else KioskAction(type, destination)
+                }
+                KioskAction.OPEN_CAMERA_APP -> KioskAction(type, "")
+                else -> null
+            }
+        }
+
+        /**
          * The dashboard request's path. No position means no query string at
          * all, and the broker falls back to the university; a position is
          * rounded again here, so no caller can send more than two decimals.
@@ -76,14 +97,7 @@ class Broker(private val baseUrl: String, private val token: String) {
      * newer server quietly breaks. An unknown type does nothing, rather than
      * something.
      */
-    private fun readAction(json: JSONObject?): KioskAction? {
-        if (json == null) return null
-        val type = json.optString("type")
-        if (type != KioskAction.OPEN_MAPS) return null
-        val destination = json.optString("destination").trim()
-        if (destination.isEmpty()) return null
-        return KioskAction(type, destination)
-    }
+    private fun readAction(json: JSONObject?): KioskAction? = parseAction(json)
 
     /**
      * What the screen shows when nobody is talking. Raw JSON: DashboardState

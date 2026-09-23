@@ -30,8 +30,64 @@ from __future__ import annotations
 
 import re
 
-#: Phase 4. One entry, and adding a second is a decision, not a tweak.
+#: What a MODEL may ask for. Phase 4. One entry, and adding a second is a
+#: decision, not a tweak.
 ENABLED_ACTION_TYPES: frozenset[str] = frozenset({"open_maps"})
+
+#: What the BROKER may send on its own, from a phrase it recognised in code —
+#: never from anything a model wrote. See camera_request().
+#:
+#: THE CAMERA ACTION IS HERE AND NOT ABOVE, ON PURPOSE. Poom asked for "ขอดูกล้อง"
+#: to open the Xiaomi Home app, and for the check to be code rather than prompt.
+#: So the model is never told about it and cannot trigger it: a marker for it in
+#: a reply is dropped by sanitize() like any other unknown type, and a person
+#: talking the model into writing one gets nothing. The only way this action
+#: reaches the phone is the phrase match below, on the transcript itself.
+PHRASE_ACTION_TYPES: frozenset[str] = frozenset({"open_camera_app"})
+
+#: What Jarvis says before the phone opens the camera app. Fixed, short, and
+#: spoken BEFORE the app comes up — the phone performs actions after the reply.
+CAMERA_REPLY = "กำลังเปิดกล้องให้ครับ"
+
+#: The words that ask to see the cameras. Matched after lower-casing and
+#: removing every space, so "ขอ ดู กล้อง" and "เปิดกล้องหน่อย" both land.
+_CAMERA_PHRASES = (
+    "ขอดูกล้อง", "เปิดกล้อง", "ดูกล้อง", "เปิดดูกล้อง", "ดูภาพกล้อง",
+    "เปิดแอปกล้อง", "เปิดแอพกล้อง",
+    "mihome", "xiaomihome",
+)
+
+#: A request, not a paragraph. "ช่วยอธิบายหน่อยว่ากล้องวงจรปิดยี่ห้อไหนดี…" is a
+#: question for the model, and a phrase buried in a long sentence is more
+#: likely to be talk ABOUT cameras than a request to look at one.
+MAX_CAMERA_REQUEST_CHARS = 40
+
+#: Words that turn "camera" into a question rather than a request. Checked so
+#: "กล้องวงจรปิดยี่ห้อไหนดี" goes to the model instead of opening an app.
+_CAMERA_QUESTION_WORDS = ("ไหนดี", "ยังไง", "อย่างไร", "ราคา", "ยี่ห้อ", "ทำไม", "คืออะไร")
+
+
+def camera_request(text: str) -> bool:
+    """Whether a transcript is somebody asking to see the cameras.
+
+    Code, not prompt: a fixed list of phrases, a length ceiling, and a short
+    list of question words that mean the person is asking ABOUT cameras. False
+    for everything else, which then goes to the model as usual.
+    """
+    if not isinstance(text, str):
+        return False
+    squashed = "".join(text.split()).lower()
+    if not squashed or len(squashed) > MAX_CAMERA_REQUEST_CHARS:
+        return False
+    if any(word in squashed for word in _CAMERA_QUESTION_WORDS):
+        return False
+    return any(phrase in squashed for phrase in _CAMERA_PHRASES)
+
+
+def camera_action() -> dict:
+    """The one shape the camera action has. No arguments: the phone knows the
+    package, and nothing about which camera or what account travels here."""
+    return {"type": "open_camera_app"}
 
 # What a model would emit if it tried: a marker on its own, at the end.
 # The argument is matched unbounded and truncated afterwards, not bounded here.

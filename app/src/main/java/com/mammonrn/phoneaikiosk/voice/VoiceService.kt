@@ -262,7 +262,10 @@ class VoiceService : Service() {
                         // Only then: calling this on every capture would be a
                         // no-op most of the time and an activity start from a
                         // service every time, which is not free.
-                        if (VoiceState.lastAction.startsWith("open_maps:opened")) {
+                        // The same for Xiaomi Home: "Hey Jarvis" over the
+                        // camera view brings the kiosk back, as Back does.
+                        if (VoiceState.lastAction.startsWith("open_maps:opened") ||
+                            VoiceState.lastAction.startsWith("open_camera_app:opened")) {
                             returnToKiosk("wake")
                         }
                     }
@@ -439,6 +442,11 @@ class VoiceService : Service() {
         writer.println("  stop-reason  : ${machine.lastStopReason}")
         writer.println("  maps-package : ${MapsLauncher.MAPS_PACKAGE} " +
             "installed=${MapsLauncher.isInstalled(this)}")
+        // Read on the phone, never assumed: whether Xiaomi Home is here and
+        // which version. Nothing about the account it is signed in to.
+        writer.println("  camera-package: ${CameraAppLauncher.PACKAGE} " +
+            "installed=${CameraAppLauncher.isInstalled(this)} " +
+            "version=${CameraAppLauncher.version(this)}")
         writer.println()
         writer.print(stats.report())
     }
@@ -480,6 +488,7 @@ class VoiceService : Service() {
      * row is the right number for the one place a string becomes an Intent.
      */
     private fun performAction(action: KioskAction): String? {
+        if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
         if (action.type != KioskAction.OPEN_MAPS) {
             Log.w(TAG, "refused action type=${action.type}")
             VoiceState.lastAction = "${action.type}:refused"
@@ -507,6 +516,29 @@ class VoiceService : Service() {
             return null
         }
         return MapsLauncher.spokenFailure(result)
+    }
+
+    /**
+     * "ขอดูกล้อง": Xiaomi Home comes up, after Jarvis has said so.
+     *
+     * The screen is lit first in case it went dark between the question and
+     * the answer — the wake word lit it, but a slow answer can outlast a short
+     * system timeout on battery. Logged as a type and an outcome only: nothing
+     * about the account or the cameras exists on this side to log.
+     *
+     * A failure is spoken by the pipeline AND put where the screen shows the
+     * reply, because "the app is not installed" is something to read as well
+     * as hear.
+     */
+    private fun openCameraApp(): String? {
+        runCatching { ScreenWaker.wakeIfAsleep(this) }
+        val result = CameraAppLauncher.open(this)
+        VoiceState.lastAction = "open_camera_app:${result.name.lowercase()}"
+        Log.i(TAG, "action open_camera_app result=${result.name}")
+        if (result == CameraAppLauncher.Result.OPENED) return null
+        val failure = CameraAppLauncher.spokenFailure(result)
+        VoiceState.reply = failure
+        return failure
     }
 
     /**
