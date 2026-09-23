@@ -4,6 +4,16 @@ plugins {
 }
 
 android {
+    // COMPRESSED dex and native libraries (2026-09-23). With minSdk 28+ AGP
+    // stores classes.dex uncompressed, and it stores .so files uncompressed
+    // from minSdk 23: raising minSdk to 29 took the APK from ~45 to 52 MB.
+    // The APK's size is what CI's artifact storage is billed on once the repo
+    // is private (500 MB on GitHub Free), so it is kept small; the phone
+    // extracts the libraries once at install, which it has room for.
+    packaging {
+        dex { useLegacyPackaging = true }
+        jniLibs { useLegacyPackaging = true }
+    }
     namespace = "com.mammonrn.phoneaikiosk"
     compileSdk = 37
 

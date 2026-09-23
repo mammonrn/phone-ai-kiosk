@@ -218,8 +218,12 @@ jobs:
           # camera/ML Kit code, landing at ~44.8 MiB; Poom approved raising the
           # ceiling to 46 MB on 2026-09-23. Still tight on purpose: a runtime
           # upgrade or a stray dependency should fail here, not ship.
-          if [ "$SIZE" -gt 48234496 ]; then
-            echo "  APK is over 46 MB — check the onnxruntime version and new dependencies before raising this"; fail=1
+          # 2026-09-23 (0.40.0): dex and native libraries compressed again
+          # (useLegacyPackaging), 52 MB -> ~29.4 MiB. The ceiling follows it
+          # down, still under what Poom approved: the APK's size is what a
+          # private repo's artifact storage would be billed on.
+          if [ "$SIZE" -gt 35651584 ]; then
+            echo "  APK is over 34 MB — check packaging (useLegacyPackaging), the onnxruntime version and new dependencies"; fail=1
           fi
 
           exit $fail
