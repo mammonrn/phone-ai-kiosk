@@ -93,6 +93,12 @@ printf '%s\n' "$BUILD_ID" > "$APP_DIR/kiosk_broker/BUILD"
 echo "  build $BUILD_ID"
 install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$CONF_DIR"
 install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/pricing.json" "$CONF_DIR/pricing.json"
+# The transcriber hint words: written ONCE, then Poom's to edit — a deploy
+# never overwrites them. Check an edit with `stt-hints-check`.
+if [[ ! -f $CONF_DIR/stt_hints.json ]]; then
+    install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/stt_hints.json"         "$CONF_DIR/stt_hints.json"
+    echo "  wrote a default stt_hints.json"
+fi
 chown -R "$USER_NAME:$USER_NAME" "$APP_DIR"
 find "$APP_DIR" -type d -exec chmod 0755 {} +
 find "$APP_DIR" -type f -exec chmod 0644 {} +

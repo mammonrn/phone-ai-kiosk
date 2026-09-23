@@ -151,6 +151,25 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "on-screen diagnostics ${if (on) "ON" else "off"}")
             }
 
+            ACTION_STT_PROVIDER -> {
+                // Which transcriber the broker should use, for comparing them
+                // on the real phone. groq | groq-hints | google, or "default"
+                // to go back to the broker's own choice (Groq). In memory
+                // only: a restart forgets it.
+                val value = intent.getStringExtra("value")?.trim()?.lowercase()
+                VoiceState.sttOverride = when {
+                    value == null || value == "default" || value == "off" -> null
+                    com.mammonrn.phoneaikiosk.voice.Broker.sttProviderHeader(value) != null -> value
+                    else -> {
+                        android.util.Log.i("KioskStats", "stt provider unchanged: " +
+                            "pass --es value groq|groq-hints|google|default")
+                        VoiceState.sttOverride
+                    }
+                }
+                android.util.Log.i("KioskStats",
+                    "stt provider now ${VoiceState.sttOverride ?: "broker default"}")
+            }
+
             ACTION_SET_BROKER -> {
                 val url = intent.getStringExtra("url")
                 if (!url.isNullOrBlank()) {
@@ -167,6 +186,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_RESET_STATS = "com.mammonrn.phoneaikiosk.TEST_RESET_STATS"
         const val ACTION_SET_BROKER = "com.mammonrn.phoneaikiosk.TEST_SET_BROKER"
         const val ACTION_DIAGNOSTICS = "com.mammonrn.phoneaikiosk.TEST_DIAGNOSTICS"
+        const val ACTION_STT_PROVIDER = "com.mammonrn.phoneaikiosk.TEST_STT_PROVIDER"
         const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"

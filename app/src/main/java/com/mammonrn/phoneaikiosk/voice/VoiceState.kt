@@ -103,15 +103,6 @@ object VoiceState : VoiceSink {
     }
 
     /**
-     * The screen's side of the idle rule, for the status line and the dump.
-     *
-     * Written by MainActivity (idle time, sleeps, why a sleep was refused) and
-     * by ScreenWaker (wakes, and whether the last one actually lit the display).
-     * `screenNote` is the one to read when something is wrong: "lock-refused"
-     * means the Device Owner could not turn the screen off, "wake-denied"
-     * means the platform would not let a wake lock turn it back on.
-     */
-    /**
      * Whether the diagnostics lines are drawn ON THE SCREEN. Off by default.
      *
      * Poom asked for the screen to hold only what the household uses: the
@@ -125,12 +116,38 @@ object VoiceState : VoiceSink {
     @Volatile var showDiagnostics: Boolean = false
 
     /**
+     * Which transcriber to ask the broker for, set ONLY by the debug build's
+     * adb override (TEST_STT_PROVIDER) and forgotten on restart. Null means
+     * "the broker's default", which is Groq until Poom chooses otherwise.
+     */
+    @Volatile var sttOverride: String? = null
+
+    /** What the broker said it used on the last transcription. */
+    @Volatile var lastSttProvider: String = "none yet"
+
+    /**
+     * Android's own on-device recognizer, as probed at start-up: available
+     * or not, and where Thai stands. Read-only facts — nothing here ever
+     * starts a recognition or opens the microphone. See DeviceSttProbe.
+     */
+    @Volatile var deviceStt: String = "not probed"
+
+    /**
      * The kiosk's own line — owner, lock, awake, token, taps — written by
      * MainActivity every second. It used to be the taskbar's middle; it is in
      * the dump now, where a person debugging looks, and off the screen.
      */
     @Volatile var kioskLine: String = ""
 
+    /**
+     * The screen's side of the idle rule, for the status line and the dump.
+     *
+     * Written by MainActivity (idle time, sleeps, why a sleep was refused) and
+     * by ScreenWaker (wakes, and whether the last one actually lit the display).
+     * `screenNote` is the one to read when something is wrong: "lock-refused"
+     * means the Device Owner could not turn the screen off, "wake-denied"
+     * means the platform would not let a wake lock turn it back on.
+     */
     @Volatile var screenIdleSeconds: Long = 0
     @Volatile var screenSleeps: Int = 0
     @Volatile var screenWakes: Int = 0
@@ -178,6 +195,9 @@ object VoiceState : VoiceSink {
         appendLine("  status-line: ${statusLine()}")
         appendLine("  third-line : ${thirdLine()}")
         appendLine("  on-screen  : diagnostics ${if (showDiagnostics) "SHOWN (debug)" else "hidden"}")
+        appendLine("  stt-engine : asked=${sttOverride ?: "broker default"} " +
+            "last-used=$lastSttProvider  (override via adb, resets on restart)")
+        appendLine("  device-stt : $deviceStt")
         appendLine("  screen-idle: ${screenIdleSeconds}s  sleeps=$screenSleeps  " +
             "wakes=$screenWakes  note=${screenNote.ifEmpty { "none" }}")
         appendLine("  wake       : $wake")

@@ -21,6 +21,15 @@ class Broker(private val baseUrl: String, private val token: String) {
         RuntimeException(message)
 
     companion object {
+        const val STT_PROVIDER_HEADER = "X-Stt-Provider"
+
+        /** The transcribers the broker knows. "device" is not one: it never reaches it. */
+        val BROKER_STT_PROVIDERS = setOf("groq", "groq-hints", "google")
+
+        /** The header value for an override, or null for "use the broker's default". */
+        fun sttProviderHeader(override: String?): String? =
+            override?.trim()?.lowercase()?.takeIf { it in BROKER_STT_PROVIDERS }
+
         /**
          * The two actions the phone understands, and null for everything else.
          *
@@ -71,8 +80,16 @@ class Broker(private val baseUrl: String, private val token: String) {
 
     /** Audio in, Thai text out. The audio is not kept here or there. */
     fun transcribe(wav: ByteArray): String {
-        val body = post("/v1/stt", wav, "audio/wav").bytes
-        return JSONObject(String(body, Charsets.UTF_8)).optString("text")
+        // Which transcriber, only when the debug build's adb override set one;
+        // otherwise no header and the broker uses its configured default (Groq).
+        val provider = sttProviderHeader(VoiceState.sttOverride)
+        val extra = if (provider == null) emptyMap() else mapOf(STT_PROVIDER_HEADER to provider)
+        val body = post("/v1/stt", wav, "audio/wav", extra).bytes
+        val json = JSONObject(String(body, Charsets.UTF_8))
+        // What the broker ACTUALLY used, for dumpsys — it ignores a name it
+        // does not know, so the request and the answer can differ.
+        VoiceState.lastSttProvider = json.optString("provider", "unknown")
+        return json.optString("text")
     }
 
     /** One turn of conversation: the reply, the conversation id and any action. */
@@ -125,14 +142,19 @@ class Broker(private val baseUrl: String, private val token: String) {
 
     private fun get(path: String): Result = send(path, "GET", null, null)
 
-    private fun post(path: String, body: ByteArray, contentType: String): Result =
-        send(path, "POST", body, contentType)
+    private fun post(
+        path: String,
+        body: ByteArray,
+        contentType: String,
+        headers: Map<String, String> = emptyMap(),
+    ): Result = send(path, "POST", body, contentType, headers)
 
     private fun send(
         path: String,
         method: String,
         body: ByteArray?,
         contentType: String?,
+        headers: Map<String, String> = emptyMap(),
     ): Result {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
@@ -141,6 +163,7 @@ class Broker(private val baseUrl: String, private val token: String) {
             connectTimeout = 10_000
             readTimeout = 45_000
             setRequestProperty("Authorization", "Bearer $token")
+            for ((name, value) in headers) setRequestProperty(name, value)
             if (body != null) {
                 doOutput = true
                 setRequestProperty("Content-Type", contentType)

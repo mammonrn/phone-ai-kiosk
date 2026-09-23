@@ -43,6 +43,16 @@ class Config:
     # ---- speech to text -------------------------------------------------
     stt_model: str = "whisper-large-v3-turbo"
     stt_language: str = "th"
+
+    #: Which transcriber /v1/stt uses when the phone does not ask for one:
+    #: "groq" (default — Poom's choice until he picks another), "groq-hints"
+    #: or "google". See stt_router.py. The phone's per-request override exists
+    #: only in the debug build and resets when the app restarts.
+    stt_provider: str = "groq"
+
+    #: Google Speech-to-Text v1 model for the "google" transcriber. latest_short
+    #: lists th-TH and model adaptation on Google's supported-languages page.
+    google_stt_model: str = "latest_short"
     #: 1 MiB is about 32 seconds of the 16 kHz mono 16-bit WAV the phone sends,
     #: which is a long question. Compressed formats fit more seconds in the same
     #: bytes, so the duration cap below is what actually bounds the bill.
@@ -166,7 +176,18 @@ class Config:
         """Most one transcription could cost, for the budget guard."""
         from .pricing import Pricing
 
-        return Pricing.load(self.pricing_path).stt_cost(self.stt_model, self.max_audio_seconds)
+        return self.worst_case_stt_usd_for("groq")
+
+    def worst_case_stt_usd_for(self, provider: str) -> float:
+        """The same, for the transcriber a request will actually use — so a
+        Google request reserves Google's price and a Groq one exactly what it
+        always did."""
+        from .pricing import Pricing
+
+        pricing = Pricing.load(self.pricing_path)
+        if provider == "google":
+            return pricing.google_stt_cost(self.google_stt_model, self.max_audio_seconds)
+        return pricing.stt_cost(self.stt_model, self.max_audio_seconds)
 
     @property
     def worst_case_tts_usd(self) -> float:

@@ -87,6 +87,9 @@ class VoiceService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Asks whether an on-device Thai recognizer exists, for dumpsys. Asks
+        // only: no recognition, no microphone. See DeviceSttProbe.
+        runCatching { DeviceSttProbe.probe(this) }
         recorder = Recorder()
         detector = HeyJarvisDetector.fromAssets(this) ?: NoModelDetector("model-load-failed")
         stats = VoiceStats(this)

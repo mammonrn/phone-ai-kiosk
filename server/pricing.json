@@ -1,19 +1,17 @@
 {
   "_note": "Every rate here is copied from an official page, never computed and never estimated. Each section carries its own source URL and the date it was checked. Re-check the source before changing a number, and update _checked_at when you do. The last rate that was inlined in code on this machine came out 18x wrong because the model had changed underneath it.",
-
   "models": {
     "_source": "https://platform.claude.com/docs/en/about-claude/pricing",
     "_checked_at": "2026-09-22",
     "_unit": "USD per 1,000,000 tokens",
     "claude-haiku-4-5": {
-      "input": 1.00,
-      "output": 5.00,
+      "input": 1.0,
+      "output": 5.0,
       "cache_write_5m": 1.25,
-      "cache_write_1h": 2.00,
-      "cache_read": 0.10
+      "cache_write_1h": 2.0,
+      "cache_read": 0.1
     }
   },
-
   "stt": {
     "_source": "https://console.groq.com/docs/speech-to-text",
     "_checked_at": "2026-09-22",
@@ -24,7 +22,6 @@
       "min_billed_seconds": 10
     }
   },
-
   "tts": {
     "_source": "https://cloud.google.com/text-to-speech/pricing",
     "_checked_at": "2026-09-22",
@@ -32,7 +29,17 @@
     "_unit": "USD per character",
     "_note": "Quoted for Chirp 3: HD voices: \"0 to 1 million characters | US$0.00003 per character (US$30 per 1 million characters)\". The same page states the billed count includes spaces and newlines, and all SSML tags except <mark>. NOTE: the page's free-allowance wording names WaveNet (1M) and Standard (4M) only; it does NOT name Chirp 3 HD, and the Chirp 3 HD row bills from character 0. No free allowance is assumed here — assuming one would silently under-count the budget.",
     "chirp3-hd": {
-      "usd_per_character": 0.00003
+      "usd_per_character": 3e-05
+    }
+  },
+  "stt_google": {
+    "_source": "https://cloud.google.com/speech-to-text/pricing",
+    "_checked_at": "2026-09-23",
+    "_unit": "USD per minute of audio, v1 Standard",
+    "_note": "Quoted: billing is \"measured in increments of one second\" and \"Each request is rounded up to the nearest increment of 1 seconds\". Standard without data logging: first 60 minutes a month free, then $0.024 / 1 minute ($0.016 with data logging, which this broker does not opt into). The free tier is NOT subtracted here, so every estimate is the price after it runs out.",
+    "latest_short": {
+      "usd_per_minute": 0.024,
+      "billed_increment_seconds": 1
     }
   }
 }

@@ -43,6 +43,152 @@ def _require(name: str) -> str:
     return value
 
 
+def _analysis(cfg, action: str, audio: bool) -> int:
+    """`analysis on|off|status|summary|purge`. See analysis.py for what it keeps."""
+    from . import analysis
+
+    conn = store.connect(cfg.db_path)
+    try:
+        if action == "on":
+            state = analysis.set_mode(conn, on=True, audio=audio)
+            print("speech analysis ON — the words said to the kiosk are now stored, "
+                  f"for {analysis.RETENTION_DAYS} days, readable only by the broker user.")
+            print("audio: " + ("KEPT as WAV beside the database" if state["audio"]
+                               else "not kept (add --audio to keep it)"))
+            print("turn it off: analysis off   ·   delete everything: analysis purge")
+        elif action == "off":
+            analysis.set_mode(conn, on=False)
+            print("speech analysis off — nothing new is stored. Existing rows stay until "
+                  f"{analysis.RETENTION_DAYS} days old; `analysis purge` deletes them now.")
+        elif action == "status":
+            state = analysis.mode(conn)
+            print(f"speech analysis: {'ON' if state['on'] else 'off'}"
+                  f"{'  (audio kept)' if state['audio'] else ''}")
+        elif action == "purge":
+            print(f"deleted {analysis.delete_all(conn, cfg.home)} turn(s) and all kept audio")
+        else:
+            s = analysis.summary(conn, cfg.home)
+            print(f"turns: {s['turns']}  (with audio: {s['with_audio']})")
+            print(f"by transcriber: {s['by_provider']}")
+            print(f"by action:      {s['by_action']}")
+            print(f"by intent:      {s['by_intent']}")
+            print(f"cost: stt ${s['stt_cost_usd']:.6f}  chat ${s['chat_cost_usd']:.6f}")
+            print("\nmost frequent with no action:")
+            for text, count in s["top_unmatched"]:
+                print(f"  {count:>3}  {text}")
+            print("\nlatest:")
+            for row in s["recent"]:
+                when = _dt.datetime.fromtimestamp(row["ts"]).strftime("%m-%d %H:%M")
+                print(f"  {when}  {row['provider']:<11} {row['action'] or 'pending':<16} "
+                      f"{row['intent'] or '-':<22} {row['text']}")
+        return 0
+    finally:
+        conn.close()
+
+
+def _stt_compare(cfg, args) -> int:
+    """`stt-compare`: the same audio through each transcriber. See stt_compare.py."""
+    from . import analysis, google_stt, stt, stt_compare, stt_router, tts as tts_mod
+
+    providers = [p.strip() for p in args.providers.split(",") if p.strip()]
+    unknown = [p for p in providers if p not in stt_router.PROVIDERS]
+    if unknown or not providers:
+        print(f"unknown transcriber(s): {unknown}; choose from {', '.join(stt_router.PROVIDERS)}")
+        return 2
+    if not (args.from_analysis or args.dir or args.synth):
+        print("choose the audio: --from-analysis 4, --dir DIR, or --synth")
+        return 2
+    pricing = Pricing.load(cfg.pricing_path)
+    conn = store.connect(cfg.db_path)
+    try:
+        spent = lambda: store.training_spend_usd(conn, stt_compare.JOB)  # noqa: E731
+        print(f"budget: ${stt_compare.COMPARE_BUDGET_USD:.2f} for all comparison runs; "
+              f"spent so far ${spent():.4f}\n")
+
+        # ---- the audio ------------------------------------------------------
+        samples: list[tuple[str, str, bytes, float]] = []
+        sentences = list(stt_compare.SENTENCES)
+        if args.from_analysis:
+            kept = analysis.rows_with_audio(conn, cfg.home, args.from_analysis)
+            for (sentence, keyword), (_, audio) in zip(sentences, kept):
+                samples.append((sentence, keyword, audio, google_stt.wav_info(audio)[1]))
+            if not samples:
+                print("no kept recordings — run `analysis on --audio` and speak to the kiosk first")
+                return 1
+        elif args.dir:
+            files = sorted(Path(args.dir).glob("*.wav"))
+            for (sentence, keyword), path in zip(sentences, files):
+                audio = path.read_bytes()
+                samples.append((sentence, keyword, audio, google_stt.wav_info(audio)[1]))
+        elif args.synth:
+            key = _require("GOOGLE_TTS_API_KEY")
+            for sentence, keyword in sentences:
+                cost = pricing.tts_cost(cfg.tts_voice_family, len(sentence))
+                if spent() + cost > stt_compare.COMPARE_BUDGET_USD:
+                    print("stopped before synthesis: budget")
+                    return 1
+                speech = tts_mod.synthesize(
+                    api_key=key, text=sentence, language_code=cfg.tts_language,
+                    voice=cfg.tts_voice, encoding="LINEAR16", sample_rate_hertz=16_000)
+                store.record_training_usage(conn, job=stt_compare.JOB, service="tts",
+                                            quantity=len(sentence), unit="characters",
+                                            cost_usd=cost, note="synth sample")
+                samples.append((sentence, keyword, speech.audio,
+                                google_stt.wav_info(speech.audio)[1]))
+
+        # ---- the transcribers -------------------------------------------------
+        groq_client = _stt_client() if any(p.startswith("groq") for p in providers) else None
+        google_key = (_secret("GOOGLE_STT_API_KEY") or _secret("GOOGLE_TTS_API_KEY") or "")
+
+        def transcribe(provider: str, audio: bytes) -> tuple[str, float]:
+            try:
+                outcome = stt_router.transcribe(
+                    provider, groq_client=groq_client, google_key=google_key, audio=audio,
+                    filename="audio.wav", language=cfg.stt_language, groq_model=cfg.stt_model,
+                    google_model=cfg.google_stt_model,
+                    hints_path=cfg.home / "stt_hints.json", pricing=pricing)
+            except stt.SttError as exc:
+                # Billed if the vendor answered at all; the ledger must hear of it.
+                exc.cost = (stt_router.cost_of(provider, pricing, groq_model=cfg.stt_model,
+                                               google_model=cfg.google_stt_model,
+                                               seconds=exc.seconds)[1]
+                            if exc.seconds is not None else 0.0)
+                raise
+            return outcome.transcript.text, outcome.cost_usd
+
+        def worst_case(provider: str, seconds: float) -> float:
+            # Rounded up generously: a billed minimum and a second of slack.
+            return stt_router.cost_of(provider, pricing, groq_model=cfg.stt_model,
+                                      google_model=cfg.google_stt_model,
+                                      seconds=seconds + 1.0)[1]
+
+        def record(provider: str, seconds: float, cost: float) -> None:
+            store.record_training_usage(conn, job=stt_compare.JOB, service=f"stt:{provider}",
+                                        quantity=seconds, unit="seconds", cost_usd=cost)
+
+        rows, stopped = stt_compare.run(samples, providers, transcribe, worst_case, spent, record)
+
+        # ---- the table ----------------------------------------------------------
+        for row in rows:
+            mark = "OK " if row.ok else "MISS"
+            heard = row.heard or f"(error: {row.error})"
+            print(f"{mark} {row.provider:<11} CER {row.cer:4.0%} {row.ms:>5} ms "
+                  f"${row.cost_usd:.5f}  [{row.keyword}] {row.sentence} -> {heard}")
+        print()
+        print(f"{'transcriber':<12} {'key word':>8} {'mean CER':>9} {'mean ms':>8} {'cost':>10}")
+        for s in stt_compare.summary(rows, providers):
+            print(f"{s['provider']:<12} {s['keyword_hits']:>8} {s['mean_cer']:>9.0%} "
+                  f"{s['mean_ms']:>8.0f} {'$%.5f' % s['cost_usd']:>10}"
+                  f"{'  errors: %d' % s['errors'] if s['errors'] else ''}")
+        print(f"\ncomparison spend so far: ${spent():.4f} of ${stt_compare.COMPARE_BUDGET_USD:.2f}")
+        if stopped:
+            print(stopped)
+            return 1
+        return 0
+    finally:
+        conn.close()
+
+
 def _set_key(name: str) -> int:
     """`set-key NAME`: one secret, appended, never echoed. See envfile.py."""
     import getpass
@@ -230,6 +376,19 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("set-key", help="append one secret to the env file, read without echo; "
                                        "never rewrites the file, refuses a name already there")
     p.add_argument("name", help="e.g. TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, TUYA_DATA_CENTER")
+    p = sub.add_parser("analysis", help="speech analysis mode: KEEPS WHAT PEOPLE SAY. "
+                                        "on [--audio] | off | status | summary | purge")
+    p.add_argument("action", choices=["on", "off", "status", "summary", "purge"])
+    p.add_argument("--audio", action="store_true",
+                   help="with `on`: also keep each turn's WAV (separate consent)")
+    sub.add_parser("stt-hints-check", help="validate stt_hints.json (never prints secrets)")
+    p = sub.add_parser("stt-compare", help="same audio through groq, groq-hints, google; "
+                                           "capped at $0.20 across all runs")
+    p.add_argument("--from-analysis", type=int, default=0,
+                   help="use the last N turns kept by `analysis on --audio` (say the 4 in order)")
+    p.add_argument("--dir", default="", help="WAV files, sorted, paired with the 4 sentences")
+    p.add_argument("--synth", action="store_true", help="the 4 sentences in the kiosk's TTS voice")
+    p.add_argument("--providers", default="groq,groq-hints,google")
     sub.add_parser("tuya-check", help="Tuya Cloud: keys, data center, and one token request")
     sub.add_parser("tuya-devices", help="Tuya Cloud: list devices — name, type, on/off. Read only")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
@@ -299,8 +458,14 @@ def main(argv: list[str] | None = None) -> int:
 
         logging.getLogger("kiosk_broker").info("tts provider=%s", cfg.tts_provider)
 
+        # Google Speech-to-Text, for the "google" transcriber only. Its own key
+        # if Poom made one; otherwise the TTS key, which works only once
+        # "Cloud Speech-to-Text API" is added to that key's API restrictions.
+        google_stt_key = _secret("GOOGLE_STT_API_KEY") or tts_key
+
         httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key,
-                            botnoi_token=botnoi_token)
+                            botnoi_token=botnoi_token, google_stt_key=google_stt_key)
+        logging.getLogger("kiosk_broker").info("stt provider default=%s", cfg.stt_provider)
         logging.getLogger("kiosk_broker").info(
             "listening on http://%s:%d model=%s budget=$%.2f/month",
             cfg.host, cfg.port, cfg.model, cfg.monthly_budget_usd,
@@ -315,6 +480,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "set-key":
         return _set_key(args.name)
+    if args.cmd == "stt-hints-check":
+        from . import stt_hints
+
+        path = cfg.home / stt_hints.FILENAME
+        found = stt_hints.check_file(path)
+        if found:
+            print(f"{path}: NOT usable — transcribing continues without hints until fixed")
+            for problem in found:
+                print(f"  - {problem}")
+            return 1
+        hints = stt_hints.load(path)
+        print(f"{path}: ok, {len(hints.phrases)} phrases, google_boost {hints.boost:g}")
+        print(f"  whisper prompt ({len(hints.whisper_prompt())} chars): {hints.whisper_prompt()}")
+        return 0
+    if args.cmd == "analysis":
+        return _analysis(cfg, args.action, args.audio)
+    if args.cmd == "stt-compare":
+        return _stt_compare(cfg, args)
     if args.cmd in ("tuya-check", "tuya-devices"):
         from . import tuya_cli
 
@@ -518,6 +701,7 @@ def main(argv: list[str] | None = None) -> int:
                 ("GROQ_API_KEY", "/v1/stt"),
                 ("GOOGLE_TTS_API_KEY", "/v1/tts"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
+                ("GOOGLE_STT_API_KEY", "the \"google\" transcriber (else the TTS key is tried)"),
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
                 ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),
                 ("TUYA_DATA_CENTER", "which Tuya host to call"),

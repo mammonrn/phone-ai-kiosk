@@ -15,8 +15,8 @@ import sqlite3
 import time
 from typing import Any
 
-from . import (actions, auth, botnoi, clock, dashboard as dashboard_mod, limits,
-               oggopus, pronounce, register, shorten, stt, store, tts)
+from . import (actions, analysis, auth, botnoi, clock, dashboard as dashboard_mod, limits,
+               oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -192,6 +192,8 @@ def handle_chat(
         # The type and how it was reached. Nothing about which camera or whose
         # account: the broker knows neither and the log should not either.
         log.info("action device=%s type=open_camera_app via=phrase", label)
+        analysis.record_chat(conn, cfg.home, device=label, text=text, intent=why,
+                             action="open_camera_app", cost_usd=0.0)
         return 200, {"reply": reply, "action": actions.camera_action(),
                      "conversation_id": conversation_id}
 
@@ -261,6 +263,9 @@ def handle_chat(
 
     store.record_request(conn, device_id=device_id, day=day, outcome="ok",
                          text_len=len(text), register_fixes=register_fixes)
+    # Completes this turn's analysis row — a no-op unless analysis mode is on.
+    analysis.record_chat(conn, cfg.home, device=label, text=text, intent=why,
+                         action=action["type"] if action else "none", cost_usd=cost)
 
     store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
                          role="user", content=text)
@@ -315,6 +320,9 @@ def handle_stt(
     authorization: str | None,
     content_type: str | None,
     body: bytes,
+    provider: str | None = None,
+    google_key: str = "",
+    google_transport=None,
 ) -> tuple[int, dict]:
     """One POST /v1/stt: audio in, text out.
 
@@ -348,25 +356,33 @@ def handle_stt(
                              text_len=None, endpoint="stt")
         return 415, _error("unsupported_media_type", "รูปแบบไฟล์เสียงนี้ยังใช้ไม่ได้ครับ")
 
+    # Groq unless config says otherwise, or the phone's debug override named
+    # another transcriber for this one request. See stt_router.py. Chosen
+    # before the caps so the budget reserves THIS transcriber's worst case.
+    chosen = stt_router.choose(provider, cfg.stt_provider)
+
     refusal = _check_caps(conn, cfg, device_id=device_id, day=day, month=month, endpoint="stt",
-                          worst_case_usd=cfg.worst_case_stt_usd, text_len=None)
+                          worst_case_usd=cfg.worst_case_stt_usd_for(chosen), text_len=None)
     if refusal:
         return refusal
 
     pricing = Pricing.load(cfg.pricing_path)
 
     def bill(seconds: float) -> float:
-        cost = pricing.stt_cost(cfg.stt_model, seconds)
-        store.record_usage(conn, device_id=device_id, month=month, model=cfg.stt_model,
-                           cost_usd=cost, service="stt",
-                           quantity=pricing.stt_billed_seconds(cfg.stt_model, seconds),
-                           unit="seconds")
+        model, cost, billed = stt_router.cost_of(
+            chosen, pricing, groq_model=cfg.stt_model, google_model=cfg.google_stt_model,
+            seconds=seconds)
+        store.record_usage(conn, device_id=device_id, month=month, model=model,
+                           cost_usd=cost, service="stt", quantity=billed, unit="seconds")
         return cost
 
     started = time.monotonic()
     try:
-        transcript = stt.transcribe(client, model=cfg.stt_model, audio=body,
-                                    filename=filename, language=cfg.stt_language)
+        transcript = stt_router.transcribe(
+            chosen, groq_client=client, google_key=google_key, audio=body,
+            filename=filename, language=cfg.stt_language, groq_model=cfg.stt_model,
+            google_model=cfg.google_stt_model, hints_path=cfg.home / stt_hints.FILENAME,
+            pricing=pricing, google_transport=google_transport).transcript
     except stt.SttError as exc:
         # Groq answering 200 with an empty transcript is still a billed request.
         # Recording it is what stops "say nothing at it repeatedly" from being a
@@ -375,7 +391,8 @@ def handle_stt(
             bill(exc.seconds)
         store.record_request(conn, device_id=device_id, day=day, outcome="stt_error",
                              text_len=None, endpoint="stt")
-        log.warning("stt failed device=%s bytes=%d detail=%s", label, len(body), exc.detail)
+        log.warning("stt failed device=%s provider=%s bytes=%d detail=%s",
+                    label, chosen, len(body), exc.detail)
         return 502, _error("stt_error", exc.user_message)
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
@@ -384,13 +401,16 @@ def handle_stt(
                          text_len=len(transcript.text), endpoint="stt")
 
     # Length, never content: what somebody says to a kiosk is not something to
-    # keep in a log file.
-    log.info("stt ok device=%s bytes=%d seconds=%.1f billed=%d chars_out=%d cost=%.6f ms=%d",
-             label, len(body), transcript.seconds,
-             pricing.stt_billed_seconds(cfg.stt_model, transcript.seconds),
-             len(transcript.text), cost, elapsed_ms)
+    # keep in a log file. The words themselves go only to the analysis table,
+    # and only while Poom has analysis mode switched on — see analysis.py.
+    log.info("stt ok device=%s provider=%s bytes=%d seconds=%.1f chars_out=%d cost=%.6f ms=%d",
+             label, chosen, len(body), transcript.seconds, len(transcript.text), cost,
+             elapsed_ms)
+    analysis.record_stt(conn, cfg.home, device=label, provider=chosen, text=transcript.text,
+                        audio_seconds=transcript.seconds, audio=body, stt_ms=elapsed_ms,
+                        cost_usd=cost, intent=actions.camera_match(transcript.text)[1])
 
-    return 200, {"text": transcript.text}
+    return 200, {"text": transcript.text, "provider": chosen}
 
 
 # =============================================================== text to speech

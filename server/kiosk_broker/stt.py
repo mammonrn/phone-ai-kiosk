@@ -41,7 +41,8 @@ class Transcript:
     seconds: float
 
 
-def transcribe(client, *, model: str, audio: bytes, filename: str, language: str) -> Transcript:
+def transcribe(client, *, model: str, audio: bytes, filename: str, language: str,
+               prompt: str = "") -> Transcript:
     """One transcription. `audio` stays in memory.
 
     `verbose_json` is requested for one reason: it carries `duration`, and
@@ -52,8 +53,15 @@ def transcribe(client, *, model: str, audio: bytes, filename: str, language: str
     if not audio:
         raise SttError("ไม่ได้ยินเสียงครับ ลองพูดอีกครั้งนะ", "empty audio")
 
+    # The hint words, when the "groq-hints" transcriber asked for them. Groq
+    # documents `prompt` as "Prompt to guide the model's style or specify how
+    # to spell unfamiliar words. (limited to 224 tokens)"; stt_hints keeps it
+    # well under that. Not sent at all when empty, so plain "groq" is exactly
+    # the request it always was.
+    extra = {"prompt": prompt} if prompt else {}
     try:
         response = client.audio.transcriptions.create(
+            **extra,
             file=(filename, io.BytesIO(audio)),
             model=model,
             # Thai is stated rather than detected: the kiosk is a Thai household

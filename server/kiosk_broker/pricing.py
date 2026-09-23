@@ -109,6 +109,18 @@ class Pricing:
 
     # -------------------------------------------------------------------- tts
 
+    def google_stt_cost(self, model: str, seconds: float) -> float:
+        """Google Speech-to-Text v1: per second, rounded up, at the per-minute rate.
+
+        The 60 free minutes a month are deliberately not subtracted: an
+        estimate that assumes the free tier is still there is the one that is
+        wrong on the day it runs out.
+        """
+        rates = self._rates("stt_google", model)
+        step = max(1, int(rates.get("billed_increment_seconds", 1)))
+        billed = math.ceil(max(seconds, 0.0) / step) * step
+        return billed * rates["usd_per_minute"] / 60.0
+
     def tts_cost(self, voice_family: str, characters: int) -> float:
         """USD for synthesising this many characters.
 

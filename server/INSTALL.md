@@ -1119,3 +1119,92 @@ $B tuya-devices    # ชื่อ · ประเภท · online · เปิ�
   กุญแจ ประตู โรงรถ กันขโมย เซ็นเซอร์ **ถูกปฏิเสธเสมอแม้อยู่ใน allowlist**
 - ค่าได้แค่ true/false, code ได้แค่ `switch_led` `switch` `switch_1`
 - endpoint ที่จะใช้: `POST /v1.0/devices/{id}/commands`
+
+---
+
+## เทียบตัวถอดเสียง 3 ทาง และโหมดวิเคราะห์คำพูด
+
+ที่มา: Poom พูด "กล้อง" แต่ถอดได้ "กล่อง" ต้องการเลือกตัวถอดเสียงจากผลจริง
+**ค่าเริ่มต้นยังเป็น Groq** (`stt_provider: "groq"`) จนกว่า Poom จะสั่งเปลี่ยน
+
+| ชื่อ | คืออะไร | ราคา (ตรวจจากหน้าทางการ 23/09/2569) |
+|---|---|---|
+| `groq` | Groq whisper-large-v3-turbo แบบเดิม | $0.04/ชม. คิดขั้นต่ำ 10 วินาทีต่อครั้ง |
+| `groq-hints` | ตัวเดิม + `prompt` คำใบ้จาก `stt_hints.json` (Groq รองรับจริง จำกัด 224 tokens) | เท่า groq |
+| `google` | Google Cloud Speech-to-Text v1, `latest_short`, th-TH, `speechContexts` คำใบ้ | ฟรี 60 นาที/เดือน แล้ว $0.024/นาที คิดเป็นวินาที |
+
+ตัวถอดเสียงในเครื่อง Android **ยังไม่เปิดใช้** — ดูเหตุผลใน TESTING.md หัวข้อ v0.25.0
+
+### ⚠️ โหมดวิเคราะห์ — เก็บคำที่คนพูดจริง
+
+**โหมดนี้เก็บข้อความที่พูดกับ kiosk คำต่อคำ** (Poom เปลี่ยนกติกาเดิมที่ห้ามเก็บ
+ข้อความ เพื่อแก้ปัญหาถอดเสียงผิด) กติกาของโหมดนี้:
+
+- **ปิดเป็นค่าเริ่มต้น** เปิดเมื่อจะเก็บข้อมูลเท่านั้น แล้วปิดทันทีเมื่อพอ
+- เก็บต่อรอบ: เวลา, ตัวถอดเสียง, ข้อความ, ความยาวเสียง, ผลจับคำสั่ง
+  (camera/maps/none), ค่าใช้จ่ายโดยประมาณ
+- อยู่ในฐานข้อมูลของ broker ใน `/home/kioskbroker/.config/kiosk-broker/`
+  (โฟลเดอร์ 0700 ไฟล์ 0600 อ่านได้เฉพาะ kioskbroker) — **ไม่ลง journal ไม่ลง nginx**
+- **ไม่เก็บไฟล์เสียง** เว้นแต่เปิดด้วย `--audio` แยกอีกชั้น
+- **ลบเองเมื่อเกิน 14 วัน**
+
+```bash
+B='sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker'
+$B analysis status          # ดูว่าเปิดอยู่ไหม
+$B analysis on              # เปิด (เก็บข้อความ ไม่เก็บเสียง)
+$B analysis on --audio      # เปิด + เก็บไฟล์เสียงด้วย (สำหรับ stt-compare)
+$B analysis summary         # จำนวนรอบ คำที่จับคำสั่งไม่ได้บ่อย ตัวอย่างล่าสุด
+$B analysis off             # ปิด — ไม่เก็บอะไรใหม่ ไม่ต้อง restart
+$B analysis purge           # ลบทุกอย่างทันที รวมไฟล์เสียง
+```
+
+### คำใบ้ — `stt_hints.json`
+
+อยู่ที่ `/home/kioskbroker/.config/kiosk-broker/stt_hints.json` install.sh เขียน
+ให้ครั้งแรกครั้งเดียว หลังจากนั้นแก้เองได้ **ไม่ต้อง deploy ไม่ต้อง restart**
+(อ่านใหม่เมื่อไฟล์เปลี่ยน) ถ้าไฟล์ผิดรูปแบบ ระบบถอดเสียงต่อได้แบบไม่มีคำใบ้ ไม่ล่ม
+
+```bash
+sudo -u kioskbroker nano /home/kioskbroker/.config/kiosk-broker/stt_hints.json
+$B stt-hints-check          # ต้องขึ้น ok ก่อนใช้
+```
+
+### คีย์ Google สำหรับ Speech-to-Text (ถ้าจะลอง `google`)
+
+คีย์ TTS เดิมถูกจำกัดให้ใช้ได้แค่ Text-to-Speech — ใช้กับ Speech-to-Text ไม่ได้
+จนกว่าจะเพิ่มสิทธิ์ เลือกทางใดทางหนึ่ง (**แนะนำทาง ก.** คีย์แยก จำกัดสิทธิ์ชัด):
+
+**ก. คีย์ใหม่แยก**
+1. https://console.cloud.google.com → โปรเจกต์เดิมที่ใช้ TTS
+2. APIs & Services → Library → ค้น **Cloud Speech-to-Text API** → Enable
+3. APIs & Services → Credentials → Create credentials → API key
+4. กดคีย์ใหม่ → API restrictions → Restrict key → เลือก **Cloud Speech-to-Text API**
+   อย่างเดียว → (ถ้าคีย์ TTS จำกัด IP ไว้ ให้ใส่ IP ของ VPS แบบเดียวกัน) → Save
+5. บน VPS: `$B set-key GOOGLE_STT_API_KEY` แล้ววางคีย์ (มองไม่เห็นตอนวาง)
+
+**ข. ใช้คีย์ TTS เดิม** — ทำข้อ 1–2 แล้วเปิดคีย์ TTS เดิม → API restrictions →
+เพิ่ม Cloud Speech-to-Text API เข้าไปคู่กับ Text-to-Speech → Save (broker ใช้คีย์ TTS
+แทนอัตโนมัติถ้าไม่มี `GOOGLE_STT_API_KEY`)
+
+🔶 หน้าเอกสาร Speech-to-Text ไม่ได้เขียนตรงๆ ว่ารับ API key ได้ (เขียนถึง ADC)
+แต่หลักการ API key ของ Google บอกว่าใช้ได้กับทุก API ที่รับ key — `stt-compare`
+ครั้งแรกคือการทดสอบจริง ถ้าขึ้น `google auth 403` ให้ส่งผลมา
+
+### เทียบผล — `stt-compare` (เพดานรวมทุกครั้ง $0.20)
+
+ใช้เสียงชุดเดียวกันส่งเข้า groq, groq-hints, google แล้วพิมพ์ตาราง: คำหลักถูกไหม
+(กล้อง/เซ็นทรัล/อากาศ/ไฟ), CER (สัดส่วนตัวอักษรที่ผิด), เวลา, ค่าใช้จ่าย
+ทุกบาทลงบัญชี `training-usage` job `stt-compare` และ**หยุดเองก่อนเกิน $0.20**
+
+เสียงของ Poom เอง (ดีที่สุด):
+1. `$B analysis on --audio`
+2. ที่ kiosk พูดทีละประโยค **ตามลำดับนี้** (Hey Jarvis ก่อนทุกประโยค):
+   ขอดูกล้องหน่อยครับ · พาไปเซ็นทรัลเชียงราย · วันนี้อากาศเป็นยังไง · เปิดไฟห้องนั่งเล่น
+3. `$B stt-compare --from-analysis 4`
+4. `$B analysis off` แล้ว `$B analysis purge` เมื่อได้ผลแล้ว
+
+หรือเสียงสังเคราะห์ (เป็นพื้นขั้นต่ำ ไม่ใช่คำตัดสิน): `$B stt-compare --synth`
+
+ถ้ายังไม่มีคีย์ Google: `$B stt-compare --from-analysis 4 --providers groq,groq-hints`
+
+`/healthz` ต้องแสดง `"build"` ของรุ่นนี้ก่อน ถ้าไม่มี แปลว่ายังไม่ได้ deploy

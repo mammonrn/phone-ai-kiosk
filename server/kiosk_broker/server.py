@@ -77,6 +77,7 @@ class Handler(BaseHTTPRequestHandler):
     client: object
     stt_client: object
     tts_api_key: str
+    google_stt_key: str
     botnoi_token: str
     db_path: str
 
@@ -220,6 +221,8 @@ class Handler(BaseHTTPRequestHandler):
                     conn, self.config, self.stt_client,
                     authorization=self.headers.get("Authorization"),
                     content_type=self.headers.get("Content-Type"), body=body,
+                    provider=self.headers.get("X-Stt-Provider"),
+                    google_key=self.google_stt_key,
                 )
             else:
                 status, payload = handle_tts(
@@ -240,7 +243,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def make_server(config: Config, client: object, stt_client: object = None,
-                tts_api_key: str = "", botnoi_token: str = "") -> ThreadingHTTPServer:
+                tts_api_key: str = "", botnoi_token: str = "",
+                google_stt_key: str = "") -> ThreadingHTTPServer:
     store.connect(config.db_path).close()  # create/migrate once, up front
 
     handler = type("BoundHandler", (Handler,), {
@@ -248,6 +252,7 @@ def make_server(config: Config, client: object, stt_client: object = None,
         "client": client,
         "stt_client": stt_client,
         "tts_api_key": tts_api_key,
+        "google_stt_key": google_stt_key,
         "botnoi_token": botnoi_token,
         "db_path": str(config.db_path),
     })

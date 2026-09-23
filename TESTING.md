@@ -1586,3 +1586,34 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_SILENCE `
    `near-miss:กล่อง` = ถอดเสียงผิดเป็น "กล่อง" · `question-word` = เป็นคำถามเรื่อง
    กล้อง (ยี่ห้อ ราคา เสีย ไม่ได้) · `no-phrase` = มีคำว่ากล้องแต่ไม่ใช่คำสั่ง
    log ไม่มีข้อความที่พูด มีแค่เหตุผลกับความยาว
+
+---
+## v0.25.0 — สลับตัวถอดเสียงชั่วคราวบนมือถือ และตัวถอดเสียงในเครื่อง
+
+**สลับชั่วคราวผ่าน adb** (หายเมื่อแอปรีสตาร์ต กลับไปใช้ค่าเริ่มต้นของ broker = Groq):
+
+```powershell
+$R = "com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver"
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_STT_PROVIDER -n $R --es value groq-hints
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_STT_PROVIDER -n $R --es value google
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_STT_PROVIDER -n $R --es value default
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "stt-engine|device-stt"
+# stt-engine : asked=groq-hints last-used=groq-hints   ← last-used คือที่ broker ใช้จริง
+```
+
+### ตัวถอดเสียงในเครื่อง Android — ยังไม่เปิดใช้ (เหตุผลและหลักฐาน)
+
+แอปตรวจแค่ว่า **มีหรือไม่** ตอนเริ่ม (บรรทัด `device-stt` ใน dumpsys) — ไม่เคยสั่ง
+ให้ถอดเสียง ไม่เปิดไมค์
+
+ทางเดียวที่จะใช้ได้โดยไม่เปิดไมค์ซ้อนคือส่งเสียงที่อัดไว้แล้วให้มันผ่าน
+`RecognizerIntent.EXTRA_AUDIO_SOURCE` (API 33) แต่เอกสาร Android เขียนว่า
+*"If this extra is not set or the recognizer does not support this feature, the
+recognizer will open the mic"* และไม่บอกว่าตัวในเครื่องรองรับหรือไม่ ถ้าไม่รองรับ
+มันจะ**เปิดไมค์ซ้อนกับ AudioRecord ที่ฟังคำปลุกอยู่** — ซึ่ง Poom ห้าม
+
+ทางที่ปลอดภัยแน่นอน (ต้องให้ Poom อนุมัติก่อน เพราะแตะวงจรไมค์หลัก): ปิด
+AudioRecord ของเราก่อนส่งเสียงให้ตัวถอดเสียง แล้วเปิดใหม่หลังได้ผล — ระหว่างนั้น
+ไม่มีทางมีสองตัวพร้อมกัน ข้อเสีย: ช่วงถอดเสียง (ราว 1 วินาที) จะไม่ได้ยินคำปลุก
+ซึ่งตอนนั้นก็ไม่ได้ฟังคำปลุกอยู่แล้ว

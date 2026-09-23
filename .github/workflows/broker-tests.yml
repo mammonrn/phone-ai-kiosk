@@ -57,6 +57,7 @@ jobs:
               "models": "https://platform.claude.com/",
               "stt": "https://console.groq.com/",
               "tts": "https://cloud.google.com/",
+              "stt_google": "https://cloud.google.com/speech-to-text/",
           }
 
           data = json.load(open("pricing.json"))

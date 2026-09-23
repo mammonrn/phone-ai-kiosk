@@ -85,6 +85,25 @@ CREATE TABLE IF NOT EXISTS dashboard_state (
     updated_at REAL NOT NULL
 );
 
+-- Speech analysis mode: WHAT WAS SAID, word for word, one row per turn.
+-- Off unless Poom switches it on (analysis.py), deleted after 14 days, and in
+-- this file, which only the broker user can read. See INSTALL.md.
+CREATE TABLE IF NOT EXISTS analysis_turns (
+    id            INTEGER PRIMARY KEY,
+    ts            REAL NOT NULL,
+    device        TEXT NOT NULL,
+    provider      TEXT NOT NULL,
+    text          TEXT NOT NULL,
+    audio_seconds REAL,
+    audio_bytes   INTEGER,
+    stt_ms        INTEGER,
+    stt_cost_usd  REAL,
+    intent        TEXT,
+    action        TEXT,
+    chat_cost_usd REAL,
+    audio_file    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS training_usage (
     id        INTEGER PRIMARY KEY,
     ts        REAL NOT NULL,
