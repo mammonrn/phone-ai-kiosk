@@ -47,6 +47,10 @@ class MapsActionTest {
     fun `a space becomes percent twenty and not a plus`() {
         // URLEncoder writes "+" for a space, which inside a geo: query is a
         // literal plus sign — so the kiosk would search for "a+b".
+        val near = MapsLauncher.geoUriFor("ภูชี้ฟ้า", 20.04567 to 99.89123)!!
+        // Near the kiosk, rounded to ~1 km, so Maps looks in Chiang Rai first.
+        assertTrue(near, near.startsWith("geo:20.05,99.89?q="))
+        assertTrue(MapsLauncher.geoUriFor("ภูชี้ฟ้า", 999.0 to 0.0)!!.startsWith("geo:0,0?q="))
         val uri = MapsLauncher.geoUriFor("Central World")!!
         assertTrue("got $uri", uri.contains("%20"))
         assertFalse("a raw + would be searched for literally: $uri", uri.contains("+"))

@@ -51,6 +51,13 @@ object VoiceState : VoiceSink {
      */
     @Volatile var grantStatus: String = ""
 
+    /**
+     * The phone's coarse position (two decimals), for biasing a Maps search
+     * toward home (MapsLauncher). Set by MainActivity with each dashboard fix;
+     * null until there is one. Never sent anywhere by this.
+     */
+    @Volatile var near: Pair<Double, Double>? = null
+
     /** Google Maps: installed, and does it have its location permission. */
     @Volatile var mapsState: String = "unknown"
 

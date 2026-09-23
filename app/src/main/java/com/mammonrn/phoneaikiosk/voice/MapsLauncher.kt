@@ -49,7 +49,7 @@ object MapsLauncher {
      * the parts worth testing — so they live where a plain JVM test can reach
      * them, rather than behind `Uri`, which is an empty stub off-device.
      */
-    fun geoUriFor(destination: String): String? {
+    fun geoUriFor(destination: String, near: Pair<Double, Double>? = null): String? {
         val place = destination.trim()
         if (place.isEmpty() || place.length > MAX_DESTINATION_CHARS) return null
         // A second opinion on the broker's rule. Both would have to fail
@@ -67,7 +67,15 @@ object MapsLauncher {
         // a literal + is a plus sign, so "เซ็นทรัล เวิลด์" would become a search
         // for "เซ็นทรัล+เวิลด์". Corrected to %20.
         val encoded = java.net.URLEncoder.encode(place, "UTF-8").replace("+", "%20")
-        return "geo:0,0?q=$encoded"
+        // NEAR THE KIOSK (2026-09-23): "ภูชี้ฟ้าเชียงราย" was heard as "พูชีฟ้า
+        // เซ็นลาย", and with 0,0 Maps searched the whole world for it and opened
+        // somewhere else. Google's documented form geo:lat,lng?q= "biases the
+        // results towards a particular area" — the phone's own coarse position,
+        // two decimals (~1 km), the same the dashboard already uses. It goes to
+        // the Maps app on this phone and nowhere else.
+        val bias = near?.takeIf { (lat, lon) -> lat in -90.0..90.0 && lon in -180.0..180.0 }
+            ?.let { (lat, lon) -> "${KioskLocation.round(lat)},${KioskLocation.round(lon)}" } ?: "0,0"
+        return "geo:$bias?q=$encoded"
     }
 
     /**
@@ -75,7 +83,7 @@ object MapsLauncher {
      * one.
      */
     fun intentFor(destination: String): Intent? {
-        val uri = geoUriFor(destination) ?: return null
+        val uri = geoUriFor(destination, VoiceState.near) ?: return null
         return Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
             // THE LINE THAT MAKES THIS SAFE. Without it the intent resolves to
             // whatever is installed and willing, which is a chooser, which is

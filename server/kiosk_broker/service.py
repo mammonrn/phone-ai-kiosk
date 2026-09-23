@@ -72,7 +72,22 @@ def system_prompt_for(cfg: Config, text: str) -> str:
         system += "\n" + dashboard_mod.weather_detail_line(_dashboard(cfg))
     if oil_mod.asks_about_oil(text):
         system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
+    # Map questions only: where the kiosk is, and that place names arrive
+    # through a transcriber (2026-09-23, "ภูชี้ฟ้าเชียงราย" came in as "พูชีฟ้า
+    # เซ็นลาย"). The model corrects the name to the real place nearby that
+    # sounds closest, and says it — so a wrong guess is heard before Maps
+    # opens. From the dashboard's cache, never fetched.
+    if speech_gate.has_maps_word(text):
+        system += "\n" + maps_area_line(_dashboard(cfg).latest("place"))
     return system
+
+
+def maps_area_line(place: tuple[int, dict] | None) -> str:
+    """The one line a map question adds to the prompt."""
+    area = (place[1].get("place") or "").strip() if place else ""
+    where = f"พี่อยู่{area} " if area else ""
+    return (f"แผนที่: {where}ชื่อสถานที่อาจถอดเสียงเพี้ยน "
+            "ใช้ชื่อจริงในพื้นที่ที่เสียงใกล้สุด ทั้งในคำตอบและ action")
 
 
 #: What Jarvis says when a private question needs the identity check first.

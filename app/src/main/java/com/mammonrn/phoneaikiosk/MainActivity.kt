@@ -259,6 +259,8 @@ class MainActivity : Activity() {
             // when the last fix is over half an hour old.
             location.refreshIfStale()
             val fix = location.coordinates()
+            // For Maps: search near the kiosk, not the whole world (MapsLauncher).
+            if (fix != null) VoiceState.near = fix
 
             dashboardThread.execute {
                 val token = TokenStore(this@MainActivity).token()

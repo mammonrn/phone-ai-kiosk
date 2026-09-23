@@ -121,3 +121,36 @@ def test_the_history_keeps_the_marker_so_the_model_keeps_writing_it(conn, cfg):
     replayed = [m["content"] for m in client.calls[0]["messages"] if m["role"] == "assistant"]
     assert replayed == [model_says]
     assert "[[action: open_maps | เซ็นทรัลเชียงราย]]" in replayed[0]
+
+
+# ---- place names through a transcriber (2026-09-23) -----------------------
+
+def test_a_map_question_tells_the_model_where_the_kiosk_is_and_to_fix_misheard_names(conn, cfg):
+    from kiosk_broker import service
+
+    board = service._dashboard(cfg)
+    import time as _time
+    from kiosk_broker import dashboard as dashboard_mod
+    board._cache["place:20.05:99.89"] = (_time.time() - 60, dashboard_mod.Panel(True, {"place": "เชียงราย"}))
+    client = FakeClient("กำลังเปิดแผนที่ไปภูชี้ฟ้าครับ [[action: open_maps | ภูชี้ฟ้า เชียงราย]]")
+    _, body = _ask(conn, cfg, client, "พาไปพูชีฟ้าเซ็นลาย")
+    system = client.calls[0]["system"]
+    system = system if isinstance(system, str) else str(system)
+    assert "แผนที่: พี่อยู่เชียงราย" in system and "ถอดเสียงเพี้ยน" in system
+    assert body["action"] == {"type": "open_maps", "destination": "ภูชี้ฟ้า เชียงราย"}
+    service.forget_dashboards()
+
+
+def test_other_questions_do_not_pay_for_the_map_line(conn, cfg):
+    client = FakeClient("ตอนนี้บ่ายสามโมงครับพี่")
+    _ask(conn, cfg, client, "ตอนนี้กี่โมง")
+    system = client.calls[0]["system"]
+    assert "แผนที่: " not in (system if isinstance(system, str) else str(system))
+
+
+def test_the_map_line_without_a_known_place_still_asks_for_the_real_name():
+    from kiosk_broker.service import maps_area_line
+
+    assert "พี่อยู่" not in maps_area_line(None)
+    assert "ชื่อจริง" in maps_area_line(None)
+    assert len(maps_area_line((1, {"place": "เชียงราย"}))) <= 110
