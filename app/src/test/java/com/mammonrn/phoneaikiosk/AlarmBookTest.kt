@@ -192,8 +192,7 @@ class AlarmBookTest {
             {"id":"diesel","label":"ดีเซล","cheapest":[{"brand":"ปตท.","price":40.69}]}]}"""
         assertNull(DashboardState.parse("{$gold}", "-").oil)
         val screen = DashboardState.parse("{$gold,$oil}", "-")
-        assertEquals("ดีเซล 40.69 ปตท.
-(ราคากรุงเทพฯ · 23 กันยายน 2569)", screen.oil!!.text)
+        assertEquals("ดีเซล 40.69 ปตท.\n(ราคากรุงเทพฯ · 23 กันยายน 2569)", screen.oil!!.text)
         assertEquals("ทองแท่ง 68,100 บ. · ดีเซล 40.69", DashboardState.cardFacts("{$gold,$oil}")["gold"]!!.second)
         val down = """"oil":{"ok":false,"error":"URLError"}"""
         assertEquals("น้ำมัน: -", DashboardState.parse("{$gold,$down}", "-").oil!!.text)
