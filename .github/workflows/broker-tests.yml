@@ -38,6 +38,38 @@ jobs:
           python -m pip install --quiet --upgrade pip
           python -m pip install --quiet pytest anthropic
 
+      # pytest only compiles what the tests import. __main__.py — the file
+      # systemd actually runs — was imported by none of them, so on 2026-09-23 a
+      # syntax error in it passed CI and took production down in a restart
+      # loop. These two steps are the gate that was missing.
+      - name: Every Python file compiles
+        working-directory: server
+        run: python -m compileall -q -f kiosk_broker tests
+
+      - name: The broker starts and answers /healthz
+        working-directory: server
+        env:
+          # A placeholder, never used for a request: the smoke test only asks
+          # /healthz, and building the Anthropic client makes no call.
+          ANTHROPIC_API_KEY: ci-placeholder-not-a-key
+        run: |
+          home="$(mktemp -d)"
+          cp pricing.json stt_hints.json "$home/"
+          echo '{"port": 18770}' > "$home/config.json"
+          export KIOSK_BROKER_HOME="$home"
+          python -m kiosk_broker --help > /dev/null
+          python -m kiosk_broker keys
+          python -m kiosk_broker analysis status
+          python -m kiosk_broker stt-hints-check
+          python -m kiosk_broker serve > "$home/serve.log" 2>&1 &
+          pid=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18770/healthz; then echo; kill "$pid"; exit 0; fi
+            if ! kill -0 "$pid" 2>/dev/null; then echo "broker exited:"; cat "$home/serve.log"; exit 1; fi
+            sleep 1
+          done
+          echo "no answer from /healthz within 30 s:"; cat "$home/serve.log"; kill "$pid"; exit 1
+
       - name: Run tests
         working-directory: server
         run: python -m pytest tests/ -q

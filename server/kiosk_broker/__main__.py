@@ -82,8 +82,7 @@ def _analysis(cfg, action: str, audio: bool) -> int:
                 audio = "audio" if row["audio_file"] else "     "
                 print(f"  #{row['id']:<4} {when}  {audio} {row['provider']:<11} "
                       f"{row['action'] or 'pending':<16} {row['intent'] or '-':<22} {row['text']}")
-            print("
-for stt-compare, name the four recordings in sentence order: --ids 12,13,14,15")
+            print("\nfor stt-compare, name the four recordings in sentence order: --ids 12,13,14,15")
         return 0
     finally:
         conn.close()
