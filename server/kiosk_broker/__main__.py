@@ -43,6 +43,37 @@ def _require(name: str) -> str:
     return value
 
 
+def _set_key(name: str) -> int:
+    """`set-key NAME`: one secret, appended, never echoed. See envfile.py."""
+    import getpass
+
+    from . import envfile
+
+    env_path = config_mod.DEFAULT_HOME / "env"
+    if name not in envfile.SETTABLE:
+        print(f"{name}: not a name set-key writes. One of:", file=sys.stderr)
+        for known, what in envfile.SETTABLE.items():
+            print(f"  {known:<20} {what}", file=sys.stderr)
+        return 2
+    # Refused BEFORE asking, so nobody pastes a secret only to be told no.
+    if name in envfile.names_in(env_path):
+        print(f"{name}: already present in {env_path} — nothing asked, nothing written.",
+              file=sys.stderr)
+        print("To replace it, remove its line by hand first (INSTALL.md).", file=sys.stderr)
+        return 1
+    if sys.stdin.isatty():
+        value = getpass.getpass(f"{name} (input hidden): ")
+    else:
+        value = sys.stdin.readline()
+    try:
+        envfile.append_secret(env_path, name, value)
+    except envfile.EnvError as refused:
+        print(str(refused), file=sys.stderr)
+        return 1
+    print(f"{name}: appended to {env_path}. Check with `keys`.")
+    return 0
+
+
 def _client(cfg: "config_mod.Config"):
     """The Anthropic client."""
     import anthropic
@@ -196,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("list-devices")
     sub.add_parser("usage", help="this month's spend for the phone")
     sub.add_parser("keys", help="which secrets are configured (present/missing, never the value)")
+    p = sub.add_parser("set-key", help="append one secret to the env file, read without echo; "
+                                       "never rewrites the file, refuses a name already there")
+    p.add_argument("name", help="e.g. TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, TUYA_DATA_CENTER")
+    sub.add_parser("tuya-check", help="Tuya Cloud: keys, data center, and one token request")
+    sub.add_parser("tuya-devices", help="Tuya Cloud: list devices — name, type, on/off. Read only")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
     sub.add_parser("prompt-size", help="measure the prompt in tokens (free, no answer generated)")
 
@@ -276,6 +312,13 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             httpd.server_close()
         return 0
+
+    if args.cmd == "set-key":
+        return _set_key(args.name)
+    if args.cmd in ("tuya-check", "tuya-devices"):
+        from . import tuya_cli
+
+        return tuya_cli.run(args.cmd, _secret)
 
     conn = store.connect(cfg.db_path)
     try:
@@ -475,6 +518,9 @@ def main(argv: list[str] | None = None) -> int:
                 ("GROQ_API_KEY", "/v1/stt"),
                 ("GOOGLE_TTS_API_KEY", "/v1/tts"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
+                ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
+                ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),
+                ("TUYA_DATA_CENTER", "which Tuya host to call"),
             ):
                 state = "present" if _secret(name) else "missing"
                 print(f"  {name:<20} {state:<8} {what}")

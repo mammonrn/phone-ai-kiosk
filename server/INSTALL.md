@@ -1037,3 +1037,85 @@ nginx ตั้งไว้**หลวมกว่า** broker เสมอโ�
 rate limit ของ nginx คือ 90 คำขอ/นาที ส่วน broker คือ 10 คำขอ/นาทีต่อเส้นทาง
 **เสียงหนึ่งรอบใช้ 3 คำขอ** (stt + chat + tts) จึงตั้ง nginx ให้หลวมพอที่
 เพดานของ broker เป็นตัวที่มีผลจริง
+
+---
+
+## Tuya — ไฟบ้าน (เฟสอ่านอย่างเดียว)
+
+Poom ตัดสินใจแล้ว: ไฟบ้านใช้ Tuya ผ่านแอป Smart Life, broker บน VPS เป็นตัวเดียว
+ที่คุยกับ Tuya Cloud, **มือถือไม่ถือคีย์ Tuya**, ยกเลิก Google Home APIs สำหรับไฟ
+
+**รอบนี้อ่านอย่างเดียว** — ในโค้ดไม่มีฟังก์ชันส่งคำสั่งเลย คำสั่งเปิดปิดไฟถูก
+ออกแบบไว้แล้ว (`tuya.plan_switch`) แต่ส่งไม่ได้ และ action `set_light` ไม่อยู่ใน
+`ENABLED_ACTION_TYPES` ถ้าโมเดลพยายามส่งมา โค้ดจะตัดทิ้งเอง ไม่พึ่ง prompt
+
+### ขั้นที่ 1 — บน platform.tuya.com (Poom ทำเอง ✅ ตามเอกสาร Tuya)
+
+1. สมัคร/ล็อกอิน https://platform.tuya.com
+2. Cloud → Development → **Create Cloud Project**
+   - Development Method: **Smart Home**
+   - Data Center: **ต้องตรงกับบัญชี Smart Life** ดูในแอป Smart Life ที่
+     ฉัน (Me) → ตั้งค่า → บัญชีและความปลอดภัย → ภูมิภาค
+     🔶 บัญชีไทยที่สร้างก่อน 3 มิ.ย. 2025 มักอยู่ Western America (`us`)
+     บัญชีใหม่กว่านั้นมักอยู่ Singapore (`sg`)
+3. ตอนสร้างจะให้เลือกบริการ ให้มี **IoT Core** และ **Authorization Token
+   Management** — ใช้ Trial Edition ที่ฟรี **ห้ามกดซื้อแพ็กเกจที่เสียเงิน**
+4. แท็บ **Devices → Link Tuya App Account → Add App Account** แล้วเอาแอป
+   Smart Life สแกน QR → Confirm login
+   - ❓ ถ้ามีตัวเลือกสิทธิ์อุปกรณ์แบบ "อ่านอย่างเดียว" ให้เลือกอันนั้นรอบนี้
+     ถ้ามีแต่ "Read, Write and Manage" ก็ได้ — โค้ดฝั่งเราอ่านอย่างเดียวอยู่แล้ว
+5. แท็บ **Overview** → Authorization Key → จะเห็น **Access ID/Client ID** และ
+   **Access Secret/Client Secret** — **ห้ามคัดลอกไปวางในแชทหรือที่อื่น** นอกจาก
+   ขั้นที่ 2 ข้างล่าง
+
+ข้อจำกัดของ Trial Edition (✅ หน้า membership-service ของ Tuya): ประมาณ
+**26,000 API calls/เดือน**, อุปกรณ์สูงสุด 50 ตัว, ใช้ได้เฉพาะส่วนตัว/ทดสอบ
+ครบโควตาแล้วบริการหยุดจนเดือนหน้า ไม่มีเก็บเงินเกิน ❓ อายุ trial ที่แน่นอน
+ไม่ได้เขียนไว้ในหน้าราคา (คู่มือ Home Assistant ของ Tuya บอกว่าต่ออายุฟรีได้)
+
+### ขั้นที่ 2 — ใส่คีย์บน VPS (append ทีละบรรทัด ไม่เขียนทับไฟล์ env)
+
+คำสั่ง `set-key` ต่อท้ายไฟล์ env หนึ่งบรรทัด ไม่แตะบรรทัดเดิม ไม่แสดงค่าที่
+พิมพ์ (ช่องจะว่างขณะวาง) และปฏิเสธถ้าชื่อนั้นมีอยู่แล้ว
+
+```bash
+cd ~/phone-ai-kiosk && git pull && sudo bash server/install/install.sh
+B='sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker'
+$B set-key TUYA_ACCESS_ID        # วาง Access ID แล้ว Enter (มองไม่เห็นตอนวาง)
+$B set-key TUYA_ACCESS_SECRET    # วาง Access Secret แล้ว Enter
+$B set-key TUYA_DATA_CENTER      # พิมพ์ us หรือ sg (หรือ cn us-e eu eu-w in)
+$B keys                          # ต้องขึ้น present ทั้งสามบรรทัด TUYA_*
+```
+
+ถ้าวางผิดแล้วต้องแก้: `set-key` จะไม่ยอมเขียนซ้ำ ให้ลบบรรทัดนั้นเองด้วย
+`sudo -u kioskbroker nano /home/kioskbroker/.config/kiosk-broker/env` แล้วรัน
+`set-key` ใหม่ (อย่าถ่ายหน้าจอ nano)
+
+### ขั้นที่ 3 — ทดสอบ (อ่านอย่างเดียว ไม่ต้อง restart broker)
+
+```bash
+$B tuya-check      # ต้องขึ้น token: ok (valid for ...s)
+$B tuya-devices    # ชื่อ · ประเภท · online · เปิด/ปิด · …4 ตัวท้ายของ id
+```
+
+ผลลัพธ์ไม่มีคีย์ ไม่มี token ไม่มี id เต็ม และไม่มี `local_key` (กุญแจเข้ารหัส
+ในบ้านที่ Tuya แนบมากับรายการอุปกรณ์ — โค้ดทิ้งตั้งแต่รับมา) อุปกรณ์ประเภท
+กล้อง กุญแจ ประตู สัญญาณกันขโมย และเซ็นเซอร์ จะมีป้าย `(ห้ามควบคุม)`
+
+| ถ้าขึ้น | แปลว่า |
+|---|---|
+| `tuya 1004` | Access Secret ผิด |
+| `tuya 1013` | นาฬิกา VPS เพี้ยน — `timedatectl` |
+| `tuya 2007` / token ได้แต่ไม่เห็นอุปกรณ์ | data center ไม่ตรงกับบัญชี Smart Life |
+| `tuya 1106` / `28841101` | ยังไม่ได้ subscribe บริการ หรือยังไม่ได้ link บัญชี |
+| `tuya 1199` | ยิงถี่เกิน รอสักครู่ |
+| `tuya 28841004` | โควตาเดือนนี้หมด |
+
+### เฟสถัดไป (ยังไม่เปิด)
+
+- action `set_light` + **allowlist อุปกรณ์** (id เต็ม) ที่ Poom เลือกเอง
+- ตรวจด้วยโค้ดทั้งหมด: หมวดต้องเป็นไฟหรือสวิตช์ไฟ (`dj xdd fwd dc dd kg tgkg`),
+  **ปลั๊ก (`cz pc`) ไม่นับเป็นไฟ** เพราะอาจเสียบฮีตเตอร์อยู่, และหมวด กล้อง
+  กุญแจ ประตู โรงรถ กันขโมย เซ็นเซอร์ **ถูกปฏิเสธเสมอแม้อยู่ใน allowlist**
+- ค่าได้แค่ true/false, code ได้แค่ `switch_led` `switch` `switch_1`
+- endpoint ที่จะใช้: `POST /v1.0/devices/{id}/commands`
