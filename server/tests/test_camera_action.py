@@ -120,5 +120,6 @@ def test_the_intent_line_is_in_the_log_for_every_question_without_the_text(conn,
     with caplog.at_level(logging.INFO, logger="kiosk_broker"):
         _ask(conn, cfg, FakeClient(), "ขอดูกล่องหน่อยครับ")
     written = "\n".join(r.getMessage() for r in caplog.records)
-    assert "camera=no reason=near-miss:กล่อง chars=18" in written
+    assert "camera=no reason=near-miss:กล่อง" in written
+    assert "alarm=no alarm_reason=no-alarm-word chars=18" in written
     assert "ขอดูกล่อง" not in written

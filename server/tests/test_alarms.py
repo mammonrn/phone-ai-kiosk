@@ -116,3 +116,59 @@ def test_an_alarm_goes_to_the_phone_without_asking_the_model(conn, cfg, caplog):
 def test_a_model_cannot_set_an_alarm():
     _, raw = actions.extract("ได้ครับ [[action: set_alarm | 03:00]]")
     assert actions.sanitize(raw) is None
+
+
+# ------------------------------------------ 2026-09-23: production regression
+
+#: How a Thai household actually asks, as the A07 heard it: polite requests end
+#: in ได้ไหม / ได้มั้ย, and those went to the model, which said it could not set
+#: alarms (log: camera=no … chars=28, action=none). Each must be a command.
+POLITE_REQUESTS = [
+    "ตั้งปลุก 11 โมงเช้าได้ไหมครับ", "ตั้งปลุก 11 โมงเช้า ได้มั้ยครับ",
+    "ตั้งปลุกตอน 11 โมงเช้าให้หน่อยได้ไหม", "ช่วยตั้งปลุกหกโมงครึ่งได้ไหมคะ",
+    "ปลุกตีห้าได้หรือเปล่าครับ", "ตั้งปลุก 11 AM", "ตั้งปลุก 6:30 pm",
+    "ตั้งปลุก 11 โมงเช้า", "ตั้งปลุกสิบเอ็ดโมงเช้าครับ", "ตั้งนาฬิกาปลุก 11.00 น.",
+]
+
+
+@pytest.mark.parametrize("text", POLITE_REQUESTS)
+def test_polite_requests_are_commands(text):
+    command, why = alarms.alarm_match(text)
+    assert command is not None and command["kind"] == "set", why
+
+
+def test_am_pm_is_read_as_24_hours():
+    assert (alarms.alarm_command("ตั้งปลุก 6:30 pm")["hour"],
+            alarms.alarm_command("ตั้งปลุก 6:30 pm")["minute"]) == (18, 30)
+    assert alarms.alarm_command("ตั้งปลุก 12 am")["hour"] == 0
+
+
+@pytest.mark.parametrize("text,label", [
+    ("ตั้งนาฬิกาปลุก 11.00 น.", ""), ("ปลุกผมตอน 11 โมงเช้าด้วย", ""),
+    ("จาร์วิส ตั้งปลุก 11 โมงเช้า", ""), ("ตั้งปลุกที่ 11 โมงเช้าครับ", ""),
+    ("ตั้งปลุก 11 โมงเช้า ไปทำงาน", "ไปทำงาน"),
+])
+def test_leftovers_of_how_a_time_is_said_are_not_names(text, label):
+    assert alarms.alarm_command(text)["label"] == label
+
+
+@pytest.mark.parametrize("text,why", [
+    ("ทำไมปลุกไม่ดัง", "question:ทำไม"), ("ปลุกกี่โมงดี", "question:กี่โมง"),
+    ("ตั้งปลุกได้ไหม", "no-time"), ("สวัสดี", "no-alarm-word"),
+    ("ตั้งปลุก 11 โมงเช้าได้ไหมครับ", "set"),
+])
+def test_every_answer_says_why(text, why):
+    assert alarms.alarm_match(text)[1] == why
+
+
+@pytest.mark.parametrize("text", POLITE_REQUESTS[:4])
+def test_through_the_chat_endpoint_the_model_is_never_asked(conn, cfg, caplog, text):
+    """The production path: /v1/chat decides in code and never pays the model."""
+    client = FakeClient()
+    with caplog.at_level(logging.INFO, logger="kiosk_broker"):
+        status, body = _ask(conn, cfg, client, text)
+    assert status == 200
+    assert body["action"]["type"] == "set_alarm"
+    assert client.calls == []
+    written = "\n".join(r.getMessage() for r in caplog.records)
+    assert "alarm=yes alarm_reason=set" in written

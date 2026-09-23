@@ -63,12 +63,34 @@ jobs:
           python -m kiosk_broker stt-hints-check
           python -m kiosk_broker serve > "$home/serve.log" 2>&1 &
           pid=$!
+          up=""
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:18770/healthz; then echo; kill "$pid"; exit 0; fi
+            if curl -fsS http://127.0.0.1:18770/healthz; then echo; up=1; break; fi
             if ! kill -0 "$pid" 2>/dev/null; then echo "broker exited:"; cat "$home/serve.log"; exit 1; fi
             sleep 1
           done
-          echo "no answer from /healthz within 30 s:"; cat "$home/serve.log"; kill "$pid"; exit 1
+          if [ -z "$up" ]; then echo "no answer from /healthz within 30 s:"; cat "$home/serve.log"; kill "$pid"; exit 1; fi
+
+          # THE ALARM PATH, THROUGH THE RUNNING SERVER. On 2026-09-23 a polite
+          # "ตั้งปลุก 11 โมงเช้าได้ไหมครับ" reached the model on production and
+          # nothing failed in CI, because nothing sent a spoken command through
+          # the process systemd runs. This does: a throwaway device in this
+          # throwaway home, a real POST /v1/chat, and the answer must be the
+          # set_alarm action decided in code — the placeholder key above means
+          # a request that reached the model would fail, not pass.
+          # The token is never echoed.
+          token="$(python -m kiosk_broker issue-token ci-smoke | sed -n 's/^token : //p')"
+          for phrase in "ตั้งปลุก 11 โมงเช้าได้ไหมครับ" "ปลุกตีห้า" "ตั้งปลุกหกโมงครึ่ง ไปทำงาน"; do
+            body="$(python -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$phrase")"
+            answer="$(curl -sS -X POST http://127.0.0.1:18770/v1/chat \
+                      -H "Authorization: Bearer $token" \
+                      -H 'Content-Type: application/json; charset=utf-8' --data "$body")"
+            echo "$answer" | python -c 'import json,sys; a=json.load(sys.stdin); t=(a.get("action") or {}).get("type"); print("action:", t); sys.exit(0 if t == "set_alarm" else 1)' \
+              || { echo "the alarm command did not become set_alarm:"; echo "$answer"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          done
+          grep -q "alarm=yes alarm_reason=set" "$home/serve.log" \
+            || { echo "the intent log does not show the alarm check:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          kill "$pid"
 
       - name: Run tests
         working-directory: server

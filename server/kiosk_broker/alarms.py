@@ -176,8 +176,13 @@ def spoken(hour: int, minute: int) -> str:
 #: Words that belong to the command, not the label — stripped only from the
 #: START and END of what is left. Never from the middle: Thai has no spaces,
 #: and "ที" removed from inside "ที่ทำงาน" would leave nonsense.
-_LEADING = ("ช่วย", "ตั้งนาฬิกาปลุก", "ตั้งปลุก", "ปลุก", "ตอน", "เวลา", "ชื่อ", "ให้")
-_TRAILING = ("ให้หน่อย", "หน่อย", "ด้วย", "ครับ", "ค่ะ", "คะ", "นะ", "ตอน", "เวลา", "ชื่อ")
+_LEADING = ("จาร์วิส", "ช่วย", "ตั้งนาฬิกาปลุก", "ตั้งเวลาปลุก", "ตั้งปลุก", "ตั้งเวลา", "ปลุก",
+            "ตอน", "เวลา", "ชื่อ", "ให้", "ผม", "หนู", "ฉัน", "ที่")
+_TRAILING = ("ให้หน่อย", "หน่อย", "ด้วย", "ครับ", "ค่ะ", "คะ", "นะ", "ตอน", "เวลา", "ชื่อ", "น.")
+
+#: Left over from how a time is said, not a name somebody gave the alarm:
+#: "11.00 น." leaves "น", "ปลุกผมตอน…" leaves "ผม". Dropped as a whole label.
+_NOT_A_LABEL = {"น", "น.", "นาฬิกา", "ผม", "หนู", "ฉัน", "เรา", "ที่", "วันนี้", "พรุ่งนี้", "ให้"}
 
 
 def _trim(piece: str) -> str:
@@ -197,48 +202,94 @@ def _trim(piece: str) -> str:
 def _label(squashed: str, span: tuple[int, int] | None) -> str:
     """What is left once the time and the command words are taken out."""
     pieces = [squashed] if span is None else [squashed[:span[0]], squashed[span[1]:]]
-    words = [p for p in (_trim(piece) for piece in pieces) if p]
+    words = [p for p in (_trim(piece) for piece in pieces) if p and p not in _NOT_A_LABEL]
     return " ".join(words)[:MAX_LABEL_CHARS]
 
 
-def alarm_command(text) -> dict | None:
-    """The alarm command in a transcript, or None.
+#: A polite request ends like a question in Thai — "ตั้งปลุก 11 โมงเช้าได้ไหมครับ"
+#: asks the kiosk to DO it. Found on production (2026-09-23): the question
+#: check below turned exactly these away, and they went to the model, which
+#: said it could not set alarms. So this ending is taken off before that check.
+_POLITE_ENDING = re.compile(
+    r"(?:ให้)?(?:หน่อย)?(?:ได้)(?:ไหม|มั้ย|มัย|หรือเปล่า|รึเปล่า|ป่ะ|ป่าว|หรือไม่)(?:ครับ|คะ|ค่ะ|นะ|จ๊ะ)*$")
 
-    Returns one of:
-      {"kind": "set", "hour", "minute", "label"}
-      {"kind": "ask", "question"}                      — ambiguous time
-      {"kind": "enable", "enabled": bool, "target": "all" | label-or-time}
-    Only short sentences that say ปลุก count: "ช่วยอธิบายว่าทำไม…ปลุก" is a
-    question for the model, not a command.
+#: Words that make it a question ABOUT alarms, which the model answers.
+_QUESTION_WORDS = ("ยังไง", "อย่างไร", "ทำไม", "ไหม", "มั้ย", "กี่โมง", "อะไร")
+
+#: "11 AM", "6:30 pm", as the transcriber sometimes writes an English time.
+_AM_PM = re.compile(r"(\d{1,2})(?:[:.](\d{2}))?(am|pm|a\.m\.|p\.m\.)")
+
+
+def _am_pm_to_24(squashed: str) -> str:
+    def repl(m: re.Match) -> str:
+        hour, minute = int(m.group(1)), int(m.group(2) or 0)
+        if not (1 <= hour <= 12 and 0 <= minute <= 59):
+            return m.group(0)
+        if m.group(3).startswith("p") and hour != 12:
+            hour += 12
+        if m.group(3).startswith("a") and hour == 12:
+            hour = 0
+        return f"{hour:02d}:{minute:02d}"
+    return _AM_PM.sub(repl, squashed)
+
+
+def alarm_match(text) -> tuple[dict | None, str]:
+    """(the alarm command or None, WHY) — the why is safe to log, like
+    actions.camera_match: one of our own fixed strings, never the transcript.
+
+      set / enable / ask       → a command (or a question back, for "สองโมง")
+      no-alarm-word            → does not say ปลุก
+      too-long                 → a sentence, not a command
+      question:<word>          → a question about alarms, for the model
+      no-time                  → says ปลุก but no time we can read
+      empty                    → nothing to match
     """
     if not isinstance(text, str):
-        return None
-    squashed = "".join(text.split())
-    if "ปลุก" not in squashed or len(squashed) > MAX_COMMAND_CHARS:
-        return None
-    if any(q in squashed for q in ("ยังไง", "อย่างไร", "ทำไม", "ไหม", "มั้ย", "กี่โมง", "อะไร")):
-        return None
+        return None, "empty"
+    squashed = _am_pm_to_24("".join(text.split()).lower())
+    if not squashed:
+        return None, "empty"
+    if "ปลุก" not in squashed:
+        return None, "no-alarm-word"
+    if len(squashed) > MAX_COMMAND_CHARS:
+        return None, "too-long"
+    asked = _POLITE_ENDING.sub("", squashed)
+    for word in _QUESTION_WORDS:
+        if word in asked:
+            return None, f"question:{word}"
+    squashed = asked
 
     for prefix, enabled in (("ยกเลิก", False), ("ปิด", False), ("เปิด", True)):
         if squashed.startswith(prefix) or squashed.startswith("ช่วย" + prefix):
             if "ทั้งหมด" in squashed:
-                return {"kind": "enable", "enabled": enabled, "target": "all"}
+                return {"kind": "enable", "enabled": enabled, "target": "all"}, "enable"
             try:
                 when = _find_time(squashed)
             except Ambiguous:
                 when = None
             target = f"{when[0]:02d}:{when[1]:02d}" if when else _label(
                 squashed.replace(prefix, " ", 1), None)
-            return {"kind": "enable", "enabled": enabled, "target": target or "all"}
+            return {"kind": "enable", "enabled": enabled, "target": target or "all"}, "enable"
 
     try:
         when = _find_time(squashed)
     except Ambiguous as question:
-        return {"kind": "ask", "question": str(question)}
+        return {"kind": "ask", "question": str(question)}, "ask"
     if when is None:
-        return None
+        return None, "no-time"
     return {"kind": "set", "hour": when[0], "minute": when[1],
-            "label": _label(squashed, when[2:])}
+            "label": _label(squashed, when[2:])}, "set"
+
+
+def alarm_command(text) -> dict | None:
+    """The alarm command in a transcript, or None. See alarm_match.
+
+    Returns one of:
+      {"kind": "set", "hour", "minute", "label"}
+      {"kind": "ask", "question"}                      — ambiguous time
+      {"kind": "enable", "enabled": bool, "target": "all" | label-or-time}
+    """
+    return alarm_match(text)[0]
 
 
 def action_and_reply(command: dict) -> tuple[dict | None, str]:

@@ -16,7 +16,7 @@ import time
 from typing import Any
 
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
-               limits, speech_gate,
+               limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -213,8 +213,14 @@ def handle_chat(
     # mishearing of "กล้อง", or not about cameras at all. Our own fixed words
     # and a length — never the transcript.
     is_camera, why = actions.camera_match(text)
-    log.info("intent device=%s camera=%s reason=%s chars=%d",
-             label, "yes" if is_camera else "no", why, len(text))
+    # Both code-decided commands are checked on EVERY question and both
+    # verdicts logged — reasons only, never the words. On 2026-09-23 an alarm
+    # request went to the model and the log could not say why: only the
+    # camera check was written down.
+    alarm, alarm_why = alarms.alarm_match(text)
+    log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s chars=%d",
+             label, "yes" if is_camera else "no", why,
+             "yes" if alarm is not None else "no", alarm_why, len(text))
     def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
         """A reply decided by code, no model, nothing paid: the camera and the
         alarms. Stored in the conversation like any other turn."""
@@ -238,7 +244,6 @@ def handle_chat(
         return answer_in_code(actions.CAMERA_REPLY, actions.camera_action(), why)
 
     # ---- alarms: "ปลุกตีห้า", "ปิดปลุกไปทำงาน" — also code, no model ---------
-    alarm = alarms.alarm_command(text)
     if alarm is not None:
         action, reply = alarms.action_and_reply(alarm)
         return answer_in_code(reply, action, f"alarm:{alarm['kind']}")
@@ -264,6 +269,10 @@ def handle_chat(
     # cannot disagree with the screen. ~75 characters a question.
     system = (SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
               + "\n" + dashboard_mod.weather_line(_dashboard(cfg)))
+    # Fuel prices only when the question is about fuel, so every other
+    # question pays nothing for them. From the dashboard's cache, never fetched.
+    if oil_mod.asks_about_oil(text):
+        system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
 
     started = time.monotonic()
     try:
