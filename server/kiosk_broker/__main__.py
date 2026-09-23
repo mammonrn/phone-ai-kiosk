@@ -453,6 +453,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("text")
     p.add_argument("--out", default="say", help="directory to write the audio into")
 
+    sub.add_parser("soak-start", help="phase 6: start keeping the phone's 15-minute samples")
+    sub.add_parser("soak-stop", help="phase 6: stop keeping them (nothing is deleted)")
+    p = sub.add_parser("soak-report", help="phase 6: the soak so far, and each pass criterion")
+    p.add_argument("--vps-csv", default="/var/lib/kiosk-soak/vps.csv",
+                   help="what install/soak.sh's timer wrote (read if present)")
+
     sub.add_parser("google-connect",
                    help="print a one-time Google sign-in link (10 minutes) to connect Poom's "
                         "account; the token stays on this VPS")
@@ -537,6 +543,13 @@ def main(argv: list[str] | None = None) -> int:
         # The Thai segmenter loads its dictionary on first use (~150 ms, ~50 MB).
         # Loaded here instead, so the first answer after a restart does not pay
         # for it. Unavailable is a warning, never a refusal to start.
+        from . import soak as soak_mod
+        start_conn = store.connect(cfg.db_path)
+        try:
+            soak_mod.note_broker_start(start_conn)
+        finally:
+            start_conn.close()
+
         from . import wordcut
         logging.getLogger("kiosk_broker").info(
             "wordcut %s spacing=%s", "ready" if wordcut.available(cfg.tts_words_path) else "OFF",
@@ -815,6 +828,63 @@ def main(argv: list[str] | None = None) -> int:
             print(f"reading          : {tail_check.verdict(result)}")
             print(f"list price ${cost:.6f} (inside Google's free million this month unless "
                   f"`usage` says otherwise); training ledger, not the $5")
+            return 0
+
+        if args.cmd in ("soak-start", "soak-stop"):
+            from . import soak
+
+            (soak.start if args.cmd == "soak-start" else soak.stop)(conn)
+            print("soak running - the phone's samples are being kept" if soak.running(conn)
+                  else "soak stopped - samples are no longer kept (nothing deleted)")
+            return 0
+
+        if args.cmd == "soak-report":
+            from . import soak
+
+            span = soak.window(conn)
+            if span is None:
+                print("no soak yet - sudo bash server/install/soak.sh start")
+                return 1
+            since, until = span
+            hours = (until - since) / 3600
+            phone = soak.samples(conn, since, until)
+            starts = conn.execute("SELECT COUNT(*) FROM broker_starts WHERE ts > ? AND ts <= ?",
+                                  (since + 120, until)).fetchone()[0]
+            spend = conn.execute("SELECT COALESCE(SUM(cost_usd), 0) FROM usage WHERE ts BETWEEN ? AND ?",
+                                 (since, until)).fetchone()[0]
+            per_endpoint = conn.execute(
+                "SELECT COALESCE(endpoint, 'chat'), COUNT(*) FROM requests WHERE ts BETWEEN ? AND ?"
+                " GROUP BY 1 ORDER BY 2 DESC", (since, until)).fetchall()
+            reqs = sum(n for _, n in per_endpoint)
+            print(f"soak: {_dt.datetime.fromtimestamp(since):%Y-%m-%d %H:%M} -> "
+                  f"{_dt.datetime.fromtimestamp(until):%Y-%m-%d %H:%M}  ({hours:.1f} h)"
+                  f"{'  RUNNING' if soak.running(conn) else ''}")
+            print(f"phone samples: {len(phone)}  (expected ~{int(hours * 4)})")
+            print(f"requests: {reqs} ({reqs / max(hours, 1e-9):.1f}/h) - "
+                  + ", ".join(f"{name} {n}" for name, n in per_endpoint) + f"   spend: ${spend:.4f}")
+            print(f"database: {cfg.db_path.stat().st_size / 1048576:.1f} MB")
+            if phone:
+                first, last = phone[0][1], phone[-1][1]
+                for key in ("process_starts", "service_creates", "pss_kb", "battery_temp_c",
+                            "battery_pct", "wakes", "turns", "false_wakes", "gated", "errors",
+                            "send_failures", "dashboard_failures"):
+                    if key in first or key in last:
+                        print(f"  {key:<20} {first.get(key, '?')} -> {last.get(key, '?')}")
+            for (t0, _), (t1, _) in zip(phone, phone[1:]):
+                if t1 - t0 > 20 * 60:
+                    print(f"  gap {_dt.datetime.fromtimestamp(t0):%d %H:%M} -> "
+                          f"{_dt.datetime.fromtimestamp(t1):%d %H:%M}  ({(t1 - t0) / 60:.0f} min)")
+            print()
+            for name, (passed, number) in soak.verdicts(phone, starts, float(spend), hours).items():
+                mark = "PASS" if passed else ("FAIL" if passed is False else " ?? ")
+                print(f"  [{mark}] {name:<18} {number:<32} {soak.CRITERIA[name]}")
+            csv_path = Path(args.vps_csv)
+            if csv_path.is_file():
+                rows = csv_path.read_text(encoding="utf-8").strip().splitlines()
+                print()
+                print(f"VPS ({csv_path}, {max(len(rows) - 1, 0)} samples):")
+                for line in ([rows[0]] + rows[1:2] + rows[-1:]) if len(rows) > 2 else rows:
+                    print("  " + line)
             return 0
 
         if args.cmd == "google-connect":

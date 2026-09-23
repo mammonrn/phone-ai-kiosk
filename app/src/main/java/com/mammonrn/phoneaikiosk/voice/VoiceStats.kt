@@ -73,6 +73,11 @@ class VoiceStats(context: Context) {
 
     fun startedAt(): Long = prefs.getLong(KEY_STARTED, 0L)
 
+    /** The counters as the soak sample names them (SoakProbe, server soak.FIELDS). */
+    fun soakCounts(): Map<String, Int> = mapOf(
+        "wakes" to wakes.get(), "confirmed" to confirmed.get(), "turns" to turns.get(),
+        "errors" to errors.get(), "false_wakes" to falseWakeCandidates.get(), "gated" to gated.get())
+
     fun reset() {
         wakes.set(0); confirmed.set(0); turns.set(0); errors.set(0)
         falseWakeCandidates.set(0); nearMisses.set(0); gated.set(0)

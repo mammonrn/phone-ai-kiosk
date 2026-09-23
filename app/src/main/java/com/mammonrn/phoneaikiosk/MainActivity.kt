@@ -299,8 +299,11 @@ class MainActivity : Activity() {
                 when {
                     attempt == null -> Log.i(DASHBOARD_TAG, "refresh skipped: no token")
                     attempt.isSuccess -> Log.i(DASHBOARD_TAG, "refresh ok")
-                    else -> Log.w(DASHBOARD_TAG, "refresh failed: " +
-                        Broker.describe(attempt.exceptionOrNull()))
+                    else -> {
+                        com.mammonrn.phoneaikiosk.voice.SoakProbe.dashboardFailures += 1
+                        Log.w(DASHBOARD_TAG, "refresh failed: " +
+                            Broker.describe(attempt.exceptionOrNull()))
+                    }
                 }
                 val payload = attempt?.getOrNull()
                 if (payload != null) {
@@ -791,6 +794,7 @@ class MainActivity : Activity() {
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.mammonrn.phoneaikiosk.voice.SoakProbe.noteCreate(this, "activity")
         setContentView(R.layout.activity_main)
 
         pixelFace = ResourcesCompat.getFont(this, R.font.press_start_2p)

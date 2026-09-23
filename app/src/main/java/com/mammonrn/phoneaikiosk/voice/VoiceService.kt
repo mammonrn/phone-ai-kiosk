@@ -98,6 +98,7 @@ class VoiceService : Service() {
         recorder = Recorder()
         detector = HeyJarvisDetector.fromAssets(this) ?: NoModelDetector("model-load-failed")
         stats = VoiceStats(this)
+        SoakProbe.noteCreate(this, "service")
         speaker = Speaker(this).also { it.warmUp() }
         machine = CaptureMachine(frameMillis = recorder.frameSamples * 1000 / Recorder.SAMPLE_RATE)
         liveDetector = java.lang.ref.WeakReference(detector as? HeyJarvisDetector)
@@ -108,6 +109,40 @@ class VoiceService : Service() {
         VoiceState.hasToken = TokenStore(this).hasToken()
         Log.i(TAG, "created detector=${VoiceState.detector} ready=${detector.ready} " +
             "token=${VoiceState.hasToken}")
+        alarmHandler.postDelayed(soakTick, SoakProbe.FIRST_MS)
+    }
+
+    // ------------------------------------------------------------ soak test
+
+    /**
+     * Its own thread: a send that hangs on a dead network must never hold up
+     * a turn on [network]. One sample every 15 minutes, well under a second
+     * of work; a send that did not reach the VPS is retried after a minute.
+     */
+    private val soakThread = Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-soak") }
+
+    private val soakTick = object : Runnable {
+        override fun run() {
+            soakThread.execute {
+                val token = TokenStore(this@VoiceService).token()
+                var next = SoakProbe.INTERVAL_MS
+                if (!token.isNullOrEmpty()) {
+                    try {
+                        val sample = SoakProbe.sample(this@VoiceService, stats, detector.ready)
+                        val kept = Broker(VoiceState.brokerBaseUrl, token).health(sample)
+                        Log.i(TAG, "soak sample sent kept=$kept")
+                    } catch (e: Broker.Failure) {
+                        // Reached the VPS and was answered: not a network outage.
+                        Log.i(TAG, "soak sample refused ${e.status}")
+                    } catch (e: Exception) {
+                        SoakProbe.sendFailures += 1
+                        next = SoakProbe.RETRY_MS
+                        Log.i(TAG, "soak sample not sent ${e.javaClass.simpleName}")
+                    }
+                }
+                alarmHandler.postDelayed(this, next)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -719,6 +754,7 @@ class VoiceService : Service() {
             book.setEnabled(alarm.id, false)
             com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(this, book)
         }
+        SoakProbe.noteAlarmRang(this, alarm.hour, alarm.minute)
         runCatching { ScreenWaker.wakeIfAsleep(this) }
         // Over Maps or the camera app, the kiosk comes back so the stop button
         // is on screen; over the kiosk itself this changes nothing.
@@ -893,6 +929,8 @@ class VoiceService : Service() {
     override fun onDestroy() {
         instance = null
         stopAlarm("service-stopped")
+        alarmHandler.removeCallbacks(soakTick)
+        soakThread.shutdownNow()
         running.set(false)
         capture.shutdownNow()
         network.shutdownNow()

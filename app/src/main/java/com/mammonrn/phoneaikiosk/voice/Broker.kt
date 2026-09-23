@@ -186,6 +186,16 @@ class Broker(private val baseUrl: String, private val token: String) {
              "application/json; charset=utf-8")
     }
 
+    /**
+     * The soak test's 15-minute sample (SoakProbe): numbers only. True if the
+     * broker kept it — it keeps samples only while a soak is running.
+     */
+    fun health(sample: JSONObject): Boolean {
+        val result = post("/v1/health", sample.toString().toByteArray(Charsets.UTF_8),
+                          "application/json; charset=utf-8")
+        return JSONObject(String(result.bytes, Charsets.UTF_8)).optBoolean("kept", false)
+    }
+
     /** Text in, audio out, ready to play — with where the time went. */
     fun speak(text: String): SpokenAudio {
         val result = post("/v1/tts",

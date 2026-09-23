@@ -18,7 +18,7 @@ from typing import Any
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
-               voicetext, brevity, calendar_read, google_auth, identity, redact)
+               voicetext, brevity, calendar_read, google_auth, identity, redact, soak)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -88,6 +88,32 @@ def maps_area_line(place: tuple[int, dict] | None) -> str:
     where = f"พี่อยู่{area} " if area else ""
     return (f"แผนที่: {where}ชื่อสถานที่อาจถอดเสียงเพี้ยน "
             "ใช้ชื่อจริงในพื้นที่ที่เสียงใกล้สุด ทั้งในคำตอบและ action")
+
+
+def handle_health(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                  body: bytes) -> tuple[int, dict]:
+    """POST /v1/health — the phone's 15-minute sample for the soak test.
+    Numbers and our own state words only (soak.FIELDS); kept only while a
+    soak is running. Answers whether it was kept."""
+    day = limits.day_key(cfg.budget_timezone)
+    device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint="health")
+    if refusal:
+        return refusal
+    device_id = int(device["id"])
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=4, per_day=400, day=day,
+                             endpoint="health")
+    if not rate.allowed:
+        store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
+                             text_len=None, endpoint="health")
+        return 429, _error(rate.code, rate.message)
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok", text_len=None,
+                         endpoint="health")
+    try:
+        raw = json.loads(body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    kept = soak.record(conn, device_id, raw)
+    return 200, {"kept": kept}
 
 
 #: What Jarvis says when a private question needs the identity check first.
