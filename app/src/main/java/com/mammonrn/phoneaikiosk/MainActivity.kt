@@ -102,7 +102,8 @@ class MainActivity : Activity() {
     private lateinit var cardStack: android.widget.LinearLayout
 
     private class Card(val id: String, val root: android.view.View, val body: android.view.View,
-                       val badge: TextView, val openWeight: Float)
+                       val badge: TextView, val openWeight: Float,
+                       val titlebar: android.view.View)
 
     private val cards = LinkedHashMap<String, Card>()
 
@@ -412,7 +413,8 @@ class MainActivity : Activity() {
     private fun setUpCards() {
         fun card(id: String, root: Int, body: Int, badge: Int, titlebar: Int, weight: Float,
                  foldAfterMs: Long, alwaysOpen: Boolean = false, openOnFirst: Boolean = true) {
-            cards[id] = Card(id, findViewById(root), findViewById(body), findViewById(badge), weight)
+            cards[id] = Card(id, findViewById(root), findViewById(body), findViewById(badge), weight,
+                             findViewById(titlebar))
             board.register(CardBoard.Spec(id, foldAfterMs, alwaysOpen, openOnFirst))
             // Tapping a folded window's bar opens it for two minutes.
             findViewById<android.view.View>(titlebar).setOnClickListener {
@@ -452,7 +454,7 @@ class MainActivity : Activity() {
         // it comes back by itself the day HomeControl says it is available).
         fun hidden(id: String) = (id == "alarms" && !alarmsVisible) ||
             (id == "home" && !homeControl.available)
-        val slots = board.layout(nowMs).filterNot { hidden(it.id) }
+        val slots = fitToStack(board.layout(nowMs).filterNot { hidden(it.id) }, nowMs)
         val ids = slots.map { it.id }
         if (ids != shownOrder) {
             for ((index, id) in ids.withIndex()) {
@@ -487,6 +489,36 @@ class MainActivity : Activity() {
             }
             if (card.badge.text.toString() != badge) card.badge.text = badge
         }
+    }
+
+    /**
+     * CardBoard.fit with each card's real height, open and folded, measured
+     * at the stack's width now: an open card's last lines are never cut off
+     * by the card below (DESIGN.md, "ห้ามตัดข้อมูล"). Before the first layout
+     * there is nothing to measure against, and the slots pass unchanged.
+     */
+    private fun fitToStack(slots: List<CardBoard.Slot>, nowMs: Long): List<CardBoard.Slot> {
+        val width = cardStack.width - cardStack.paddingLeft - cardStack.paddingRight
+        val height = cardStack.height - cardStack.paddingTop - cardStack.paddingBottom
+        if (width <= 0 || height <= 0) return slots
+        val unspecified = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
+        val openPx = HashMap<String, Int>()
+        val barPx = HashMap<String, Int>()
+        for (slot in slots) {
+            val card = cards.getValue(slot.id)
+            val rootLp = card.root.layoutParams as android.view.ViewGroup.MarginLayoutParams
+            val inner = width - card.root.paddingLeft - card.root.paddingRight
+            val exact = android.view.View.MeasureSpec.makeMeasureSpec(inner, android.view.View.MeasureSpec.EXACTLY)
+            card.titlebar.measure(exact, unspecified)
+            val titleLp = card.titlebar.layoutParams as android.view.ViewGroup.MarginLayoutParams
+            val bar = rootLp.topMargin + rootLp.bottomMargin + card.root.paddingTop +
+                card.root.paddingBottom + card.titlebar.measuredHeight + titleLp.topMargin + titleLp.bottomMargin
+            card.body.measure(exact, unspecified)
+            val bodyLp = card.body.layoutParams as android.view.ViewGroup.MarginLayoutParams
+            barPx[slot.id] = bar
+            openPx[slot.id] = bar + card.body.measuredHeight + bodyLp.topMargin + bodyLp.bottomMargin
+        }
+        return board.fit(slots, openPx, barPx, height, nowMs)
     }
 
     /** The alarms window: the list, the stop button while one rings, its news. */
@@ -763,6 +795,13 @@ class MainActivity : Activity() {
         alarmsBody = findViewById(R.id.alarms_body)
         alarmStop = findViewById(R.id.alarm_stop)
         setUpCards()
+        // fitToStack needs the stack's height, which exists only after the
+        // first layout: render again whenever that height changes.
+        cardStack.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) {
+                cardStack.post { renderCards(SystemClock.elapsedRealtime()) }
+            }
+        }
         sunriseText = findViewById(R.id.sunrise_text)
         sunsetText = findViewById(R.id.sunset_text)
 

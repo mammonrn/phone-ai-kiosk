@@ -155,4 +155,44 @@ class CardBoardTest {
         assertTrue(b.slot("crypto", 2 * MINUTE).open)
         assertFalse(b.slot("crypto", 4 * MINUTE).open)
     }
+
+    // ---- fit: an open card is never cut off by the one below it ----------
+
+    private val openPx = mapOf("weather" to 400, "alarms" to 140, "gold" to 360, "crypto" to 250)
+    private val barPx = mapOf("weather" to 60, "alarms" to 60, "gold" to 60, "crypto" to 60)
+
+    @Test
+    fun `when everything open is too tall the oldest news folds`() {
+        val b = kiosk()
+        b.report("weather", "29", 0); b.report("gold", "a", 0); b.report("crypto", "move:1", 0)
+        b.report("alarms", "x", 5 * MINUTE)           // opened by a new alarm
+        b.report("crypto", "move:2", 8 * MINUTE)      // then a 3% move
+        val now = 9 * MINUTE
+        val fitted = b.fit(b.layout(now), openPx, barPx, available = 1180, nowMs = now)
+        // 400 + 140 + 360 + 250 = 1150 fits; nothing folds.
+        assertEquals(4, fitted.count { it.open })
+        val tight = b.fit(b.layout(now), openPx, barPx, available = 1100, nowMs = now)
+        val folded = tight.filterNot { it.open }.map { it.id }
+        assertEquals("the gold's news (t=0) is the oldest", listOf("gold"), folded)
+    }
+
+    @Test
+    fun `the weather, a ringing alarm and a tapped card are never folded to fit`() {
+        val b = kiosk()
+        b.report("weather", "29", 0); b.report("gold", "a", 0); b.report("crypto", "move:1", 0)
+        b.pin("alarms", true)
+        b.touch("crypto", MINUTE)
+        val fitted = b.fit(b.layout(MINUTE), openPx, barPx, available = 500, nowMs = MINUTE)
+        val open = fitted.filter { it.open }.map { it.id }.toSet()
+        assertEquals(setOf("weather", "alarms", "crypto"), open)
+    }
+
+    @Test
+    fun `fit keeps the order and changes nothing when the stack is not measured yet`() {
+        val b = kiosk()
+        b.report("weather", "29", 0); b.report("gold", "a", 0)
+        val slots = b.layout(0)
+        assertEquals(slots, b.fit(slots, openPx, barPx, available = 0, nowMs = 0))
+        assertEquals(slots.map { it.id }, b.fit(slots, openPx, barPx, available = 300, nowMs = 0).map { it.id })
+    }
 }

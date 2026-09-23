@@ -127,6 +127,39 @@ class CardBoard(
         }
     }
 
+    /**
+     * The same slots, with open cards folded until the stack fits [available]
+     * pixels — so an open card never has its last lines cut off by the one
+     * below it (seen on the A07 in 0.36.0: crypto opened by a tap, and the
+     * weather's outlook and the last fuel row were clipped).
+     *
+     * [openPx] and [barPx] are each card's real height open and folded, as
+     * measured on screen. Folded first: the open card whose news is OLDEST.
+     * Never folded: an always-open card (the weather), a pinned one (an alarm
+     * ringing) and one a finger just opened — the person asked to see it, so
+     * something else makes room. If nothing is left to fold, the slots are
+     * returned as they are.
+     */
+    fun fit(slots: List<Slot>, openPx: Map<String, Int>, barPx: Map<String, Int>,
+            available: Int, nowMs: Long): List<Slot> {
+        if (available <= 0) return slots
+        val open = slots.associate { it.id to it.open }.toMutableMap()
+        fun total() = slots.sumOf { (if (open.getValue(it.id)) openPx[it.id] else barPx[it.id]) ?: 0 }
+        while (total() > available) {
+            val victim = slots
+                .filter { open.getValue(it.id) }
+                .map { cards.getValue(it.id) }
+                .filterNot {
+                    it.spec.alwaysOpen || it.pinned ||
+                        (it.openedByTouchAt != Long.MIN_VALUE && nowMs - it.openedByTouchAt < touchOpenMs)
+                }
+                .minByOrNull { it.changedAt }
+                ?: break
+            open[victim.spec.id] = false
+        }
+        return slots.map { if (open.getValue(it.id) == it.open) it else it.copy(open = false) }
+    }
+
     companion object {
         const val MINUTE = 60_000L
         const val FRESH_MS = 10 * MINUTE
