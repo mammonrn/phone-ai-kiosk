@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A text field or list well: the sunken bevel around white, as the era drew
+     the places you type into. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="rectangle"><solid android:color="@color/retro_shadow" /></shape></item>
+    <item android:left="2dp" android:top="2dp"><shape android:shape="rectangle"><solid android:color="@color/retro_light" /></shape></item>
+    <item android:left="2dp" android:top="2dp" android:right="2dp" android:bottom="2dp">
+        <shape android:shape="rectangle"><solid android:color="@color/retro_light" /></shape></item>
+</layer-list>

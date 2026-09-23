@@ -397,6 +397,8 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN -p com.mammonrn.
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY -p com.mammonrn.phoneaikiosk.debug
 # ยาวจนต้องเลื่อน: ทวนคำตอบ 1-4 รอบ
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY --ei times 3 -p com.mammonrn.phoneaikiosk.debug
+# ส่งคำถามเป็นข้อความผ่านเส้นทางจริง (/v1/chat → เสียง → action) ไม่ต้องพูด
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "ตั้งปลุก 11 โมงเช้าได้ไหมครับ" -p com.mammonrn.phoneaikiosk.debug
 # นาฬิกาปลุกทดสอบชื่อ "ทดสอบ" ในอีก N นาที (ไม่ผ่าน broker) แล้วลบทิ้ง
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ALARM_IN --ei in_minutes 2 -p com.mammonrn.phoneaikiosk.debug
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR -p com.mammonrn.phoneaikiosk.debug

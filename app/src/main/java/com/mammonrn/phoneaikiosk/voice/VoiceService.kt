@@ -133,6 +133,16 @@ class VoiceService : Service() {
             Log.i(TAG, "armed by adb trigger; capture thread will pick it up next frame")
         }
 
+        if (intent?.action == ACTION_TEST_ASK) {
+            // Debug builds only send this (TestTriggerReceiver): a question as
+            // text through /v1/chat, the voice and the action, as if spoken.
+            val typed = intent.getStringExtra(EXTRA_TEXT)?.trim().orEmpty()
+            if (typed.length in 1..200) {
+                Log.i(TAG, "typed turn chars=${typed.length}")
+                network.execute { runTurn(ByteArray(TurnPipeline.WAV_HEADER_BYTES + 2), 0L, typed) }
+            }
+        }
+
         if (intent?.action == ACTION_ALARM_RING) {
             startAlarm(intent.getIntExtra(EXTRA_ALARM_ID, -1))
         }
@@ -384,7 +394,7 @@ class VoiceService : Service() {
     }
 
     /** Runs on the network executor. Never reads the microphone. */
-    private fun runTurn(wav: ByteArray, captureEndedAt: Long) {
+    private fun runTurn(wav: ByteArray, captureEndedAt: Long, typed: String? = null) {
         val token = TokenStore(this).token()
         VoiceState.hasToken = token != null
         if (token == null) {
@@ -396,7 +406,9 @@ class VoiceService : Service() {
 
         val broker = Broker(VoiceState.brokerBaseUrl, token)
         val pipeline = TurnPipeline(
-            transcribe = broker::transcribe,
+            // A typed question (debug TEST_ASK) skips the microphone and the
+            // transcriber; everything after it is the production path.
+            transcribe = if (typed != null) { _ -> typed } else broker::transcribe,
             ask = broker::chat,
             speak = broker::speak,
             play = { audio -> deafWhile { speaker.play(audio, "ogg") } },
@@ -625,6 +637,12 @@ class VoiceService : Service() {
         if (alarm == null || !alarm.enabled) {
             Log.i(TAG, "alarm id=$id not rung: gone or off")
             return
+        }
+        // A one-off switches itself off now that it has rung; the book is saved
+        // (and the next alarm booked) before the ringing starts.
+        if (alarm.once) {
+            book.setEnabled(alarm.id, false)
+            com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(this, book)
         }
         runCatching { ScreenWaker.wakeIfAsleep(this) }
         // Over Maps or the camera app, the kiosk comes back so the stop button
@@ -967,6 +985,8 @@ class VoiceService : Service() {
         private var instance: VoiceService? = null
 
         const val ACTION_ALARM_RING = "com.mammonrn.phoneaikiosk.ALARM_RING"
+        const val ACTION_TEST_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK_TEXT"
+        const val EXTRA_TEXT = "text"
         const val ACTION_ALARM_STOP = "com.mammonrn.phoneaikiosk.ALARM_STOP"
         const val EXTRA_ALARM_ID = "alarm_id"
 

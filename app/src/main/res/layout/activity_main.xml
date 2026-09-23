@@ -372,20 +372,42 @@
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/gold_body"
+            <!-- THE COMMODITIES WINDOW (2026-09-23): gold, then fuel, in one
+                 sunken panel. Fuel is a step smaller — three lines of the
+                 cheapest brands under two gold prices — and GONE until a broker
+                 that sends it answers, so an older broker leaves gold alone. -->
+            <LinearLayout
+                android:id="@+id/commodity_panel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:orientation="vertical"
                 android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
-                android:padding="7dp"
-                android:lineSpacingExtra="1dp"
-                android:textColor="@color/retro_text"
-                android:textSize="15sp"
-                android:fontFamily="@font/plex_thai"
-                android:text="@string/data_loading" />
+                android:padding="7dp">
+
+                <TextView
+                    android:id="@+id/gold_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="1dp"
+                    android:textColor="@color/retro_text"
+                    android:textSize="15sp"
+                    android:fontFamily="@font/plex_thai"
+                    android:text="@string/data_loading" />
+
+                <TextView
+                    android:id="@+id/oil_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="1dp"
+                    android:textColor="@color/retro_text"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/plex_thai"
+                    android:visibility="gone" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===================================================== crypto window -->
@@ -732,6 +754,28 @@
                 android:textSize="11sp"
                 android:textStyle="bold"
                 android:fontFamily="@font/plex_thai" />
+
+            <!-- THE CONTROL PANEL, opened from here: a raised button with our
+                 own panel icon, a thumb wide, beside the Jarvis button — on the
+                 LEFT, well away from the exit corner on the right. -->
+            <FrameLayout
+                android:id="@+id/settings_button"
+                android:layout_width="48dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="4dp"
+                android:minHeight="40dp"
+                android:background="@drawable/retro_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/settings_open">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_pixel_control_panel"
+                    android:importantForAccessibility="no" />
+            </FrameLayout>
 
             <!-- owner= lock= awake= token= taps=. INVISIBLE, not gone, unless
                  debug mode is on: it still takes the middle of the taskbar so

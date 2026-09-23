@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art: a sunken tick box, ticked. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#808080" android:pathData="M1,1h14v1h-14z M1,1h1v14h-1z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M2,2h13v13h-13z" />
+    <path android:fillColor="#C0C0C0" android:pathData="M14,2h1v13h-1z M2,14h13v1h-13z" />
+    <path android:fillColor="#000000" android:pathData="M11,4h2v2h-2z M10,6h2v2h-2z M9,8h2v2h-2z
+        M8,10h2v2h-2z M4,7h2v2h-2z M5,9h2v2h-2z M6,11h2v1h-2z" />
+</vector>

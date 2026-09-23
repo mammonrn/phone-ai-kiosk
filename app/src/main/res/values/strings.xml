@@ -48,6 +48,37 @@
     <string name="alarm_next">ถัดไป %1$s</string>
     <string name="alarm_ringing">กำลังปลุก</string>
     <string name="card_fresh">เพิ่งอัปเดต</string>
+
+    <!-- The Control Panel (settings/SettingsActivity). Formal written Thai, as
+         every screen here (skill ux-ui-design); buttons say what they do. -->
+    <string name="settings_title">แผงควบคุม</string>
+    <string name="settings_open">เปิดแผงควบคุม</string>
+    <string name="settings_close">ปิดแผงควบคุม</string>
+    <string name="settings_home">กลับหน้าหลัก</string>
+    <string name="settings_hint">แตะไอคอนเพื่อตั้งค่า</string>
+    <string name="settings_back_to_panel">◄ แผงควบคุม</string>
+    <string name="alarms_empty">ยังไม่มีการปลุก กรุณากด \"เพิ่มการปลุก\" หรือพูดว่า \"ปลุกหกโมง\"</string>
+    <string name="alarms_full">มีการปลุกครบ 10 รายการแล้ว</string>
+    <string name="alarm_add">เพิ่มการปลุก</string>
+    <string name="alarm_edit_title">แก้ไขการปลุก</string>
+    <string name="alarm_delete">ลบ</string>
+    <string name="alarm_delete_confirm">ลบการปลุกนี้ใช่หรือไม่</string>
+    <string name="edit">แก้ไข</string>
+    <string name="save">บันทึก</string>
+    <string name="cancel">ยกเลิก</string>
+    <string name="alarm_time">เวลา</string>
+    <string name="alarm_hour">ชั่วโมง</string>
+    <string name="alarm_minute">นาที</string>
+    <string name="alarm_name">ชื่อ</string>
+    <string name="alarm_name_hint">เช่น ไปทำงาน (ไม่จำเป็นต้องระบุ)</string>
+    <string name="alarm_repeat">ปลุกเมื่อใด</string>
+    <string name="alarm_daily">ทุกวัน</string>
+    <string name="alarm_some_days">เลือกวัน</string>
+    <string name="alarm_once">ครั้งเดียว</string>
+    <string name="alarm_pick_a_day">กรุณาเลือกอย่างน้อยหนึ่งวัน</string>
+    <string name="alarm_time_taken">มีการปลุกเวลานี้อยู่แล้ว กรุณาเลือกเวลาอื่น</string>
+    <string name="window_commodities">ทองและน้ำมัน</string>
+    <string name="gold_purity_short">ทอง %1$s%%</string>
     <string name="window_crypto">คริปโต</string>
     <string name="taskbar_button">จาร์วิส</string>
     <string name="jarvis_button_description">กดเพื่อถามจาร์วิส</string>

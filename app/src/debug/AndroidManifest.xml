@@ -34,6 +34,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_LISTEN" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_ALARM_IN" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_ASK" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_STATS" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_RESET_STATS" />

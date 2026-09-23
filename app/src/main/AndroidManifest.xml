@@ -132,6 +132,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- The Control Panel. Our own activity, so lock task mode allows it;
+             not exported, so nothing but the kiosk opens it. -->
+        <activity
+            android:name=".settings.SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- AlarmManager's call when an alarm is due. Not exported: only our own
              PendingIntent reaches it. -->
         <receiver

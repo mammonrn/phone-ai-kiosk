@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A 1995 push button: raised, and sunken while a finger is on it, so a press
+     can be seen as well as felt. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true" android:drawable="@drawable/retro_sunken" />
+    <item android:drawable="@drawable/retro_raised" />
+</selector>

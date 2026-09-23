@@ -75,6 +75,12 @@ object DashboardState {
          */
         val sunrise: String = "",
         val sunset: String = "",
+        /**
+         * Fuel, under the gold in the commodities window: the three cheapest
+         * brands per fuel. Null when the broker sent no oil at all (one older
+         * than it), and the window then shows gold only.
+         */
+        val oil: Panel? = null,
     )
 
     /**
@@ -94,6 +100,7 @@ object DashboardState {
             goldBasis = usable(gold)?.first?.optString("change_basis", "") ?: "",
             goldPurity = goldPurity(usable(gold)?.first),
             locationFallback = root.optBoolean("location_fallback", false),
+            oil = if (root.has("oil")) oilPanel(root.optJSONObject("oil"), unavailable) else null,
             sunrise = clock12(usable(weather)?.first?.optString("sunrise", "") ?: ""),
             sunset = clock12(usable(weather)?.first?.optString("sunset", "") ?: ""),
         )
@@ -124,12 +131,33 @@ object DashboardState {
                 out["weather"] = "$degrees|$word" to "$degrees°C $word".trim()
             }
         }
-        usable(root.optJSONObject("gold"))?.first?.let { g ->
-            val ornament = g.optDouble("ornament_sell", Double.NaN)
-            val bar = g.optDouble("bar_sell", Double.NaN)
-            if (!ornament.isNaN() || !bar.isNaN()) {
-                val summary = if (!bar.isNaN()) "ทองแท่ง ${baht(bar)}" else "รูปพรรณ ${baht(ornament)}"
-                out["gold"] = "$ornament|$bar" to summary
+        // The commodities window: gold, and the cheapest diesel and 95 — a
+        // change in either is news for the one window they share.
+        val oilData = usable(root.optJSONObject("oil"))?.first
+        var fuelSignature = ""
+        var fuelSummary = ""
+        oilData?.optJSONArray("fuels")?.let { fuels ->
+            for (i in 0 until fuels.length()) {
+                val fuel = fuels.optJSONObject(i) ?: continue
+                val low = fuel.optJSONArray("cheapest")?.optJSONObject(0)?.optDouble("price", Double.NaN)
+                    ?: continue
+                if (low.isNaN()) continue
+                fuelSignature += "|${fuel.optString("id")}:$low"
+                if (fuelSummary.isEmpty()) fuelSummary = "${fuel.optString("label")} " +
+                    String.format(java.util.Locale.US, "%.2f", low)
+            }
+        }
+        usable(root.optJSONObject("gold"))?.first.let { g ->
+            val ornament = g?.optDouble("ornament_sell", Double.NaN) ?: Double.NaN
+            val bar = g?.optDouble("bar_sell", Double.NaN) ?: Double.NaN
+            val gold = when {
+                !bar.isNaN() -> "ทองแท่ง ${baht(bar)}"
+                !ornament.isNaN() -> "รูปพรรณ ${baht(ornament)}"
+                else -> ""
+            }
+            if (gold.isNotEmpty() || fuelSummary.isNotEmpty()) {
+                out["gold"] = "$ornament|$bar$fuelSignature" to
+                    listOf(gold, fuelSummary).filter { it.isNotEmpty() }.joinToString(" · ")
             }
         }
         usable(root.optJSONObject("crypto"))?.first?.let { c ->
@@ -268,6 +296,43 @@ object DashboardState {
                 append(age(panel))
             }
         }, stale)
+    }
+
+    /**
+     * The fuel lines: "ดีเซล 40.69 ปตท. บางจาก คาลเท็กซ์", one per fuel, and a
+     * footnote saying these are Bangkok's prices and when they were announced.
+     * Brands at the same price share it; a dearer one gets its own after "·".
+     */
+    private fun oilPanel(panel: JSONObject?, unavailable: String): Panel {
+        val (data, stale) = usable(panel) ?: return Panel("น้ำมัน: $unavailable", false)
+        val fuels = data.optJSONArray("fuels") ?: return Panel("น้ำมัน: $unavailable", false)
+        val lines = ArrayList<String>()
+        for (i in 0 until fuels.length()) {
+            val fuel = fuels.optJSONObject(i) ?: continue
+            val line = fuelLine(fuel.optString("label"), fuel.optJSONArray("cheapest"))
+            if (line.isNotEmpty()) lines += line
+        }
+        if (lines.isEmpty()) return Panel("น้ำมัน: $unavailable", false)
+        val note = listOf("ราคา" + data.optString("area", "กรุงเทพฯ"), data.optString("date", ""),
+                          ageWords(panel)).filter { it.isNotEmpty() }.joinToString(" · ")
+        return Panel(lines.joinToString("\n") + "\n($note)", stale)
+    }
+
+    /** "โซฮอล์ 95 39.90 PT · 39.94 ปตท. บางจาก" from the cheapest list, in price order. */
+    fun fuelLine(label: String, cheapest: org.json.JSONArray?): String {
+        if (label.isEmpty() || cheapest == null || cheapest.length() == 0) return ""
+        val groups = LinkedHashMap<String, MutableList<String>>()
+        for (i in 0 until cheapest.length()) {
+            val offer = cheapest.optJSONObject(i) ?: continue
+            val price = offer.optDouble("price", Double.NaN)
+            val brand = offer.optString("brand")
+            if (price.isNaN() || brand.isEmpty()) continue
+            groups.getOrPut(String.format(java.util.Locale.US, "%.2f", price)) { ArrayList() } += brand
+        }
+        if (groups.isEmpty()) return ""
+        return label + " " + groups.entries.joinToString(" · ") { (price, brands) ->
+            "$price ${brands.joinToString(" ")}"
+        }
     }
 
     /**

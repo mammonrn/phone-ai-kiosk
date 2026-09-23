@@ -26,6 +26,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
+            ACTION_ASK -> {
+                // A question as text, through the real /v1/chat, voice and
+                // action — how a spoken command is checked end to end without
+                // anybody speaking. --es text "ตั้งปลุก 11 โมงเช้าได้ไหมครับ"
+                context.startForegroundService(android.content.Intent(context, VoiceService::class.java)
+                    .setAction(VoiceService.ACTION_TEST_ASK)
+                    .putExtra(VoiceService.EXTRA_TEXT, intent.getStringExtra("text")))
+            }
+
             ACTION_ALARM_IN -> {
                 // An alarm named "ทดสอบ" N minutes from now (default 1), set
                 // through the same store and scheduler a spoken command uses,
@@ -221,6 +230,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_LISTEN = "com.mammonrn.phoneaikiosk.TEST_LISTEN"
         const val ACTION_SHOW_REPLY = "com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY"
         const val ACTION_ALARM_IN = "com.mammonrn.phoneaikiosk.TEST_ALARM_IN"
+        const val ACTION_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK"
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
         const val TEST_ALARM_LABEL = "ทดสอบ"
 

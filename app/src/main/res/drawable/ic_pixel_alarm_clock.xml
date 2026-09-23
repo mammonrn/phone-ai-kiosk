@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art: an alarm clock — round face, two bells, two hands — on
+     the project's 16x16 grid, for the Control Panel's alarm category. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <!-- bells -->
+    <path android:fillColor="#FFB000" android:pathData="M1,1h3v1h-3z M1,2h2v2h-2z M12,1h3v1h-3z M13,2h2v2h-2z" />
+    <!-- the rim -->
+    <path android:fillColor="#B03A2E" android:pathData="M5,2h6v1h-6z M3,3h10v1h-10z M2,4h12v8h-12z M3,12h10v1h-10z M5,13h6v1h-6z" />
+    <!-- the face -->
+    <path android:fillColor="#FFFFFF" android:pathData="M5,4h6v1h-6z M4,5h8v6h-8z M5,11h6v1h-6z" />
+    <!-- hands: to 12 and to 3 -->
+    <path android:fillColor="#000000" android:pathData="M7,5h1v4h-1z M8,8h3v1h-3z" />
+    <!-- feet -->
+    <path android:fillColor="#404040" android:pathData="M3,14h2v1h-2z M11,14h2v1h-2z" />
+</vector>

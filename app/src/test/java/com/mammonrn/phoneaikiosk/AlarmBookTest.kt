@@ -118,4 +118,84 @@ class AlarmBookTest {
         val warmer = DashboardState.cardFacts(json.replace("30.2", "30.4"))
         assertEquals(facts["weather"]!!.first, warmer["weather"]!!.first)
     }
+
+    // ------------------------------------------- the Control Panel (2026-09-23)
+
+    @Test
+    fun `chosen days ring only on those days`() {
+        val book = AlarmBook()
+        val a = book.add(6, 30, "ทำงาน", AlarmBook.WEEKDAYS, once = false)!!
+        // 23 Sep 2026 is a Wednesday; Saturday 26th 07:00 -> next is Monday 28th.
+        assertEquals(at(6, 30, day = 28), book.nextRing(a, at(7, 0, day = 26), bangkok))
+        assertEquals(at(6, 30, day = 24), book.nextRing(a, at(7, 0, day = 23), bangkok))
+        assertEquals("จันทร์–ศุกร์", AlarmBook.repeatText(a))
+    }
+
+    @Test
+    fun `once rings at the next time whatever the day, and says so`() {
+        val book = AlarmBook()
+        val a = book.add(5, 0, "", 0, once = true)!!
+        assertEquals(at(5, 0, day = 24), book.nextRing(a, at(6, 0), bangkok))
+        assertEquals("ครั้งเดียว", AlarmBook.repeatText(a))
+    }
+
+    @Test
+    fun `a repeating alarm with no day never rings`() {
+        val book = AlarmBook()
+        val a = book.add(5, 0, "", 0, once = false)!!
+        assertNull(book.nextRing(a, at(6, 0), bangkok))
+        assertNull(book.next(at(6, 0), bangkok))
+    }
+
+    @Test
+    fun `edit, delete and one time per alarm`() {
+        val book = AlarmBook()
+        val a = book.add(6, 0, "ก", AlarmBook.EVERY_DAY, false)!!
+        val b = book.add(7, 0, "ข", AlarmBook.EVERY_DAY, false)!!
+        assertNull("a second alarm at 06:00", book.add(6, 0, "ค", AlarmBook.EVERY_DAY, false))
+        assertFalse("moving b onto a's time", book.update(b.id, 6, 0, "ข", AlarmBook.EVERY_DAY, false))
+        assertTrue(book.update(b.id, 8, 15, "ข ใหม่", AlarmBook.WEEKEND, false))
+        assertEquals("08:15", book.byId(b.id)!!.time)
+        assertEquals("เสาร์–อาทิตย์", AlarmBook.repeatText(book.byId(b.id)!!))
+        assertTrue(book.remove(a.id))
+        assertNull(book.byId(a.id))
+    }
+
+    @Test
+    fun `days and once survive a save, and old saves read as every day`() {
+        val book = AlarmBook()
+        book.add(6, 0, "", AlarmBook.WEEKEND, false); book.add(7, 0, "", 0, true)
+        assertEquals(book.alarms, AlarmBook.fromJson(book.toJson()).alarms)
+        val old = AlarmBook.fromJson("""[{"id":1,"h":6,"m":0,"label":"","on":true}]""").alarms[0]
+        assertEquals(AlarmBook.EVERY_DAY, old.days)
+        assertFalse(old.once)
+    }
+
+    @Test
+    fun `a spoken alarm is every day`() {
+        val book = AlarmBook()
+        assertEquals("ทุกวัน", AlarmBook.repeatText(book.set(6, 0, "")!!))
+    }
+
+    @Test
+    fun `fuel lines share a price between brands and give a dearer one its own`() {
+        val cheapest = org.json.JSONArray("""[{"brand":"PT","price":39.9},{"brand":"ปตท.","price":39.94},
+            {"brand":"บางจาก","price":39.94}]""")
+        assertEquals("โซฮอล์ 95 39.90 PT · 39.94 ปตท. บางจาก", DashboardState.fuelLine("โซฮอล์ 95", cheapest))
+        assertEquals("", DashboardState.fuelLine("ดีเซล", org.json.JSONArray()))
+    }
+
+    @Test
+    fun `the commodities window shows fuel only when the broker sends it`() {
+        val gold = """"gold":{"ok":true,"ornament_sell":68900,"bar_sell":68100}"""
+        val oil = """"oil":{"ok":true,"area":"กรุงเทพฯ","date":"23 กันยายน 2569","fuels":[
+            {"id":"diesel","label":"ดีเซล","cheapest":[{"brand":"ปตท.","price":40.69}]}]}"""
+        assertNull(DashboardState.parse("{$gold}", "-").oil)
+        val screen = DashboardState.parse("{$gold,$oil}", "-")
+        assertEquals("ดีเซล 40.69 ปตท.
+(ราคากรุงเทพฯ · 23 กันยายน 2569)", screen.oil!!.text)
+        assertEquals("ทองแท่ง 68,100 บ. · ดีเซล 40.69", DashboardState.cardFacts("{$gold,$oil}")["gold"]!!.second)
+        val down = """"oil":{"ok":false,"error":"URLError"}"""
+        assertEquals("น้ำมัน: -", DashboardState.parse("{$gold,$down}", "-").oil!!.text)
+    }
 }

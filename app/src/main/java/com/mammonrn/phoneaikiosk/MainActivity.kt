@@ -77,6 +77,7 @@ class MainActivity : Activity() {
     private lateinit var weatherTitle: TextView
     private lateinit var weatherBody: TextView
     private lateinit var goldBody: TextView
+    private lateinit var oilBody: TextView
     private lateinit var cryptoBody: TextView
     private lateinit var cryptoBodyRight: TextView
     private lateinit var weatherIcon: ImageView
@@ -312,6 +313,15 @@ class MainActivity : Activity() {
         val dim = ContextCompat.getColor(this, R.color.retro_dim)
         weatherBody.text = RetroType.pixelifyHeadline(screen.weather.text, pixelFace, dim)
         goldBody.text = RetroType.pixelifyWithAge(screen.gold.text, pixelFace, dim)
+        // Fuel under the gold: GONE with a broker too old to send it, so gold
+        // alone looks exactly as it did.
+        val oil = screen.oil
+        if (oil == null) {
+            if (oilBody.visibility != android.view.View.GONE) oilBody.visibility = android.view.View.GONE
+        } else {
+            oilBody.text = RetroType.pixelifyWithAge(oil.text, pixelFace, dim)
+            if (oilBody.visibility != android.view.View.VISIBLE) oilBody.visibility = android.view.View.VISIBLE
+        }
         // The blank line between two coins at under half height: enough to
         // tell the pairs apart, not the full empty line that spread four coins
         // over the whole window.
@@ -358,9 +368,14 @@ class MainActivity : Activity() {
         // "ราคาทอง · ความบริสุทธิ์ 96.5%". What the price move is measured
         // against moved down into the panel's footnote, next to the moves it
         // explains, so each percentage on this window sits beside its label.
-        goldTitle.text = if (screen.goldPurity.isEmpty()) getString(R.string.window_gold)
-                         else "${getString(R.string.window_gold)} · " +
-                             getString(R.string.gold_purity, screen.goldPurity)
+        // "ทองและน้ำมัน · ทอง 96.5%" once fuel is there; the purity stays in the
+        // title as a word and a number, so it is never read as a price move.
+        val name = getString(if (screen.oil != null) R.string.window_commodities else R.string.window_gold)
+        goldTitle.text = when {
+            screen.goldPurity.isEmpty() -> name
+            screen.oil != null -> "$name · " + getString(R.string.gold_purity_short, screen.goldPurity)
+            else -> "$name · " + getString(R.string.gold_purity, screen.goldPurity)
+        }
     }
 
     /**
@@ -388,7 +403,7 @@ class MainActivity : Activity() {
         val minute = CardBoard.MINUTE
         card("weather", R.id.card_weather, R.id.weather_panel, R.id.weather_badge,
              R.id.weather_titlebar, 1f, 60 * minute)
-        card("gold", R.id.card_gold, R.id.gold_body, R.id.gold_badge, R.id.gold_titlebar,
+        card("gold", R.id.card_gold, R.id.commodity_panel, R.id.gold_badge, R.id.gold_titlebar,
              1f, 120 * minute)
         card("crypto", R.id.card_crypto, R.id.crypto_panel, R.id.crypto_badge,
              R.id.crypto_titlebar, 0.25f, 60 * minute)
@@ -579,6 +594,11 @@ class MainActivity : Activity() {
         weatherTitle = findViewById(R.id.weather_title)
         weatherBody = findViewById(R.id.weather_body)
         goldBody = findViewById(R.id.gold_body)
+        oilBody = findViewById(R.id.oil_body)
+        // The Control Panel: our own activity, so it stays inside lock task.
+        findViewById<android.view.View>(R.id.settings_button).setOnClickListener {
+            startActivity(Intent(this, com.mammonrn.phoneaikiosk.settings.SettingsActivity::class.java))
+        }
         cryptoBody = findViewById(R.id.crypto_body)
         cryptoBodyRight = findViewById(R.id.crypto_body_right)
         weatherIcon = findViewById(R.id.weather_icon)
