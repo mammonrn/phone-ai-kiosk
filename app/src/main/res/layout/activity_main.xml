@@ -27,6 +27,13 @@
   WHAT IS BIGGEST IS WHAT MATTERS: what Jarvis is doing and what it heard, then
   the numbers, then their labels, then the diagnostics.
 
+  SHARES FOLLOW CONTENT (v0.23). Every window measures its content first and
+  then takes a share of what is left over, in proportion to its weight. The
+  crypto window already has four coins to show, so an equal share left it the
+  loosest-looking box on the screen; it takes 0.25 now. The Google Home
+  placeholder has one button and takes 0.7. Weather and gold keep 1 and Jarvis
+  2, so what those two gave up goes to the windows with room to use it.
+
   THE SPARE HEIGHT IS SHARED, NOT HOARDED. Smaller type left about a third of
   the screen over, and the Jarvis window — the only one with a weight — took
   all of it, so the kiosk sat there with a grey box the size of a postcard and
@@ -64,7 +71,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_weight="0.7"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:padding="5dp">
@@ -268,7 +275,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_weight="0.25"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"

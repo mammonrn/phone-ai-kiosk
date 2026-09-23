@@ -1554,4 +1554,4 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_DIAGNOSTICS `
   --es value on      # ปิดด้วย --es value off
 ```
 
-นาฬิกามุมขวาล่างเหลือบรรทัดเดียว `Wed 23 Sep  8:16 AM` สูงเท่าปุ่ม "จาร์วิส"
+นาฬิกามุมขวาล่างเหลือบรรทัดเดียว `พ. 23 ก.ย.  8:16 AM` (วันที่ภาษาไทยตั้งแต่ v0.23.0) สูงเท่าปุ่ม "จาร์วิส"

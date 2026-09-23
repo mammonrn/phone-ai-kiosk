@@ -27,6 +27,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.home.HomeControl
 import com.mammonrn.phoneaikiosk.ui.RetroType
+import com.mammonrn.phoneaikiosk.ui.ThaiDate
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.DashboardState
 import com.mammonrn.phoneaikiosk.voice.KioskLocation
@@ -124,14 +125,15 @@ class MainActivity : Activity() {
      * 12-hour clock: "7:05 AM", not "07:05 AM".
      */
     private val taskbarFormat = SimpleDateFormat("h:mm a", Locale.US)
-    private val dateFormat = SimpleDateFormat("EEE d MMM", Locale.US)
 
     private val tick = object : Runnable {
         override fun run() {
             val now = Date()
             applyScreenRule()
             taskbarClock.text = taskbarFormat.format(now)
-            taskbarDate.text = dateFormat.format(now)
+            // Thai, "พ. 23 ก.ย.": the time stays AM/PM as asked, the date is
+            // in the language of everything else on the screen.
+            taskbarDate.text = ThaiDate.short(java.util.Calendar.getInstance().apply { time = now })
             VoiceState.locationState = location.describe()
             // Always written to VoiceState, so dumpsys has it; only DRAWN in
             // debug mode. The household's screen shows data and Jarvis's
