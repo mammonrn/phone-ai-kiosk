@@ -150,7 +150,7 @@ def _stt_compare(cfg, args) -> int:
 
         # ---- the transcribers -------------------------------------------------
         groq_client = _stt_client() if any(p.startswith("groq") for p in providers) else None
-        google_key = (_secret("GOOGLE_STT_API_KEY") or _secret("GOOGLE_TTS_API_KEY") or "")
+        google_key = _secret("GOOGLE_TTS_API_KEY") or ""
 
         def transcribe(provider: str, audio: bytes) -> tuple[str, float]:
             try:
@@ -472,10 +472,10 @@ def main(argv: list[str] | None = None) -> int:
 
         logging.getLogger("kiosk_broker").info("tts provider=%s", cfg.tts_provider)
 
-        # Google Speech-to-Text, for the "google" transcriber only. Its own key
-        # if Poom made one; otherwise the TTS key, which works only once
-        # "Cloud Speech-to-Text API" is added to that key's API restrictions.
-        google_stt_key = _secret("GOOGLE_STT_API_KEY") or tts_key
+        # Google Speech-to-Text, for the "google" transcriber only: the SAME
+        # key as TTS, by Poom's choice — restricted to Text-to-Speech and
+        # Speech-to-Text and to the VPS's addresses.
+        google_stt_key = tts_key
 
         httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key,
                             botnoi_token=botnoi_token, google_stt_key=google_stt_key)
@@ -713,9 +713,8 @@ def main(argv: list[str] | None = None) -> int:
             for name, what in (
                 ("ANTHROPIC_API_KEY", "/v1/chat"),
                 ("GROQ_API_KEY", "/v1/stt"),
-                ("GOOGLE_TTS_API_KEY", "/v1/tts"),
+                ("GOOGLE_TTS_API_KEY", "/v1/tts and the \"google\" transcriber"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
-                ("GOOGLE_STT_API_KEY", "the \"google\" transcriber (else the TTS key is tried)"),
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
                 ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),
                 ("TUYA_DATA_CENTER", "which Tuya host to call"),

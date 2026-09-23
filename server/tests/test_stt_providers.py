@@ -100,13 +100,15 @@ def test_groq_hints_with_a_broken_file_still_transcribes(conn, cfg):
 
 # ---------------------------------------------------------------- google ---
 
-def test_google_gets_th_TH_the_phrases_and_the_key_in_a_header(conn, cfg, hints_file):
+def test_google_gets_th_TH_the_phrases_and_the_key_as_a_query_parameter(conn, cfg, hints_file):
+    """?key= because that is what worked on the VPS: the x-goog-api-key header
+    got 403 "Method doesn't allow unregistered callers" with the same key."""
     google = FakeGoogle()
     status, body = _stt(conn, cfg, provider="google", google=google)
     assert status == 200 and body == {"text": "ขอดูกล้องหน่อยครับ", "provider": "google"}
     request = google.requests[0]
-    assert GOOGLE_KEY not in request.full_url
-    assert request.get_header("X-goog-api-key") == GOOGLE_KEY
+    assert request.full_url.startswith(google_stt.ENDPOINT + "?key=")
+    assert request.get_header("X-goog-api-key") is None
     sent = json.loads(request.data)
     assert sent["config"]["languageCode"] == "th-TH"
     assert sent["config"]["sampleRateHertz"] == 16_000
@@ -177,3 +179,33 @@ def test_the_chat_that_follows_completes_the_same_row(conn, cfg):
     assert len(rows) == 1
     assert rows[0]["action"] == "open_camera_app"
     assert rows[0]["intent"] == "phrase:ขอดูกล้อง"
+
+
+class Unreachable:
+    """A network failure whose own message quotes the URL — key and all."""
+
+    def __call__(self, request, timeout):
+        raise urllib.error.URLError(f"cannot reach {request.full_url}")
+
+
+@pytest.mark.parametrize("google", [
+    FakeGoogle(status=403, error_status="PERMISSION_DENIED"),
+    FakeGoogle(status=400, error_status="INVALID_ARGUMENT"),
+    FakeGoogle(status=429, error_status="RESOURCE_EXHAUSTED"),
+    FakeGoogle(transcript=""),
+    Unreachable(),
+])
+def test_the_key_is_in_no_log_line_and_no_answer_whatever_goes_wrong(conn, cfg, caplog, google):
+    with caplog.at_level(logging.DEBUG):
+        status, body = _stt(conn, cfg, provider="google", google=google)
+    assert status == 502
+    written = "\n".join(r.getMessage() for r in caplog.records)
+    written += "\n".join(str(r.exc_info) for r in caplog.records if r.exc_info)
+    assert GOOGLE_KEY not in written
+    assert "key=" not in written
+    assert GOOGLE_KEY not in json.dumps(body, ensure_ascii=False)
+
+
+def test_redact_cuts_any_query_string():
+    assert google_stt.redact(f"https://x/y?key={GOOGLE_KEY}&a=1 failed") == "https://x/y?… failed"
+    assert GOOGLE_KEY not in google_stt.redact(f"?key={GOOGLE_KEY}")

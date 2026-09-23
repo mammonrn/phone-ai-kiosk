@@ -12,13 +12,16 @@ CHECKED ON GOOGLE'S OWN PAGES on 2026-09-23 (see INSTALL.md for the links):
     characters a phrase.
   * Billed per second, rounded up; synchronous audio up to about a minute.
 
-THE KEY TRAVELS IN A HEADER (x-goog-api-key), which Google documents as
-equivalent to ?key=, so it is never part of a URL — and so never part of an
-exception message, a log line or an error sent to the phone. That Speech-to-
-Text accepts an API key at all is inferred, not stated on its pages: the
-general API-key page says any API that accepts keys does, and the STT error
-page lists "The request is missing a valid API key." `stt-compare` is the
-first real call, and says plainly if the key is refused.
+THE KEY GOES IN THE QUERY STRING (?key=), the same as tts.py — measured, not
+assumed. Poom tried both on the VPS with the TTS key once "Cloud Speech-to-
+Text API" was added to its restrictions: in the x-goog-api-key header it got
+403 "Method doesn't allow unregistered callers"; as ?key= it got 400
+"RecognitionAudio not set", i.e. the key was accepted. So the URL carries the
+key, and therefore the URL is never logged, never put in an exception
+message, and never returned: every error below is built from a status code
+and Google's status word, `from None` so no chained exception carries the
+request either, and redact() strips any query string from anything that
+might ever be printed.
 
 The audio goes up and comes back as text; nothing is written to disk here.
 """
@@ -29,6 +32,7 @@ import base64
 import json
 import struct
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .stt import SttError, Transcript
@@ -84,9 +88,8 @@ def recognize(*, api_key: str, audio: bytes, language_code: str = "th-TH",
                                    hints=hints)).encode("utf-8")
     _, seconds = wav_info(audio)
     request = urllib.request.Request(
-        ENDPOINT, data=body, method="POST",
-        headers={"Content-Type": "application/json; charset=utf-8",
-                 "x-goog-api-key": api_key},
+        f"{ENDPOINT}?{urllib.parse.urlencode({'key': api_key})}", data=body, method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8"},
     )
     send = transport or (lambda req, t: urllib.request.urlopen(req, timeout=t))
     try:
@@ -94,8 +97,8 @@ def recognize(*, api_key: str, audio: bytes, language_code: str = "th-TH",
             raw = response.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         # The status and Google's own status word — never the body, which can
-        # echo the request, and never the URL, which is fixed anyway.
-        reason = _error_status(exc)
+        # echo the request, and never the URL, which carries the key.
+        reason = redact(_error_status(exc))
         if exc.code in (401, 403):
             raise SttError("ระบบถอดเสียงยังต่อไม่ได้ครับ",
                            f"google auth {exc.code} {reason}") from None
@@ -124,6 +127,12 @@ def recognize(*, api_key: str, audio: bytes, language_code: str = "th-TH",
         raise SttError("ไม่ได้ยินว่าพูดอะไรครับ ลองพูดอีกครั้งนะ",
                        f"google empty transcript, duration={seconds:.1f}", seconds=seconds)
     return Transcript(text=text, seconds=seconds)
+
+
+def redact(text: str) -> str:
+    """Anything URL-shaped with its query string cut off. The key lives there."""
+    import re
+    return re.sub(r"\?[^\s\"']*", "?…", str(text))
 
 
 def _error_status(exc: urllib.error.HTTPError) -> str:

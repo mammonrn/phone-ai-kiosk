@@ -1171,24 +1171,15 @@ $B stt-hints-check          # ต้องขึ้น ok ก่อนใช้
 
 ### คีย์ Google สำหรับ Speech-to-Text (ถ้าจะลอง `google`)
 
-คีย์ TTS เดิมถูกจำกัดให้ใช้ได้แค่ Text-to-Speech — ใช้กับ Speech-to-Text ไม่ได้
-จนกว่าจะเพิ่มสิทธิ์ เลือกทางใดทางหนึ่ง (**แนะนำทาง ก.** คีย์แยก จำกัดสิทธิ์ชัด):
+**ใช้คีย์เดียวกับ TTS — `GOOGLE_TTS_API_KEY` ไม่มีชื่อ env ใหม่** (Poom ตัดสินใจแล้ว)
+คีย์นั้นจำกัดให้เรียกได้เฉพาะ Cloud Text-to-Speech API และ Cloud Speech-to-Text
+API และจำกัด IP เป็น IPv4/IPv6 ของ VPS
 
-**ก. คีย์ใหม่แยก**
-1. https://console.cloud.google.com → โปรเจกต์เดิมที่ใช้ TTS
-2. APIs & Services → Library → ค้น **Cloud Speech-to-Text API** → Enable
-3. APIs & Services → Credentials → Create credentials → API key
-4. กดคีย์ใหม่ → API restrictions → Restrict key → เลือก **Cloud Speech-to-Text API**
-   อย่างเดียว → (ถ้าคีย์ TTS จำกัด IP ไว้ ให้ใส่ IP ของ VPS แบบเดียวกัน) → Save
-5. บน VPS: `$B set-key GOOGLE_STT_API_KEY` แล้ววางคีย์ (มองไม่เห็นตอนวาง)
-
-**ข. ใช้คีย์ TTS เดิม** — ทำข้อ 1–2 แล้วเปิดคีย์ TTS เดิม → API restrictions →
-เพิ่ม Cloud Speech-to-Text API เข้าไปคู่กับ Text-to-Speech → Save (broker ใช้คีย์ TTS
-แทนอัตโนมัติถ้าไม่มี `GOOGLE_STT_API_KEY`)
-
-🔶 หน้าเอกสาร Speech-to-Text ไม่ได้เขียนตรงๆ ว่ารับ API key ได้ (เขียนถึง ADC)
-แต่หลักการ API key ของ Google บอกว่าใช้ได้กับทุก API ที่รับ key — `stt-compare`
-ครั้งแรกคือการทดสอบจริง ถ้าขึ้น `google auth 403` ให้ส่งผลมา
+✅ วิธีส่งคีย์ วัดบน VPS แล้ว: ใส่ใน header `X-Goog-Api-Key` ได้ **403 "Method
+doesn't allow unregistered callers"** ส่วน query string `?key=` ได้ 400
+"RecognitionAudio not set" (แปลว่าคีย์ผ่าน) โค้ดจึงส่งแบบ `?key=` เหมือน TTS
+URL จึงมีคีย์อยู่ ดังนั้น**ไม่มีจุดไหนบันทึก URL** — error ทุกตัวสร้างจากรหัสสถานะ
+และคำสถานะของ Google เท่านั้น มีเทสต์ยืนยันว่าคีย์ไม่หลุดเข้า log และ error ทุกกรณี
 
 ### เทียบผล — `stt-compare` (เพดานรวมทุกครั้ง $0.20)
 
@@ -1200,11 +1191,12 @@ $B stt-hints-check          # ต้องขึ้น ok ก่อนใช้
 1. `$B analysis on --audio`
 2. ที่ kiosk พูดทีละประโยค **ตามลำดับนี้** (Hey Jarvis ก่อนทุกประโยค):
    ขอดูกล้องหน่อยครับ · พาไปเซ็นทรัลเชียงราย · วันนี้อากาศเป็นยังไง · เปิดไฟห้องนั่งเล่น
-3. `$B stt-compare --from-analysis 4`
+3. `$B analysis summary` ดูเลข `#id` ของ 4 ประโยคนั้น (แถวที่มีคำว่า audio) แล้ว
+   `$B stt-compare --ids <id ประโยค 1>,<2>,<3>,<4>` — ตามลำดับประโยค
 4. `$B analysis off` แล้ว `$B analysis purge` เมื่อได้ผลแล้ว
 
 หรือเสียงสังเคราะห์ (เป็นพื้นขั้นต่ำ ไม่ใช่คำตัดสิน): `$B stt-compare --synth`
 
-ถ้ายังไม่มีคีย์ Google: `$B stt-compare --from-analysis 4 --providers groq,groq-hints`
+ถ้า Google ยังใช้ไม่ได้: `$B stt-compare --ids <4 ids> --providers groq,groq-hints`
 
 `/healthz` ต้องแสดง `"build"` ของรุ่นนี้ก่อน ถ้าไม่มี แปลว่ายังไม่ได้ deploy

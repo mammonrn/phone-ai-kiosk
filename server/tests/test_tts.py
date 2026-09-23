@@ -551,3 +551,29 @@ def test_audio_whose_length_cannot_be_read_does_not_break_the_reply(conn, cfg):
     assert status == 200
     assert body["audio"] == AUDIO
     assert body["headers"]["X-Kiosk-Audio-Ms"] == ""
+
+
+@pytest.mark.parametrize("failure", ["http403", "urlerror"])
+def test_the_tts_key_rides_in_the_url_and_never_in_an_error(monkeypatch, failure):
+    """TTS sends ?key= (the way Google's key works here — the same key STT now
+    uses). The URL therefore holds the key, so no error may carry the URL."""
+    import io as _io
+    import urllib.error as _ue
+    from kiosk_broker import tts as tts_mod
+
+    secret = "tts-key-NEVER-IN-AN-ERROR"
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["url"] = request.full_url
+        if failure == "http403":
+            raise _ue.HTTPError(request.full_url, 403, "Forbidden", {}, _io.BytesIO(b"{}"))
+        raise _ue.URLError(f"could not reach {request.full_url}")
+
+    monkeypatch.setattr(tts_mod.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(tts_mod.TtsError) as refused:
+        tts_mod.synthesize(api_key=secret, text="สวัสดี", language_code="th-TH", voice="Charon")
+    assert "key=" in seen["url"]
+    assert secret not in refused.value.detail
+    assert secret not in refused.value.user_message
+    assert secret not in str(refused.value)

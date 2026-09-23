@@ -34,7 +34,6 @@ SETTABLE: dict[str, str] = {
     "ANTHROPIC_API_KEY": "/v1/chat",
     "GROQ_API_KEY": "/v1/stt",
     "GOOGLE_TTS_API_KEY": "/v1/tts",
-    "GOOGLE_STT_API_KEY": "the \"google\" transcriber (Speech-to-Text), comparison only",
 }
 
 
