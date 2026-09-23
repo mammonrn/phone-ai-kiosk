@@ -213,11 +213,13 @@ jobs:
           SIZE=$(stat -c%s "$APK")
           echo "  APK size: $(( SIZE / 1048576 )) MB"
           # Poom approved roughly +17.7 MB for onnxruntime, and the models add
-          # about 3.7 MB on top. 28 MB leaves room for the app to grow without
-          # letting a runtime upgrade silently double it again: 1.30.0 would
-          # have landed at about 37 MB.
-          if [ "$SIZE" -gt 29360128 ]; then
-            echo "  APK is over 28 MB — check the onnxruntime version before raising this"; fail=1
+          # about 3.7 MB on top: 28 MB until 0.36. The identity check (0.37.0)
+          # added SFace 9.9 MB, ML Kit's bundled face detector 8.5 MB and the
+          # camera/ML Kit code, landing at ~44.8 MiB; Poom approved raising the
+          # ceiling to 46 MB on 2026-09-23. Still tight on purpose: a runtime
+          # upgrade or a stray dependency should fail here, not ship.
+          if [ "$SIZE" -gt 48234496 ]; then
+            echo "  APK is over 46 MB — check the onnxruntime version and new dependencies before raising this"; fail=1
           fi
 
           exit $fail
