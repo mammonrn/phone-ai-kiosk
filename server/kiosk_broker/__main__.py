@@ -621,6 +621,24 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {label:<15}: {s['n']} answers  avg {s['avg_chars']:.0f} chars "
                       f"${s['avg_cost']:.5f}  max {s['max_chars']:.0f} chars ${s['max_cost']:.5f}")
 
+            # Google's free allowances, as counted here. Google has no call
+            # that reports what is left, so this is our own sum of what was
+            # sent — see free_tier.py for why it can differ from Google's.
+            from . import free_tier
+            print()
+            print(f"google free tier, counted here — {free_tier.period_label()}:")
+            for allowance in free_tier.allowances(
+                    pricing, voice_family=cfg.tts_voice_family,
+                    google_stt_model=cfg.google_stt_model).values():
+                s = free_tier.status(conn, allowance)
+                amount = (f"{s['used']:,.0f} / {s['free']:,.0f} characters"
+                          if allowance.unit == "characters"
+                          else f"{s['used'] / 60:,.1f} / {s['free'] / 60:,.0f} minutes")
+                print(f"  {allowance.label:<24}: {amount}  ({s['share'] * 100:.0f}%)  "
+                      f"{s['state']}")
+            print("  (Google offers no way to read the remainder; another project on the same")
+            print("   billing account would use the same allowance without showing here)")
+
             print()
             warning = limits.budget_warning(spent, cfg.monthly_budget_usd)
             if warning:

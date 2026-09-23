@@ -11,7 +11,7 @@ import urllib.error
 
 import pytest
 
-from kiosk_broker import analysis, auth, google_stt, stt, stt_hints, stt_router
+from kiosk_broker import analysis, auth, google_stt, store, stt, stt_hints, stt_router
 from kiosk_broker.service import handle_stt
 
 from conftest import FakeGroq
@@ -143,11 +143,20 @@ def test_a_refused_google_key_is_a_clean_error_without_the_key(conn, cfg, caplog
     assert GOOGLE_KEY not in written and GOOGLE_KEY not in json.dumps(body)
 
 
-def test_google_is_billed_per_second_at_its_own_rate(conn, cfg):
+def test_google_inside_its_free_hour_is_counted_but_not_paid(conn, cfg):
     _stt(conn, cfg, provider="google", google=FakeGoogle(), audio=wav(2.3))
     row = conn.execute("SELECT model, quantity, cost_usd FROM usage").fetchone()
     assert row["model"] == "google-latest_short"
     assert row["quantity"] == 3.0                        # 2.3 s rounds up to 3
+    assert row["cost_usd"] == 0.0                        # 60 free minutes a month
+
+
+def test_google_past_its_free_hour_is_billed_per_second_at_its_own_rate(conn, cfg):
+    store.record_usage(conn, device_id=1, month="2026-09", model="google-latest_short",
+                       cost_usd=0.0, service="stt", quantity=3600, unit="seconds")
+    _stt(conn, cfg, provider="google", google=FakeGoogle(), audio=wav(2.3))
+    row = conn.execute("SELECT quantity, cost_usd FROM usage ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["quantity"] == 3.0
     assert row["cost_usd"] == pytest.approx(3 * 0.024 / 60)
 
 

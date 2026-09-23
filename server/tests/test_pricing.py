@@ -83,11 +83,13 @@ def test_an_unpriced_stt_model_raises(home):
 # ------------------------------------------------------------------ tts rates
 
 def test_tts_price_matches_the_official_quote(home):
-    """Source: https://cloud.google.com/text-to-speech/pricing (2026-09-22),
-    Chirp 3: HD row, sku F977-2280-6F1B:
+    """Source: https://cloud.google.com/text-to-speech/pricing (2026-09-23),
+    Chirp 3: HD row, sku F977-2280-6F1B, under the columns "Free usage limit |
+    Price after free usage limit is reached":
     "0 to 1 million characters | US$0.00003 per character"."""
     p = Pricing.load(home / "pricing.json")
-    assert p.raw["tts"]["chirp3-hd"] == {"usd_per_character": 0.00003}
+    assert p.raw["tts"]["chirp3-hd"] == {"usd_per_character": 0.00003,
+                                         "free_characters_per_month": 1_000_000}
 
 
 def test_tts_cost_is_per_character(home):
@@ -97,10 +99,10 @@ def test_tts_cost_is_per_character(home):
     assert p.tts_cost("chirp3-hd", 120) == pytest.approx(0.0036)
 
 
-def test_no_free_tier_is_assumed_for_tts(home):
-    """The pricing page's free-allowance wording names WaveNet and Standard,
-    not Chirp 3 HD, and the Chirp 3 HD row bills from character 0. Assuming a
-    free tier here would silently under-count the budget."""
+def test_tts_cost_is_the_price_after_the_free_allowance(home):
+    """tts_cost() is the list price of characters PAST the free million — the
+    allowance itself is taken off in free_tier.py, and only there, so no price
+    is ever discounted twice."""
     p = Pricing.load(home / "pricing.json")
     assert p.tts_cost("chirp3-hd", 1) > 0
 

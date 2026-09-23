@@ -234,6 +234,22 @@ def test_cost_is_per_character_sent(conn, cfg):
     row = conn.execute("SELECT * FROM usage WHERE service = 'tts'").fetchone()
     assert row["quantity"] == len(text)
     assert row["unit"] == "characters"
+    # Inside Google's free million a month, so nothing is paid (Poom, 2026-09-23).
+    assert row["cost_usd"] == 0.0
+
+
+def _use_up_the_free_million(conn):
+    store.record_usage(conn, device_id=1, month="2026-09", model="v", cost_usd=0.0,
+                       service="tts", quantity=1_000_000, unit="characters")
+
+
+def test_past_the_free_million_every_character_is_paid(conn, cfg):
+    _use_up_the_free_million(conn)
+    token = _token(conn)
+    text = "สวัสดีครับ ผมจาร์วิส"
+    _post(conn, cfg, token, {"text": text})
+    row = conn.execute("SELECT cost_usd FROM usage WHERE service = 'tts'"
+                       " ORDER BY id DESC LIMIT 1").fetchone()
     assert row["cost_usd"] == pytest.approx(len(text) * 0.00003)
 
 
@@ -313,11 +329,13 @@ def test_a_long_reply_is_cut_before_it_is_sent_not_billed_and_then_regretted(con
 
 
 def test_the_cost_recorded_is_the_cost_of_what_was_spoken(conn, cfg):
+    _use_up_the_free_million(conn)
     token = _token(conn)
     _post(conn, cfg, token, {"text": LONG_REPLY})
 
     spoken = REQUESTS[0]["body"]["input"]["text"]
-    row = conn.execute("SELECT quantity, cost_usd FROM usage WHERE service = 'tts'").fetchone()
+    row = conn.execute("SELECT quantity, cost_usd FROM usage WHERE service = 'tts'"
+                       " ORDER BY id DESC LIMIT 1").fetchone()
 
     assert row["quantity"] == len(spoken)
     assert row["quantity"] < len(LONG_REPLY)

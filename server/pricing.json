@@ -24,22 +24,26 @@
   },
   "tts": {
     "_source": "https://cloud.google.com/text-to-speech/pricing",
-    "_checked_at": "2026-09-22",
+    "_checked_at": "2026-09-23",
     "_sku": "F977-2280-6F1B",
     "_unit": "USD per character",
-    "_note": "Quoted for Chirp 3: HD voices: \"0 to 1 million characters | US$0.00003 per character (US$30 per 1 million characters)\". The same page states the billed count includes spaces and newlines, and all SSML tags except <mark>. NOTE: the page's free-allowance wording names WaveNet (1M) and Standard (4M) only; it does NOT name Chirp 3 HD, and the Chirp 3 HD row bills from character 0. No free allowance is assumed here — assuming one would silently under-count the budget.",
+    "_note": "Quoted from the table whose columns are \"Model | Free usage limit | Price after free usage limit is reached\": \"Chirp 3: HD voices (sku:F977-2280-6F1B) | 0 to 1 million characters | US$0.00003 per character (US$30 per 1 million characters)\". The first free million a month is applied by free_tier.py, not here: usd_per_character is the price AFTER it. Corrected 2026-09-23 — an earlier note read the free column as a price band. The same page states the billed count includes spaces and newlines, and all SSML tags except <mark>. Whether the allowance is per billing account or per project is not stated for Text-to-Speech.",
+    "_free_period": "Calendar month from 12 AM US and Canadian Pacific Time (UTC-8), per https://docs.cloud.google.com/billing/docs/how-to/budgets — see free_tier.py.",
     "chirp3-hd": {
-      "usd_per_character": 3e-05
+      "usd_per_character": 3e-05,
+      "free_characters_per_month": 1000000
     }
   },
   "stt_google": {
     "_source": "https://cloud.google.com/speech-to-text/pricing",
     "_checked_at": "2026-09-23",
     "_unit": "USD per minute of audio, v1 Standard",
-    "_note": "Quoted: billing is \"measured in increments of one second\" and \"Each request is rounded up to the nearest increment of 1 seconds\". Standard without data logging: first 60 minutes a month free, then $0.024 / 1 minute ($0.016 with data logging, which this broker does not opt into). The free tier is NOT subtracted here, so every estimate is the price after it runs out.",
+    "_note": "Quoted: billing is \"measured in increments of one second\" and \"Each request is rounded up to the nearest increment of 1 seconds\". Standard without data logging: \"0 minute to 60 minute $0.00 (Free) / 1 minute, per 1 month / account\", then $0.024 / 1 minute ($0.016 with data logging, which this broker does not opt into). The 60 free minutes are applied by free_tier.py; usd_per_minute is the price after them.",
+    "_free_period": "Calendar month from 12 AM US and Canadian Pacific Time (UTC-8), per https://docs.cloud.google.com/billing/docs/how-to/budgets — see free_tier.py.",
     "latest_short": {
       "usd_per_minute": 0.024,
-      "billed_increment_seconds": 1
+      "billed_increment_seconds": 1,
+      "free_minutes_per_month": 60
     }
   }
 }

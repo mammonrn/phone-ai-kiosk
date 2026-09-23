@@ -15,7 +15,7 @@ import sqlite3
 import time
 from typing import Any
 
-from . import (actions, analysis, auth, botnoi, clock, dashboard as dashboard_mod, limits,
+from . import (actions, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier, limits,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -109,6 +109,11 @@ def _check_caps(conn: sqlite3.Connection, cfg: Config, *, device_id: int, day: s
 
     _warn_about_budget(conn, cfg, month)
     return None
+
+
+def _allowances(cfg: Config, pricing: Pricing) -> dict[str, free_tier.Allowance]:
+    return free_tier.allowances(pricing, voice_family=cfg.tts_voice_family,
+                                google_stt_model=cfg.google_stt_model)
 
 
 #: Months already warned about in this process: once a month is plenty for a
@@ -409,6 +414,12 @@ def handle_stt(
         model, cost, billed = stt_router.cost_of(
             chosen, pricing, groq_model=cfg.stt_model, google_model=cfg.google_stt_model,
             seconds=seconds)
+        if chosen == "google":
+            # Google's 60 free minutes a month come off first (Poom, 2026-09-23).
+            # `cost` above is the list price; this is what is actually paid.
+            cost = free_tier.charge(
+                conn, _allowances(cfg, pricing).get(free_tier.STT_GOOGLE), billed,
+                lambda paid: pricing.google_stt_cost(cfg.google_stt_model, paid))
         store.record_usage(conn, device_id=device_id, month=month, model=model,
                            cost_usd=cost, service="stt", quantity=billed, unit="seconds")
         return cost
@@ -580,7 +591,12 @@ def handle_tts(
     audio_ms = oggopus.duration_ms(speech.audio)
 
     pricing = Pricing.load(cfg.pricing_path)
-    cost = pricing.tts_cost(cfg.tts_voice_family, speech.billed_characters)
+    # The first million characters a month are free (Poom, 2026-09-23): the
+    # ledger records what is actually paid, and free_tier warns at 80% and
+    # when the allowance runs out.
+    cost = free_tier.charge(
+        conn, _allowances(cfg, pricing).get(free_tier.TTS), speech.billed_characters,
+        lambda paid: pricing.tts_cost(cfg.tts_voice_family, int(round(paid))))
     store.record_usage(conn, device_id=device_id, month=month, model=cfg.tts_voice,
                        cost_usd=cost, service="tts",
                        quantity=speech.billed_characters, unit="characters")

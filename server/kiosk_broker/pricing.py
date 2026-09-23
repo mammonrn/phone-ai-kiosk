@@ -62,6 +62,17 @@ class Pricing:
                 f"the budget run unpriced"
             ) from exc
 
+    def free_per_month(self, section: str, key: str, field: str) -> float:
+        """A monthly free allowance the pricing file declares, or 0 for none.
+
+        0, not an error, for an entry that declares none: the safe reading of
+        silence is "no free allowance", which charges in full.
+        """
+        try:
+            return float(self._rates(section, key).get(field, 0) or 0)
+        except UnknownRateError:
+            return 0.0
+
     # ------------------------------------------------------------------- chat
 
     def cost(
