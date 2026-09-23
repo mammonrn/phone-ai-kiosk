@@ -102,7 +102,7 @@ jobs:
           MANIFEST="$("$AAPT" dump xmltree "$APK" --file AndroidManifest.xml)"
           fail=0
           check() {
-            if printf '%s' "$MANIFEST" | grep -q "$2"; then
+            if grep -q "$2" <<< "$MANIFEST"; then
               echo "ok: $1"
             else
               echo "::error::$1 — not found in the built manifest"
@@ -151,16 +151,21 @@ jobs:
           echo "checking $APK"
           LIST=$(unzip -l "$APK")
 
+          # grep reads the list from a here-string, never from `echo | grep -q`:
+          # grep -q stops at the first match, echo then dies of SIGPIPE, and
+          # pipefail turned a model that WAS there into "MISSING" once the APK
+          # listing grew past the pipe buffer (0.37.0, 519 entries).
           fail=0
-          for model in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx; do
-            if echo "$LIST" | grep -q "assets/models/$model"; then
+          # The three wake word models, and SFace for the identity check (0.37.0).
+          for model in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx                        face_recognition_sface_2021dec_int8.onnx; do
+            if grep -q "assets/models/$model" <<< "$LIST"; then
               echo "  ok   assets/models/$model"
             else
               echo "  MISSING assets/models/$model"; fail=1
             fi
           done
 
-          if echo "$LIST" | grep -q 'lib/arm64-v8a/libonnxruntime.so'; then
+          if grep -q 'lib/arm64-v8a/libonnxruntime.so' <<< "$LIST"; then
             echo "  ok   lib/arm64-v8a/libonnxruntime.so"
           else
             echo "  MISSING lib/arm64-v8a/libonnxruntime.so"; fail=1
@@ -187,17 +192,17 @@ jobs:
             echo "  cannot find aapt2 — unable to check the merged manifest"; fail=1
           else
             TREE=$("$AAPT" dump xmltree "$APK" --file AndroidManifest.xml)
-            if echo "$TREE" | grep -q "E: queries"; then
+            if grep -q "E: queries" <<< "$TREE"; then
               echo "  ok   merged manifest has a <queries> block"
             else
               echo "  MISSING <queries> in the merged manifest — Maps will be invisible"; fail=1
             fi
-            if echo "$TREE" | grep -q 'name.*="com.google.android.apps.maps"'; then
+            if grep -q 'name.*="com.google.android.apps.maps"' <<< "$TREE"; then
               echo "  ok   com.google.android.apps.maps is declared visible"
             else
               echo "  MISSING the maps package in <queries>"; fail=1
             fi
-            if echo "$TREE" | grep -q "QUERY_ALL_PACKAGES"; then
+            if grep -q "QUERY_ALL_PACKAGES" <<< "$TREE"; then
               echo "  QUERY_ALL_PACKAGES is in the merged manifest; name one package instead"
               fail=1
             else
