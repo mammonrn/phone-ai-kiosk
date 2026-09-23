@@ -816,8 +816,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:contentDescription="@string/jarvis_button_description"
-                android:paddingStart="11dp"
-                android:paddingEnd="11dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="6dp"
                 android:text="@string/taskbar_button"
@@ -883,8 +883,8 @@
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
-                android:paddingStart="7dp"
-                android:paddingEnd="7dp"
+                android:paddingStart="5dp"
+                android:paddingEnd="5dp"
                 android:paddingTop="5dp"
                 android:paddingBottom="5dp">
 
@@ -895,7 +895,7 @@
                     android:id="@+id/net_text"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="7dp"
+                    android:layout_marginEnd="5dp"
                     android:textColor="@color/retro_dim"
                     android:textSize="10sp"
                     android:fontFamily="@font/plex_thai" />
@@ -915,7 +915,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="2dp"
-                    android:layout_marginEnd="7dp"
+                    android:layout_marginEnd="5dp"
                     android:textColor="@color/retro_dim"
                     android:textSize="10sp"
                     android:fontFamily="@font/plex_thai" />
@@ -924,7 +924,7 @@
                     android:id="@+id/taskbar_date"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="6dp"
+                    android:layout_marginEnd="5dp"
                     android:textColor="@color/retro_dim"
                     android:textSize="10sp"
                     android:fontFamily="@font/plex_thai" />
