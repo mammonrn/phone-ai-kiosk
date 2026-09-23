@@ -66,7 +66,7 @@ def _call(base, path, *, token=None, payload=None, raw=None, method="POST",
 
 def test_health_needs_no_token(live):
     base, _, _, _ = live
-    assert _call(base, "/healthz", method="GET") == (200, {"status": "ok"})
+    assert _call(base, "/healthz", method="GET") == (200, {"status": "ok", "build": "unknown"})
 
 
 def test_chat_over_http(live):
@@ -232,7 +232,7 @@ def test_the_connection_is_still_usable_after_an_oversized_refusal(live):
     assert _call(base, "/v1/stt", token=token, raw=huge, content_type="audio/wav")[0] == 413
 
     # The very next request on a fresh connection must be answered normally.
-    assert _call(base, "/healthz", method="GET") == (200, {"status": "ok"})
+    assert _call(base, "/healthz", method="GET") == (200, {"status": "ok", "build": "unknown"})
     status, body = _call(base, "/v1/stt", token=token, raw=b"RIFFfake", content_type="audio/wav")
     assert status == 200, f"a good request after a refusal got {status}: {body}"
 
@@ -290,3 +290,14 @@ def test_nginx_writes_no_error_log_for_the_dashboard_route():
     fmt = text.split("log_format kiosk_timing", 1)[1].split(";", 1)[0]
     # $request_time and $request_length are fine; these carry the query string.
     assert not re.search(r"\$(request|request_uri|args|query_string|arg_\w+)(?![a-z_])", fmt)
+
+
+def test_healthz_reports_the_build_install_sh_recorded(tmp_path, monkeypatch):
+    from kiosk_broker import server as server_mod
+
+    build = tmp_path / "BUILD"
+    build.write_text("d882e0f\n", encoding="utf-8")
+    monkeypatch.setattr(server_mod, "__file__", str(tmp_path / "server.py"))
+    assert server_mod._build_id() == "d882e0f"
+    build.write_text("<script>\n", encoding="utf-8")
+    assert server_mod._build_id() == "unknown"

@@ -378,14 +378,22 @@ class CaptureMachine(
         /**
          * How long a pause has to be before the question is over.
          *
-         * Was 1,200 ms, which is a fifth of the whole wait between finishing a
-         * question and hearing an answer — and unlike the network part it is
-         * spent doing nothing at all. 900 ms still leaves room for the pause in
-         * the middle of a Thai sentence, and takes 300 ms off every single turn.
-         * Adjustable over adb; the value that is right here is a measurement,
-         * not a preference.
+         * 1,200 ms, then 900 ms, now 1,500 ms — and the last move was measured
+         * on the A07, not reasoned about. At 900 ms Poom's "ขอดูกล้องหน่อยครับ"
+         * was cut after the first word: 46 KB of audio, a 4-character
+         * transcript. The pause a Thai speaker leaves between "ขอดู" and
+         * "กล้อง" is longer than 900 ms. Set to 1,800 over adb, the same
+         * sentence came through whole, twice (132 KB and 142 KB, 14 characters).
+         *
+         * 1,500 rather than 1,800: it clears the pause that cut the sentence by
+         * more than half again, and every turn pays this wait in full after
+         * the last word — 300 ms less of dead air per question. A television
+         * does not make it worse: TV sound keeps a capture open whatever this
+         * is, until the 12-second ceiling, because it rarely falls silent for
+         * even 900 ms. If 1,500 still cuts Poom off, TEST_SET_SILENCE sets
+         * 1,800 at once (until the next restart) and this constant follows.
          */
-        const val DEFAULT_SILENCE_MILLIS = 900
+        const val DEFAULT_SILENCE_MILLIS = 1_500
 
         /**
          * 2.5x amplitude, about 8 dB above the room. Above a television at

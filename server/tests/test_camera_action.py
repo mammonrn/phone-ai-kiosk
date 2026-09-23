@@ -22,6 +22,11 @@ def _ask(conn, cfg, client, text):
 @pytest.mark.parametrize("text", [
     "ขอดูกล้อง", "เปิดกล้อง", "ขอดูกล้องหน่อยครับ", "เปิด กล้อง ให้หน่อย",
     "ดูกล้องหน้าบ้าน", "เปิดแอปกล้อง", "เปิด Mi Home", "Xiaomi Home",
+    # What Poom actually said on the A07, and the ways Thai wraps it.
+    "ขอดูกล้องหน่อยครับ", "ขอดูกล้องหน่อย", "ขอดูกล้องหน่อยค่ะ", "ขอดูกล้องครับ",
+    "ช่วยเปิดกล้องให้หน่อยครับ", "ช่วยเปิดกล้องหน่อย", "ขอดูกล้องหน้าบ้านหน่อยครับ",
+    "ขอ ดู กล้อง หน่อย ครับ", "ขอดูกล้องหน่อยครับ.", "เปิดกล้องให้หน่อยค่ะ",
+    "ช่วยดูกล้องหน้าบ้านให้หน่อย", "ขอดูภาพกล้องหน่อย",
 ])
 def test_the_phrases_poom_asked_for_are_recognised(text):
     assert actions.camera_request(text)
@@ -32,6 +37,13 @@ def test_the_phrases_poom_asked_for_are_recognised(text):
     "กล้องวงจรปิดยี่ห้อไหนดี",                # a question about cameras
     "เปิดกล้องยังไง",                          # how, not do
     "กล้องราคาเท่าไหร่",
+    "กล้องราคาเท่าไร",
+    "กล้องเสีย",
+    "กล้องหน้าบ้านเสียหรือเปล่า",
+    "ดูกล้องไม่ได้",                           # a complaint, for the model
+    "ซื้อกล้องตัวไหนดี",
+    "กล้องยี่ห้อไหนดี",
+    "ขอดูกล่องหน่อย",                          # a box, as far as we know
     "เปิดแผนที่ไปเซ็นทรัล",
     "ช่วยเล่าเรื่องยาวๆ ที่มีคำว่าเปิดกล้องอยู่ตรงกลางของประโยคที่ยาวมากเกินกว่าคำสั่ง",
     "", None, 42,
@@ -89,3 +101,24 @@ def test_the_log_says_the_type_and_nothing_about_the_request(conn, cfg, caplog):
     written = "\n".join(r.getMessage() for r in caplog.records)
     assert "type=open_camera_app" in written
     assert "ห้องนอน" not in written
+
+
+@pytest.mark.parametrize("text,reason", [
+    ("ขอดูกล้องหน่อยครับ", "phrase:ขอดูกล้อง"),
+    ("ช่วยเปิดกล้องให้หน่อย", "phrase:เปิดกล้อง"),
+    ("กล้องเสีย", "question-word"),
+    ("ขอดูกล่องหน่อยครับ", "near-miss:กล่อง"),
+    ("กล้องหน้าบ้าน", "no-phrase"),
+    ("วันนี้ฝนตกไหม", "no-camera-word"),
+    ("", "empty"),
+])
+def test_every_answer_says_why(text, reason):
+    assert actions.camera_match(text)[1] == reason
+
+
+def test_the_intent_line_is_in_the_log_for_every_question_without_the_text(conn, cfg, caplog):
+    with caplog.at_level(logging.INFO, logger="kiosk_broker"):
+        _ask(conn, cfg, FakeClient(), "ขอดูกล่องหน่อยครับ")
+    written = "\n".join(r.getMessage() for r in caplog.records)
+    assert "camera=no reason=near-miss:กล่อง chars=18" in written
+    assert "ขอดูกล่อง" not in written

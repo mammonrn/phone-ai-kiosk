@@ -177,11 +177,26 @@ class CaptureMachineTurnLockTest {
     // ---- versionCode 12: the faster end-of-speech, and where a wake came from
 
     @Test
-    fun `the default silence window is the shorter one`() {
-        // 1,200 ms was a fifth of the whole wait after a question, spent doing
-        // nothing. Changing this is a measurement, so it is written down.
-        assertEquals(900, CaptureMachine.DEFAULT_SILENCE_MILLIS)
-        assertEquals(900, CaptureMachine(frameMillis = 62).silenceMillis)
+    fun `the default silence window leaves room for a thai pause`() {
+        // 900 ms cut "ขอดูกล้องหน่อยครับ" after "ขอดู" on the A07; 1,800 over
+        // adb let it through. Changing this is a measurement, so it is
+        // written down — see DEFAULT_SILENCE_MILLIS.
+        assertEquals(1_500, CaptureMachine.DEFAULT_SILENCE_MILLIS)
+        assertEquals(1_500, CaptureMachine(frameMillis = 62).silenceMillis)
+    }
+
+    @Test
+    fun `a pause of a second no longer ends the question`() {
+        // The failure itself: speech, a one-second pause, more speech. At 900
+        // ms the capture ended in the pause; at the default it must not.
+        val m = CaptureMachine(frameMillis = 62)
+        m.frames(60, 200)
+        m.onFrame(200, true)
+        m.frames(6, 200)                   // the beep guard
+        m.frames(8, 9000)                  // "ขอดู"
+        var step = CaptureMachine.Step.CAPTURING
+        repeat(16) { step = m.onFrame(200, false) }   // ~1 s of pause
+        assertEquals(CaptureMachine.Step.CAPTURING, step)
     }
 
     @Test

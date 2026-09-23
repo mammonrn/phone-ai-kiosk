@@ -62,26 +62,62 @@ _CAMERA_PHRASES = (
 #: likely to be talk ABOUT cameras than a request to look at one.
 MAX_CAMERA_REQUEST_CHARS = 40
 
-#: Words that turn "camera" into a question rather than a request. Checked so
-#: "กล้องวงจรปิดยี่ห้อไหนดี" goes to the model instead of opening an app.
-_CAMERA_QUESTION_WORDS = ("ไหนดี", "ยังไง", "อย่างไร", "ราคา", "ยี่ห้อ", "ทำไม", "คืออะไร")
+#: Words that turn "camera" into a question or a complaint rather than a
+#: request. Checked so "กล้องวงจรปิดยี่ห้อไหนดี", "กล้องเสีย" and "ดูกล้องไม่ได้"
+#: go to the model instead of opening an app.
+_CAMERA_QUESTION_WORDS = (
+    "ไหนดี", "ยังไง", "อย่างไร", "ราคา", "ยี่ห้อ", "ทำไม", "คืออะไร",
+    "เท่าไร", "เท่าไหร่", "เสีย", "ไม่ได้", "ซื้อ", "รุ่นไหน", "ดีไหม", "ดีมั้ย",
+)
+
+#: What the speech-to-text writes when it mishears "กล้อง". NOT matched —
+#: "ขอดูกล่อง" might really be about a box — but reported in the log as a
+#: near miss, so a request that failed because of the transcription can be
+#: told apart from one the phrase list does not cover, without logging the
+#: transcript itself.
+_CAMERA_NEAR_MISSES = ("กล่อง", "กลอง", "กร้อง", "กล้อ", "คล้อง")
 
 
-def camera_request(text: str) -> bool:
-    """Whether a transcript is somebody asking to see the cameras.
+def camera_match(text) -> tuple[bool, str]:
+    """(is it a camera request, why) — the why is safe to log.
 
-    Code, not prompt: a fixed list of phrases, a length ceiling, and a short
-    list of question words that mean the person is asking ABOUT cameras. False
-    for everything else, which then goes to the model as usual.
+    The reason is one of our own fixed strings, never the transcript:
+      phrase:<the phrase that matched>   → opens the app
+      question-word                      → mentions cameras but asks about them
+      too-long                           → a sentence, not a request
+      near-miss:<word>                   → a likely mishearing of "กล้อง"
+      no-camera-word                     → not about cameras at all
+      no-phrase                          → says "กล้อง" but not as a request
+      empty                              → nothing to match
+
+    Matched after lower-casing and removing every space, so leading "ช่วย" or
+    "ขอ" and trailing "หน่อย", "ครับ", "ค่ะ", "ให้หน่อย" never get in the way:
+    the phrase only has to appear somewhere inside.
     """
     if not isinstance(text, str):
-        return False
+        return False, "empty"
     squashed = "".join(text.split()).lower()
-    if not squashed or len(squashed) > MAX_CAMERA_REQUEST_CHARS:
-        return False
-    if any(word in squashed for word in _CAMERA_QUESTION_WORDS):
-        return False
-    return any(phrase in squashed for phrase in _CAMERA_PHRASES)
+    if not squashed:
+        return False, "empty"
+    if len(squashed) > MAX_CAMERA_REQUEST_CHARS:
+        return False, "too-long"
+    has_camera = "กล้อง" in squashed or "mihome" in squashed or "xiaomihome" in squashed
+    if has_camera and any(word in squashed for word in _CAMERA_QUESTION_WORDS):
+        return False, "question-word"
+    for phrase in _CAMERA_PHRASES:
+        if phrase in squashed:
+            return True, f"phrase:{phrase}"
+    if not has_camera:
+        for near in _CAMERA_NEAR_MISSES:
+            if near in squashed:
+                return False, f"near-miss:{near}"
+        return False, "no-camera-word"
+    return False, "no-phrase"
+
+
+def camera_request(text) -> bool:
+    """Whether a transcript is somebody asking to see the cameras. See camera_match."""
+    return camera_match(text)[0]
 
 
 def camera_action() -> dict:

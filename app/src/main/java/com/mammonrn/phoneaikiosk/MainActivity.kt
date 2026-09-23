@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.home.HomeControl
+import com.mammonrn.phoneaikiosk.ui.FadingLine
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.ui.ThaiDate
 import com.mammonrn.phoneaikiosk.voice.Broker
@@ -115,6 +116,9 @@ class MainActivity : Activity() {
 
     private val idleScreen = IdleScreen()
 
+    /** The last turn on screen, for a minute. */
+    private val recentTurn = FadingLine()
+
     /** What the Google Home button does. Not connected this phase. */
     private val homeControl: HomeControl = HomeControl.NotConnected
 
@@ -142,8 +146,13 @@ class MainActivity : Activity() {
             showDiagnostics(VoiceState.showDiagnostics)
             // An empty box says nothing; the invitation says what to do with
             // the kiosk. Display only — transcriptLine() is untouched.
+            // What was heard and answered stays up for a minute after it last
+            // changed, then gives way to the invitation again — see FadingLine.
+            val busy = IdleScreen.voiceBusy(
+                VoiceState.wake, VoiceState.stt, VoiceState.chat, VoiceState.tts)
             transcript.text = RetroType.pixelify(
-                transcriptLine().ifEmpty { getString(R.string.kiosk_prompt) },
+                recentTurn.visible(transcriptLine(), SystemClock.elapsedRealtime(), busy)
+                    .ifEmpty { getString(R.string.kiosk_prompt) },
                 pixelFace,
             )
             jarvisState.text = DashboardState.jarvisState(

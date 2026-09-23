@@ -14,6 +14,7 @@ import logging
 import re
 import sqlite3
 import urllib.parse
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import store
@@ -21,6 +22,18 @@ from .config import Config
 from .service import handle_chat, handle_dashboard, handle_stt, handle_tts
 
 log = logging.getLogger("kiosk_broker")
+
+
+def _build_id() -> str:
+    """The short commit install.sh recorded next to this code, or "unknown"."""
+    try:
+        text = (Path(__file__).parent / "BUILD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+    return text if re.fullmatch(r"[0-9a-f]{4,40}", text) else "unknown"
+
+
+BUILD = _build_id()
 
 _QUERY = re.compile(r"\?[^\s\"']*")
 
@@ -160,7 +173,10 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/healthz":
             # Deliberately says nothing about tokens, spend or the model: it is
             # reachable from nginx and exists only to answer "is it up".
-            self._send(200, {"status": "ok"})
+            # And which commit is running — install.sh writes it — so "was
+            # the VPS deployed?" has an answer that is not a guess from
+            # behaviour. The repository is public; the id reveals nothing.
+            self._send(200, {"status": "ok", "build": BUILD})
             return
         self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
 

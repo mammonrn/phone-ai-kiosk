@@ -171,7 +171,15 @@ def handle_chat(
     # Recognised on the transcript itself, so no prompt is involved in
     # deciding it and no model call is paid for. The reply is fixed and the
     # action has no arguments. Rate limits and caps above still applied.
-    if actions.camera_request(text):
+    # One line per question saying which way it went, so "I asked for the
+    # cameras and nothing opened" can be answered from the journal: matched
+    # (and which phrase), a question about cameras, too long, a likely
+    # mishearing of "กล้อง", or not about cameras at all. Our own fixed words
+    # and a length — never the transcript.
+    is_camera, why = actions.camera_match(text)
+    log.info("intent device=%s camera=%s reason=%s chars=%d",
+             label, "yes" if is_camera else "no", why, len(text))
+    if is_camera:
         reply = actions.CAMERA_REPLY
         store.record_request(conn, device_id=device_id, day=day, outcome="ok",
                              text_len=len(text))

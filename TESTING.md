@@ -1555,3 +1555,34 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_DIAGNOSTICS `
 ```
 
 นาฬิกามุมขวาล่างเหลือบรรทัดเดียว `พ. 23 ก.ย.  8:16 AM` (วันที่ภาษาไทยตั้งแต่ v0.23.0) สูงเท่าปุ่ม "จาร์วิส"
+
+---
+## v0.24.0 — "ขอดูกล้อง" ไม่เปิดแอป: วิธีหาสาเหตุ และเวลารอพูดจบ 1.5 วินาที
+
+**เวลารอพูดจบ (silence) เริ่มต้น 1,500 ms** (เดิม 900) เพราะ 900 ตัด "ขอดูกล้อง
+หน่อยครับ" เหลือแค่ "ขอดู" ถ้า 1,500 ยังตัดอยู่ ตั้ง 1,800 ได้ทันที (หายเมื่อแอป
+รีสตาร์ต):
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_SILENCE `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es value 1800
+```
+
+**ถ้าสั่งกล้องแล้วไม่เปิด ดูสามที่ตามลำดับ:**
+
+1. VPS รันโค้ดรุ่นไหน — ต้องไม่ใช่รุ่นก่อน `f6ed1e3`:
+   ```powershell
+   curl.exe -s https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+   # {"status": "ok", "build": "<commit>"}   ไม่มี "build" = ยังไม่ได้ deploy รุ่นนี้
+   ```
+2. บนจอ: กล่องจาร์วิสแสดง `ได้ยิน: …` ค้างไว้ 1 นาทีหลังจบแต่ละรอบ — ดูว่าระบบ
+   ถอดเสียงเป็นคำว่า "กล้อง" จริงไหม
+3. บน VPS: `journalctl -u kiosk-broker -n 50 | grep intent` ทุกคำถามมีหนึ่งบรรทัด
+   ```
+   intent device=kiosk-a07 camera=yes reason=phrase:ขอดูกล้อง chars=18
+   intent device=kiosk-a07 camera=no reason=near-miss:กล่อง chars=18
+   ```
+   `near-miss:กล่อง` = ถอดเสียงผิดเป็น "กล่อง" · `question-word` = เป็นคำถามเรื่อง
+   กล้อง (ยี่ห้อ ราคา เสีย ไม่ได้) · `no-phrase` = มีคำว่ากล้องแต่ไม่ใช่คำสั่ง
+   log ไม่มีข้อความที่พูด มีแค่เหตุผลกับความยาว

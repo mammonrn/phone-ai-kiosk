@@ -84,6 +84,13 @@ echo "  groq      $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import groq;
 say "Application code"
 rm -rf "$APP_DIR/kiosk_broker"
 cp -r "$REPO_SERVER_DIR/kiosk_broker" "$APP_DIR/"
+# Which commit this is, for /healthz. "Did the deploy happen?" was answered by
+# guessing from behaviour once too often. safe.directory because this runs as
+# root in a checkout owned by somebody else, which git otherwise refuses.
+BUILD_ID="$(git -c safe.directory="$REPO_SERVER_DIR/.." -C "$REPO_SERVER_DIR/.." \
+    rev-parse --short HEAD 2>/dev/null || echo unknown)"
+printf '%s\n' "$BUILD_ID" > "$APP_DIR/kiosk_broker/BUILD"
+echo "  build $BUILD_ID"
 install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$CONF_DIR"
 install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/pricing.json" "$CONF_DIR/pricing.json"
 chown -R "$USER_NAME:$USER_NAME" "$APP_DIR"
