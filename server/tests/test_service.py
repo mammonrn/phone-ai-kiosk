@@ -457,10 +457,11 @@ def test_each_turn_gets_this_minute_and_not_the_last_one(conn, cfg, client, monk
     _post(conn, cfg, client, token,
           {"text": "แล้วตอนนี้", "conversation_id": first["conversation_id"]})
 
-    assert "11:20" in client.calls[0]["system"]
-    assert "16:50" in client.calls[1]["system"]
+    # The Thai clock (11:20 is "11 โมงเช้า 20 นาที", 16:50 "4 โมงเย็น 50 นาที").
+    assert "11 โมงเช้า 20 นาที" in client.calls[0]["system"]
+    assert "4 โมงเย็น 50 นาที" in client.calls[1]["system"]
     # The first turn's time is gone rather than accumulated.
-    assert "11:20" not in client.calls[1]["system"]
+    assert "11 โมงเช้า 20 นาที" not in client.calls[1]["system"]
 
 
 def test_the_prompt_no_longer_claims_it_cannot_know_the_time(conn, cfg, client):

@@ -120,7 +120,10 @@ def context_line(name: str = "Asia/Bangkok", *, now: datetime | None = None) -> 
     thing said out loud never has to be derived.
     """
     dt = now_in(name, now=now)
-    return f"ปัจจุบัน: {thai_date(dt)} {dt:%H:%M} ({thai_time(dt)})"
+    # The Thai clock ONLY, no "13:45" (Poom, 2026-09-23): Jarvis says the time
+    # the way Thai is spoken — บ่ายโมง, 4 ทุ่ม — never 13:45 and never AM/PM,
+    # and the model repeats whichever form it is handed.
+    return f"ปัจจุบัน: {thai_date(dt)} เวลา {thai_time(dt)}"
 
 
 #: Guarded by a test, for the same reason persona.MAX_PROMPT_CHARS is: this line

@@ -271,6 +271,8 @@ def handle_chat(
               + "\n" + dashboard_mod.weather_line(_dashboard(cfg)))
     # Fuel prices only when the question is about fuel, so every other
     # question pays nothing for them. From the dashboard's cache, never fetched.
+    if dashboard_mod.asks_weather_detail(text):
+        system += "\n" + dashboard_mod.weather_detail_line(_dashboard(cfg))
     if oil_mod.asks_about_oil(text):
         system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
 

@@ -162,9 +162,10 @@ def test_the_prompt_and_the_clock_together_stay_affordable():
     assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1160
 
 
-def test_the_line_carries_both_the_digits_and_the_words():
-    """Digits so a date question has something exact; the Thai clock so nothing is derived."""
+def test_the_line_gives_the_time_the_way_thai_says_it_and_no_other_way():
+    """Thai clock only (Poom, 2026-09-23): Jarvis repeats the form it is handed,
+    so "11:20" or "AM" in the line would come back out loud."""
     line = clock.context_line(now=utc(2026, 9, 22, 4, 20))
-    assert "11:20" in line
     assert "11 โมงเช้า 20 นาที" in line
+    assert "11:20" not in line and "AM" not in line and "PM" not in line
     assert "วันอังคาร 22 กันยายน 2569" in line

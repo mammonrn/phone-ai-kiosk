@@ -81,12 +81,23 @@ log = logging.getLogger("kiosk_broker")
 #: being true, this module is the wrong place for the change.
 USER_AGENT = "phone-ai-kiosk/1.0 (+https://github.com/mammonrn/phone-ai-kiosk)"
 
+#: ECMWF, from the source already used (2026-09-23, Poom asked for ECMWF).
+#: Open-Meteo serves ECMWF IFS 0.25° as `ecmwf_ifs025`; ECMWF publishes no UV
+#: index there (it comes back null), so `best_match` rides along in the SAME
+#: request and supplies UV — one call, one source, no key. With two models the
+#: daily and hourly fields come back suffixed (_ecmwf_ifs025 / _best_match) and
+#: `_pick` takes ECMWF's value first. Four days: today for the card, the next
+#: three for the one-line outlook (forecast.py). Terms: free for non-commercial
+#: use incl. "personal home automation", under 10,000 calls a day, CC BY 4.0.
+WEATHER_MODELS = ("ecmwf_ifs025", "best_match")
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude={lat}&longitude={lon}"
-    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day"
-    "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset"
-    "&timezone=Asia%2FBangkok&forecast_days=1"
+    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m"
+    "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,"
+    "precipitation_probability_max,wind_speed_10m_max,uv_index_max"
+    "&hourly=precipitation_probability"
+    "&timezone=Asia%2FBangkok&forecast_days=4&models=ecmwf_ifs025,best_match"
 )
 PLACE_URL = (
     "https://nominatim.openstreetmap.org/reverse"
@@ -240,10 +251,32 @@ def weather_word(code: int, is_day: bool = True) -> str:
     return "ไม่ทราบ"
 
 
+def _pick(block: dict, name: str):
+    """A field from a multi-model block: ECMWF's list first, then best_match's,
+    then the plain name; a list that is all nulls counts as missing."""
+    for key in [f"{name}_{model}" for model in WEATHER_MODELS] + [name]:
+        values = block.get(key)
+        if isinstance(values, list) and any(v is not None for v in values):
+            return values
+        if values is not None and not isinstance(values, list):
+            return values
+    return None
+
+
+def _picked(block: dict, names) -> dict:
+    return {name: _pick(block, name) for name in names}
+
+
 def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
+    from . import forecast
     raw = _get(WEATHER_URL.format(lat=latitude, lon=longitude), timeout)
     current = raw["current"]
-    daily = raw.get("daily", {})
+    daily = _picked(raw.get("daily", {}) or {}, (
+        "temperature_2m_max", "temperature_2m_min", "sunrise", "sunset", "precipitation_sum",
+        "precipitation_probability_max", "wind_speed_10m_max", "uv_index_max"))
+    hourly_raw = raw.get("hourly", {}) or {}
+    hourly = {"time": hourly_raw.get("time"),
+              "precipitation_probability": _pick(hourly_raw, "precipitation_probability")}
     code = int(current["weather_code"])
     # Open-Meteo sends 1 or 0. Missing would mean the field was dropped from the
     # API, and then nothing says whether the sun is up — so a missing value is
@@ -264,7 +297,21 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
         # asks for Asia/Bangkok. None when missing, and the card goes without.
         "sunrise": _clock_time(daily.get("sunrise")),
         "sunset": _clock_time(daily.get("sunset")),
+        # Today's numbers for the card (Poom: temperature, rain, wind, UV —
+        # today only), each None when the model did not give it.
+        "rain_chance": _first_int(daily.get("precipitation_probability_max")),
+        "rain_mm": _first_number(daily.get("precipitation_sum")),
+        "wind_kmh": _first_int(daily.get("wind_speed_10m_max")),
+        "uv": _first_number(daily.get("uv_index_max")),
+        # The next three days in one sentence (forecast.py), or None.
+        "outlook": forecast.outlook(daily, hourly),
+        "model": "ECMWF",
     }
+
+
+def _first_int(values) -> int | None:
+    number = _first_number(values)
+    return None if number is None else int(round(number))
 
 
 _ISO_LOCAL_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})")
@@ -728,6 +775,56 @@ def weather_line(board: "Dashboard", now: float | None = None) -> str:
     minutes = age // 60
     parts.append("(เมื่อครู่)" if minutes < 1 else f"({minutes} นาทีก่อน)")
     return " ".join(parts)[:MAX_WEATHER_LINE_CHARS]
+
+
+#: Words that ask about more than today's reading: the outlook, rain, wind, UV,
+#: dust. Only then is the detail line added, so other questions pay nothing.
+_ASKS_WEATHER_DETAIL = ("พรุ่งนี้", "มะรืน", "พยากรณ์", "ฝน", "ร่ม", "ลม", "ยูวี", "uv",
+                        "แดดแรง", "ฝุ่น", "pm", "สัปดาห์", "วันไหน", "อีกกี่วัน")
+
+MAX_WEATHER_DETAIL_CHARS = 200
+
+
+def asks_weather_detail(text: str) -> bool:
+    squashed = "".join((text or "").split()).lower()
+    return any(word in squashed for word in _ASKS_WEATHER_DETAIL)
+
+
+def uv_word(uv: float) -> str:
+    """The WHO UV index bands, in Thai."""
+    if uv < 3:
+        return "ต่ำ"
+    if uv < 6:
+        return "ปานกลาง"
+    if uv < 8:
+        return "สูง"
+    if uv < 11:
+        return "สูงมาก"
+    return "อันตราย"
+
+
+def weather_detail_line(board: "Dashboard", now: float | None = None) -> str:
+    """The outlook and today's rain, wind and UV, for a question about them.
+    From the cache, never fetched — like weather_line. Dust has no source yet,
+    so the model is told so rather than left to guess."""
+    found = board.latest("weather", now)
+    if found is None or found[0] > MAX_WEATHER_AGE_SECONDS:
+        return "พยากรณ์: ยังไม่มีข้อมูล ห้ามเดา"
+    data = found[1]
+    parts = []
+    if data.get("outlook"):
+        parts.append(f"พยากรณ์(ECMWF): {data['outlook']}")
+    today = []
+    if data.get("rain_chance") is not None:
+        today.append(f"โอกาสฝน {data['rain_chance']}%")
+    if data.get("wind_kmh") is not None:
+        today.append(f"ลม {data['wind_kmh']} กม./ชม.")
+    if data.get("uv") is not None:
+        today.append(f"UV {_n(data['uv'])} ({uv_word(float(data['uv']))})")
+    if today:
+        parts.append("วันนี้ " + " ".join(today))
+    parts.append("ฝุ่น PM2.5 ยังไม่มีข้อมูล ห้ามเดา")
+    return " · ".join(parts)[:MAX_WEATHER_DETAIL_CHARS]
 
 
 def _n(value) -> str:
