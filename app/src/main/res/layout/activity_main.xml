@@ -404,13 +404,16 @@
                 android:fontFamily="@font/plex_thai"
                 android:text="@string/kiosk_prompt" />
 
-            <!-- Diagnostics, deliberately small and at the bottom: useful with a
-                 phone in your hand, invisible from across the room. Carries no
+            <!-- Diagnostics. HIDDEN unless debug mode is switched on over adb
+                 (VoiceState.showDiagnostics, TEST_DIAGNOSTICS): the household
+                 reads Jarvis's state from the title bar in words, and every
+                 line that used to be here is in dumpsys instead. Carries no
                  token and no key — see VoiceState.statusLine. -->
             <TextView
                 android:id="@+id/voice_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:visibility="gone"
                 android:layout_marginTop="3dp"
                 android:textColor="@color/retro_dim"
                 android:textSize="8sp"
@@ -441,49 +444,63 @@
                 android:textStyle="bold"
                 android:fontFamily="@font/plex_thai" />
 
+            <!-- owner= lock= awake= token= taps=. INVISIBLE, not gone, unless
+                 debug mode is on: it still takes the middle of the taskbar so
+                 the clock tray stays pinned right, the way a 1995 taskbar is
+                 empty between its button and its tray. Everything it said is in
+                 dumpsys as `kiosk :`. -->
             <TextView
                 android:id="@+id/status"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:visibility="invisible"
                 android:layout_marginStart="6dp"
                 android:textColor="@color/retro_dim"
                 android:textSize="8sp"
                 android:fontFamily="@font/plex_thai" />
 
             <!-- THE ONLY CLOCK ON THE SCREEN, bottom right, 12-hour with AM/PM
-                 as Poom asked. The date stays with it, a size down: it was on
-                 the big clock that this phase removed, and a kiosk that shows
-                 the time but not the day has lost something it had. Sits under
-                 exit_corner, which is transparent and takes the taps; nothing
-                 here is clickable, so nothing competes with the way out. -->
+                 as Poom asked, in a tray the height of the Jarvis button
+                 beside it — one line, like a 1995 system tray, not a second
+                 window. Poom found the two-line 11sp version too big for the
+                 taskbar. The date stays, before the time, a step dimmer.
+
+                 Sizes: Press Start 2P draws much larger than Plex at the same
+                 sp (its digits are 0.875 em tall against Plex's 0.698 cap), so
+                 9sp pixel sits level with the 11sp Thai on the button, and
+                 still reads at arm's length.
+
+                 Sits under exit_corner, which is transparent and takes the
+                 taps; nothing here is clickable, so nothing competes with the
+                 way out. -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="end"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="4dp"
-                android:paddingBottom="3dp">
+                android:paddingStart="7dp"
+                android:paddingEnd="7dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp">
+
+                <TextView
+                    android:id="@+id/taskbar_date"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:textColor="@color/retro_dim"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
 
                 <TextView
                     android:id="@+id/taskbar_clock"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/retro_text"
-                    android:textSize="11sp"
+                    android:textSize="9sp"
                     android:fontFamily="@font/press_start_2p" />
-
-                <TextView
-                    android:id="@+id/taskbar_date"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textColor="@color/retro_dim"
-                    android:textSize="8sp"
-                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

@@ -142,6 +142,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "wake-only mode ${if (applied) "ON" else "off"}")
             }
 
+            ACTION_DIAGNOSTICS -> {
+                // The technical lines back on the screen, for somebody
+                // debugging with the phone in their hand. Off by default and
+                // off again after a restart; see VoiceState.showDiagnostics.
+                val on = intent.getStringExtra("value")?.lowercase() in setOf("on", "1", "true")
+                VoiceState.showDiagnostics = on
+                android.util.Log.i("KioskStats", "on-screen diagnostics ${if (on) "ON" else "off"}")
+            }
+
             ACTION_SET_BROKER -> {
                 val url = intent.getStringExtra("url")
                 if (!url.isNullOrBlank()) {
@@ -157,6 +166,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_STATS = "com.mammonrn.phoneaikiosk.TEST_STATS"
         const val ACTION_RESET_STATS = "com.mammonrn.phoneaikiosk.TEST_RESET_STATS"
         const val ACTION_SET_BROKER = "com.mammonrn.phoneaikiosk.TEST_SET_BROKER"
+        const val ACTION_DIAGNOSTICS = "com.mammonrn.phoneaikiosk.TEST_DIAGNOSTICS"
         const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"

@@ -130,12 +130,14 @@ class MainActivity : Activity() {
         override fun run() {
             val now = Date()
             applyScreenRule()
-            status.text = statusLine()
             taskbarClock.text = taskbarFormat.format(now)
             taskbarDate.text = dateFormat.format(now)
             VoiceState.locationState = location.describe()
-            voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine() +
-                "\n" + VoiceState.thirdLine()
+            // Always written to VoiceState, so dumpsys has it; only DRAWN in
+            // debug mode. The household's screen shows data and Jarvis's
+            // state in words, not mic= and taps=.
+            VoiceState.kioskLine = statusLine()
+            showDiagnostics(VoiceState.showDiagnostics)
             // An empty box says nothing; the invitation says what to do with
             // the kiosk. Display only — transcriptLine() is untouched.
             transcript.text = RetroType.pixelify(
@@ -435,6 +437,24 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * The two diagnostic areas: the Jarvis window's three small lines and the
+     * taskbar's middle. Hidden unless debug mode was switched on over adb.
+     * The taskbar's goes INVISIBLE rather than GONE so the clock tray keeps
+     * its place on the right.
+     */
+    private fun showDiagnostics(on: Boolean) {
+        if (on) {
+            status.text = VoiceState.kioskLine
+            voiceStatus.text = VoiceState.statusLine() + "\n" + VoiceState.secondLine() +
+                "\n" + VoiceState.thirdLine()
+        }
+        val lines = if (on) android.view.View.VISIBLE else android.view.View.GONE
+        val middle = if (on) android.view.View.VISIBLE else android.view.View.INVISIBLE
+        if (voiceStatus.visibility != lines) voiceStatus.visibility = lines
+        if (status.visibility != middle) status.visibility = middle
+    }
+
     /** Every touch anywhere is use. Seen here, before any view can eat it. */
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         idleScreen.used(SystemClock.elapsedRealtime())
@@ -699,7 +719,7 @@ class MainActivity : Activity() {
      */
     private fun onCornerTap() {
         if (!tapGate.onTap(SystemClock.elapsedRealtime())) {
-            status.text = statusLine()
+            VoiceState.kioskLine = statusLine()
             return
         }
 
@@ -712,7 +732,7 @@ class MainActivity : Activity() {
         val otherHome = otherHomeActivity()
         if (otherHome == null) {
             Toast.makeText(this, R.string.no_other_launcher, Toast.LENGTH_LONG).show()
-            status.text = statusLine()
+            VoiceState.kioskLine = statusLine()
             return
         }
 

@@ -111,6 +111,26 @@ object VoiceState : VoiceSink {
      * means the Device Owner could not turn the screen off, "wake-denied"
      * means the platform would not let a wake lock turn it back on.
      */
+    /**
+     * Whether the diagnostics lines are drawn ON THE SCREEN. Off by default.
+     *
+     * Poom asked for the screen to hold only what the household uses: the
+     * data, and what Jarvis is doing in words. The lines this used to draw —
+     * mic=, wake=, detector=, loc=, idle=, owner=, taps= — are all still in
+     * `dumpsys` (see dump()) and in logcat; only the screen stops showing them.
+     *
+     * Switched on only by the debug-only TestTriggerReceiver over adb
+     * (TEST_DIAGNOSTICS), and held in memory, so a restart puts it back off.
+     */
+    @Volatile var showDiagnostics: Boolean = false
+
+    /**
+     * The kiosk's own line — owner, lock, awake, token, taps — written by
+     * MainActivity every second. It used to be the taskbar's middle; it is in
+     * the dump now, where a person debugging looks, and off the screen.
+     */
+    @Volatile var kioskLine: String = ""
+
     @Volatile var screenIdleSeconds: Long = 0
     @Volatile var screenSleeps: Int = 0
     @Volatile var screenWakes: Int = 0
@@ -154,6 +174,10 @@ object VoiceState : VoiceSink {
             true -> "FALLBACK (university)"
             false -> "phone"
         })
+        appendLine("  kiosk      : ${kioskLine.ifEmpty { "(activity not started)" }}")
+        appendLine("  status-line: ${statusLine()}")
+        appendLine("  third-line : ${thirdLine()}")
+        appendLine("  on-screen  : diagnostics ${if (showDiagnostics) "SHOWN (debug)" else "hidden"}")
         appendLine("  screen-idle: ${screenIdleSeconds}s  sleeps=$screenSleeps  " +
             "wakes=$screenWakes  note=${screenNote.ifEmpty { "none" }}")
         appendLine("  wake       : $wake")

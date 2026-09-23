@@ -1532,3 +1532,26 @@ adb logcat -s KioskVoice:* KioskScreen:*
 adb logcat -d -s KioskVoice:* | Select-String -Pattern "xiaomi|@|camera" 
 #    ต้องเห็นแค่ชื่อแพ็กเกจกับ open_camera_app ไม่มีอีเมล/ชื่อบัญชี/ชื่อกล้อง
 ```
+
+---
+## v0.22.0 — ข้อมูลเชิงเทคนิคออกจากจอ
+
+จอผู้ใช้เหลือแค่ข้อมูลที่คนในบ้านใช้ (อากาศ ทอง คริปโต) และสถานะจาร์วิสเป็นคำ
+บนแถบชื่อหน้าต่าง (พร้อมฟัง · กำลังฟัง · กำลังคิด · กำลังพูด) บรรทัดแบบ `mic=`
+`wake=` `idle=` `owner=` `taps=` **ไม่ขึ้นบนจอแล้ว** แต่ยังดูได้ครบจาก dumpsys:
+
+```powershell
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService |
+  Select-String "kiosk  |status-line|third-line|on-screen|screen-idle"
+```
+
+ถ้าจำเป็นต้องเห็นบนจอ (เช่นกำลังจูนไมค์) เปิดโหมด debug ผ่าน adb — มีเฉพาะ
+build debug ปิดเป็นค่าเริ่มต้น และกลับเป็นปิดเองเมื่อแอปรีสตาร์ต:
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_DIAGNOSTICS `
+  -n com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.TestTriggerReceiver `
+  --es value on      # ปิดด้วย --es value off
+```
+
+นาฬิกามุมขวาล่างเหลือบรรทัดเดียว `Wed 23 Sep  8:16 AM` สูงเท่าปุ่ม "จาร์วิส"
