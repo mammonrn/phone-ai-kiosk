@@ -26,6 +26,29 @@ class TestTriggerReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
+            ACTION_ALARM_IN -> {
+                // An alarm named "ทดสอบ" N minutes from now (default 1), set
+                // through the same store and scheduler a spoken command uses,
+                // so ringing, the screen and the stop button can be checked
+                // without the broker. TEST_ALARM_CLEAR removes it again.
+                val minutes = intent.getIntExtra("in_minutes", 1).coerceIn(1, 60)
+                val at = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.MINUTE, minutes)
+                }
+                val book = com.mammonrn.phoneaikiosk.alarm.AlarmStore.load(context)
+                book.set(at.get(java.util.Calendar.HOUR_OF_DAY), at.get(java.util.Calendar.MINUTE),
+                         TEST_ALARM_LABEL)
+                com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(context, book)
+                android.util.Log.i("KioskAlarm", "test alarm set in $minutes min")
+            }
+
+            ACTION_ALARM_CLEAR -> {
+                val book = com.mammonrn.phoneaikiosk.alarm.AlarmStore.load(context)
+                val gone = book.removeNamed(TEST_ALARM_LABEL)
+                com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(context, book)
+                android.util.Log.i("KioskAlarm", "test alarms removed: $gone")
+            }
+
             ACTION_SHOW_REPLY -> {
                 // A fixed long answer on screen, "spoken" for 15 seconds with
                 // no audio, no network and no cost — so the Jarvis window's
@@ -197,6 +220,9 @@ class TestTriggerReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_LISTEN = "com.mammonrn.phoneaikiosk.TEST_LISTEN"
         const val ACTION_SHOW_REPLY = "com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY"
+        const val ACTION_ALARM_IN = "com.mammonrn.phoneaikiosk.TEST_ALARM_IN"
+        const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
+        const val TEST_ALARM_LABEL = "ทดสอบ"
 
         const val SAMPLE_QUESTION = "วันนี้อากาศที่เชียงรายเป็นยังไงบ้าง แล้วควรพกร่มไหม"
         const val SAMPLE_REPLY = "ตอนนี้เชียงราย 28 องศา ฝนปรอย ความชื้น 70% ครับ " +

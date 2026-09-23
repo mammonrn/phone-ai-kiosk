@@ -75,6 +75,13 @@ class AlarmBook(alarms: List<Alarm> = emptyList()) {
 
     fun byId(id: Int): Alarm? = list.firstOrNull { it.id == id }
 
+    /** Removes every alarm named exactly [label]; how many went. For tests. */
+    fun removeNamed(label: String): Int {
+        val before = list.size
+        list.removeAll { it.label == label }
+        return before - list.size
+    }
+
     /** The next time [alarm] rings strictly after [nowMs], in [zone]. */
     fun nextRing(alarm: Alarm, nowMs: Long, zone: TimeZone): Long {
         val at = Calendar.getInstance(zone).apply {
