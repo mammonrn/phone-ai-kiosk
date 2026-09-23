@@ -218,9 +218,22 @@ def handle_chat(
     # request went to the model and the log could not say why: only the
     # camera check was written down.
     alarm, alarm_why = alarms.alarm_match(text)
-    log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s chars=%d",
-             label, "yes" if is_camera else "no", why,
-             "yes" if alarm is not None else "no", alarm_why, len(text))
+
+    def log_intent(maps: str) -> None:
+        """One line per question, written once its way is known. maps= says
+        what became of the map (2026-09-23, "I was told the map was opening
+        and it did not"): skipped (answered in code), upstream-error, none
+        (the model chose no map), chosen, dropped:<rule> (the model chose one
+        and a destination rule refused it), or claimed-without-action (the
+        reply said the map was opening with no action, and was replaced).
+        maps_word says whether the transcript had a map word at all, which
+        tells a mishearing from a model that did not choose. Reasons and
+        counts only — never the words, never the destination."""
+        log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s"
+                 " maps=%s maps_word=%s chars=%d",
+                 label, "yes" if is_camera else "no", why,
+                 "yes" if alarm is not None else "no", alarm_why,
+                 maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text))
     def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
         """A reply decided by code, no model, nothing paid: the camera and the
         alarms. Stored in the conversation like any other turn."""
@@ -240,6 +253,8 @@ def handle_chat(
                              action=action["type"] if action else "none", cost_usd=0.0)
         return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
 
+    if is_camera or alarm is not None:
+        log_intent("skipped")
     if is_camera:
         return answer_in_code(actions.CAMERA_REPLY, actions.camera_action(), why)
 
@@ -284,6 +299,7 @@ def handle_chat(
         store.record_request(conn, device_id=device_id, day=day, outcome="upstream_error",
                              text_len=len(text))
         log.warning("upstream failed device=%s detail=%s", label, exc.detail)
+        log_intent("upstream-error")
         return 502, _error("upstream_error", exc.user_message)
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
@@ -303,7 +319,20 @@ def handle_chat(
                        cost_usd=cost)
     # ---- reply -----------------------------------------------------------
     reply, raw_action = actions.extract(answer.text)
-    action = actions.sanitize(raw_action)
+    action, action_why = actions.sanitize_why(raw_action)
+    # The words and the action agree, always: a reply saying the map is
+    # opening goes out only with the map action beside it. Otherwise the
+    # person is told it did not work — never told something is being done
+    # that is not (Poom, 2026-09-23).
+    reply, claimed = actions.truthful(reply, action)
+    if action is not None:
+        log_intent("chosen")
+    elif raw_action is not None:
+        log_intent(f"dropped:{action_why}")
+    elif claimed:
+        log_intent("claimed-without-action")
+    else:
+        log_intent("none")
 
     # After the action marker is stripped, before anything is stored or spoken:
     # the reply goes out in one voice whether or not the prompt managed it.
@@ -333,8 +362,12 @@ def handle_chat(
 
     store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
                          role="user", content=text)
+    # With its marker: the history is what the model learns its own habits
+    # from, and a history of "กำลังเปิดแผนที่…" with no marker taught it to
+    # say the words without the action. See actions.marker.
     store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
-                         role="assistant", content=reply)
+                         role="assistant",
+                         content=reply + (" " + actions.marker(action) if action else ""))
     store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
                          ttl_hours=cfg.history_ttl_hours)
     store.prune_requests(conn)

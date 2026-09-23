@@ -175,6 +175,41 @@ def extract(text: str) -> tuple[str, dict | None]:
     return cleaned, found
 
 
+def destination_problem(raw) -> str | None:
+    """Which rule refuses this destination, or None when it is a place name.
+    The answer is one of our own fixed words, safe to log — never the
+    destination itself:
+
+      not-text · control-char · too-short · too-long · scheme · bare-domain ·
+      forbidden-char · no-letters
+
+    Real Thai names pass — digits, spaces, dots and brands included: "บิ๊กซี 2
+    เชียงราย", "ปั๊ม ปตท. แม่จัน", "7-Eleven แม่สาย". See test_actions.
+    """
+    if not isinstance(raw, str):
+        return "not-text"
+    # Control characters first: a destination that can carry a newline is a
+    # destination that can be two things downstream.
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in raw):
+        return "control-char"
+    destination = " ".join(raw.split())
+    if len(destination) < MIN_DESTINATION_CHARS:
+        return "too-short"
+    if len(destination) > MAX_DESTINATION_CHARS:
+        return "too-long"
+    if _SCHEME.match(destination) or "://" in destination:
+        return "scheme"
+    if _BARE_DOMAIN.search(destination):
+        return "bare-domain"
+    if any(character in _FORBIDDEN_CHARACTERS for character in destination):
+        return "forbidden-char"
+    # Must contain something a person would say. A string of punctuation and
+    # digits is not the name of anywhere.
+    if not any(character.isalpha() for character in destination):
+        return "no-letters"
+    return None
+
+
 def clean_destination(raw: str | None) -> str | None:
     """A place name, or None if it is anything else.
 
@@ -182,28 +217,9 @@ def clean_destination(raw: str | None) -> str | None:
     of what gets sent onward, and no chance of validating one string and
     forwarding a different one.
     """
-    if not isinstance(raw, str):
+    if destination_problem(raw) is not None:
         return None
-
-    # Control characters first: a destination that can carry a newline is a
-    # destination that can be two things downstream.
-    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in raw):
-        return None
-
-    destination = " ".join(raw.split())
-    if not (MIN_DESTINATION_CHARS <= len(destination) <= MAX_DESTINATION_CHARS):
-        return None
-    if _SCHEME.match(destination) or "://" in destination:
-        return None
-    if _BARE_DOMAIN.search(destination):
-        return None
-    if any(character in _FORBIDDEN_CHARACTERS for character in destination):
-        return None
-    # Must contain something a person would say. A string of punctuation and
-    # digits is not the name of anywhere.
-    if not any(character.isalpha() for character in destination):
-        return None
-    return destination
+    return " ".join(raw.split())
 
 
 def sanitize(action: dict | None) -> dict | None:
@@ -213,18 +229,62 @@ def sanitize(action: dict | None) -> dict | None:
     keys the phone reads. A model that adds a field cannot have that field
     reach the device just because the type was right.
     """
+    return sanitize_why(action)[0]
+
+
+def sanitize_why(action: dict | None) -> tuple[dict | None, str]:
+    """sanitize(), and why — a fixed word, safe to log: "ok", "none" (there
+    was no marker), "type-not-allowed", or the destination rule that refused
+    it (destination_problem)."""
     if not action:
-        return None
+        return None, "none"
     if action.get("type") not in ENABLED_ACTION_TYPES:
-        return None
+        return None, "type-not-allowed"
 
     if action["type"] == "open_maps":
-        destination = clean_destination(action.get("query"))
-        if destination is None:
-            return None
-        return {"type": "open_maps", "destination": destination}
+        problem = destination_problem(action.get("query"))
+        if problem is not None:
+            return None, problem
+        return {"type": "open_maps", "destination": clean_destination(action.get("query"))}, "ok"
 
     # Unreachable while the allowlist has one entry, and deliberately a refusal
     # rather than a fallthrough: a type added to the frozenset without a schema
     # here is refused, not waved through.
-    return None
+    return None, "type-not-allowed"
+
+
+def marker(action: dict) -> str:
+    """The canonical marker for an action that was sent — what the model's
+    history shows it wrote. Found 2026-09-23: history kept the reply with the
+    marker stripped, so the model saw itself say "กำลังเปิดแผนที่…" with no
+    marker, turn after turn, and started answering that way — the words
+    without the action."""
+    return f"[[action: {action['type']} | {action.get('destination', '')}]]"
+
+
+#: A reply that says the map is opening. Present tense or a promise, not a
+#: question ("ให้เปิดแผนที่ไปไหนครับ") and not a refusal ("เปิดแผนที่ไม่ได้").
+_MAPS_CLAIM = re.compile(
+    r"(กำลัง|จะ)\s*(เปิด\s*(google\s*)?(แผนที่|maps?|แมพ|กูเกิล\s*แมพ)|นำทาง|พาไป)"
+    r"|เปิด\s*(แผนที่|แมพ)\S*.{0,40}ให้(แล้ว)?\s*(ครับ)?\s*$",
+    re.IGNORECASE)
+_NOT_A_CLAIM = re.compile(r"ไหม|มั้ย|หรือเปล่า|ไม่ได้|ไม่สามารถ|\?")
+
+#: What Jarvis says instead when it was about to say the map is opening and no
+#: map will open. Never say what is not being done (Poom, 2026-09-23).
+MAPS_FAILED_REPLY = "ขอโทษครับ เปิดแผนที่ไม่สำเร็จ ลองพูดชื่อสถานที่อีกครั้งนะครับ"
+
+
+def claims_maps(reply: str) -> bool:
+    """Whether a reply tells the person a map is opening."""
+    return bool(_MAPS_CLAIM.search(reply)) and not _NOT_A_CLAIM.search(reply)
+
+
+def truthful(reply: str, action: dict | None) -> tuple[str, bool]:
+    """(the reply to speak, whether it was replaced). A reply that says the map
+    is opening goes out only with an open_maps action beside it; without one
+    it becomes MAPS_FAILED_REPLY. The words and the action always agree."""
+    opening = action is not None and action.get("type") == "open_maps"
+    if not opening and claims_maps(reply):
+        return MAPS_FAILED_REPLY, True
+    return reply, False

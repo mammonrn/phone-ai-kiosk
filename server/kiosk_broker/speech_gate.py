@@ -97,6 +97,14 @@ _ASK_WORDS = (
 #: Maps requests the prompt turns into open_maps; always let through.
 _MAPS_WORDS = ("นำทาง", "แผนที่", "พาไป", "ไปที่", "เส้นทาง")
 
+
+def has_maps_word(text) -> bool:
+    """Whether a transcript has one of the words that ask for the map."""
+    if not isinstance(text, str):
+        return False
+    squashed = "".join(text.split()).lower()
+    return any(word in squashed for word in _MAPS_WORDS)
+
 _LETTER_OR_DIGIT = re.compile(r"[0-9A-Za-zก-ฮะ-ูเ-๎]")
 
 
