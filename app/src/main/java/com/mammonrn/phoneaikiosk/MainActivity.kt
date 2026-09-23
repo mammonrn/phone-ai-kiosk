@@ -526,6 +526,11 @@ class MainActivity : Activity() {
             val rootLp = card.root.layoutParams as android.view.ViewGroup.MarginLayoutParams
             val inner = width - card.root.paddingLeft - card.root.paddingRight
             val exact = android.view.View.MeasureSpec.makeMeasureSpec(inner, android.view.View.MeasureSpec.EXACTLY)
+            // Past sizes are cached per measure spec (View.mMeasureCache), and
+            // this spec is not the one layout uses: without forcing, the first
+            // answer ever measured — "กำลังโหลด…", one line — kept coming back
+            // (0.38.0 log: weather measured 161 px open, 495 px on screen).
+            forceLayoutTree(card.root)
             card.titlebar.measure(exact, unspecified)
             val titleLp = card.titlebar.layoutParams as android.view.ViewGroup.MarginLayoutParams
             val bar = rootLp.topMargin + rootLp.bottomMargin + card.root.paddingTop +
@@ -535,6 +540,9 @@ class MainActivity : Activity() {
             barPx[slot.id] = bar
             openPx[slot.id] = bar + card.body.measuredHeight + bodyLp.topMargin + bodyLp.bottomMargin
         }
+        // Our measuring left the views holding sizes for a spec layout does not
+        // use; the next layout pass must measure them again for real.
+        cardStack.requestLayout()
         val fitted = board.fit(slots, openPx, barPx, height, nowMs)
         val report = "avail=$height " + slots.joinToString(" ") { s ->
             "${s.id}:${openPx[s.id]}/${barPx[s.id]}${if (s.open) "o" else "f"}" +
@@ -548,6 +556,13 @@ class MainActivity : Activity() {
     }
 
     private var lastFitReport = ""
+
+    private fun forceLayoutTree(view: android.view.View) {
+        view.forceLayout()
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) forceLayoutTree(view.getChildAt(i))
+        }
+    }
 
     /** The alarms window: the list, the stop button while one rings, its news. */
     private fun showAlarms(nowMs: Long) {
