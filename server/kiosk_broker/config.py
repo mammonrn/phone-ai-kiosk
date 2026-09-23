@@ -39,6 +39,10 @@ class Config:
     #: are still two different decisions. The machine runs on UTC; nothing reads
     #: its local zone. See clock.py.
     clock_timezone: str = "Asia/Bangkok"
+    #: The kiosk's own public address, for the Google sign-in callback
+    #: (google_auth.CALLBACK_PATH). Must match the redirect URI registered in
+    #: the Cloud Console exactly.
+    public_base_url: str = "https://kiosk.xn--l3cgts1b3bzcvf.com"
 
     # ---- speech to text -------------------------------------------------
     stt_model: str = "whisper-large-v3-turbo"
@@ -186,6 +190,22 @@ class Config:
     @property
     def pricing_path(self) -> Path:
         return self.home / "pricing.json"
+
+    @property
+    def google_client_path(self) -> Path:
+        """The Web application client JSON from the Cloud Console, 0600,
+        uploaded by Poom (INSTALL.md). Never logged, never printed."""
+        return self.home / "google_oauth_client.json"
+
+    @property
+    def google_token_path(self) -> Path:
+        """Poom's Google refresh token, sealed (vault.py)."""
+        return self.home / "google_token.bin"
+
+    @property
+    def vault_key_path(self) -> Path:
+        """The key that seals google_token.bin — a separate file, 0600."""
+        return self.home / "vault.key"
 
     @property
     def tts_words_path(self) -> Path:

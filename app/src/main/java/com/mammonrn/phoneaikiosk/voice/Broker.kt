@@ -58,6 +58,8 @@ class Broker(private val baseUrl: String, private val token: String) {
                     if (destination.isEmpty()) null else KioskAction(type, destination)
                 }
                 KioskAction.OPEN_CAMERA_APP -> KioskAction(type, "")
+                // A private question with no live grant: the identity check.
+                KioskAction.VERIFY_IDENTITY -> KioskAction(type, "")
                 // The alarms: a time that parses, a name of bounded length, a
                 // boolean. Anything else is no action at all.
                 KioskAction.SET_ALARM -> {
@@ -170,6 +172,19 @@ class Broker(private val baseUrl: String, private val token: String) {
      */
     fun dashboard(latitude: Double? = null, longitude: Double? = null): String =
         String(get(dashboardPath(latitude, longitude)).bytes, Charsets.UTF_8)
+
+    /**
+     * After a passed identity check: ask the broker for its two minutes of
+     * private access. The broker decides — it grants only an identity Poom
+     * approved on the VPS — and a refusal arrives as a Failure whose message
+     * is Thai fit to say ("การลงทะเบียนนี้ยังไม่ได้รับอนุมัติครับ").
+     */
+    fun grant(identityId: String, method: String) {
+        post("/v1/auth/grant",
+             JSONObject().put("identity_id", identityId).put("method", method)
+                 .toString().toByteArray(Charsets.UTF_8),
+             "application/json; charset=utf-8")
+    }
 
     /** Text in, audio out, ready to play — with where the time went. */
     fun speak(text: String): SpokenAudio {

@@ -229,6 +229,13 @@ class KioskAction(
          * it decides from a phrase in code rather than from a model's reply.
          */
         const val OPEN_CAMERA_APP = "open_camera_app"
+
+        /**
+         * Round 2A: the broker has a private question (the calendar) and no
+         * live grant for this phone. Opens the identity check; after a pass the
+         * phone asks for a grant and repeats the question (VoiceService).
+         */
+        const val VERIFY_IDENTITY = "verify_identity"
     }
 }
 

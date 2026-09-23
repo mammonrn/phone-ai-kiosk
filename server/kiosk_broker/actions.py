@@ -43,7 +43,10 @@ ENABLED_ACTION_TYPES: frozenset[str] = frozenset({"open_maps"})
 #: a reply is dropped by sanitize() like any other unknown type, and a person
 #: talking the model into writing one gets nothing. The only way this action
 #: reaches the phone is the phrase match below, on the transcript itself.
-PHRASE_ACTION_TYPES: frozenset[str] = frozenset({"open_camera_app", "set_alarm", "alarm_enable"})
+PHRASE_ACTION_TYPES: frozenset[str] = frozenset({"open_camera_app", "set_alarm", "alarm_enable",
+                                                 "verify_identity"})
+#: verify_identity (round 2A): a private request with no live grant — the phone
+#: opens its identity check, then asks for a grant and repeats the question.
 #: set_alarm and alarm_enable come from alarms.py by the same rule: a fixed
 #: grammar on the transcript, never a model's reply.
 

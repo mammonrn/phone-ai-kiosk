@@ -453,6 +453,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("text")
     p.add_argument("--out", default="say", help="directory to write the audio into")
 
+    sub.add_parser("google-connect",
+                   help="print a one-time Google sign-in link (10 minutes) to connect Poom's "
+                        "account; the token stays on this VPS")
+    sub.add_parser("google-status", help="connected or not, and which permissions — no secrets")
+    sub.add_parser("google-disconnect",
+                   help="revoke the Google token at Google and delete it here, now")
+    sub.add_parser("calendar-check",
+                   help="fetch today's and tomorrow's appointments and print only how many")
+    sub.add_parser("enrollments", help="the phone's identity enrolments: pending, approved, retired")
+    p = sub.add_parser("approve-enrollment",
+                       help="approve the identity (first 4+ characters); every other is retired")
+    p.add_argument("identity")
+    p = sub.add_parser("revoke-enrollment", help="retire an identity now, grants and all")
+    p.add_argument("identity")
+
     sub.add_parser("persona-eval",
                    help="ask the real model the scenarios Poom named (can't hear, time, weather, "
                         "maps, alarm, ...) and show each answer's length — ~$0.01 a run")
@@ -800,6 +815,97 @@ def main(argv: list[str] | None = None) -> int:
             print(f"reading          : {tail_check.verdict(result)}")
             print(f"list price ${cost:.6f} (inside Google's free million this month unless "
                   f"`usage` says otherwise); training ledger, not the $5")
+            return 0
+
+        if args.cmd == "google-connect":
+            from . import google_auth
+
+            try:
+                client = google_auth.load_client(cfg.google_client_path)
+            except google_auth.GoogleError as exc:
+                print(exc)
+                return 1
+            url = google_auth.start(conn, client, cfg.public_base_url)
+            print("Open this link in your browser within 10 minutes, sign in as Poom, and allow")
+            print("both permissions. It works once. (The warning that Google has not verified")
+            print("the app is expected — this app is private and unreviewed by choice.)")
+            print()
+            print(url)
+            print()
+            print("Afterwards: google-status")
+            return 0
+
+        if args.cmd == "google-status":
+            from . import google_auth, vault
+
+            print(f"client file : {'present' if cfg.google_client_path.is_file() else 'MISSING'}")
+            if not google_auth.connected(cfg.google_token_path):
+                print("google      : not connected (run google-connect)")
+                return 0
+            try:
+                info = google_auth.stored(cfg.vault_key_path, cfg.google_token_path)
+            except vault.VaultError as exc:
+                print(f"google      : token file does not open ({exc}) — google-disconnect, then connect again")
+                return 1
+            when = _dt.datetime.fromtimestamp(info.get("connected_at", 0)).strftime("%Y-%m-%d %H:%M")
+            print(f"google      : connected {when}")
+            print("permissions : " + ", ".join(s.rsplit("/", 1)[-1] for s in info.get("scopes", [])))
+            return 0
+
+        if args.cmd == "google-disconnect":
+            from . import google_auth
+
+            revoked, deleted = google_auth.disconnect(key_path=cfg.vault_key_path,
+                                                      token_path=cfg.google_token_path)
+            print(f"revoked at Google : {'yes' if revoked else 'no (not reachable, or no token)'}")
+            print(f"deleted here      : {'yes' if deleted else 'nothing to delete'}")
+            print("To be sure, also check myaccount.google.com/permissions.")
+            return 0
+
+        if args.cmd == "calendar-check":
+            from . import calendar_read, google_auth
+
+            try:
+                client = google_auth.load_client(cfg.google_client_path)
+                token = google_auth.access_token(client, key_path=cfg.vault_key_path,
+                                                 token_path=cfg.google_token_path)
+                events = calendar_read.fetch(token, cfg.clock_timezone)
+            except (google_auth.GoogleError, calendar_read.CalendarError) as exc:
+                print(f"failed: {exc}")
+                return 1
+            # Counts only: this output can end up in a chat or a screenshot.
+            print(f"today: {sum(1 for e in events if e.day == 'today')} appointment(s), "
+                  f"tomorrow: {sum(1 for e in events if e.day == 'tomorrow')}")
+            return 0
+
+        if args.cmd == "enrollments":
+            from . import identity
+
+            rows = identity.listing(conn)
+            if not rows:
+                print("no identity yet — verify once on the phone (Control Panel > ยืนยันตัวตน > ทดสอบ)")
+                return 0
+            for row in rows:
+                seen = _dt.datetime.fromtimestamp(row["first_seen"]).strftime("%Y-%m-%d %H:%M")
+                state = ("RETIRED" if row["retired_at"] else "APPROVED" if row["approved_at"]
+                         else "pending")
+                print(f"  {row['id']}  {state:<9} device={row['label'] or '?':<12} first seen {seen}")
+            return 0
+
+        if args.cmd in ("approve-enrollment", "revoke-enrollment"):
+            from . import identity
+
+            try:
+                if args.cmd == "approve-enrollment":
+                    found, retired = identity.approve(conn, args.identity)
+                    print(f"approved {found}; retired {retired} other(s). Private data now opens "
+                          "for this enrolment after a face or pattern check.")
+                else:
+                    found = identity.retire(conn, args.identity)
+                    print(f"retired {found}; its access closed now.")
+            except ValueError as exc:
+                print(exc)
+                return 1
             return 0
 
         if args.cmd == "persona-eval":

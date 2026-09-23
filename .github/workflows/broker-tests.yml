@@ -39,6 +39,8 @@ jobs:
           python -m pip install --quiet pytest anthropic
           # The Thai segmenter for the voice, pinned like install.sh installs it.
           python -m pip install --quiet "nlpo3==1.4.0"
+          # AES-GCM for the Google token (vault.py), as install.sh installs it.
+          python -m pip install --quiet "cryptography>=42"
 
       # pytest only compiles what the tests import. __main__.py — the file
       # systemd actually runs — was imported by none of them, so on 2026-09-23 a
@@ -98,6 +100,13 @@ jobs:
           done
           grep -q "alarm=yes alarm_reason=set maps=skipped maps_word=no" "$home/serve.log" \
             || { echo "the intent log does not show the alarm and map checks:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          # Round 2A routes, through the running server: a grant with no token
+          # is refused, and a callback with a made-up state is refused politely.
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18770/v1/auth/grant -d '{}')"
+          [ "$code" = "401" ] || { echo "/v1/auth/grant without a token answered $code"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18770/oauth/google/callback?state=made-up&code=x')"
+          [ "$code" = "400" ] || { echo "the Google callback answered $code to a made-up state"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          if grep -q "made-up" "$home/serve.log"; then echo "the callback's query string reached the log"; kill "$pid"; exit 1; fi
           grep -q "wordcut ready" "$home/serve.log"             || { echo "the Thai segmenter did not load in the running broker:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
           kill "$pid"
 

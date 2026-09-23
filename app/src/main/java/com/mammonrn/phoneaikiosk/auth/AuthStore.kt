@@ -31,6 +31,7 @@ object AuthStore {
     private const val FACE_FILE = "auth-face.bin"
     private const val PATTERN_FILE = "auth-pattern.bin"
     private const val ATTEMPTS_FILE = "auth-attempts.txt"
+    private const val IDENTITY_FILE = "auth-identity.txt"
     private const val FACE_MAGIC = 0x4B464331 // "KFC1"
     private const val PATTERN_MAGIC = 0x4B504131 // "KPA1"
 
@@ -117,11 +118,51 @@ object AuthStore {
         decodeFace(SecretBox.open(file(context, FACE_FILE).readBytes()))
     }.getOrNull()
 
-    fun saveFace(context: Context, face: Face) = writeAtomically(
-        file(context, FACE_FILE), SecretBox.seal(encodeFace(face)))
+    fun saveFace(context: Context, face: Face) {
+        writeAtomically(file(context, FACE_FILE), SecretBox.seal(encodeFace(face)))
+        ensureIdentity(context)
+    }
 
     fun deleteFace(context: Context) {
         file(context, FACE_FILE).delete()
+        forgetIdentityIfEmpty(context)
+    }
+
+    // ---------------------------------------------------------- identity
+
+    /**
+     * THE CREDENTIAL SET'S ID (round 2A). Made when the first face or pattern
+     * is saved, kept while either exists, gone only when BOTH are deleted. The
+     * broker opens private data only for an id Poom approved on the VPS
+     * (`approve-enrollment`), so wiping Poom's face and pattern and enrolling
+     * your own gives a new id the broker has never approved. Changing a face or
+     * pattern while one exists needs a pass first (VerifyActivity) and keeps
+     * the id. Not secret — the first four characters are shown in the Control
+     * Panel for Poom to approve.
+     */
+    fun identityId(context: Context): String? {
+        readIdentity(context)?.let { return it }
+        // Enrolled before round 2A (0.37): a face or pattern with no id yet.
+        // Given one now; Poom approves it once on the VPS like any other.
+        if (hasFace(context) || hasPattern(context)) {
+            ensureIdentity(context)
+            return readIdentity(context)
+        }
+        return null
+    }
+
+    private fun readIdentity(context: Context): String? = runCatching {
+        file(context, IDENTITY_FILE).readText().trim().takeIf { it.matches(Regex("[0-9a-f]{16}")) }
+    }.getOrNull()
+
+    private fun ensureIdentity(context: Context) {
+        if (readIdentity(context) == null) {
+            writeAtomically(file(context, IDENTITY_FILE), newEnrollmentId().toByteArray())
+        }
+    }
+
+    private fun forgetIdentityIfEmpty(context: Context) {
+        if (!hasFace(context) && !hasPattern(context)) file(context, IDENTITY_FILE).delete()
     }
 
     fun setPattern(context: Context, dots: List<Int>) {
@@ -129,11 +170,13 @@ object AuthStore {
         val record = Pattern(salt, PatternLock.ITERATIONS, PatternLock.hash(dots, salt))
         writeAtomically(file(context, PATTERN_FILE), SecretBox.seal(encodePattern(record)))
         saveAttempts(context, PatternLock.Attempts())
+        ensureIdentity(context)
     }
 
     fun deletePattern(context: Context) {
         file(context, PATTERN_FILE).delete()
         file(context, ATTEMPTS_FILE).delete()
+        forgetIdentityIfEmpty(context)
     }
 
     /** Null when there is no pattern or it cannot be opened. */

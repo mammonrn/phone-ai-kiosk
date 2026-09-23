@@ -478,7 +478,17 @@ class VerifyActivity : Activity(), LifecycleOwner {
         when (target) {
             Mode.ENROLL -> { hint.text = getString(R.string.auth_privacy); startEnroll() }
             Mode.SET_PATTERN -> startSetPattern()
-            Mode.VERIFY -> finishWith(OUTCOME_PASSED, getString(R.string.auth_passed))
+            Mode.VERIFY -> {
+                // Opened for a private question: tell the voice service, which
+                // asks the broker for the grant and asks the question again.
+                if (intent.getBooleanExtra(EXTRA_FOR_PRIVATE, false)) {
+                    startService(Intent(this, com.mammonrn.phoneaikiosk.voice.VoiceService::class.java)
+                        .setAction(com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_AUTH_PASSED)
+                        .putExtra(com.mammonrn.phoneaikiosk.voice.VoiceService.EXTRA_METHOD,
+                                  how.name.lowercase()))
+                }
+                finishWith(OUTCOME_PASSED, getString(R.string.auth_passed))
+            }
         }
     }
 
@@ -635,6 +645,7 @@ class VerifyActivity : Activity(), LifecycleOwner {
         const val EXTRA_MODE = "mode"
         const val EXTRA_RETURN_HOME = "return_home"
         const val EXTRA_OUTCOME = "outcome"
+        const val EXTRA_FOR_PRIVATE = "for_private"
 
         const val OUTCOME_PASSED = "passed"
         const val OUTCOME_FAILED = "failed"

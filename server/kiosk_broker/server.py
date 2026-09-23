@@ -19,7 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import store
 from .config import Config
-from .service import handle_chat, handle_dashboard, handle_stt, handle_tts
+from .service import (handle_chat, handle_dashboard, handle_grant, handle_oauth_callback, handle_stt,
+                      handle_tts)
 
 log = logging.getLogger("kiosk_broker")
 
@@ -171,6 +172,23 @@ class Handler(BaseHTTPRequestHandler):
             self._send(status, payload)
             return
 
+        if route == "/oauth/google/callback":
+            # Where Google sends Poom's browser after the consent screen. The
+            # query string (code, state) is never logged: log_message cuts it,
+            # and nginx logs $uri. Answers with a small Thai page.
+            conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            try:
+                status, html = handle_oauth_callback(conn, self.config, query)
+            except Exception:
+                log.exception("unhandled error in the Google callback")
+                status, html = 500, b"error"
+            finally:
+                conn.close()
+            self._send(status, {"audio": html, "content_type": "text/html; charset=utf-8",
+                                "headers": {"Referrer-Policy": "no-referrer"}})
+            return
+
         if route == "/healthz":
             # Deliberately says nothing about tokens, spend or the model: it is
             # reachable from nginx and exists only to answer "is it up".
@@ -182,7 +200,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
 
     def do_POST(self) -> None:
-        if self.path not in ("/v1/chat", "/v1/stt", "/v1/tts"):
+        if self.path not in ("/v1/chat", "/v1/stt", "/v1/tts", "/v1/auth/grant"):
             self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
             return
 
@@ -216,6 +234,9 @@ class Handler(BaseHTTPRequestHandler):
                     conn, self.config, self.client,
                     authorization=self.headers.get("Authorization"), body=body,
                 )
+            elif self.path == "/v1/auth/grant":
+                status, payload = handle_grant(
+                    conn, self.config, authorization=self.headers.get("Authorization"), body=body)
             elif self.path == "/v1/stt":
                 status, payload = handle_stt(
                     conn, self.config, self.stt_client,

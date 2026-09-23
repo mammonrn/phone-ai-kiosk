@@ -79,6 +79,10 @@ sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet anthropic groq
 echo "  anthropic $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import anthropic; print(anthropic.__version__)')"
 echo "  groq      $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import groq; print(groq.__version__)')"
+# cryptography: AES-GCM for the Google token on this VPS (vault.py, round 2A).
+# Required for the Google features only; without it they refuse, the rest runs.
+sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet "cryptography>=42"
+echo "  cryptography $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import cryptography; print(cryptography.__version__)')"
 # nlpo3: the Thai word segmenter for the voice (kiosk_broker/wordcut.py, 0.38).
 # A 2.6 MB wheel (Apache-2.0); the dictionary is shipped in the code. OPTIONAL
 # on purpose: there are wheels for x86_64 only, and if it cannot be installed

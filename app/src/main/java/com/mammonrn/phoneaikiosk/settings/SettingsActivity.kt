@@ -350,6 +350,12 @@ class SettingsActivity : Activity() {
         list.addView(close, LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
         showGrant()
 
+        // The id the broker approves (`approve-enrollment` on the VPS). Not a
+        // secret; the first four characters are what Poom types.
+        AuthStore.identityId(this)?.let { id ->
+            list.addView(text(getString(R.string.auth_identity, id.take(4)), 13f),
+                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+        }
         list.addView(text(getString(R.string.auth_privacy), 12f, dim = true),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16) })
         setPage(ScrollView(this).apply { addView(list) })

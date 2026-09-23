@@ -276,6 +276,91 @@ sudo install -o kioskbroker -g kioskbroker -m 0644 ~/phone-ai-kiosk/server/pronu
   /home/kioskbroker/.config/kiosk-broker/pronunciation.json
 ```
 
+### บัญชี Google และข้อมูลส่วนตัว (รอบ 2A)
+
+token ของ Google อยู่บน VPS เท่านั้น เข้ารหัสด้วย AES-GCM (`google_token.bin` + กุญแจแยกไฟล์ `vault.key` ทั้งคู่ 0600)
+มือถือไม่มี token เลย และเปิดข้อมูลส่วนตัวได้เฉพาะการลงทะเบียน (ใบหน้า/รูปแบบ) ที่ Poom อนุมัติบน VPS
+ครั้งละ 2 นาทีหลังยืนยันตัวตน โดย VPS เป็นผู้นับเวลาเอง
+
+ทุกคำสั่งด้านล่างใช้คำนำหน้าเดียวกัน (ย่อว่า `KB`):
+
+```bash
+KB="sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker"
+```
+
+**1. อัปโหลดไฟล์ client JSON (ครั้งเดียว)** จากเครื่อง Windows ที่มีไฟล์:
+
+```powershell
+scp "$HOME\Downloads\client_secret_*.json" poom@45.76.157.64:/tmp/google-client.json
+```
+
+แล้วบน VPS:
+
+```bash
+sudo install -o kioskbroker -g kioskbroker -m 0600 /tmp/google-client.json /home/kioskbroker/.config/kiosk-broker/google_oauth_client.json
+shred -u /tmp/google-client.json
+sudo ls -l /home/kioskbroker/.config/kiosk-broker/google_oauth_client.json   # ต้องเป็น -rw------- kioskbroker
+$KB google-status                                                           # client file : present
+```
+
+ห้ามเปิดดูหรือวางเนื้อหาไฟล์นี้ในแชท
+
+**2. เชื่อมบัญชี Google (ครั้งเดียว)**
+
+```bash
+$KB google-connect
+```
+
+- คัดลอกลิงก์ที่พิมพ์ออกมา เปิดในเบราว์เซอร์ภายใน 10 นาที ลิงก์ใช้ได้ครั้งเดียว
+- เลือกบัญชี Google ของ Poom
+- จะเจอหน้า **"Google hasn't verified this app"** ซึ่งเป็นเรื่องปกติ กด **Advanced** แล้วกด **Go to Kiosk Jarvis (unsafe)**
+- ติ๊กอนุญาต **ทั้งสองข้อ** (อ่านอีเมล และดู/แก้ไขกิจกรรมในปฏิทิน) แล้วกด **Continue**
+- เบราว์เซอร์จะไปหน้า "เชื่อมต่อบัญชี Google แล้ว" ปิดหน้านั้นได้
+- ถ้าติ๊กไม่ครบ ระบบจะไม่เก็บ token และถอนสิทธิ์ให้เอง ให้เริ่มข้อ 2 ใหม่
+
+ตรวจ:
+
+```bash
+$KB google-status        # google : connected ...  permissions : calendar.events, gmail.readonly
+$KB calendar-check       # today: N appointment(s), tomorrow: M  (บอกแค่จำนวน)
+```
+
+**3. อนุมัติการลงทะเบียนใบหน้า/รูปแบบของ Poom (ครั้งเดียว และทุกครั้งที่ลงทะเบียนใหม่ทั้งหมด)**
+
+- บนมือถือ: ถาม "วันนี้มีนัดอะไรบ้าง" แล้วยืนยันตัวตน จาร์วิสจะบอกว่า "ยังไม่ได้รับอนุมัติ"
+- ดูรหัสที่ แผงควบคุม → ยืนยันตัวตน → "รหัสการลงทะเบียน: XXXX"
+- บน VPS:
+
+```bash
+$KB enrollments                  # ต้องเห็นรหัสที่ขึ้นต้นตรงกับบนจอ สถานะ pending
+$KB approve-enrollment XXXX      # 4 ตัวแรกจากจอ
+```
+
+อนุมัติรหัสใหม่แล้ว รหัสอื่นทั้งหมดถูกยกเลิกทันที (ลงทะเบียน Poom คนเดียว)
+ถ้า `enrollments` มีรหัสที่ไม่ได้มาจากจอของ Poom **ห้ามอนุมัติ** เพราะแปลว่ามีคนลบแล้วลงทะเบียนของตัวเอง
+
+**ถอนสิทธิ์ทันที**
+
+```bash
+$KB google-disconnect            # ถอน token ที่ Google และลบไฟล์บน VPS
+$KB revoke-enrollment XXXX       # ปิดการลงทะเบียนนั้น สิทธิ์ที่เปิดอยู่ปิดทันที
+```
+
+หรือถอนสิทธิ์ที่ myaccount.google.com/permissions → Kiosk Jarvis → ลบสิทธิ์การเข้าถึง
+
+**ถ้ามือถือหาย ให้ทำตามลำดับทันที**
+
+1. `$KB revoke-token kiosk-a07` ปิดสิทธิ์มือถือเครื่องนั้นกับ broker
+2. `$KB google-disconnect`
+3. ถ้าสงสัยว่ามีคนเข้าถึงบัญชี ให้เปลี่ยนรหัสผ่าน Google ซึ่งทำให้ token ที่มีสิทธิ์ Gmail ใช้ไม่ได้ทันที
+
+มือถือไม่มี token ของ Google และข้อมูลใบหน้าเข้ารหัสด้วยกุญแจที่ดึงออกจากเครื่องไม่ได้
+
+**ถ้าลืมรูปแบบ หรือกล้องเสีย**
+
+- กล้องเสีย: ใช้รูปแบบแทนได้ตามปกติ
+- ลืมรูปแบบและจำหน้าไม่ได้: แผงควบคุม → ยืนยันตัวตน → ลบใบหน้าและรูปแบบ → ลงทะเบียนใหม่ → รหัสจะเปลี่ยน → ทำข้อ 3 ใหม่
+
 ### ตรวจความยาวคำตอบกับโมเดลจริง (`persona-eval`)
 
 ถามโมเดลจริงด้วยสถานการณ์ที่ Poom กำหนด (ฟังไม่ออก ถามเวลา อากาศ เปิดแผนที่ ตั้งปลุก เรื่องยาว สิ่งที่ทำไม่ได้)

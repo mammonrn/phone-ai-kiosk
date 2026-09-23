@@ -18,7 +18,7 @@ from typing import Any
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
-               voicetext, brevity)
+               voicetext, brevity, calendar_read, google_auth, identity, redact)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -73,6 +73,97 @@ def system_prompt_for(cfg: Config, text: str) -> str:
     if oil_mod.asks_about_oil(text):
         system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
     return system
+
+
+#: What Jarvis says when a private question needs the identity check first.
+VERIFY_FIRST_REPLY = "ขอยืนยันตัวตนก่อนนะครับพี่"
+
+
+def _calendar_reply(cfg: Config, label: str) -> str:
+    """Today's and tomorrow's appointments as one spoken answer. Counts and
+    timings in the log, never an event."""
+    if not google_auth.connected(cfg.google_token_path):
+        return "ยังไม่ได้เชื่อมบัญชี Google ครับพี่"
+    started = time.monotonic()
+    try:
+        client = google_auth.load_client(cfg.google_client_path)
+        token = google_auth.access_token(client, key_path=cfg.vault_key_path,
+                                         token_path=cfg.google_token_path)
+        events = calendar_read.fetch(token, cfg.clock_timezone)
+    except (google_auth.GoogleError, calendar_read.CalendarError) as exc:
+        log.warning("calendar device=%s failed: %s", label, exc)
+        return "ตอนนี้ดึงนัดไม่ได้ครับพี่ ลองใหม่อีกทีนะครับ"
+    except Exception as exc:  # noqa: BLE001 — a vault or parse error must not 500 the chat
+        log.warning("calendar device=%s failed: %s", label, type(exc).__name__)
+        return "ตอนนี้ดึงนัดไม่ได้ครับพี่ ลองใหม่อีกทีนะครับ"
+    log.info("calendar device=%s today=%d tomorrow=%d ms=%d", label,
+             sum(1 for e in events if e.day == "today"),
+             sum(1 for e in events if e.day == "tomorrow"),
+             int((time.monotonic() - started) * 1000))
+    return calendar_read.spoken(events)
+
+
+def handle_grant(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                 body: bytes) -> tuple[int, dict]:
+    """POST /v1/auth/grant — the phone passed its identity check; open two
+    minutes of private access if, and only if, that identity is approved."""
+    day = limits.day_key(cfg.budget_timezone)
+    device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint="grant")
+    if refusal:
+        return refusal
+    device_id, label = int(device["id"]), str(device["label"])
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=6, per_day=200, day=day,
+                             endpoint="grant")
+    if not rate.allowed:
+        store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
+                             text_len=None, endpoint="grant")
+        return 429, _error(rate.code, rate.message)
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        payload = None
+    identity_id = payload.get("identity_id") if isinstance(payload, dict) else None
+    method = payload.get("method") if isinstance(payload, dict) else None
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok", text_len=None,
+                         endpoint="grant")
+    if not identity.valid_id(identity_id) or method not in identity.METHODS:
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    result = identity.request_grant(conn, device_id=device_id, identity_id=identity_id,
+                                    method=method)
+    # The first four characters are what Poom types to approve; the whole id
+    # is not a secret, but four is enough to find it.
+    log.info("grant device=%s identity=%s… method=%s result=%s", label, identity_id[:4],
+             method, result)
+    if result == "granted":
+        return 200, {"status": "granted", "seconds": identity.GRANT_SECONDS}
+    return 403, {"status": result, "error": {
+        "code": "not_approved",
+        "message": "การลงทะเบียนนี้ยังไม่ได้รับอนุมัติครับ" if result == "pending"
+                   else "การลงทะเบียนนี้ถูกยกเลิกแล้วครับ"}}
+
+
+def handle_oauth_callback(conn: sqlite3.Connection, cfg: Config, query: str) -> tuple[int, bytes]:
+    """GET /oauth/google/callback — where Google sends the browser. Answers
+    with a small Thai page; the code and state never reach a log."""
+    import urllib.parse as _up
+
+    params = _up.parse_qs(query or "", keep_blank_values=False)
+    one = lambda name: (params.get(name) or [""])[0]  # noqa: E731
+    if one("error"):
+        log.info("google connect declined: %s", one("error")[:40])
+        return 400, google_auth.page("ยังไม่ได้เชื่อมต่อ",
+                                     "บัญชี Google ไม่ได้อนุญาตสิทธิ์ กรุณาเริ่มใหม่ด้วยคำสั่ง google-connect บน VPS")
+    try:
+        client = google_auth.load_client(cfg.google_client_path)
+        google_auth.finish(conn, client, cfg.public_base_url, state=one("state"), code=one("code"),
+                           key_path=cfg.vault_key_path, token_path=cfg.google_token_path)
+    except google_auth.GoogleError as exc:
+        log.warning("google connect failed: %s", exc)
+        return 400, google_auth.page("เชื่อมต่อไม่สำเร็จ",
+                                     "กรุณาเริ่มใหม่ด้วยคำสั่ง google-connect บน VPS")
+    return 200, google_auth.page("เชื่อมต่อบัญชี Google แล้ว",
+                                 "Kiosk Jarvis อ่านอีเมลได้อย่างเดียวและจัดการนัดหมายได้แล้ว "
+                                 "กรุณาปิดหน้านี้")
 
 
 CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -271,7 +362,8 @@ def handle_chat(
                              action=action["type"] if action else "none", cost_usd=0.0)
         return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
 
-    if is_camera or alarm is not None:
+    private_kind = "calendar" if calendar_read.asks_for_calendar(text) else None
+    if is_camera or alarm is not None or private_kind:
         log_intent("skipped")
     if is_camera:
         return answer_in_code(actions.CAMERA_REPLY, actions.camera_action(), why)
@@ -280,6 +372,30 @@ def handle_chat(
     if alarm is not None:
         action, reply = alarms.action_and_reply(alarm)
         return answer_in_code(reply, action, f"alarm:{alarm['kind']}")
+
+    # ---- private data: the calendar (round 2A) --------------------------
+    # Only with a live grant, which only an approved identity can get
+    # (identity.py). Answered in code, never by the model; the history keeps
+    # a placeholder, the log keeps counts, and analysis keeps nothing of it.
+    if private_kind:
+        has_grant = identity.granted(conn, device_id)
+        if has_grant:
+            reply = _calendar_reply(cfg, label)
+            action = None
+        else:
+            reply, action = VERIFY_FIRST_REPLY, {"type": "verify_identity"}
+        log.info("private device=%s kind=%s grant=%s", label, private_kind,
+                 "yes" if has_grant else "no")
+        store.record_request(conn, device_id=device_id, day=day, outcome="ok",
+                             text_len=len(text))
+        store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
+                             role="user", content=text)
+        store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
+                             role="assistant",
+                             content=calendar_read.HISTORY_PLACEHOLDER if has_grant else reply)
+        store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
+                             ttl_hours=cfg.history_ttl_hours)
+        return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
 
     pricing = Pricing.load(cfg.pricing_path)
 
@@ -351,6 +467,11 @@ def handle_chat(
     # "I could not hear you" in one short line, not three sentences (Poom,
     # 2026-09-23). Only that case is rewritten in code; see brevity.py.
     reply, brevity_fix = brevity.tidy(reply)
+    # Never on the screen or in the history, whatever the model wrote: a
+    # password, a one-time code, a card or account number, a balance.
+    reply, hidden = redact.redact(reply)
+    if hidden:
+        log.info("redact device=%s hidden=%d where=chat", label, hidden)
     if brevity_fix:
         log.info("brevity device=%s fixed=%s", label, brevity_fix)
     # Counted, not corrected: taking "กรุณา" or "ดำเนินการ" out of a Thai
@@ -618,6 +739,11 @@ def handle_tts(
     # voice, even if the text did not come from /v1/chat. Normally a no-op,
     # because /v1/chat already corrected its own reply.
     text, register_fixes = register.enforce(text)
+    # The last door before speech: nothing sensitive is said aloud, even if it
+    # reached this endpoint some other way. See redact.py.
+    text, hidden = redact.redact(text)
+    if hidden:
+        log.info("redact hidden=%d where=tts", hidden)
 
     # Respelled for the synthesiser only. The caller's text — which is what the
     # screen shows and what the history keeps — is not touched by this; only the

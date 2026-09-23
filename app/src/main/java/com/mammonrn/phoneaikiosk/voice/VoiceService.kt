@@ -143,6 +143,10 @@ class VoiceService : Service() {
             }
         }
 
+        if (intent?.action == ACTION_AUTH_PASSED) {
+            resumePrivate(intent.getStringExtra(EXTRA_METHOD) ?: "face")
+        }
+
         if (intent?.action == ACTION_ALARM_RING) {
             startAlarm(intent.getIntExtra(EXTRA_ALARM_ID, -1))
         }
@@ -560,6 +564,7 @@ class VoiceService : Service() {
      * row is the right number for the one place a string becomes an Intent.
      */
     private fun performAction(action: KioskAction): String? {
+        if (action.type == KioskAction.VERIFY_IDENTITY) return verifyForPrivate()
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
         if (action.type == KioskAction.SET_ALARM) return setAlarm(action)
         if (action.type == KioskAction.ALARM_ENABLE) return enableAlarm(action)
@@ -590,6 +595,62 @@ class VoiceService : Service() {
             return null
         }
         return MapsLauncher.spokenFailure(result)
+    }
+
+    // --------------------------------------------------- private questions
+
+    /** The private question waiting for the identity check, and since when. */
+    @Volatile private var pendingPrivate: String? = null
+    @Volatile private var pendingSince = 0L
+
+    /**
+     * The broker wants the identity check before a private answer. The camera
+     * opens only now, for this (Poom: "เปิดกล้องเฉพาะตอนมีคำขอข้อมูลส่วนตัว").
+     * The question is kept here, in memory, for a few minutes: after a pass the
+     * phone asks for a grant and asks it again, so nobody has to repeat it.
+     */
+    private fun verifyForPrivate(): String? {
+        val question = VoiceState.heard.trim()
+        if (question.isEmpty()) return null
+        if (com.mammonrn.phoneaikiosk.auth.AuthStore.identityId(this) == null) {
+            return "ยังไม่ได้ลงทะเบียนใบหน้าหรือรูปแบบครับ กรุณาตั้งค่าที่แผงควบคุม"
+        }
+        pendingPrivate = question
+        pendingSince = android.os.SystemClock.elapsedRealtime()
+        VoiceState.lastAction = "verify_identity:asked"
+        Log.i(TAG, "action verify_identity chars=${question.length}")
+        startActivity(com.mammonrn.phoneaikiosk.auth.VerifyActivity
+            .intent(this, com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.VERIFY, returnHome = true)
+            .putExtra(com.mammonrn.phoneaikiosk.auth.VerifyActivity.EXTRA_FOR_PRIVATE, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return null
+    }
+
+    /** VerifyActivity passed: ask the broker for the grant, then ask again. */
+    private fun resumePrivate(method: String) {
+        val question = pendingPrivate
+        pendingPrivate = null
+        if (question == null ||
+            android.os.SystemClock.elapsedRealtime() - pendingSince > PENDING_PRIVATE_MS) return
+        val identityId = com.mammonrn.phoneaikiosk.auth.AuthStore.identityId(this) ?: return
+        val token = TokenStore(this).token() ?: return
+        network.execute {
+            try {
+                Broker(VoiceState.brokerBaseUrl, token).grant(identityId, method)
+                Log.i(TAG, "grant ok method=$method")
+            } catch (e: Broker.Failure) {
+                Log.i(TAG, "grant refused ${e.code} (${e.status})")
+                VoiceState.lastError = "grant-refused"
+                VoiceState.reply = e.message ?: "ยังเปิดข้อมูลส่วนตัวไม่ได้ครับ"
+                deafWhile { speaker.sayLocally(VoiceState.reply) }
+                return@execute
+            } catch (e: Exception) {
+                Log.i(TAG, "grant failed ${e.javaClass.simpleName}")
+                deafWhile { speaker.sayLocally("ตอนนี้ติดต่อเซิร์ฟเวอร์ไม่ได้ครับ") }
+                return@execute
+            }
+            runTurn(ByteArray(TurnPipeline.WAV_HEADER_BYTES + 2), 0L, question)
+        }
     }
 
     // ------------------------------------------------------------ alarms
@@ -988,6 +1049,11 @@ class VoiceService : Service() {
         const val ACTION_TEST_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK_TEXT"
         const val EXTRA_TEXT = "text"
         const val ACTION_ALARM_STOP = "com.mammonrn.phoneaikiosk.ALARM_STOP"
+        /** From VerifyActivity, after a pass that was for a private question. */
+        const val ACTION_AUTH_PASSED = "com.mammonrn.phoneaikiosk.AUTH_PASSED"
+        const val EXTRA_METHOD = "method"
+        /** How long a private question waits for its identity check. */
+        const val PENDING_PRIVATE_MS = 3 * 60_000L
         const val EXTRA_ALARM_ID = "alarm_id"
 
         /**

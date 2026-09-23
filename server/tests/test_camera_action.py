@@ -91,8 +91,12 @@ def test_no_other_action_gets_through(conn, cfg, marker):
 
 def test_the_model_allowlist_did_not_grow():
     assert actions.ENABLED_ACTION_TYPES == frozenset({"open_maps"})
-    assert actions.PHRASE_ACTION_TYPES == frozenset({"open_camera_app", "set_alarm", "alarm_enable"})
+    # verify_identity (round 2A) is the broker's, sent only when a private
+    # question has no live grant; like the others, a model cannot emit it.
+    assert actions.PHRASE_ACTION_TYPES == frozenset({"open_camera_app", "set_alarm", "alarm_enable",
+                                                     "verify_identity"})
     assert actions.sanitize({"type": "open_camera_app"}) is None
+    assert actions.sanitize({"type": "verify_identity"}) is None
 
 
 def test_the_log_says_the_type_and_nothing_about_the_request(conn, cfg, caplog):
