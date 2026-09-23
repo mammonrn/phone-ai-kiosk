@@ -223,6 +223,7 @@ class Handler(BaseHTTPRequestHandler):
                     content_type=self.headers.get("Content-Type"), body=body,
                     provider=self.headers.get("X-Stt-Provider"),
                     google_key=self.google_stt_key,
+                    wake=self.headers.get("X-Wake"),
                 )
             else:
                 status, payload = handle_tts(

@@ -179,7 +179,11 @@ class MainActivity : Activity() {
             val busy = IdleScreen.voiceBusy(
                 VoiceState.wake, VoiceState.stt, VoiceState.chat, VoiceState.tts) ||
                 nowMs - transcriptTouchedAt < READING_HOLD_MS
-            val line = recentTurn.visible(transcriptLine(), nowMs, busy)
+            // Nothing asked (room noise the broker's gate stopped, or silence):
+            // the short notice goes after a few seconds, not a minute.
+            val noticeOnly = VoiceState.lastCancel.isNotEmpty() && VoiceState.heard.isEmpty()
+            val line = recentTurn.visible(transcriptLine(), nowMs, busy,
+                    if (noticeOnly) FadingLine.NOTICE_HOLD_MS else FadingLine.HOLD_MS)
                 .ifEmpty { getString(R.string.kiosk_prompt) }
             if (line != shownTranscript) showTranscript(line)
             jarvisState.text = DashboardState.jarvisState(

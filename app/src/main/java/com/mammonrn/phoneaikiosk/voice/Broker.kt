@@ -22,6 +22,17 @@ class Broker(private val baseUrl: String, private val token: String) {
 
     companion object {
         const val STT_PROVIDER_HEADER = "X-Stt-Provider"
+        const val WAKE_HEADER = "X-Wake"
+
+        /** "not-a-question (weak-wake,no-ask)" when the gate refused, else "". */
+        fun gateRefusal(gate: JSONObject?): String {
+            if (gate == null || gate.optBoolean("pass", true)) return ""
+            val doubts = gate.optJSONArray("doubts")
+            val list = if (doubts == null) "" else
+                (0 until doubts.length()).joinToString(",") { doubts.optString(it) }
+            val reason = gate.optString("reason", "refused")
+            return if (list.isEmpty()) reason else "$reason ($list)"
+        }
 
         /** The transcribers the broker knows. "device" is not one: it never reaches it. */
         val BROKER_STT_PROVIDERS = setOf("groq", "groq-hints", "google")
@@ -90,12 +101,20 @@ class Broker(private val baseUrl: String, private val token: String) {
         // Which transcriber, only when the debug build's adb override set one;
         // otherwise no header and the broker uses its configured default (Groq).
         val provider = sttProviderHeader(VoiceState.sttOverride)
-        val extra = if (provider == null) emptyMap() else mapOf(STT_PROVIDER_HEADER to provider)
+        val extra = buildMap {
+            if (provider != null) put(STT_PROVIDER_HEADER, provider)
+            // What started this turn, for the broker's speech gate.
+            put(WAKE_HEADER, VoiceState.turnWake)
+        }
+        VoiceState.lastGate = ""
         val body = post("/v1/stt", wav, "audio/wav", extra).bytes
         val json = JSONObject(String(body, Charsets.UTF_8))
         // What the broker ACTUALLY used, for dumpsys — it ignores a name it
         // does not know, so the request and the answer can differ.
         VoiceState.lastSttProvider = json.optString("provider", "unknown")
+        VoiceState.lastGate = gateRefusal(json.optJSONObject("gate"))
+        // A refused transcript comes back empty, so the pipeline stops at "no
+        // question" whatever this says; the reason is for dumpsys and the count.
         return json.optString("text")
     }
 

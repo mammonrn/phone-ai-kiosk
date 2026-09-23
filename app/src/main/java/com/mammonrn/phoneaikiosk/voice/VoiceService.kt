@@ -128,6 +128,7 @@ class VoiceService : Service() {
             // the capture executor, which is the bug this replaces.
             machine.arm()
             VoiceState.wake = "triggered"
+            VoiceState.turnWake = "adb"
             Log.i(TAG, "armed by adb trigger; capture thread will pick it up next frame")
         }
 
@@ -141,6 +142,7 @@ class VoiceService : Service() {
                 ackOnStart = true
                 machine.arm()
                 VoiceState.wake = "triggered"
+                VoiceState.turnWake = "button"
                 Log.i(TAG, "armed by the Jarvis button")
             } else {
                 Log.i(TAG, "Jarvis button ignored: mode=${machine.mode} wakeOnly=${VoiceState.wakeOnly}")
@@ -252,6 +254,10 @@ class VoiceService : Service() {
                         "best_before=%.3f climb_ms=%d warm=%s"
                             .format(bestScore, climb, warm))
                     clearScoreWatch()
+                    // For the broker's speech gate: how sure the detector was.
+                    // Locale.US so it is "0.430" and never "0,430".
+                    VoiceState.turnWake = String.format(java.util.Locale.US, "%.3f",
+                                                        VoiceState.wakeScore)
                     // Something has to tell the person it heard them, or the
                     // only feedback is an answer several seconds later.
                     acknowledge()
@@ -404,7 +410,15 @@ class VoiceService : Service() {
                     // Not an error and not a turn: somebody said the wake word
                     // and did not ask anything. Nothing was spoken, so there is
                     // nothing to apologise for either.
-                    VoiceState.lastCancel = "no-question-transcribed"
+                    if (VoiceState.lastGate.isNotEmpty()) {
+                        // The broker's speech gate: room noise that woke the
+                        // kiosk. The reason only — the words never came back.
+                        VoiceState.lastCancel = "not-a-question"
+                        stats.recordGated()
+                        Log.i(TAG, "turn gated by the broker: ${VoiceState.lastGate}")
+                    } else {
+                        VoiceState.lastCancel = "no-question-transcribed"
+                    }
                 }
                 else -> stats.recordError()
             }

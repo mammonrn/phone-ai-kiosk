@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from . import (actions, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier, limits,
+               speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -365,6 +366,7 @@ def handle_stt(
     provider: str | None = None,
     google_key: str = "",
     google_transport=None,
+    wake: str | None = None,
 ) -> tuple[int, dict]:
     """One POST /v1/stt: audio in, text out.
 
@@ -445,20 +447,42 @@ def handle_stt(
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
     cost = bill(transcript.seconds)
-    store.record_request(conn, device_id=device_id, day=day, outcome="ok",
+
+    # THE GATE: was this a question at all? Decided here, after the audio was
+    # paid for and before the model is — see speech_gate.py for every rule. A
+    # rejected turn gets NO text back, so the phone asks nothing, says nothing
+    # and shows nothing but "ไม่ได้ยินคำถาม"; even a phone older than the gate
+    # does the same with an empty transcript.
+    source, wake_score = speech_gate.parse_wake(wake)
+    verdict = speech_gate.judge(
+        transcript.text, no_speech_prob=getattr(transcript, "no_speech_prob", None),
+        avg_logprob=getattr(transcript, "avg_logprob", None), source=source,
+        wake_score=wake_score)
+    store.record_request(conn, device_id=device_id, day=day,
+                         outcome="ok" if verdict.passed else "gated",
                          text_len=len(transcript.text), endpoint="stt")
 
     # Length, never content: what somebody says to a kiosk is not something to
     # keep in a log file. The words themselves go only to the analysis table,
     # and only while Poom has analysis mode switched on — see analysis.py.
-    log.info("stt ok device=%s provider=%s bytes=%d seconds=%.1f chars_out=%d cost=%.6f ms=%d",
-             label, chosen, len(body), transcript.seconds, len(transcript.text), cost,
-             elapsed_ms)
+    log.info("stt %s device=%s provider=%s bytes=%d seconds=%.1f chars_out=%d cost=%.6f ms=%d"
+             " gate=%s doubts=%s no_speech=%s logprob=%s wake=%s",
+             "ok" if verdict.passed else "gated", label, chosen, len(body), transcript.seconds,
+             len(transcript.text), cost, elapsed_ms, verdict.reason,
+             ",".join(verdict.doubts) or "-", _num(getattr(transcript, "no_speech_prob", None)),
+             _num(getattr(transcript, "avg_logprob", None)),
+             source if wake_score is None else f"{wake_score:.3f}")
     analysis.record_stt(conn, cfg.home, device=label, provider=chosen, text=transcript.text,
                         audio_seconds=transcript.seconds, audio=body, stt_ms=elapsed_ms,
-                        cost_usd=cost, intent=actions.camera_match(transcript.text)[1])
+                        cost_usd=cost, intent=(actions.camera_match(transcript.text)[1]
+                                               if verdict.passed else f"gated:{verdict.reason}"))
 
-    return 200, {"text": transcript.text, "provider": chosen}
+    return 200, {"text": transcript.text if verdict.passed else "", "provider": chosen,
+                 "gate": verdict.as_json()}
+
+
+def _num(value: float | None) -> str:
+    return "-" if value is None else f"{value:.3f}"
 
 
 # =============================================================== text to speech

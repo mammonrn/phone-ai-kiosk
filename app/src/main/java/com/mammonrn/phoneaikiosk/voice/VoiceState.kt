@@ -90,6 +90,15 @@ object VoiceState : VoiceSink {
      * is, and how long MediaPlayer says it lasts. The Jarvis window scrolls
      * the answer along with these, so the line being said stays in view.
      */
+    /**
+     * What started the turn now being transcribed, for the broker's speech
+     * gate: the wake score as "0.430", or "button" / "adb". Sent as X-Wake.
+     */
+    @Volatile var turnWake: String = "unknown"
+
+    /** Why the broker's gate stopped the last transcript, or "" if it did not. */
+    @Volatile var lastGate: String = ""
+
     @Volatile var speakingSinceMs: Long = 0
     @Volatile var speakingDurationMs: Long = 0
 

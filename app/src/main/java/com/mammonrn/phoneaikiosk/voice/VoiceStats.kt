@@ -43,6 +43,11 @@ class VoiceStats(context: Context) {
     /** Scores that came close to the threshold and did not reach it. */
     private val nearMisses = AtomicInteger(prefs.getInt(KEY_NEAR_MISS, 0))
 
+    /** Turns the broker's speech gate stopped before the model. */
+    private val gated = AtomicInteger(prefs.getInt(KEY_GATED, 0))
+
+    fun recordGated() = bump(KEY_GATED, gated)
+
     fun recordWake() = bump(KEY_WAKES, wakes)
 
     /** Called when a human says "yes, that one was me". */
@@ -70,8 +75,9 @@ class VoiceStats(context: Context) {
 
     fun reset() {
         wakes.set(0); confirmed.set(0); turns.set(0); errors.set(0)
-        falseWakeCandidates.set(0); nearMisses.set(0)
+        falseWakeCandidates.set(0); nearMisses.set(0); gated.set(0)
         prefs.edit()
+            .putInt(KEY_GATED, 0)
             .putInt(KEY_WAKES, 0).putInt(KEY_CONFIRMED, 0)
             .putInt(KEY_TURNS, 0).putInt(KEY_ERRORS, 0)
             .putInt(KEY_FALSE_WAKE, 0).putInt(KEY_NEAR_MISS, 0)
@@ -108,6 +114,8 @@ class VoiceStats(context: Context) {
             appendLine("  unconfirmed        : $unconfirmed")
             appendLine("  unconfirmed per 8h : %.2f   (target: at most 1)".format(perEightHours))
             appendLine("  completed turns    : ${turns.get()}")
+            appendLine("  not a question     : ${gated.get()}"
+                + "   <- woke, transcribed, stopped before the model")
             appendLine("  errors             : ${errors.get()}")
             appendLine()
             appendLine("  Hit rate is measured by hand: say the wake word 20 times at 3 m,")
@@ -117,6 +125,7 @@ class VoiceStats(context: Context) {
 
     private companion object {
         const val KEY_WAKES = "wakes"
+        const val KEY_GATED = "gated"
         const val KEY_CONFIRMED = "confirmed"
         const val KEY_TURNS = "turns"
         const val KEY_ERRORS = "errors"

@@ -311,6 +311,20 @@ def tts_length_stats(conn: sqlite3.Connection, month: str, over_chars: int) -> d
     return {"all": stats("", ()), "long": stats(" AND quantity > ?", (over_chars,))}
 
 
+def gated_turns(conn: sqlite3.Connection, since: float) -> int:
+    """Transcripts the speech gate stopped before the model, since `since`."""
+    row = conn.execute("SELECT COUNT(*) AS c FROM requests WHERE endpoint = 'stt'"
+                       " AND outcome = 'gated' AND ts >= ?", (since,)).fetchone()
+    return int(row["c"])
+
+
+def average_chat_cost(conn: sqlite3.Connection, month: str) -> float | None:
+    """What one answer from the model cost on average this month, or None."""
+    row = conn.execute("SELECT COUNT(*) AS n, AVG(cost_usd) AS a FROM usage"
+                       " WHERE month = ? AND COALESCE(service, 'chat') = 'chat'", (month,)).fetchone()
+    return float(row["a"]) if row["n"] else None
+
+
 def month_spend_usd(conn: sqlite3.Connection, month: str) -> float:
     row = conn.execute("SELECT COALESCE(SUM(cost_usd), 0.0) AS s FROM usage WHERE month = ?",
                        (month,)).fetchone()

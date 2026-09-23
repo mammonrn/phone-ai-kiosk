@@ -39,6 +39,11 @@ class Transcript:
     #: Duration as GROQ reported it. Billing uses this rather than anything
     #: measured locally, because this is the number they charge on.
     seconds: float
+    #: How sure the model was that this was speech at all, from verbose_json's
+    #: segments (see _segment_signals). None when the vendor did not say —
+    #: Google's recognizer, or a response without segments.
+    no_speech_prob: float | None = None
+    avg_logprob: float | None = None
 
 
 def transcribe(client, *, model: str, audio: bytes, filename: str, language: str,
@@ -94,4 +99,39 @@ def transcribe(client, *, model: str, audio: bytes, filename: str, language: str
         raise SttError("ไม่ได้ยินว่าพูดอะไรครับ ลองพูดอีกครั้งนะ",
                        f"empty transcript, duration={seconds}", seconds=seconds)
 
-    return Transcript(text=text, seconds=seconds)
+    no_speech, logprob = _segment_signals(getattr(response, "segments", None))
+    return Transcript(text=text, seconds=seconds, no_speech_prob=no_speech, avg_logprob=logprob)
+
+
+def _segment_signals(segments) -> tuple[float | None, float | None]:
+    """(highest no_speech_prob, duration-weighted avg_logprob) over the segments.
+
+    Groq documents both for verbose_json: avg_logprob "closer to 0 suggest better
+    confidence, while more negative values (like -0.5 or lower) might indicate
+    transcription issues", and no_speech_prob "closer to 1 would indicate
+    potential silence or non-speech audio" (console.groq.com/docs/speech-to-text).
+    The SDK may hand segments back as dicts or as objects; both are read. Anything
+    missing or malformed is None — no signal, never a guess.
+    """
+    if not isinstance(segments, (list, tuple)) or not segments:
+        return None, None
+
+    def field(segment, name):
+        value = segment.get(name) if isinstance(segment, dict) else getattr(segment, name, None)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    no_speech = [v for v in (field(s, "no_speech_prob") for s in segments) if v is not None]
+    weighted, total = 0.0, 0.0
+    for segment in segments:
+        logprob = field(segment, "avg_logprob")
+        start, end = field(segment, "start"), field(segment, "end")
+        if logprob is None:
+            continue
+        weight = (end - start) if start is not None and end is not None and end > start else 1.0
+        weighted += logprob * weight
+        total += weight
+    return (max(no_speech) if no_speech else None,
+            round(weighted / total, 3) if total else None)

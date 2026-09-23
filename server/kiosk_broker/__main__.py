@@ -626,6 +626,21 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {label:<15}: {s['n']} answers  avg {s['avg_chars']:.0f} chars "
                       f"${s['avg_cost']:.5f}  max {s['max_chars']:.0f} chars ${s['max_cost']:.5f}")
 
+            # The speech gate: turns stopped after transcription, before the
+            # model. Each would otherwise have been one chat call (and a
+            # spoken answer, inside the free TTS allowance). See speech_gate.py.
+            import time as _time
+            since = _time.time() - 30 * 86400
+            gated = store.gated_turns(conn, since)
+            per_chat = store.average_chat_cost(conn, month)
+            print()
+            print("speech gate (not sent to the model), last 30 days:")
+            if per_chat is None:
+                print(f"  gated turns    : {gated}")
+            else:
+                print(f"  gated turns    : {gated}   chat not paid for: ~${gated * per_chat:.4f} "
+                      f"(at this month's ${per_chat:.5f} per answer)")
+
             # Google's free allowances, as counted here. Google has no call
             # that reports what is left, so this is our own sum of what was
             # sent — see free_tier.py for why it can differ from Google's.

@@ -18,7 +18,7 @@ class FadingLine(private val holdMs: Long = HOLD_MS) {
     private var changedAt = 0L
 
     /** [text] while it is fresh, "" once it has been up for [holdMs] unchanged. */
-    fun visible(text: String, nowMs: Long, busy: Boolean): String {
+    fun visible(text: String, nowMs: Long, busy: Boolean, holdMs: Long = this.holdMs): String {
         if (text != shown) {
             shown = text
             changedAt = nowMs
@@ -31,5 +31,11 @@ class FadingLine(private val holdMs: Long = HOLD_MS) {
     companion object {
         /** A minute: long enough to read both lines twice, short enough to clear. */
         const val HOLD_MS = 60_000L
+
+        /**
+         * "ไม่ได้ยินคำถามครับ" goes quickly: it says only that nothing was asked,
+         * and after room noise woke the kiosk it should not sit there.
+         */
+        const val NOTICE_HOLD_MS = 5_000L
     }
 }

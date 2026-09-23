@@ -93,3 +93,23 @@ def test_usage_prints_by_day_and_the_warning(tmp_path, monkeypatch, capsys):
     assert time.strftime("%Y-%m") in out or month in out
     assert "over 100 chars : 1 answers" in out
     assert "เตือน: ใช้ไปแล้ว 90%" in out
+
+
+def test_usage_counts_gated_turns_and_what_they_saved(tmp_path, monkeypatch, capsys):
+    import shutil
+    from pathlib import Path
+    shutil.copy(Path(__file__).resolve().parents[1] / "pricing.json", tmp_path / "pricing.json")
+    monkeypatch.setattr(config_mod, "DEFAULT_HOME", tmp_path)
+    cfg = config_mod.load()
+    month = limits.month_key(cfg.budget_timezone)
+    conn = store.connect(cfg.db_path)
+    store.record_usage(conn, device_id=1, month=month, model="m", cost_usd=0.002, service="chat")
+    for _ in range(3):
+        store.record_request(conn, device_id=1, day="2026-09-23", outcome="gated",
+                             text_len=8, endpoint="stt")
+    conn.commit()
+    conn.close()
+    assert cli.main(["usage"]) == 0
+    out = capsys.readouterr().out
+    assert "gated turns    : 3" in out
+    assert "~$0.0060" in out

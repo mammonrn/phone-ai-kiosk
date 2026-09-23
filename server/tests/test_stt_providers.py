@@ -121,7 +121,9 @@ def test_google_gets_th_TH_the_phrases_and_the_key_as_a_query_parameter(conn, cf
     got 403 "Method doesn't allow unregistered callers" with the same key."""
     google = FakeGoogle()
     status, body = _stt(conn, cfg, provider="google", google=google)
-    assert status == 200 and body == {"text": "ขอดูกล้องหน่อยครับ", "provider": "google"}
+    assert status == 200
+    assert (body["text"], body["provider"]) == ("ขอดูกล้องหน่อยครับ", "google")
+    assert body["gate"]["pass"] is True
     request = google.requests[0]
     assert request.full_url.startswith(google_stt.ENDPOINT + "?key=")
     assert request.get_header("X-goog-api-key") is None
