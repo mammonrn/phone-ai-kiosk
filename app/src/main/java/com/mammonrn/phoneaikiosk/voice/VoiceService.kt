@@ -213,7 +213,7 @@ class VoiceService : Service() {
         }
 
         if (intent?.action == ACTION_RETURN_HOME) {
-            returnToKiosk("adb")
+            comeHome("adb")
         }
 
         if (running.compareAndSet(false, true)) {
@@ -360,17 +360,13 @@ class VoiceService : Service() {
                         // easier to catch before it cancels anything.
                         Log.i(TAG, "capture started ambient=${machine.ambientLevel()} " +
                             "threshold=${machine.speechThreshold}")
-                        // If Maps is on top, saying the wake word should bring
-                        // the kiosk back so the person can see what it heard.
-                        // Only then: calling this on every capture would be a
-                        // no-op most of the time and an activity start from a
-                        // service every time, which is not free.
-                        // The same for Xiaomi Home: "Hey Jarvis" over the
-                        // camera view brings the kiosk back, as Back does.
-                        if (VoiceState.lastAction.startsWith("open_maps:opened") ||
-                            VoiceState.lastAction.startsWith("open_camera_app:opened")) {
-                            returnToKiosk("wake")
-                        }
+                        // HEY JARVIS ALWAYS ENDS ON THE HOME SCREEN (0.43.0,
+                        // Poom): over Maps, the camera app, the identity
+                        // check, the Control Panel and any screen added later
+                        // (KioskScreens tracks them all). Only when home is
+                        // not already in front, so a capture on the home
+                        // screen starts no activity.
+                        alarmHandler.post { comeHome(VoiceState.turnWake.ifEmpty { "wake" }) }
                     }
 
                     CaptureMachine.Step.CAPTURING -> recorder.appendPcm(buffer, frame, read)
@@ -577,6 +573,15 @@ class VoiceService : Service() {
      * The routes that do not depend on it: Back from Maps, and the adb command
      * in TESTING.md. Neither needs this to succeed.
      */
+    /**
+     * Closes every other screen of ours — the identity check cancels, never
+     * passes, and shuts its camera — then brings the kiosk forward. Main thread.
+     */
+    private fun comeHome(reason: String) {
+        val closed = com.mammonrn.phoneaikiosk.KioskScreens.leaveAllButHome(reason)
+        if (closed > 0 || !com.mammonrn.phoneaikiosk.KioskScreens.homeInFront) returnToKiosk(reason)
+    }
+
     fun returnToKiosk(reason: String) {
         val intent = Intent(this, com.mammonrn.phoneaikiosk.MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

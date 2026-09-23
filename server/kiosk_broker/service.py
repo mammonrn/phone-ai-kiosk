@@ -19,7 +19,7 @@ from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dash
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
-               auth_reset)
+               auth_reset, local_facts)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -80,6 +80,11 @@ def system_prompt_for(cfg: Config, text: str) -> str:
     # opens. From the dashboard's cache, never fetched.
     if speech_gate.has_maps_word(text):
         system += "\n" + maps_area_line(_dashboard(cfg).latest("place"))
+    # Checked facts about the kiosk's own area, only when the question names
+    # them (0.43.0: "MFU is private", "Doi Tung is in Mae Sai" — both wrong).
+    facts = local_facts.facts_line(text)
+    if facts:
+        system += "\n" + facts
     return system
 
 

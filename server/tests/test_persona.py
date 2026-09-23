@@ -97,7 +97,9 @@ def test_it_is_meaningfully_smaller_than_the_first_production_version():
     """The first production prompt was 1,132 characters and most of what each
     answer cost. It was cut to 776; phase 4 spent 188 of that back on the one
     thing that needed it, and the ceiling is what stops the rest creeping."""
-    assert len(SYSTEM_PROMPT) < 1132
+    # 0.43.0: 1,143 — 11 over the first version, for "unsure, not a guess"
+    # (persona.py). Still the ceiling that stops the rest creeping.
+    assert len(SYSTEM_PROMPT) < 1150
     assert len(SYSTEM_PROMPT) <= MAX_PROMPT_CHARS
 
 

@@ -215,6 +215,9 @@ object VoiceState : VoiceSink {
     fun dump(): String = buildString {
         appendLine("kiosk voice state")
         appendLine("  mic        : $mic")
+        // 0.43.0: which of our screens are open, and whether home is in front.
+        appendLine("  screens    : home-front=${com.mammonrn.phoneaikiosk.KioskScreens.homeInFront} " +
+            "open=${com.mammonrn.phoneaikiosk.KioskScreens.openScreens().ifEmpty { listOf("none") }.joinToString(",")}")
         appendLine("  detector   : $detector")
         appendLine("  score      : %.4f  (threshold %.2f)".format(wakeScore, threshold))
         appendLine("  detections : $detections")

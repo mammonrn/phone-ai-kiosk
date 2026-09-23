@@ -160,7 +160,8 @@ def test_the_prompt_and_the_clock_together_stay_affordable():
     # Thai runs about a token a character on this model, so this is roughly the
     # input tokens every request pays before the question is even read.
     # 1,160 -> 1,180 when the prompt grew 1,046 -> 1,095 (persona.py says why).
-    assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1180
+    # 1,180 -> 1,225 in 0.43.0: the prompt's "unsure, not a guess" line (+48).
+    assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1225
 
 
 def test_the_line_gives_the_time_the_way_thai_says_it_and_no_other_way():

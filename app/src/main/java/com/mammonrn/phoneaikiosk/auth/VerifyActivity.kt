@@ -58,7 +58,7 @@ import java.util.concurrent.Executors
  * A plain Activity with its own lifecycle registry, because CameraX binds to
  * a LifecycleOwner and the rest of the app has no androidx.activity.
  */
-class VerifyActivity : Activity(), LifecycleOwner {
+class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.KioskScreens.Leavable {
 
     enum class Mode { VERIFY, ENROLL, SET_PATTERN }
 
@@ -494,6 +494,21 @@ class VerifyActivity : Activity(), LifecycleOwner {
     }
 
     private var finishing = false
+
+    /**
+     * "Hey Jarvis" while this window is open (0.43.0, Poom): CANCELLED, never
+     * a pass — finishWith closes the camera first — and nothing is enrolled
+     * or changed. A pass already shown (its 1.5 s result) just closes now.
+     */
+    override fun leaveForJarvis() {
+        if (finishing) {
+            handler.removeCallbacksAndMessages(null)
+            finish()
+            return
+        }
+        log("left for jarvis")
+        finishWith(OUTCOME_CANCELLED, null)
+    }
 
     private fun finishWith(outcome: String, message: String?) {
         if (finishing) return
