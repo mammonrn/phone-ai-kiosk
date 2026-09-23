@@ -558,7 +558,13 @@ object DashboardState {
         val area = oilData?.optString("area", "กรุงเทพฯ") ?: "กรุงเทพฯ"
         val oilHeader = listOf("น้ำมันถูกสุด บาท/ลิตร",
                                "ราคา$area ${com.mammonrn.phoneaikiosk.ui.ScreenDate.fromThai(oilData?.optString("date", "") ?: "")}".trim(),
-                               ageWords(oilPanel)).filter { it.isNotEmpty() }.joinToString(" · ")
+                               // The announcement date already says when these
+                               // prices are from; the fetch's age is added only
+                               // when the source is down (stale), where it
+                               // matters — with both, the header ran off the
+                               // line on the A07 (0.35.0).
+                               if (usable(oilPanel)?.second == true) ageWords(oilPanel) else "")
+            .filter { it.isNotEmpty() }.joinToString(" · ")
         return Commodities(goldHeader, gold, oilHeader, oil)
     }
 
