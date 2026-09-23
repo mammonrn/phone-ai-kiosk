@@ -244,10 +244,11 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
     daily = raw.get("daily", {})
     code = int(current["weather_code"])
     # Open-Meteo sends 1 or 0. Missing would mean the field was dropped from the
-    # API, and daytime is the safer thing to assume about a word like "แดดจัด"
-    # only if it is actually day — so a missing value is treated as night-safe
-    # by falling through to the neutral words wherever the pair differs.
-    is_day = bool(int(current.get("is_day", 1)))
+    # API, and then nothing says whether the sun is up — so a missing value is
+    # read as night, which picks the neutral word ("ฟ้าโปร่ง", never "แดด")
+    # wherever the day and night words differ. Wrong by day is a milder word;
+    # wrong by night is the bug this field was added to fix.
+    is_day = bool(int(current.get("is_day", 0)))
     return {
         "temp_c": round(float(current["temperature_2m"]), 1),
         "humidity": int(current["relative_humidity_2m"]),

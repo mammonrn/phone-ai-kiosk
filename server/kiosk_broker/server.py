@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +21,18 @@ from .config import Config
 from .service import handle_chat, handle_dashboard, handle_stt, handle_tts
 
 log = logging.getLogger("kiosk_broker")
+
+_QUERY = re.compile(r"\?[^\s\"']*")
+
+
+def without_query(text: str) -> str:
+    """A request line with every query string removed, path kept.
+
+    http.server hands `log_message` the request line quoted ("GET /x?a=1
+    HTTP/1.1") and `log_error` the same thing inside repr() quotes, so the query
+    ends at whitespace or at either kind of quote.
+    """
+    return _QUERY.sub("", text)
 
 
 def _one(params: dict, name: str):
@@ -59,10 +72,13 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt: str, *args) -> None:
-        # The default writes the request line to stderr. Harmless today, but it
-        # is one refactor away from writing a query string, so it is replaced
-        # rather than trusted; the real logging happens in the service.
-        log.debug("http %s", fmt % args)
+        # The default writes the request line to stderr, and on /v1/dashboard
+        # the request line's query string IS the phone's position. Replacing
+        # stderr with log.debug was not enough on its own: turning on DEBUG to
+        # chase a bug would have written the coordinates to the journal. The
+        # query string is cut off here, for every route, before anything sees
+        # it; the real logging happens in the service.
+        log.debug("http %s", without_query(fmt % args))
 
     def _drain(self, remaining: int) -> bool:
         """Reads and discards a request body we are about to refuse.

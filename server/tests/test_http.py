@@ -2,6 +2,9 @@
 
 import dataclasses
 import json
+import logging
+import pathlib
+import re
 import socket
 import threading
 import urllib.error
@@ -10,7 +13,7 @@ import urllib.request
 import pytest
 
 from kiosk_broker import auth, store
-from kiosk_broker.server import make_server
+from kiosk_broker.server import make_server, without_query
 
 from conftest import FakeClient, FakeGroq
 
@@ -247,3 +250,43 @@ def test_a_body_between_the_app_cap_and_the_proxy_cap_reaches_the_handler(live):
     assert "เสียง" in body["error"]["message"], (
         "the audio route has to give the audio message, not the generic one"
     )
+
+
+# ---------------------------------------------------------- the position ---
+
+POSITION = ("13.7563", "100.5018")
+
+
+def test_the_request_line_loses_its_query_string():
+    assert without_query('"GET /v1/dashboard?lat=13.75&lon=100.5 HTTP/1.1" 200 -') ==         '"GET /v1/dashboard HTTP/1.1" 200 -'
+    # log_error's shape: the request line inside repr() quotes.
+    assert without_query("code 400, message Bad request ('GET /x?lat=1 HTTP/1.1')") ==         "code 400, message Bad request ('GET /x HTTP/1.1')"
+
+
+def test_debug_logging_does_not_write_the_position(live, caplog):
+    """http.server logs every request line through log_message. At DEBUG — the
+    level somebody turns on to chase a bug — that line used to carry
+    ?lat=&lon= straight into the journal."""
+    base, token, _cfg, _client = live
+    with caplog.at_level(logging.DEBUG, logger="kiosk_broker"):
+        # A route that 404s: the request line is logged either way, and the
+        # test needs no outside weather source to reach the logging.
+        _call(base, f"/v1/nope?lat={POSITION[0]}&lon={POSITION[1]}",
+              token=token, method="GET")
+    written = "\n".join(r.getMessage() for r in caplog.records)
+    assert "/v1/nope" in written, "the request was not logged at all"
+    for fragment in POSITION + ("13.75", "100.50", "lat="):
+        assert fragment not in written, fragment
+
+
+def test_nginx_writes_no_error_log_for_the_dashboard_route():
+    """The access log uses $uri, but nginx's error log has no format and quotes
+    the whole request line — every broker restart would have put the position
+    in /var/log/nginx/error.log. Static check: CI has no nginx."""
+    conf = (pathlib.Path(__file__).parent.parent / "install" / "nginx-kiosk.conf")
+    text = conf.read_text(encoding="utf-8")
+    block = text.split("location = /v1/dashboard {", 1)[1].split("\n    }", 1)[0]
+    assert "error_log /dev/null;" in block
+    fmt = text.split("log_format kiosk_timing", 1)[1].split(";", 1)[0]
+    # $request_time and $request_length are fine; these carry the query string.
+    assert not re.search(r"\$(request|request_uri|args|query_string|arg_\w+)(?![a-z_])", fmt)
