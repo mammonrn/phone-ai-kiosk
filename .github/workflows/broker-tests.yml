@@ -80,7 +80,9 @@ jobs:
           # a request that reached the model would fail, not pass.
           # The token is never echoed.
           token="$(python -m kiosk_broker issue-token ci-smoke | sed -n 's/^token : //p')"
-          for phrase in "ตั้งปลุก 11 โมงเช้าได้ไหมครับ" "ปลุกตีห้า" "ตั้งปลุกหกโมงครึ่ง ไปทำงาน"; do
+          # The last is how the transcriber actually wrote it on the A07
+          # ("ตั้งปลูก" — one tone mark off); it must still be the command.
+          for phrase in "ตั้งปลุก 11 โมงเช้าได้ไหมครับ" "ปลุกตีห้า" "ตั้งปลุกหกโมงครึ่ง ไปทำงาน" "ตั้งปลูก 11 โมงเช้า"; do
             body="$(python -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$phrase")"
             answer="$(curl -sS -X POST http://127.0.0.1:18770/v1/chat \
                       -H "Authorization: Bearer $token" \

@@ -172,3 +172,56 @@ def test_through_the_chat_endpoint_the_model_is_never_asked(conn, cfg, caplog, t
     assert client.calls == []
     written = "\n".join(r.getMessage() for r in caplog.records)
     assert "alarm=yes alarm_reason=set" in written
+
+
+# ------------------------------------------ 2026-09-23: "ปลุก" heard as "ปลูก"
+
+#: What the A07 showed when Poom said "ตั้งปลุก…": one tone mark off, like
+#: "กล้อง" heard as "กล่อง" (log: alarm=no alarm_reason=no-alarm-word chars=27).
+MISHEARD = [
+    ("ตั้งปลูก 11 โมงเช้า", (11, 0)),
+    ("ตั้งปลูก 11 โมงเช้าได้ไหมครับ", (11, 0)),
+    ("ช่วยตั้งปลูกตีห้าหน่อยครับ", (5, 0)),
+    ("ปลูกหกโมงครึ่ง", (6, 30)),
+    ("ตั้งนาฬิกาปลูก 7 โมง", (7, 0)),
+    ("ตั้งปลูกหกโมงไปเดินเล่น", (6, 0)),
+    ("ตั้งปลูกหกโมงได้ป่าว", (6, 0)),
+]
+
+
+@pytest.mark.parametrize("text,when", MISHEARD)
+def test_the_misheard_word_in_a_command_is_still_the_command(text, when):
+    command, why = alarms.alarm_match(text)
+    assert command is not None and command["kind"] == "set", why
+    assert (command["hour"], command["minute"]) == when
+    assert why == "set:heard-ปลูก"
+
+
+@pytest.mark.parametrize("text", ["ปิดปลูกไปทำงาน", "ยกเลิกปลูกหกโมงครึ่ง", "เปิดปลูกทั้งหมด"])
+def test_switching_off_and_on_through_the_misheard_word(text):
+    command, _ = alarms.alarm_match(text)
+    assert command is not None and command["kind"] == "enable"
+
+
+@pytest.mark.parametrize("text,why", [
+    ("ปลูกต้นไม้ตอนหกโมงเช้าดีไหม", "planting"),
+    ("ปลูกผักตอนเช้า", "planting"),
+    ("ตั้งปลูกต้นไม้ 7 โมง", "planting"),            # the shape of a command, about a tree
+    ("ช่วยปลูกดอกไม้หน่อย", "planting"),
+    ("อยากปลูกมะม่วงหกโมง", "near-miss:ปลูก"),        # not a command's shape
+    ("เราควรปลูกอะไรดี", "near-miss:ปลูก"),
+])
+def test_planting_is_never_an_alarm(text, why):
+    command, reason = alarms.alarm_match(text)
+    assert command is None
+    assert reason == why
+
+
+def test_through_the_chat_endpoint_the_misheard_command_sets_an_alarm(conn, cfg, caplog):
+    client = FakeClient()
+    with caplog.at_level(logging.INFO, logger="kiosk_broker"):
+        status, body = _ask(conn, cfg, client, "ตั้งปลูก 11 โมงเช้าได้ไหมครับ")
+    assert status == 200 and body["action"]["type"] == "set_alarm"
+    assert client.calls == []
+    written = "\n".join(r.getMessage() for r in caplog.records)
+    assert "alarm=yes alarm_reason=set:heard-ปลูก" in written

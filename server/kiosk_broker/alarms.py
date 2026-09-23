@@ -233,6 +233,40 @@ def _am_pm_to_24(squashed: str) -> str:
     return _AM_PM.sub(repl, squashed)
 
 
+#: "ปลุก" as the transcriber sometimes writes it. Seen on the A07 on 2026-09-23:
+#: Poom said "ตั้งปลุก…" and the screen showed "ตั้งปลูก…" — one tone mark,
+#: like "กล้อง" heard as "กล่อง" — so the command went to the model. ปลูก is a
+#: real word (to plant), so it is read as ปลุก only in the SHAPE of an alarm
+#: command, and never when the sentence is about planting.
+_MISHEARD = "ปลูก"
+
+#: The shapes in which "ปลูก" can only mean ปลุก: set, name the clock, switch
+#: off or on, cancel — or a sentence that opens with it (then a time must follow).
+_MISHEARD_COMMANDS = ("ตั้งปลูก", "นาฬิกาปลูก", "เวลาปลูก", "ปิดปลูก", "เปิดปลูก", "ยกเลิกปลูก")
+
+#: What a sentence about PLANTING says. Any of these and "ปลูก" is planting.
+#: Not "ดิน" or "ป่า" on their own: they hide inside "เดิน" and "ป่าว", and
+#: "ตั้งปลูกหกโมงไปเดินเล่น" / "…ได้ป่าว" are alarm commands.
+_PLANTING = ("ต้นไม้", "ต้น", "ผัก", "ดอกไม้", "หญ้า", "เมล็ด", "กล้า", "สวน", "พืช",
+             "ข้าว", "ไม้", "กระถาง", "ปุ๋ย", "ผลไม้", "ปลูกป่า", "ลงดิน", "ปลูกฝัง",
+             "ปลูกสร้าง", "ปลูกบ้าน", "ปลูกถ่าย")
+
+
+def _hear_misheard(squashed: str) -> tuple[str, str | None]:
+    """(text to parse, the note for the log). "ปลูก" becomes "ปลุก" only in a
+    command's shape and never beside a planting word; otherwise it is left and
+    the log says it was a near miss."""
+    if "ปลุก" in squashed or _MISHEARD not in squashed:
+        return squashed, None
+    if any(word in squashed for word in _PLANTING):
+        return squashed, "planting"
+    shaped = (any(shape in squashed for shape in _MISHEARD_COMMANDS)
+              or squashed.startswith(_MISHEARD) or squashed.startswith("ช่วย" + _MISHEARD))
+    if not shaped:
+        return squashed, "near-miss:ปลูก"
+    return squashed.replace(_MISHEARD, "ปลุก"), "heard:ปลูก"
+
+
 def alarm_match(text) -> tuple[dict | None, str]:
     """(the alarm command or None, WHY) — the why is safe to log, like
     actions.camera_match: one of our own fixed strings, never the transcript.
@@ -249,8 +283,19 @@ def alarm_match(text) -> tuple[dict | None, str]:
     squashed = _am_pm_to_24("".join(text.split()).lower())
     if not squashed:
         return None, "empty"
+    squashed, heard = _hear_misheard(squashed)
     if "ปลุก" not in squashed:
-        return None, "no-alarm-word"
+        return None, heard if heard in ("planting", "near-miss:ปลูก") else "no-alarm-word"
+    command, why = _command(squashed)
+    if command is not None and heard == "heard:ปลูก":
+        # A command read from the misheard word: said so in the log, so how
+        # often the transcriber does this can be counted.
+        why = f"{why}:heard-ปลูก"
+    return command, why
+
+
+def _command(squashed: str) -> tuple[dict | None, str]:
+    """The command in a space-free, already-normalised text containing ปลุก."""
     if len(squashed) > MAX_COMMAND_CHARS:
         return None, "too-long"
     asked = _POLITE_ENDING.sub("", squashed)
