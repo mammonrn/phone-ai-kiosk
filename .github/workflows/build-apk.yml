@@ -5,17 +5,45 @@ name: Build Android APK
 # there so Google Sign-In gets a stable, registered certificate. Phase 0 signs
 # nothing that anybody registers, so AGP's auto-generated debug key is fine.
 
+# ONLY WHEN THE APP CAN HAVE CHANGED (Poom, 2026-09-23: the account is GitHub
+# Free with no card, so running out of Actions minutes blocks CI until the
+# 1st). A commit that touches only the broker, the docs or DESIGN.md builds
+# nothing here; broker-tests.yml covers server/**. workflow_dispatch stays, so
+# an APK can always be built by hand from the Actions tab.
 on:
   push:
     branches:
       - main
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/build-apk.yml'
   pull_request:
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
 jobs:
   build-debug-apk:
     name: Build debug APK
     runs-on: ubuntu-latest
+    # actions: write lets the last step delete the older APK artifacts with
+    # this run's own token; nothing else is granted.
+    permissions:
+      contents: read
+      actions: write
 
     steps:
       - name: Check out repository
@@ -234,4 +262,26 @@ jobs:
           name: phone-ai-kiosk-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          # An upper bound only. What keeps storage small is the next step,
+          # which keeps the newest APKs however old they are — so the latest
+          # APK is always there to download, even after a quiet week.
           retention-days: 30
+
+      - name: Keep only the newest APKs
+        # KEEP_APKS newest "phone-ai-kiosk-debug-apk" artifacts stay; older
+        # ones are deleted. On main only: a pull request never deletes the
+        # APKs main produced. A failure here never fails the build — the APK
+        # above is already uploaded.
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_APKS: 3
+        run: |
+          ids=$(gh api --paginate "repos/${{ github.repository }}/actions/artifacts?per_page=100&name=phone-ai-kiosk-debug-apk" \
+                  --jq '.artifacts[] | select(.expired == false) | "\(.created_at) \(.id)"' | sort -r | awk 'NR > ENVIRON["KEEP_APKS"] {print $2}')
+          count=0
+          for id in $ids; do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id" && count=$((count + 1))
+          done
+          echo "deleted $count older APK artifact(s); kept the newest $KEEP_APKS"
