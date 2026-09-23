@@ -515,11 +515,17 @@ class MainActivity : Activity() {
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 gravity = if (end) android.view.Gravity.END else android.view.Gravity.START
-                setPadding(0, (2 * density).toInt(), (padEndDp * density).toInt(), 0)
+                // No top padding: the row's own line height is the spacing, so
+                // the window is no taller than the paragraph it replaced.
+                setPadding(0, 0, (padEndDp * density).toInt(), 0)
+                includeFontPadding = false
             }
         for (row in rows) {
+            // Baseline-aligned, not centred: a Thai label and pixel digits
+            // have different heights, and centring them left the digits
+            // floating above the words (seen on the A07, 0.34.0).
             table.addView(android.widget.TableRow(this).apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL
+                isBaselineAligned = true
                 addView(cell(row.label, labelSp, false, R.color.retro_text, 10))
                 addView(cell(RetroType.pixelify(row.price, pixelFace), labelSp, true, R.color.retro_text, 10))
                 addView(cell(RetroType.pixelify(row.extra, pixelFace), extraSp, false,
