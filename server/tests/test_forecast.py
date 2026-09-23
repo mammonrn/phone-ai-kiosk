@@ -89,3 +89,61 @@ def test_the_ecmwf_value_wins_and_best_match_fills_what_ecmwf_lacks():
              "temperature_2m_max_ecmwf_ifs025": [31.4], "temperature_2m_max_best_match": [32.0]}
     assert dashboard_mod._pick(block, "uv_index_max") == [8.35, 8.35]
     assert dashboard_mod._pick(block, "temperature_2m_max") == [31.4]
+
+
+# --- PM2.5 (Poom approved, 2026-09-23) ---------------------------------------
+
+@pytest.mark.parametrize("value,word", [
+    (0, "ดีมาก"), (8.8, "ดีมาก"), (15.0, "ดีมาก"), (15.1, "ดี"), (25.0, "ดี"),
+    (25.1, "ปานกลาง"), (37.5, "ปานกลาง"), (37.6, "เริ่มมีผลต่อสุขภาพ"),
+    (75.0, "เริ่มมีผลต่อสุขภาพ"), (75.1, "มีผลต่อสุขภาพ"), (400, "มีผลต่อสุขภาพ"),
+])
+def test_pm25_words_follow_the_pcd_2566_bands(value, word):
+    assert dashboard_mod.pm25_word(value) == word
+
+
+def test_fetch_air_reads_the_current_pm25(monkeypatch):
+    seen = []
+    monkeypatch.setattr(dashboard_mod, "_get",
+                        lambda url, timeout: seen.append(url) or {"current": {"pm2_5": 41.26}})
+    assert dashboard_mod.fetch_air(20.05, 99.89, 5) == {"pm25": 41.3, "pm25_word": "เริ่มมีผลต่อสุขภาพ"}
+    assert seen[0].startswith("https://air-quality-api.open-meteo.com/") and "current=pm2_5" in seen[0]
+
+
+@pytest.mark.parametrize("answer", [{}, {"current": {}}, {"current": {"pm2_5": None}},
+                                    {"current": {"pm2_5": -3}}, {"current": {"pm2_5": 99999}}])
+def test_fetch_air_refuses_a_missing_or_impossible_value(monkeypatch, answer):
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: answer)
+    with pytest.raises(ValueError):
+        dashboard_mod.fetch_air(20.05, 99.89, 5)
+
+
+def test_the_detail_line_tells_the_cached_dust(cfg, monkeypatch):
+    forget_dashboards()
+    board = _dashboard(cfg)
+    now = time.time()
+    board._cache["weather:20.05:99.89"] = (now - 60, dashboard_mod.Panel(True, {"temp_c": 31.5, "rain_chance": 12}))
+    board._cache["air:20.05:99.89"] = (now - 60, dashboard_mod.Panel(True, {"pm25": 41.3, "pm25_word": "เริ่มมีผลต่อสุขภาพ"}))
+    line = dashboard_mod.weather_detail_line(board)
+    assert "ฝุ่น PM2.5 ตอนนี้ 41.3 มคก./ลบ.ม. (เริ่มมีผลต่อสุขภาพ)" in line
+    assert "ห้ามเดา" not in line
+    forget_dashboards()
+
+
+def test_the_dust_is_told_even_without_a_forecast(cfg):
+    forget_dashboards()
+    board = _dashboard(cfg)
+    board._cache["air:20.05:99.89"] = (time.time() - 60, dashboard_mod.Panel(True, {"pm25": 8.8, "pm25_word": "ดีมาก"}))
+    line = dashboard_mod.weather_detail_line(board)
+    assert line.startswith("พยากรณ์: ยังไม่มีข้อมูล ห้ามเดา")
+    assert "ฝุ่น PM2.5 ตอนนี้ 8.8 มคก./ลบ.ม. (ดีมาก)" in line
+    forget_dashboards()
+
+
+def test_stale_dust_is_not_told_as_now(cfg):
+    forget_dashboards()
+    board = _dashboard(cfg)
+    old = time.time() - dashboard_mod.MAX_WEATHER_AGE_SECONDS - 60
+    board._cache["air:20.05:99.89"] = (old, dashboard_mod.Panel(True, {"pm25": 8.8, "pm25_word": "ดีมาก"}))
+    assert "ฝุ่น PM2.5 ยังไม่มีข้อมูล ห้ามเดา" in dashboard_mod.weather_detail_line(board)
+    forget_dashboards()

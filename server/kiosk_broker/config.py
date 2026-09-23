@@ -122,6 +122,9 @@ class Config:
     #:   Binance is generous enough for a minute, which is the only one of the
     #:   three where freshness is worth anything.
     dashboard_weather_ttl: int = 600
+    #:   PM2.5 (Open-Meteo air quality, CAMS): hourly data, so every 30
+    #:   minutes is already twice as often as it changes.
+    dashboard_air_ttl: int = 1800
     dashboard_gold_ttl: int = 300
     #:   Oil prices change at most once a day, and every call to the source is a
     #:   page load on Kapook: three hours, and the old value with its age if

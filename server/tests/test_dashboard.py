@@ -115,6 +115,27 @@ def test_a_good_snapshot_carries_every_panel(cfg, fake_sources):
         assert snapshot[name]["credit"]
 
 
+def test_the_air_panel_carries_pm25_and_its_credit(cfg, fake_sources, monkeypatch):
+    monkeypatch.setattr(dashboard_mod, "fetch_air",
+                        lambda latitude, longitude, timeout: {"pm25": 8.8, "pm25_word": "ดีมาก"})
+    air = _snapshot(cfg)["air"]
+    assert air["ok"] is True and air["pm25"] == 8.8 and air["pm25_word"] == "ดีมาก"
+    # CC BY 4.0 and the Copernicus terms ask for both names.
+    assert "Open-Meteo" in air["credit"] and "Copernicus" in air["credit"]
+
+
+def test_no_air_data_leaves_every_other_panel_alone(cfg, fake_sources, monkeypatch):
+    """The air-quality API down is one panel marked not-ok, never a broken
+    snapshot: the weather card keeps its numbers and just shows no dust."""
+    def down(latitude, longitude, timeout):
+        raise ValueError("no pm2_5 in the air-quality answer")
+    monkeypatch.setattr(dashboard_mod, "fetch_air", down)
+    snapshot = _snapshot(cfg)
+    assert snapshot["air"]["ok"] is False and "pm25" not in snapshot["air"]
+    for name in ("weather", "gold", "crypto"):
+        assert snapshot[name]["ok"] is True, name
+
+
 def test_the_quote_currency_is_stated_rather_than_implied(cfg, fake_sources):
     """Binance quotes USDT. It tracks the dollar; it is not the dollar, and the
     payload says which one it is."""

@@ -170,3 +170,19 @@ def client() -> FakeClient:
 @pytest.fixture
 def groq_client() -> FakeGroq:
     return FakeGroq()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network_for_the_dashboard(monkeypatch):
+    """No test reaches a real weather, air, gold, fuel or crypto API. Found on
+    2026-09-23: the oil and air panels had no stub, so the suite quietly called
+    Open-Meteo and chnwt.dev on every run. A test that wants an answer patches
+    _get (or a fetch_* function) itself, which overrides this."""
+    import urllib.error
+
+    from kiosk_broker import dashboard as dashboard_mod
+
+    def refuse(url, timeout):
+        raise urllib.error.URLError("network is disabled in the tests")
+
+    monkeypatch.setattr(dashboard_mod, "_get", refuse)

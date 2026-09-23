@@ -142,6 +142,7 @@ CREDITS = {
     "crypto": "Binance · อันดับจาก CoinGecko",
     "gold": "สมาคมค้าทองคำ ผ่าน chnwt.dev",
     "oil": "ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev",
+    "air": "Open-Meteo (CC BY 4.0) · CAMS, Copernicus Atmosphere Monitoring Service",
     "place": "© OpenStreetMap contributors (ODbL)",
 }
 
@@ -395,6 +396,43 @@ GOLD_PURITY_PCT = 96.5
 GOLD_PURITY_SOURCE = "https://classic.goldtraders.or.th/default.aspx"
 
 
+#: PM2.5 (Poom approved, 2026-09-23): Open-Meteo's air-quality API — the same
+#: provider and terms as the weather (free for non-commercial use incl. personal
+#: home automation, under 10,000 calls a day, CC BY 4.0), with its data from
+#: CAMS, the Copernicus Atmosphere Monitoring Service, which the credit names.
+#: No key. Hourly values; asked every 30 minutes per position.
+AIR_URL = (
+    "https://air-quality-api.open-meteo.com/v1/air-quality"
+    "?latitude={lat}&longitude={lon}&current=pm2_5&timezone=Asia%2FBangkok"
+)
+
+#: Thailand's Pollution Control Department bands for PM2.5, µg/m³ (the 2566 /
+#: 2023 announcement, pcd.go.th/pcd_news/30028): 0-15 ดีมาก, 15-25 ดี,
+#: 25.1-37.5 ปานกลาง, 37.6-75 เริ่มมีผลต่อสุขภาพ, 75.1 and up มีผลต่อสุขภาพ.
+#: The bands are for a 24-hour average; the value here is this hour's, so the
+#: word is a reading of now, not the official daily index.
+PM25_BANDS = ((15.0, "ดีมาก"), (25.0, "ดี"), (37.5, "ปานกลาง"), (75.0, "เริ่มมีผลต่อสุขภาพ"))
+PM25_TOP = "มีผลต่อสุขภาพ"
+
+
+def pm25_word(value: float) -> str:
+    for ceiling, word in PM25_BANDS:
+        if value <= ceiling:
+            return word
+    return PM25_TOP
+
+
+def fetch_air(latitude: float, longitude: float, timeout: float) -> dict:
+    raw = _get(AIR_URL.format(lat=latitude, lon=longitude), timeout)
+    value = (raw.get("current") or {}).get("pm2_5")
+    if value is None:
+        raise ValueError("no pm2_5 in the air-quality answer")
+    pm = round(float(value), 1)
+    if not 0 <= pm <= 2000:
+        raise ValueError("pm2_5 out of range")
+    return {"pm25": pm, "pm25_word": pm25_word(pm)}
+
+
 def fetch_oil(timeout: float) -> dict:
     """Thai fuel prices, the three cheapest brands per fuel. See oil.py."""
     from . import oil
@@ -641,6 +679,10 @@ class Dashboard:
             f"weather:{lat}:{lon}", now, self.cfg.dashboard_weather_ttl,
             lambda: fetch_weather(lat, lon, self.cfg.dashboard_timeout),
             credit=CREDITS["weather"])
+        air = self._panel(
+            f"air:{lat}:{lon}", now, self.cfg.dashboard_air_ttl,
+            lambda: fetch_air(lat, lon, self.cfg.dashboard_timeout),
+            credit=CREDITS["air"])
         place = self._panel(
             f"place:{lat}:{lon}", now, self.cfg.dashboard_place_ttl,
             lambda: fetch_place(lat, lon, self.cfg.dashboard_timeout),
@@ -660,6 +702,7 @@ class Dashboard:
 
         return {
             "weather": weather.as_json(),
+            "air": air.as_json(),
             "gold": gold.as_json(),
             "oil": oil.as_json(),
             "crypto": crypto.as_json(),
@@ -804,14 +847,15 @@ def uv_word(uv: float) -> str:
 
 
 def weather_detail_line(board: "Dashboard", now: float | None = None) -> str:
-    """The outlook and today's rain, wind and UV, for a question about them.
-    From the cache, never fetched — like weather_line. Dust has no source yet,
-    so the model is told so rather than left to guess."""
+    """The outlook, today's rain, wind and UV, and the PM2.5 now, for a
+    question about them. From the cache, never fetched — like weather_line.
+    Whatever is missing is said to be missing, so the model does not guess;
+    the dust is told even when the forecast is not there, and the other way."""
+    parts = []
     found = board.latest("weather", now)
     if found is None or found[0] > MAX_WEATHER_AGE_SECONDS:
-        return "พยากรณ์: ยังไม่มีข้อมูล ห้ามเดา"
-    data = found[1]
-    parts = []
+        parts.append("พยากรณ์: ยังไม่มีข้อมูล ห้ามเดา")
+    data = {} if parts else found[1]
     if data.get("outlook"):
         parts.append(f"พยากรณ์(ECMWF): {data['outlook']}")
     today = []
@@ -823,7 +867,11 @@ def weather_detail_line(board: "Dashboard", now: float | None = None) -> str:
         today.append(f"UV {_n(data['uv'])} ({uv_word(float(data['uv']))})")
     if today:
         parts.append("วันนี้ " + " ".join(today))
-    parts.append("ฝุ่น PM2.5 ยังไม่มีข้อมูล ห้ามเดา")
+    air = board.latest("air", now)
+    if air is not None and air[0] <= MAX_WEATHER_AGE_SECONDS and air[1].get("pm25") is not None:
+        parts.append(f"ฝุ่น PM2.5 ตอนนี้ {_n(air[1]['pm25'])} มคก./ลบ.ม. ({air[1].get('pm25_word', '')})")
+    else:
+        parts.append("ฝุ่น PM2.5 ยังไม่มีข้อมูล ห้ามเดา")
     return " · ".join(parts)[:MAX_WEATHER_DETAIL_CHARS]
 
 
