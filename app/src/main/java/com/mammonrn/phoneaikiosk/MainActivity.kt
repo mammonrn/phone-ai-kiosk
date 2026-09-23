@@ -91,8 +91,13 @@ class MainActivity : Activity() {
     /** News for the price windows: a move of 3% (crypto) or 1% (gold and fuel). */
     private val cryptoMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
         com.mammonrn.phoneaikiosk.ui.MoveTracker.CRYPTO_PCT)
-    private val commodityMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
+    // Gold and fuel are two PAGES of one card (0.38), so each has its own
+    // tracker: news on the fuel page is the fuel's own 1% move.
+    private val goldMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
         com.mammonrn.phoneaikiosk.ui.MoveTracker.COMMODITIES_PCT)
+    private val oilMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
+        com.mammonrn.phoneaikiosk.ui.MoveTracker.COMMODITIES_PCT)
+    private lateinit var commodityPages: com.mammonrn.phoneaikiosk.ui.PagedPanel
 
     // ---------------------------------------------------------- the card stack
     // Which window is open, folded or first: ui/CardBoard decides, this moves
@@ -320,11 +325,23 @@ class MainActivity : Activity() {
         // rule (a whole degree or a new sky word). DESIGN.md, "Cards".
         val prices = DashboardState.cardPrices(payload)
         prices["crypto"]?.let { cryptoMoves.update(it) }
-        prices["gold"]?.let { commodityMoves.update(it) }
+        prices["gold"]?.let { all ->
+            all.filterKeys { !it.startsWith("oil:") }.takeIf { it.isNotEmpty() }?.let { goldMoves.update(it) }
+            all.filterKeys { it.startsWith("oil:") }.takeIf { it.isNotEmpty() }?.let { oilMoves.update(it) }
+        }
+        // Each page's own news, for its tab: the first prices are a baseline
+        // (generation 1), every later generation is a 1% move on that page.
+        if (goldMoves.generation > 0) commodityPages.news("gold", "g${goldMoves.generation}", nowMs)
+        if (oilMoves.generation > 0) commodityPages.news("oil", "o${oilMoves.generation}", nowMs)
         for ((id, fact) in DashboardState.cardFacts(payload)) {
             val signature = when (id) {
                 "crypto" -> if (cryptoMoves.generation > 0) "move:${cryptoMoves.generation}" else fact.first
-                "gold" -> if (commodityMoves.generation > 0) "move:${commodityMoves.generation}" else fact.first
+                // The card's news is either page's news. Counted from each
+                // tracker's first prices, so fuel arriving after gold is not news.
+                "gold" -> if (goldMoves.generation > 0 || oilMoves.generation > 0)
+                              "move:${(goldMoves.generation - 1).coerceAtLeast(0)}:" +
+                                  "${(oilMoves.generation - 1).coerceAtLeast(0)}"
+                          else fact.first
                 else -> fact.first
             }
             board.report(id, signature, nowMs)
@@ -518,8 +535,19 @@ class MainActivity : Activity() {
             barPx[slot.id] = bar
             openPx[slot.id] = bar + card.body.measuredHeight + bodyLp.topMargin + bodyLp.bottomMargin
         }
-        return board.fit(slots, openPx, barPx, height, nowMs)
+        val fitted = board.fit(slots, openPx, barPx, height, nowMs)
+        val report = "avail=$height " + slots.joinToString(" ") { s ->
+            "${s.id}:${openPx[s.id]}/${barPx[s.id]}${if (s.open) "o" else "f"}" +
+                "${if (fitted.first { it.id == s.id }.open) "O" else "F"}"
+        }
+        if (report != lastFitReport) {
+            lastFitReport = report
+            android.util.Log.i(SCREEN_TAG, "fit $report")
+        }
+        return fitted
     }
+
+    private var lastFitReport = ""
 
     /** The alarms window: the list, the stop button while one rings, its news. */
     private fun showAlarms(nowMs: Long) {
@@ -623,9 +651,9 @@ class MainActivity : Activity() {
         goldHeader.text = RetroType.pixelify(c.goldHeader, pixelFace)
         fillTable(goldTable, c.gold, labelSp = sp(R.dimen.type_primary), extraSp = sp(R.dimen.type_minor),
                   extraDim = true)
-        val oilState = if (c.oilHeader == null) android.view.View.GONE else android.view.View.VISIBLE
-        oilHeader.visibility = oilState
-        oilTable.visibility = oilState
+        // No fuel data (an older broker): no fuel page and, with one page left,
+        // no tabs — the card is the gold table alone, as before.
+        commodityPages.setPageAvailable("oil", c.oilHeader != null)
         if (c.oilHeader != null) {
             oilHeader.text = RetroType.pixelify(c.oilHeader, pixelFace)
             fillTable(oilTable, c.oil.orEmpty(), labelSp = sp(R.dimen.type_secondary),
@@ -792,6 +820,10 @@ class MainActivity : Activity() {
         weatherStats = findViewById(R.id.weather_stats)
         weatherOutlook = findViewById(R.id.weather_outlook)
         cardStack = findViewById(R.id.card_stack)
+        commodityPages = findViewById(R.id.commodity_pages)
+        // Turning a page is a touch on the card: it stays open two minutes and
+        // CardBoard.fit will not fold it under the finger.
+        commodityPages.onTurned = { board.touch("gold", SystemClock.elapsedRealtime()) }
         alarmsBody = findViewById(R.id.alarms_body)
         alarmStop = findViewById(R.id.alarm_stop)
         setUpCards()

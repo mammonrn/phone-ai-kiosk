@@ -421,43 +421,64 @@
                      instead of a footnote under them. Rows are built in
                      MainActivity.showCommodities from DashboardState.commodities.
                      DESIGN.md, "การ์ดทองและน้ำมัน". -->
-                <TextView
-                    android:id="@+id/gold_header"
+                <!-- TWO PAGES, gold and fuel (0.38, Poom: "การ์ดแบบสไลด์"), one
+                     showing at a time under property-sheet tabs, to make the card
+                     shorter. The pages are ui/PagedPanel's children; the tag is
+                     "id|tab title". DESIGN.md, "การ์ดหลายหน้า". -->
+                <com.mammonrn.phoneaikiosk.ui.PagedPanel
+                    android:id="@+id/commodity_pages"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:textColor="@color/retro_dim"
-                    android:textSize="@dimen/type_label"
-                    android:fontFamily="@font/plex_thai"
-                    android:text="@string/data_loading" />
+                    android:layout_height="wrap_content">
 
-                <TableLayout
-                    android:id="@+id/gold_table"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:shrinkColumns="2"
-                    android:stretchColumns="2" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:tag="gold|ทอง">
 
-                <TextView
-                    android:id="@+id/oil_header"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:textColor="@color/retro_dim"
-                    android:textSize="@dimen/type_label"
-                    android:fontFamily="@font/plex_thai"
-                    android:visibility="gone" />
+                        <TextView
+                            android:id="@+id/gold_header"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:ellipsize="end"
+                            android:textColor="@color/retro_dim"
+                            android:textSize="@dimen/type_label"
+                            android:fontFamily="@font/plex_thai"
+                            android:text="@string/data_loading" />
 
-                <TableLayout
-                    android:id="@+id/oil_table"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:shrinkColumns="2"
-                    android:stretchColumns="2"
-                    android:visibility="gone" />
+                        <TableLayout
+                            android:id="@+id/gold_table"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:shrinkColumns="2"
+                            android:stretchColumns="2" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:tag="oil|น้ำมัน">
+
+                        <TextView
+                            android:id="@+id/oil_header"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:ellipsize="end"
+                            android:textColor="@color/retro_dim"
+                            android:textSize="@dimen/type_label"
+                            android:fontFamily="@font/plex_thai" />
+
+                        <TableLayout
+                            android:id="@+id/oil_table"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:shrinkColumns="2"
+                            android:stretchColumns="2" />
+                    </LinearLayout>
+                </com.mammonrn.phoneaikiosk.ui.PagedPanel>
             </LinearLayout>
         </LinearLayout>
 
