@@ -395,6 +395,8 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN -p com.mammonrn.
 
 ```powershell
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY -p com.mammonrn.phoneaikiosk.debug
+# ยาวจนต้องเลื่อน: ทวนคำตอบ 1-4 รอบ
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY --ei times 3 -p com.mammonrn.phoneaikiosk.debug
 ```
 
 ### อ่านสถานะด้วย dumpsys (แนะนำ ไม่ต้องพึ่ง uiautomator)

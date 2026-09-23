@@ -31,9 +31,12 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 // no audio, no network and no cost — so the Jarvis window's
                 // scrolling and voice-following can be checked on the phone
                 // with a screenshot. Our own sample text, never anybody's.
+                // --ei times N repeats the answer (1-4), for a window that has
+                // to scroll; the "speaking" time grows with it.
+                val times = intent.getIntExtra("times", 1).coerceIn(1, 4)
                 VoiceState.heard = SAMPLE_QUESTION
-                VoiceState.reply = SAMPLE_REPLY
-                VoiceState.speakingDurationMs = SAMPLE_SPEAKING_MS
+                VoiceState.reply = List(times) { SAMPLE_REPLY }.joinToString(" ")
+                VoiceState.speakingDurationMs = SAMPLE_SPEAKING_MS * times
                 VoiceState.speakingSinceMs = android.os.SystemClock.elapsedRealtime()
             }
 
