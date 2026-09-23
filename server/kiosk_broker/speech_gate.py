@@ -14,6 +14,11 @@ HOW IT DECIDES — every rule is here, and every answer carries its reason:
   1. hallucination   Phrases speech-to-text models produce from noise or music
                      (video outros, subtitle credits). Rejected outright.
   2. no-words        Fewer than two letters or digits. Rejected outright.
+  2b. too-much-text  More characters than the audio could hold: over 30 a
+                     second. Thai speech runs about 15-20; on 2026-09-23 a
+                     Jarvis-button capture of 3 s of room noise came back as 239
+                     characters (80 a second) and was answered. Applies to the
+                     button too — a press is deliberate, noise is not.
   3. command         The camera phrase (actions.camera_match), an alarm command
                      (alarms.alarm_command) or a Maps request.
                      Always passes: these are the kiosk's own commands.
@@ -58,6 +63,9 @@ VERY_UNSURE_LOGPROB = -1.0
 
 #: A score this high rejects the turn.
 REJECT_AT = 2
+
+#: Characters per second of audio above which a transcript cannot be speech.
+MAX_CHARS_PER_SECOND = 30.0
 
 #: What Whisper-family models write when there is noise or music and no speech.
 #: Matched after removing spaces and lower-casing. Kept to phrases no one asks a
@@ -118,13 +126,15 @@ def parse_wake(header: str | None) -> tuple[str, float | None]:
 
 def judge(text: str, *, no_speech_prob: float | None = None,
           avg_logprob: float | None = None, source: str = "unknown",
-          wake_score: float | None = None) -> Verdict:
+          wake_score: float | None = None, seconds: float | None = None) -> Verdict:
     squashed = "".join((text or "").split()).lower()
 
     if any(phrase in squashed for phrase in _HALLUCINATIONS):
         return Verdict(False, "hallucination")
     if len(_LETTER_OR_DIGIT.findall(squashed)) < 2:
         return Verdict(False, "no-words")
+    if seconds and seconds > 0 and len(squashed) / seconds > MAX_CHARS_PER_SECOND:
+        return Verdict(False, "too-much-text")
     if (actions.camera_request(text) or alarms.alarm_command(text) is not None
             or any(word in squashed for word in _MAPS_WORDS)):
         return Verdict(True, "command")

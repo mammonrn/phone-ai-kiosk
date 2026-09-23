@@ -196,3 +196,19 @@ def test_a_gated_turn_is_still_billed(conn, cfg):
 def test_alarm_commands_are_the_kiosks_own_commands(text):
     verdict = judge(text, avg_logprob=-0.7, source="wake", wake_score=0.41)
     assert verdict.passed and verdict.reason == "command"
+
+
+def test_more_text_than_the_audio_could_hold_is_noise_even_from_the_button():
+    """2026-09-23: a button capture of 3 s of room noise came back as 239
+    characters and was answered. 80 characters a second is not speech."""
+    verdict = judge("ก" * 239, source="button", seconds=3.0)
+    assert not verdict.passed and verdict.reason == "too-much-text"
+
+
+@pytest.mark.parametrize("text,seconds", [
+    ("ตั้งปลุก 11 โมงเช้าได้ไหมครับ", 2.4),        # a real request, ~11 chars/s
+    ("วันนี้อากาศเป็นยังไงบ้างแล้วควรพกร่มไหม", 2.2),   # fast speech, ~17 chars/s
+    ("กี่โมง", 0.5),
+])
+def test_real_speech_is_well_under_the_limit(text, seconds):
+    assert judge(text, source="button", seconds=seconds).passed

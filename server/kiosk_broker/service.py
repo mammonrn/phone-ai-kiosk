@@ -478,7 +478,7 @@ def handle_stt(
     verdict = speech_gate.judge(
         transcript.text, no_speech_prob=getattr(transcript, "no_speech_prob", None),
         avg_logprob=getattr(transcript, "avg_logprob", None), source=source,
-        wake_score=wake_score)
+        wake_score=wake_score, seconds=transcript.seconds)
     store.record_request(conn, device_id=device_id, day=day,
                          outcome="ok" if verdict.passed else "gated",
                          text_len=len(transcript.text), endpoint="stt")
