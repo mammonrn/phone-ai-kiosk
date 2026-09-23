@@ -109,6 +109,18 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Brings the kiosk back after an update: installing kills the process,
+             which ends lock task mode, and nothing else relaunches HOME. The
+             broadcast only ever reaches the package that was replaced. See
+             PackageReplacedReceiver. -->
+        <receiver
+            android:name=".PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- The admin `dpm set-device-owner` is pointed at.
              BIND_DEVICE_ADMIN must be on the receiver, and it must be exported,
              or the system refuses to bind it and provisioning fails. -->
