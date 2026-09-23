@@ -9,13 +9,14 @@ android {
 
     defaultConfig {
         applicationId = "com.mammonrn.phoneaikiosk"
-        // minSdk 26 (Android 8.0). The target device is a Galaxy A07 on
-        // Android 15, but 26 is the floor the later kiosk phases need.
-        minSdk = 26
+        // minSdk 29 (Android 10) since 2026-09-23, Poom's decision: the Google
+        // Home APIs SDK needs Android 10 or later. The kiosk is a Galaxy A07 on
+        // Android 16, so nothing it runs is lost; 26 was the floor before.
+        minSdk = 29
         targetSdk = 36
 
-        versionCode = 50
-        versionName = "0.39.2"
+        versionCode = 51
+        versionName = "0.40.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
@@ -98,8 +99,22 @@ android {
     }
 }
 
+// THE GOOGLE HOME APIs SDK (Poom, 2026-09-23). Not on any Maven: Poom downloads
+// play-services-home-17.0.0.aar and play-services-home-types-17.0.0.aar from
+// Google Home Developers into app/libs/. Until they are there, none of this is
+// compiled and the build is exactly what it was; once they are, the code that
+// talks to the SDK (src/googlehome/java) comes in with them. Read only in this
+// round — see home/HomeSummary.kt and home/HomeGate.kt.
+val googleHomeSdk = listOf("libs/play-services-home-17.0.0.aar", "libs/play-services-home-types-17.0.0.aar")
+    .map { file(it) }
+val hasGoogleHomeSdk = googleHomeSdk.all { it.isFile }
+if (hasGoogleHomeSdk) {
+    android.sourceSets.getByName("main").java.srcDir("src/googlehome/java")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
+    if (hasGoogleHomeSdk) implementation(files(googleHomeSdk))
 
     // The wake word runs here, on the phone: no audio may leave the room
     // before "Hey Jarvis" has been heard, so the three ONNX models have to be
