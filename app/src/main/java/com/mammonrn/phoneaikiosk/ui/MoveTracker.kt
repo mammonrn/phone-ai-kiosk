@@ -45,7 +45,9 @@ class MoveTracker(private val thresholdPct: Double) {
                 reference[name] = price
                 continue
             }
-            if (abs(price - was) / was * 100.0 >= thresholdPct) moved = true
+            // A hair of tolerance: 40.00 -> 40.40 is exactly 1%, and in
+            // floating point it comes out as 0.9999999…
+            if (abs(price - was) / was * 100.0 >= thresholdPct - EPSILON) moved = true
         }
         if (moved) {
             reference.clear()
@@ -58,5 +60,6 @@ class MoveTracker(private val thresholdPct: Double) {
     companion object {
         const val CRYPTO_PCT = 3.0
         const val COMMODITIES_PCT = 1.0
+        private const val EPSILON = 1e-9
     }
 }
