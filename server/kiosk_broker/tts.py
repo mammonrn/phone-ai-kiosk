@@ -86,11 +86,13 @@ CONTENT_TYPES = {
 def synthesize(*, api_key: str, text: str, language_code: str, voice: str,
                encoding: str = "OGG_OPUS", timeout: float = 20.0,
                endpoint: str | None = None, speaking_rate: float | None = None,
-               sample_rate_hertz: int | None = None) -> Speech:
+               sample_rate_hertz: int | None = None, ssml: bool = False) -> Speech:
     """One synchronous synthesis.
 
-    Plain text, not SSML: Chirp 3 HD accepts only three SSML tags, we need none
-    of them, and every tag character would be billed.
+    Plain text in production. [ssml] exists only for the A/B experiment
+    (`tts-ab`, variant D): Chirp 3 HD's page lists <sub>, <break>, <say-as>,
+    <phoneme> and others as supported (checked 2026-09-23 — an earlier note
+    here said three tags, which is out of date), and tag characters are billed.
     """
     if not text.strip():
         raise TtsError("ไม่มีข้อความให้อ่านครับ", "empty text")
@@ -112,7 +114,7 @@ def synthesize(*, api_key: str, text: str, language_code: str, voice: str,
         audio_config["sampleRateHertz"] = sample_rate_hertz
 
     body = json.dumps({
-        "input": {"text": text},
+        "input": {"ssml": text} if ssml else {"text": text},
         "voice": {"languageCode": language_code, "name": voice_name(language_code, voice)},
         "audioConfig": audio_config,
     }).encode("utf-8")

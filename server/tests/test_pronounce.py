@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from kiosk_broker.pronounce import Dictionary, InvalidEntry, MIN_ENTRY_CHARS
+from kiosk_broker.pronounce import Dictionary, InvalidEntry, LEGACY_MIN_CHARS
 
 
 @pytest.fixture
@@ -67,22 +67,37 @@ def test_every_shipped_entry_explains_itself(shipped):
     assert shipped.entries
     for entry in shipped.entries:
         assert entry.why, f"{entry.spelling} has no 'why'"
-        assert len(entry.spelling) >= MIN_ENTRY_CHARS
 
 
 # --------------------------------------------- refusing unsafe entries
 
-@pytest.mark.parametrize("spelling", ["ดี", "ก", "", "ศด"])
-def test_short_entries_are_refused(spelling):
-    """Thai gives no word boundaries, so a two-character entry would match
-    inside longer words with nothing to distinguish them."""
+def test_short_entries_are_allowed_now_that_words_are_known():
+    """0.38: entries match whole words, so "ดี" is safe — it matches the word
+    ดี and never the start of ดีใจ or ดีเซล (test_wordcut.py). Only an empty
+    spelling, or one with a space in it, is refused."""
+    assert _dict(("ดี", "ดี๊")).entries[0].spelling == "ดี"
     with pytest.raises(InvalidEntry):
-        _dict((spelling, "อะไรก็ได้"))
+        _dict(("", "อะไรก็ได้"))
+    with pytest.raises(InvalidEntry):
+        _dict(("อากาศ ดี", "อากาด ดี"))
 
 
-def test_an_entry_with_no_replacement_is_refused():
+def test_short_entries_are_skipped_by_the_string_fallback():
+    """Without the segmenter there are no word boundaries again, so the old
+    rule comes back for the fallback only."""
+    d = _dict(("ดี", "ดี๊"))
+    assert len("ดี") < LEGACY_MIN_CHARS
+    assert d.apply("ดีใจที่ได้เจอครับ") == ("ดีใจที่ได้เจอครับ", 0)
+
+
+def test_an_entry_with_no_replacement_and_no_spacing_replaces_itself():
     with pytest.raises(InvalidEntry):
         Dictionary.from_list([{"spelling": "อากาศดี", "say": ""}])
+
+
+def test_an_entry_may_keep_its_spelling_if_it_asks_for_spaces():
+    d = Dictionary.from_list([{"spelling": "แผนที่", "say": "แผนที่", "space_around": True}])
+    assert d.entries[0].space_around
 
 
 def test_an_entry_that_replaces_itself_is_refused():
@@ -182,7 +197,7 @@ def test_a_broken_file_is_refused_cleanly(tmp_path, content):
     ("กำลังเปิดแผนที่ไปให้พี่นะครับ", "กำลังเปิด แผนที่ ไปให้พี่นะครับ"),
     ("กำลังเปิดแผนที่ไปบิ๊กซี 2 เชียงรายให้ครับ", "กำลังเปิด แผนที่ ไปบิ๊กซี 2 เชียงรายให้ครับ"),
     ("กำลังเปิดแผนที่ไปเซ็นทรัลเชียงรายให้ครับ", "กำลังเปิด แผนที่ ไปเซ็นทรัลเชียงรายให้ครับ"),
-    ("ได้ครับ เปิดแผนที่ให้แล้ว", "ได้ครับ เปิด แผนที่ให้แล้ว"),
+    ("ได้ครับ เปิดแผนที่ให้แล้ว", "ได้ครับ เปิด แผนที่ ให้แล้ว"),
 ])
 def test_map_replies_keep_the_word_whole(shipped, reply, spoken):
     """Heard on production: "เปิดแผน ที่ ไป". Nothing between us and the voice
@@ -196,7 +211,7 @@ def test_map_replies_keep_the_word_whole(shipped, reply, spoken):
 def test_the_map_failure_reply_is_respelled_too(shipped):
     from kiosk_broker import actions
     out, changes = shipped.apply(actions.MAPS_FAILED_REPLY)
-    assert changes == 1 and "เปิด แผนที่" in out
+    assert changes == 1 and "เปิด แผนที่ ไม่" in out
 
 
 def test_the_screen_and_the_history_keep_the_spelling(conn, cfg):

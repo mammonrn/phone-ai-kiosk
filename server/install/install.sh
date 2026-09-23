@@ -79,6 +79,16 @@ sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet anthropic groq
 echo "  anthropic $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import anthropic; print(anthropic.__version__)')"
 echo "  groq      $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import groq; print(groq.__version__)')"
+# nlpo3: the Thai word segmenter for the voice (kiosk_broker/wordcut.py, 0.38).
+# A 2.6 MB wheel (Apache-2.0); the dictionary is shipped in the code. OPTIONAL
+# on purpose: there are wheels for x86_64 only, and if it cannot be installed
+# the broker speaks unsegmented text exactly as before — so a failure here is
+# a warning, never a failed deploy.
+if sudo -u "$USER_NAME" "$VENV_DIR/bin/pip" install --quiet --only-binary=:all: "nlpo3==1.4.0"; then
+    echo "  nlpo3     $(sudo -u "$USER_NAME" "$VENV_DIR"/bin/python -c 'import importlib.metadata as m; print(m.version("nlpo3"))')"
+else
+    echo "  WARNING: nlpo3 did not install (no wheel for this machine?) — the voice works, unsegmented"
+fi
 
 # -------------------------------------------------------------------- code
 say "Application code"
@@ -99,6 +109,11 @@ install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/pricing.json" 
 if [[ ! -f $CONF_DIR/pronunciation.json ]]; then
     install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/pronunciation.json" "$CONF_DIR/pronunciation.json"
     echo "  wrote a default pronunciation.json"
+fi
+# The segmenter's project words: the same rule, written once and then Poom's.
+if [[ ! -f $CONF_DIR/tts_words.txt ]]; then
+    install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/tts_words.txt" "$CONF_DIR/tts_words.txt"
+    echo "  wrote a default tts_words.txt"
 fi
 if [[ ! -f $CONF_DIR/stt_hints.json ]]; then
     install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/stt_hints.json"         "$CONF_DIR/stt_hints.json"

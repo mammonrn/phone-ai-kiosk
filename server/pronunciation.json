@@ -1,7 +1,7 @@
 {
   "_note": "Respellings applied ONLY to text on its way to Google Cloud Text-to-Speech. The screen, the chat history and the ledger all keep the correct spelling — this file changes what is said, never what is written.",
   "_why_respelling": "Chirp 3 HD does have an official customPronunciations field taking IPA or X-SAMPA, but the docs mark it Experimental and do not list which locales support it, Thai included. Respelling needs no phonetic alphabet, anyone can add an entry by ear, and it works today. See server/README.md for the comparison.",
-  "_rules": "Entries must be phrases of at least 3 characters. Thai does not put spaces between words, so a short entry would match inside longer words with no way to tell — 'ดี' would hit 'ดีใจ' and 'ดีเซล'. The loader refuses anything shorter.",
+  "_rules": "Since 0.38 entries match WHOLE WORDS, found by the Thai segmenter (kiosk_broker/wordcut.py), so an entry of any length is safe — 'ดี' matches the word ดี and never the start of ดีใจ or ดีเซล. A spelling may span several words (อากาศดี is two); write it without spaces. \"space_around\": true puts a space on each side of the word in what the voice is sent, with or without a respelling. If segmentation is unavailable the broker falls back to the old string search, where entries shorter than 3 characters are skipped.",
   "entries": [
     {
       "spelling": "อากาศดี",
@@ -14,15 +14,11 @@
       "why": "ศ is the final consonant here, in มาตราแม่กด, and is said as ด: อา-กาด. The voice sounded the ศ. Source: DLTV worksheet มาตราตัวสะกด แม่กด (โครงการสื่อ ๖๐ พรรษาสมเด็จพระเทพรัตนราชสุดาฯ), which lists ศ among the 16 finals of แม่กด and gives อากาศ as the example. The longer อากาศดี entry still applies first."
     },
     {
-      "spelling": "เปิดแผนที่",
-      "say": "เปิด แผนที่",
-      "why": "Production, 2026-09-23 after aab1e71: \"กำลังเปิดแผนที่ไปให้พี่นะครับ\" was heard as \"เปิดแผน ที่ ไป\" — แผนที่ split in two, with a pause inside it. The text sent had no space (checked: the reply passes register, this file and the length cut unchanged, and the phone sends it as it is), so the voice itself split the words: เปิดแผน (open a plan) then ที่ (that). A space before แผนที่ starts the word where it starts."
-    },
-    {
-      "spelling": "แผนที่ไป",
-      "say": "แผนที่ ไป",
-      "why": "The other half of the same mistake: ที่ไป reads as 'that goes', which pulls ที่ away from แผน. A space after แผนที่ closes the word. Every map reply has this shape (\"เปิดแผนที่ไป<place>\"), so both entries fire on it together."
+      "spelling": "แผนที่",
+      "say": "แผนที่",
+      "space_around": true,
+      "why": "Production, 2026-09-23 after aab1e71: \"กำลังเปิดแผนที่ไปให้พี่นะครับ\" was heard as \"เปิดแผน ที่ ไป\" — the voice split แผนที่ in two (เปิดแผน, then ที่ไป). The text sent had no space; the split was the voice's. A space on each side of the word leaves it no other way to read it. Until 0.38 this was two phrase entries (เปิดแผนที่ → เปิด แผนที่, แผนที่ไป → แผนที่ ไป) because the string search could not match a word; with the words known it is one entry, and the text sent is the same."
     }
   ],
-  "_how_to_add": "Add {\"spelling\": ..., \"say\": ..., \"why\": ...}. At least 3 characters. Longest entries apply first. The broker re-reads this file when it changes; no restart. A broken file is ignored with a warning in the journal."
+  "_how_to_add": "Add {\"spelling\": ..., \"say\": ..., \"why\": ...} and optionally \"space_around\": true. Add only words heard wrong on the real voice, and say in \"why\" what was heard. Longest entries apply first. The broker re-reads this file when it changes; no restart. A broken file is ignored with a warning in the journal. If the segmenter splits a word wrongly, add the word to tts_words.txt instead."
 }

@@ -17,7 +17,8 @@ from typing import Any
 
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
-               oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts)
+               oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
+               voicetext)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -607,7 +608,13 @@ def handle_tts(
     # screen shows and what the history keeps — is not touched by this; only the
     # string that goes to Google is. Before the shortening, because a respelling
     # changes the length and the cap has to apply to what is finally sent.
-    spoken_text, respellings = _pronunciation(cfg).apply(text)
+    #
+    # Since 0.38 the words are found first (wordcut.py, nlpo3) so respellings
+    # match whole words; if segmentation is unavailable the old string search
+    # is used instead and the answer is spoken all the same.
+    voice = voicetext.for_voice(text, _pronunciation(cfg), words_path=cfg.tts_words_path,
+                                spacing=cfg.tts_spacing)
+    spoken_text, respellings = voice.text, voice.respellings
 
     # Shortened BEFORE the budget guard and before the request, so the cost that
     # is reserved and the cost that is charged are both the cost of what is
@@ -691,9 +698,10 @@ def handle_tts(
     # "playback stopped early" — on 2026-09-23 a 158-character weather answer
     # was heard as one sentence, and nothing in the log said which.
     log.info("tts ok device=%s voice=%s chars_in=%d chars=%d truncated=%s cut=%s respellings=%d"
+             " wordcut=%s wordcut_ms=%.2f spacing=%s"
              " bytes=%d cost=%.6f register_fixes=%d upstream_ms=%d handler_ms=%d audio_ms=%s",
              label, cfg.tts_voice, len(text), speech.billed_characters, truncated, cut_how,
-             respellings,
+             respellings, "ok" if voice.segmented else "off", voice.ms, cfg.tts_spacing,
              len(speech.audio), cost, register_fixes, upstream_ms, handler_ms,
              "unknown" if audio_ms is None else audio_ms)
 

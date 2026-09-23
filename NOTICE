@@ -167,3 +167,17 @@ CameraX — the front camera (0.37.0)
 -----------------------------------
 androidx.camera, Apache-2.0. Open only while a verification or an enrolment is
 on screen; frames are analysed in memory and never written.
+
+Thai word segmentation for the voice (broker, 0.38)
+---------------------------------------------------
+server/kiosk_broker/data/words_th.txt is PyThaiNLP's Thai word list, copied
+from pythainlp 5.3.7 (pythainlp/corpus/words_th.txt, 62,102 words,
+sha256 4bf0ab93a570d91b33ae7bbf627eddd5a56f81c6ba33a94c3950f38904235bda).
+PyThaiNLP's corpus_license.md lists it among the word lists "created by the
+PyThaiNLP project and released under Creative Commons Zero 1.0 Universal
+Public Domain Dedication License": https://github.com/PyThaiNLP/pythainlp
+
+It is read by nlpo3 (https://github.com/PyThaiNLP/nlpo3, Apache-2.0), installed
+into the broker's virtualenv by install.sh, not redistributed here. The
+project's own additions are server/tts_words.txt. Both decide only where the
+words are in the text sent to the voice.

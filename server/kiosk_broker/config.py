@@ -105,6 +105,12 @@ class Config:
     #: synthesis; the prompt still asks for 60–80, so this is a ceiling that a
     #: normal answer never reaches, not a new target.
     tts_spoken_chars: int = 200
+    #: How the voice's copy of the text is spaced (voicetext.py, 0.38):
+    #:   joints — a space only where pronunciation.json asks for one — the
+    #:            behaviour production already had; the default until Poom
+    #:            has listened to the A/B (`tts-ab`)
+    #:   all    — a space between every two Thai words
+    tts_spacing: str = "joints"
 
     # ---- the kiosk screen ------------------------------------------------
     #: There is no latitude here any more. The phone reports its own coarse
@@ -180,6 +186,13 @@ class Config:
     @property
     def pricing_path(self) -> Path:
         return self.home / "pricing.json"
+
+    @property
+    def tts_words_path(self) -> Path:
+        """The project's own words for the Thai segmenter, one per line — added
+        to the CC0 base list (wordcut.py). Written once by install.sh, then
+        Poom's to edit; re-read when it changes."""
+        return self.home / "tts_words.txt"
 
     @property
     def pronunciation_path(self) -> Path:

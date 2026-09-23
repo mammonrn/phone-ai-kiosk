@@ -1,0 +1,22 @@
+# Words for the Thai segmenter (kiosk_broker/wordcut.py), one per line, added to
+# PyThaiNLP's CC0 word list. For the VOICE only: they decide where a word begins
+# and ends in the text sent to Google, never what the screen shows.
+#
+# ADD A WORD HERE when the segmenter splits it wrongly in one of Jarvis's real
+# sentences — check with `segment-check` (INSTALL.md). Each one below was found
+# that way on 2026-09-23, with what the base list did to it:
+#
+# The broker re-reads this file when it changes: no restart, no deploy.
+# install.sh writes it once and never overwrites it.
+
+# fuel: "ลิตรละ" came out "ลิ|ตรละ" (ตรละ is in the base list)
+ลิตรละ
+# fuel brand: "บางจาก" came out "บาง|จาก"
+บางจาก
+# dust unit: "มคก./ลบ.ม." came out "มค|ก.|/ล|บ.|ม."
+มคก.
+ลบ.ม.
+# gold: "ทองแท่ง" came out "ทอง|แท่ง"
+ทองแท่ง
+# the assistant's own name, not in the base list
+จาร์วิส

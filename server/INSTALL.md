@@ -276,6 +276,23 @@ sudo install -o kioskbroker -g kioskbroker -m 0644 ~/phone-ai-kiosk/server/pronu
   /home/kioskbroker/.config/kiosk-broker/pronunciation.json
 ```
 
+### ตัวตัดคำไทยก่อนส่งไปสร้างเสียง (0.38)
+
+broker หาขอบเขตคำก่อนส่งข้อความไปสร้างเสียง (`kiosk_broker/wordcut.py`, nlpo3 + รายการคำ CC0)
+แล้วใช้คำอ่านใน `pronunciation.json` แบบ **ทั้งคำ** จึงไม่ต้องมีขั้นต่ำ 3 ตัวอักษรอีก
+ถ้าตัวตัดคำไม่พร้อม (ติดตั้งไม่ได้หรือล้ม) broker จะใช้วิธีค้นแบบเดิมและเสียงยังออกตามปกติ
+
+- ดูว่าข้อความถูกตัดตรงไหน และเสียงจะได้ข้อความอะไร (ไม่เสียเงิน):
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker   PYTHONPATH=/home/kioskbroker/app   /home/kioskbroker/venv/bin/python -m kiosk_broker segment-check "น้ำมันดีเซลลิตรละ 31.94 บาทที่บางจาก"
+```
+
+- คำที่ตัวตัดคำแยกผิด ให้เพิ่มลง `/home/kioskbroker/.config/kiosk-broker/tts_words.txt` บรรทัดละคำ
+  broker อ่านใหม่เองเมื่อไฟล์เปลี่ยน ไม่ต้อง restart และ `install.sh` ไม่เขียนทับไฟล์นี้
+- ทดสอบฟังเทียบ 4 แบบ (`tts-ab`): ดูรายการและราคาก่อนด้วย `--list-only` แล้วค่อยรันจริง
+  ไฟล์ออกมาเป็น `01-A-original.ogg` ... พร้อม `index.txt` ที่บอกข้อความที่ส่งไปทุกไฟล์
+
 เพิ่มคำใหม่: แก้ไฟล์ JSON ไม่ต้องแตะโค้ด
 
 ```json

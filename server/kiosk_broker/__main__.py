@@ -453,6 +453,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("text")
     p.add_argument("--out", default="say", help="directory to write the audio into")
 
+    p = sub.add_parser("segment-check",
+                       help="show where the Thai segmenter splits a line, and what the voice "
+                            "would be sent — free, nothing is synthesised")
+    p.add_argument("text")
+
+    p = sub.add_parser("tts-ab", help="A/B listening test: 16 sentences, four ways of sending "
+                                       "them (original, all spaces, dictionary joints, SSML)")
+    p.add_argument("--out", default="/tmp/tts-ab", help="directory to write the audio into")
+    p.add_argument("--list-only", action="store_true",
+                   help="print every text and the price, synthesise nothing")
+
     p = sub.add_parser("tts-tail", help="synthesise one line as WAV in the production voice and "
                                          "measure its last second: fade, cut, or neither")
     p.add_argument("text")
@@ -503,6 +514,14 @@ def main(argv: list[str] | None = None) -> int:
                 "tts_provider is 'botnoi' but BOTNOI_TOKEN is not set — /v1/tts will refuse")
 
         logging.getLogger("kiosk_broker").info("tts provider=%s", cfg.tts_provider)
+
+        # The Thai segmenter loads its dictionary on first use (~150 ms, ~50 MB).
+        # Loaded here instead, so the first answer after a restart does not pay
+        # for it. Unavailable is a warning, never a refusal to start.
+        from . import wordcut
+        logging.getLogger("kiosk_broker").info(
+            "wordcut %s spacing=%s", "ready" if wordcut.available(cfg.tts_words_path) else "OFF",
+            cfg.tts_spacing)
 
         # Google Speech-to-Text, for the "google" transcriber only: the SAME
         # key as TTS, by Poom's choice — restricted to Text-to-Speech and
@@ -745,9 +764,10 @@ def main(argv: list[str] | None = None) -> int:
                 dictionary = pronounce_mod.Dictionary.load(cfg.pronunciation_path)
             except FileNotFoundError:
                 dictionary = pronounce_mod.Dictionary.empty()
-            # Exactly what the phone would be sent: respelled, then cut.
-            from . import shorten
-            spoken, _ = dictionary.apply(args.text)
+            # Exactly what the phone would be sent: segmented, respelled, then cut.
+            from . import shorten, voicetext
+            spoken = voicetext.for_voice(args.text, dictionary, words_path=cfg.tts_words_path,
+                                         spacing=cfg.tts_spacing).text
             spoken, cut_how = shorten.cut(spoken, cfg.tts_spoken_chars)
 
             api_key = _require("GOOGLE_TTS_API_KEY")
@@ -778,6 +798,77 @@ def main(argv: list[str] | None = None) -> int:
                   f"`usage` says otherwise); training ledger, not the $5")
             return 0
 
+        if args.cmd == "segment-check":
+            from . import pronounce as pronounce_mod, voicetext, wordcut
+
+            try:
+                dictionary = pronounce_mod.Dictionary.load(cfg.pronunciation_path)
+            except FileNotFoundError:
+                dictionary = pronounce_mod.Dictionary.empty()
+            words = wordcut.split(args.text, cfg.tts_words_path)
+            if words is None:
+                print("segmenter: NOT AVAILABLE (is nlpo3 installed in the venv?) — the voice "
+                      "falls back to the old string search")
+            else:
+                print("words      : " + " | ".join(w if w.strip() else "·" for w in words))
+            voice = voicetext.for_voice(args.text, dictionary, words_path=cfg.tts_words_path,
+                                        spacing=cfg.tts_spacing)
+            print(f"as written : {args.text}")
+            print(f"voice gets : {voice.text}   (spacing={cfg.tts_spacing}, "
+                  f"respellings={voice.respellings}, {voice.ms:.2f} ms)")
+            print(f"words file : {cfg.tts_words_path}")
+            return 0
+
+        if args.cmd == "tts-ab":
+            from pathlib import Path as _Path
+
+            from . import pronounce as pronounce_mod, tts as tts_mod, tts_ab
+
+            try:
+                dictionary = pronounce_mod.Dictionary.load(cfg.pronunciation_path)
+            except FileNotFoundError:
+                dictionary = pronounce_mod.Dictionary.empty()
+            takes = tts_ab.plan(tts_ab.SENTENCES, dictionary, cfg.tts_words_path)
+            pricing = Pricing.load(cfg.pricing_path)
+            chars = tts_ab.billed_chars(takes)
+            price = pricing.tts_cost(cfg.tts_voice_family, chars)
+            sheet = tts_ab.index_text(takes, cfg.tts_voice)
+            print(sheet)
+            print(f"{sum(1 for t in takes if t.same_as is None)} files, {chars} characters, "
+                  f"list price ${price:.4f} (cap ${tts_ab.MAX_USD:.2f})")
+            if args.list_only:
+                return 0
+            if price > tts_ab.MAX_USD:
+                print("over the cap — nothing synthesised")
+                return 1
+            api_key = _require("GOOGLE_TTS_API_KEY")
+            out = _Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.txt").write_text(sheet, encoding="utf-8")
+            suffix = {"OGG_OPUS": "ogg", "MP3": "mp3", "LINEAR16": "wav"}.get(cfg.tts_encoding, "bin")
+            spent = 0.0
+            billed = 0
+            for take in takes:
+                if take.same_as is not None:
+                    continue
+                try:
+                    speech = tts_mod.synthesize(
+                        api_key=api_key, text=take.text, language_code=cfg.tts_language,
+                        voice=cfg.tts_voice, encoding=cfg.tts_encoding,
+                        endpoint=cfg.tts_endpoint, ssml=take.ssml)
+                except tts_mod.TtsError as exc:
+                    print(f"{take.filename}: FAILED {exc.detail}")
+                    continue
+                (out / f"{take.filename}.{suffix}").write_bytes(speech.audio)
+                billed += speech.billed_characters
+                spent += pricing.tts_cost(cfg.tts_voice_family, speech.billed_characters)
+            store.record_training_usage(conn, job="voice-test", service="tts", quantity=billed,
+                                        unit="characters", cost_usd=spent, note="tts-ab")
+            print(f"wrote {out}: billed {billed} characters, ${spent:.4f} at list price — "
+                  f"training ledger, not the phone's $5 (inside Google's free million this "
+                  f"month unless `usage` says otherwise)")
+            return 0
+
         if args.cmd == "say":
             from pathlib import Path as _Path
 
@@ -787,7 +878,12 @@ def main(argv: list[str] | None = None) -> int:
                 dictionary = pronounce_mod.Dictionary.load(cfg.pronunciation_path)
             except FileNotFoundError:
                 dictionary = pronounce_mod.Dictionary.empty()
-            respelled, changes = dictionary.apply(args.text)
+            from . import voicetext
+            voice = voicetext.for_voice(args.text, dictionary, words_path=cfg.tts_words_path,
+                                        spacing=cfg.tts_spacing)
+            respelled, changes = voice.text, voice.respellings
+            if respelled != args.text and not changes:
+                changes = 1  # spacing alone changed it: still worth a second file
 
             api_key = _require("GOOGLE_TTS_API_KEY")
             pricing = Pricing.load(cfg.pricing_path)

@@ -17,21 +17,39 @@ phonetic alphabet, can be extended by anyone who can hear the mistake, and works
 today. The comparison is written up in README.md; if a word turns out to be
 beyond respelling, that field is the next thing to try.
 
-THE THAI PROBLEM, AGAIN: there are no spaces between words, so a short entry
-would match inside longer words with nothing to distinguish them — an entry for
-"ดี" would fire inside "ดีใจ" and "ดีเซล". Two defences: entries must be phrases
-of at least [MIN_ENTRY_CHARS] characters, and a match is skipped when replacing
-it would break a character cluster.
+THE THAI PROBLEM, AND ITS FIX (0.38, 2026-09-23): there are no spaces
+between words, so a plain string search matches inside longer words — "ดี"
+would fire inside "ดีใจ" and "ดีเซล". With the words known (wordcut.py) an
+entry matches WHOLE WORDS only: a run of one or more words whose letters are
+exactly the entry's spelling ([apply_words]). So entries of any length are
+safe, and the old three-character minimum is gone.
+
+When segmentation is not available the old string search is the fallback
+([apply]), and there — and only there — entries shorter than
+[LEGACY_MIN_CHARS] are skipped, with the cluster checks as before.
+
+SPACES AS A FIX: an entry can ask for a space on each side of its word
+(`"space_around": true`) without changing how it is spelled — the fix for
+"แผนที่", which the voice split as "เปิดแผน ที่ ไป". One entry for the word,
+instead of the two phrase entries ("เปิดแผนที่", "แผนที่ไป") the string search
+needed.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
-#: Short entries cannot be matched safely in a language without word boundaries.
-MIN_ENTRY_CHARS = 3
+#: Only for the string-search fallback ([Dictionary.apply]): without word
+#: boundaries a short entry cannot be matched safely, so it is skipped there.
+LEGACY_MIN_CHARS = 3
+
+#: How words are joined for the voice (config `tts_spacing`):
+#:   joints — only where the dictionary asks (space_around, or a space in `say`)
+#:   all    — a space between every two words where either is Thai
+SPACINGS = ("joints", "all")
 
 #: Thai marks that attach to the consonant before them. A match followed by one
 #: of these has landed inside a cluster, so the "word" is really longer.
@@ -54,6 +72,7 @@ class Entry:
     spelling: str
     say: str
     why: str = ""
+    space_around: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,20 +98,20 @@ class Dictionary:
             if not isinstance(item.get("spelling", ""), str) or not isinstance(item.get("say", ""), str):
                 raise InvalidEntry("spelling and say must be text")
             spelling = (item.get("spelling") or "").strip()
-            say = (item.get("say") or "").strip()
+            say = (item.get("say") or "").strip() or spelling
+            space_around = bool(item.get("space_around", False))
 
-            if len(spelling) < MIN_ENTRY_CHARS:
-                raise InvalidEntry(
-                    f"{spelling!r} is shorter than {MIN_ENTRY_CHARS} characters. Thai has no "
-                    f"word boundaries, so a short entry matches inside longer words with no "
-                    f"way to tell — use a phrase."
-                )
-            if not say:
-                raise InvalidEntry(f"{spelling!r} has no replacement")
-            if say == spelling:
+            if not spelling:
+                raise InvalidEntry("an entry has no spelling")
+            if any(ch.isspace() for ch in spelling):
+                # Whole-word matching compares letters; a space in the spelling
+                # could never match a run of words.
+                raise InvalidEntry(f"{spelling!r}: write the spelling without spaces")
+            if say == spelling and not space_around:
                 raise InvalidEntry(f"{spelling!r} replaces itself")
 
-            entries.append(Entry(spelling=spelling, say=say, why=item.get("why", "")))
+            entries.append(Entry(spelling=spelling, say=say, why=item.get("why", ""),
+                                 space_around=space_around))
 
         # Longest first, so "อากาศดีมาก" wins over "อากาศดี" if both are listed.
         entries.sort(key=lambda e: len(e.spelling), reverse=True)
@@ -103,16 +122,112 @@ class Dictionary:
         return cls(entries=())
 
     def apply(self, text: str) -> tuple[str, int]:
-        """Returns the text as it should be spoken, and how many words changed.
+        """The FALLBACK, when the words are not known: a string search, as
+        before 0.38. Entries shorter than [LEGACY_MIN_CHARS] are skipped here.
 
-        The count exists so a log line can say the dictionary was involved
+        Returns the text as it should be spoken, and how many words changed;
+        the count exists so a log line can say the dictionary was involved
         without the log carrying the sentence.
         """
         changed = 0
         for entry in self.entries:
-            text, hits = _replace_safely(text, entry.spelling, entry.say)
+            if len(entry.spelling) < LEGACY_MIN_CHARS:
+                continue
+            replacement = f" {entry.say} " if entry.space_around else entry.say
+            text, hits = _replace_safely(text, entry.spelling, replacement)
             changed += hits
-        return text, changed
+        # A space_around entry next to an existing space must not make two.
+        return (re.sub(" {2,}", " ", text).strip() if changed else text), changed
+
+    def _match(self, words: list[str], i: int) -> tuple[Entry, int] | None:
+        """The longest entry spelled by words[i:i+k], and k."""
+        by_spelling = self._by_spelling()
+        for k in range(min(MAX_WORDS_PER_ENTRY, len(words) - i), 0, -1):
+            if any(w.isspace() for w in words[i:i + k]):
+                continue
+            entry = by_spelling.get("".join(words[i:i + k]))
+            if entry is not None:
+                return entry, k
+        return None
+
+    def _by_spelling(self) -> dict[str, Entry]:
+        cached = self.__dict__.get("_index")
+        if cached is None:
+            cached = {e.spelling: e for e in self.entries}
+            object.__setattr__(self, "_index", cached)
+        return cached
+
+    def apply_words(self, words: list[str], spacing: str = "joints") -> tuple[str, int]:
+        """The text for the voice from its words (wordcut.split): entries
+        matched on whole words, then joined as [spacing] says. Words that match
+        nothing are passed through untouched, so with no entries and "joints"
+        the text comes back exactly as written."""
+        pieces: list[tuple[str, bool]] = []  # (text, wants a space either side)
+        hits = 0
+        i = 0
+        while i < len(words):
+            found = self._match(words, i)
+            if found is None:
+                pieces.append((words[i], False))
+                i += 1
+                continue
+            entry, k = found
+            pieces.append((entry.say, entry.space_around))
+            hits += 1
+            i += k
+        return _join(pieces, spacing), hits
+
+    def to_ssml(self, words: list[str]) -> tuple[str, int]:
+        """EXPERIMENT (tts-ab, variant D): the same entries as SSML
+        <sub alias="…">word</sub> instead of respelled text, no spaces added.
+        Chirp 3 HD lists <sub> among its supported tags."""
+        out = []
+        hits = 0
+        i = 0
+        while i < len(words):
+            found = self._match(words, i)
+            if found is None:
+                out.append(_xml(words[i]))
+                i += 1
+                continue
+            entry, k = found
+            written = "".join(words[i:i + k])
+            out.append(f'<sub alias="{_xml(entry.say)}">{_xml(written)}</sub>')
+            hits += 1
+            i += k
+        return "<speak>" + "".join(out) + "</speak>", hits
+
+
+#: The longest run of words one entry may span ("อากาศดี" is two).
+MAX_WORDS_PER_ENTRY = 6
+
+
+def _is_thai(text: str) -> bool:
+    return any("\u0e00" <= ch <= "\u0e7f" for ch in text)
+
+
+def _join(pieces: list[tuple[str, bool]], spacing: str) -> str:
+    """Joins spoken pieces: a space where an entry asked for one, or, with
+    spacing "all", between every two pieces where either is Thai. Never two
+    spaces in a row, never a space at either end."""
+    out: list[str] = []
+    for index, (text, wants_space) in enumerate(pieces):
+        if not text:
+            continue
+        if out and not out[-1].endswith(" ") and not text.startswith(" "):
+            previous_text, previous_wants = pieces[index - 1] if index else ("", False)
+            space = wants_space or previous_wants
+            if spacing == "all" and (_is_thai(text) or _is_thai(out[-1])):
+                space = True
+            if space:
+                out.append(" ")
+        out.append(text)
+    return "".join(out).strip()
+
+
+def _xml(text: str) -> str:
+    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;"))
 
 
 def _replace_safely(text: str, needle: str, replacement: str) -> tuple[str, int]:
