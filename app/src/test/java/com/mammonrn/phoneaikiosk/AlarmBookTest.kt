@@ -223,7 +223,7 @@ class AlarmBookTest {
     fun `each section says what its numbers are, once, in its header`() {
         val c = DashboardState.commodities(table, "-")
         assertEquals("ทองคำ บาทละ · +/− เทียบครั้งก่อน", c.goldHeader)
-        assertEquals("น้ำมันถูกสุด บาท/ลิตร · ราคากรุงเทพฯ 23 ก.ย.", c.oilHeader)
+        assertEquals("น้ำมันถูกสุด บาท/ลิตร · ราคากรุงเทพฯ Wed 23/09/2026", c.oilHeader)
     }
 
     @Test

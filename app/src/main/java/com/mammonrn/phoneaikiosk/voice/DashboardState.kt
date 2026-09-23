@@ -81,6 +81,14 @@ object DashboardState {
          * than it), and the window then shows gold only.
          */
         val oil: Panel? = null,
+        /**
+         * Today's weather numbers as (label, value) cells, in the order the
+         * card shows them: high/low, rain chance, wind, UV. A number the model
+         * did not give is left out, never shown as a dash or a zero.
+         */
+        val weatherStats: List<Pair<String, String>> = emptyList(),
+        /** The next three days in one sentence, or empty. */
+        val outlook: String = "",
     )
 
     /**
@@ -101,6 +109,9 @@ object DashboardState {
             goldPurity = goldPurity(usable(gold)?.first),
             locationFallback = root.optBoolean("location_fallback", false),
             oil = if (root.has("oil")) oilPanel(root.optJSONObject("oil"), unavailable) else null,
+            weatherStats = weatherStats(usable(weather)?.first),
+            outlook = usable(weather)?.first?.optString("outlook", "")
+                ?.takeUnless { it == "null" }.orEmpty(),
             sunrise = clock12(usable(weather)?.first?.optString("sunrise", "") ?: ""),
             sunset = clock12(usable(weather)?.first?.optString("sunset", "") ?: ""),
         )
@@ -247,17 +258,12 @@ object DashboardState {
         val temp = data.optDouble("temp_c", Double.NaN)
         if (temp.isNaN()) return Panel(unavailable, false)
 
+        // The headline only: now, and the sky. Today's numbers are a table of
+        // their own (weatherStats) and the next days a sentence (outlook), so
+        // each can be laid out for what it is (2026-09-23, Poom: temperature,
+        // rain, wind, UV — today only; humidity is not among them).
         val word = data.optString("word", "")
-        val humidity = data.optInt("humidity", -1)
-        val high = data.optDouble("high_c", Double.NaN)
-        val low = data.optDouble("low_c", Double.NaN)
-
-        return Panel(buildString {
-            append("${trim(temp)}°C  $word")
-            if (humidity >= 0) append("\nความชื้น $humidity%")
-            if (!high.isNaN() && !low.isNaN()) append("   สูง ${trim(high)}°  ต่ำ ${trim(low)}°")
-            append(age(panel))
-        }, stale)
+        return Panel("${trim(temp)}°C  $word" + age(panel), stale)
     }
 
     private fun goldPanel(panel: JSONObject?, unavailable: String): Panel {
@@ -432,6 +438,68 @@ object DashboardState {
     /** 68850.0 -> "68,850" — no decimals, because nobody reads satang at 2 m.
      *  ROUNDED, not truncated: 999.7 baht is 1,000, and a price that reads low
      *  every time is a worse lie than one that is occasionally a baht high. */
+    // ------------------------------------------------------ today's weather
+
+    fun weatherStats(data: JSONObject?): List<Pair<String, String>> {
+        if (data == null) return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        val high = data.optDouble("high_c", Double.NaN)
+        val low = data.optDouble("low_c", Double.NaN)
+        if (!high.isNaN() && !low.isNaN()) out += "สูง/ต่ำ" to "${Math.round(high)}°/${Math.round(low)}°"
+        if (data.has("rain_chance") && !data.isNull("rain_chance")) {
+            out += "โอกาสฝน" to "${data.optInt("rain_chance")}%"
+        }
+        if (data.has("wind_kmh") && !data.isNull("wind_kmh")) {
+            out += "ลม กม./ชม." to "${data.optInt("wind_kmh")}"
+        }
+        val uv = data.optDouble("uv", Double.NaN)
+        if (!uv.isNaN()) out += "UV" to "${Math.round(uv)} ${uvWord(uv)}"
+        return out
+    }
+
+    /** The WHO UV index bands, in Thai — the same words Jarvis is given. */
+    fun uvWord(uv: Double): String = when {
+        uv < 3 -> "ต่ำ"
+        uv < 6 -> "ปานกลาง"
+        uv < 8 -> "สูง"
+        uv < 11 -> "สูงมาก"
+        else -> "อันตราย"
+    }
+
+    /**
+     * The prices behind each price window's news (ui/MoveTracker): gold's two
+     * sell prices with the cheapest of each fuel for the commodities window,
+     * each coin's dollar price for crypto. Only usable numbers.
+     */
+    fun cardPrices(json: String): Map<String, Map<String, Double>> {
+        val root = runCatching { JSONObject(json) }.getOrNull() ?: return emptyMap()
+        val out = HashMap<String, Map<String, Double>>()
+        val commodities = HashMap<String, Double>()
+        usable(root.optJSONObject("gold"))?.first?.let { g ->
+            for (key in listOf("ornament_sell", "bar_sell")) {
+                val v = g.optDouble(key, Double.NaN)
+                if (!v.isNaN()) commodities[key] = v
+            }
+        }
+        usable(root.optJSONObject("oil"))?.first?.optJSONArray("fuels")?.let { fuels ->
+            for (i in 0 until fuels.length()) {
+                val fuel = fuels.optJSONObject(i) ?: continue
+                val low = fuel.optJSONArray("cheapest")?.optJSONObject(0)?.optDouble("price", Double.NaN)
+                if (low != null && !low.isNaN()) commodities["oil:" + fuel.optString("id")] = low
+            }
+        }
+        if (commodities.isNotEmpty()) out["gold"] = commodities
+        usable(root.optJSONObject("crypto"))?.first?.let { c ->
+            val coins = HashMap<String, Double>()
+            for (coin in coinList(c)) {
+                val usd = coin.optDouble("usd", Double.NaN)
+                if (!usd.isNaN()) coins[coin.optString("symbol")] = usd
+            }
+            if (coins.isNotEmpty()) out["crypto"] = coins
+        }
+        return out
+    }
+
     // ------------------------------------------------ the commodities table
 
     /** One table row: what it is, its price, and what follows the price. */
@@ -488,7 +556,8 @@ object DashboardState {
         }
         if (oil.isEmpty()) return Commodities(goldHeader, gold, "น้ำมัน: $unavailable", emptyList())
         val area = oilData?.optString("area", "กรุงเทพฯ") ?: "กรุงเทพฯ"
-        val oilHeader = listOf("น้ำมันถูกสุด บาท/ลิตร", "ราคา$area ${shortThaiDate(oilData?.optString("date", "") ?: "")}".trim(),
+        val oilHeader = listOf("น้ำมันถูกสุด บาท/ลิตร",
+                               "ราคา$area ${com.mammonrn.phoneaikiosk.ui.ScreenDate.fromThai(oilData?.optString("date", "") ?: "")}".trim(),
                                ageWords(oilPanel)).filter { it.isNotEmpty() }.joinToString(" · ")
         return Commodities(goldHeader, gold, oilHeader, oil)
     }

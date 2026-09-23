@@ -33,7 +33,6 @@ import com.mammonrn.phoneaikiosk.ui.CardBoard
 import com.mammonrn.phoneaikiosk.ui.FadingLine
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.ui.SpeechFollow
-import com.mammonrn.phoneaikiosk.ui.ThaiDate
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.DashboardState
 import com.mammonrn.phoneaikiosk.voice.KioskLocation
@@ -86,6 +85,14 @@ class MainActivity : Activity() {
     private lateinit var goldTitle: TextView
     private lateinit var jarvisState: TextView
     private lateinit var sunRow: android.view.View
+    private lateinit var weatherStats: android.widget.TableLayout
+    private lateinit var weatherOutlook: TextView
+
+    /** News for the price windows: a move of 3% (crypto) or 1% (gold and fuel). */
+    private val cryptoMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
+        com.mammonrn.phoneaikiosk.ui.MoveTracker.CRYPTO_PCT)
+    private val commodityMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
+        com.mammonrn.phoneaikiosk.ui.MoveTracker.COMMODITIES_PCT)
 
     // ---------------------------------------------------------- the card stack
     // Which window is open, folded or first: ui/CardBoard decides, this moves
@@ -185,7 +192,8 @@ class MainActivity : Activity() {
             taskbarClock.text = taskbarFormat.format(now)
             // Thai, "พ. 23 ก.ย.": the time stays AM/PM as asked, the date is
             // in the language of everything else on the screen.
-            taskbarDate.text = ThaiDate.short(java.util.Calendar.getInstance().apply { time = now })
+            taskbarDate.text = com.mammonrn.phoneaikiosk.ui.ScreenDate.format(
+                java.util.Calendar.getInstance().apply { time = now })
             // Every ten seconds: a battery moves a percent in minutes, and the
             // sticky broadcast is cheap but not free.
             if (ticks++ % 10 == 0) showBattery()
@@ -305,9 +313,27 @@ class MainActivity : Activity() {
         val screen = DashboardState.parse(payload, getString(R.string.data_unavailable))
         // What counts as news for each window: DashboardState.cardFacts.
         val nowMs = SystemClock.elapsedRealtime()
+        // The price windows' news is a MOVE (MoveTracker): crypto 3%, gold and
+        // fuel 1%, against the prices at their last news. Weather keeps its own
+        // rule (a whole degree or a new sky word). DESIGN.md, "Cards".
+        val prices = DashboardState.cardPrices(payload)
+        prices["crypto"]?.let { cryptoMoves.update(it) }
+        prices["gold"]?.let { commodityMoves.update(it) }
         for ((id, fact) in DashboardState.cardFacts(payload)) {
-            board.report(id, fact.first, nowMs)
+            val signature = when (id) {
+                "crypto" -> if (cryptoMoves.generation > 0) "move:${cryptoMoves.generation}" else fact.first
+                "gold" -> if (commodityMoves.generation > 0) "move:${commodityMoves.generation}" else fact.first
+                else -> fact.first
+            }
+            board.report(id, signature, nowMs)
             summaries[id] = fact.second
+        }
+        showWeatherStats(screen.weatherStats)
+        if (screen.outlook.isEmpty()) {
+            weatherOutlook.visibility = android.view.View.GONE
+        } else {
+            weatherOutlook.text = screen.outlook
+            weatherOutlook.visibility = android.view.View.VISIBLE
         }
         // Numbers into the pixel face, the freshness note turned down. The
         // strings themselves are DashboardState's business and are not touched
@@ -474,6 +500,34 @@ class MainActivity : Activity() {
         }
         board.report("alarms", book.toJson() + "|" + ringing, nowMs)
         board.pin("alarms", ringing.isNotEmpty())
+    }
+
+    /** Today's weather: a row of labels over a row of values, four even columns. */
+    private var shownStats: List<Pair<String, String>> = emptyList()
+
+    private fun showWeatherStats(stats: List<Pair<String, String>>) {
+        if (stats == shownStats) return
+        shownStats = stats
+        weatherStats.removeAllViews()
+        weatherStats.visibility = if (stats.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        if (stats.isEmpty()) return
+        val plex = ResourcesCompat.getFont(this, R.font.plex_thai)
+        fun cell(text: CharSequence, sp: Float, color: Int) = TextView(this).apply {
+            this.text = text
+            textSize = sp
+            typeface = plex
+            setTextColor(ContextCompat.getColor(this@MainActivity, color))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            includeFontPadding = false
+        }
+        weatherStats.addView(android.widget.TableRow(this).apply {
+            for ((label, _) in stats) addView(cell(label, 11f, R.color.retro_dim))
+        })
+        weatherStats.addView(android.widget.TableRow(this).apply {
+            isBaselineAligned = true
+            for ((_, value) in stats) addView(cell(RetroType.pixelify(value, pixelFace), 14f, R.color.retro_text))
+        })
     }
 
     /**
@@ -658,6 +712,8 @@ class MainActivity : Activity() {
         goldTitle = findViewById(R.id.gold_title)
         jarvisState = findViewById(R.id.jarvis_state)
         sunRow = findViewById(R.id.sun_row)
+        weatherStats = findViewById(R.id.weather_stats)
+        weatherOutlook = findViewById(R.id.weather_outlook)
         cardStack = findViewById(R.id.card_stack)
         alarmsBody = findViewById(R.id.alarms_body)
         alarmStop = findViewById(R.id.alarm_stop)

@@ -270,6 +270,18 @@
                     android:fontFamily="@font/plex_thai"
                     android:text="@string/data_loading" />
 
+                <!-- TODAY'S NUMBERS (2026-09-23): high/low, rain chance, wind,
+                     UV — a label over each value, four even columns, so each
+                     number sits under its own name. Built in
+                     MainActivity.showWeatherStats; GONE with nothing to show. -->
+                <TableLayout
+                    android:id="@+id/weather_stats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:stretchColumns="*"
+                    android:visibility="gone" />
+
                 <LinearLayout
                     android:id="@+id/sun_row"
                     android:layout_width="match_parent"
@@ -310,6 +322,20 @@
                         android:textSize="12sp"
                         android:fontFamily="@font/plex_thai" />
                 </LinearLayout>
+
+                <!-- The next three days, one sentence, at most two lines — not
+                     a table of days. GONE when the broker has no outlook. -->
+                <TextView
+                    android:id="@+id/weather_outlook"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:textColor="@color/retro_text"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/plex_thai"
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 
