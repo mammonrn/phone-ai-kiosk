@@ -187,6 +187,17 @@ class Broker(private val baseUrl: String, private val token: String) {
     }
 
     /**
+     * "ยืนยันตัวตนไม่ได้" (0.42.0): may this phone delete its face or pattern
+     * without a pass? Only if Poom ran `allow-auth-reset` on the VPS in the last
+     * ten minutes; the VPS spends the allowance on the first yes.
+     */
+    fun authReset(): Boolean {
+        val result = post("/v1/auth/reset", "{}".toByteArray(Charsets.UTF_8),
+                          "application/json; charset=utf-8")
+        return JSONObject(String(result.bytes, Charsets.UTF_8)).optBoolean("allowed", false)
+    }
+
+    /**
      * The soak test's 15-minute sample (SoakProbe): numbers only. True if the
      * broker kept it — it keeps samples only while a soak is running.
      */

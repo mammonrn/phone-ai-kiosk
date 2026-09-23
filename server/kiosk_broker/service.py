@@ -18,7 +18,8 @@ from typing import Any
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
-               voicetext, brevity, calendar_read, google_auth, identity, redact, soak)
+               voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
+               auth_reset)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -142,6 +143,28 @@ def _calendar_reply(cfg: Config, label: str) -> str:
              sum(1 for e in events if e.day == "tomorrow"),
              int((time.monotonic() - started) * 1000))
     return calendar_read.spoken(events)
+
+
+def handle_auth_reset(conn: sqlite3.Connection, cfg: Config, *,
+                      authorization: str | None) -> tuple[int, dict]:
+    """POST /v1/auth/reset — may the phone delete its face or pattern without a
+    pass? Only inside the window `allow-auth-reset` opened, once (auth_reset)."""
+    day = limits.day_key(cfg.budget_timezone)
+    device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint="reset")
+    if refusal:
+        return refusal
+    device_id, label = int(device["id"]), str(device["label"])
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=3, per_day=30, day=day,
+                             endpoint="reset")
+    if not rate.allowed:
+        store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
+                             text_len=None, endpoint="reset")
+        return 429, _error(rate.code, rate.message)
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok", text_len=None,
+                         endpoint="reset")
+    allowed = auth_reset.take(conn)
+    log.info("auth reset asked device=%s allowed=%s", label, allowed)
+    return 200, {"allowed": allowed}
 
 
 def handle_grant(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,

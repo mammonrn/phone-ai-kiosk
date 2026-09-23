@@ -177,10 +177,10 @@ def test_each_panel_expires_on_its_own_schedule(cfg, fake_sources):
 def test_the_age_is_measured_every_time_it_is_served(cfg, fake_sources):
     board = dashboard_mod.Dashboard(cfg)
     board.snapshot(now=1000.0, symbols=COINS)
-    later = board.snapshot(now=1000.0 + 30, symbols=COINS)
-    assert later["crypto"]["age_seconds"] == 30
+    later = board.snapshot(now=1000.0 + 20, symbols=COINS)
+    assert later["crypto"]["age_seconds"] == 20
     # Stored once and left to go stale would have reported 0 forever.
-    assert later["gold"]["age_seconds"] == 30
+    assert later["gold"]["age_seconds"] == 20
 
 
 def test_moving_a_kilometre_is_a_different_weather_cache(cfg, fake_sources):
@@ -816,3 +816,34 @@ def test_two_configs_do_not_share_one_cache(cfg, fake_sources):
     assert here is not slower
     # And the same settings give the same instance, or the cache is pointless.
     assert _dashboard(dataclasses.replace(cfg)) is here
+
+
+# --- UV now, not the day's peak (Poom, 2026-09-23: "UV 8" on the card at night)
+
+def _uv_answer(current_time: str, is_day: int) -> dict:
+    """The shape Open-Meteo really sends with two models: `current` carries
+    only the first model's fields (ECMWF: no UV), the hourly block both."""
+    hours = [f"2026-09-23T{h:02d}:00" for h in range(24)]
+    uv = [0.0] * 6 + [0.1, 0.6, 1.9, 3.8, 5.9, 7.6, 8.3, 8.1, 6.9, 4.8, 2.6, 0.9, 0.1] + [0.0] * 5
+    return {"current": {"time": current_time, "temperature_2m": 25.2, "relative_humidity_2m": 80,
+                        "weather_code": 0, "is_day": is_day, "uv_index": None},
+            "hourly": {"time": hours, "uv_index_ecmwf_ifs025": [None] * 24, "uv_index_best_match": uv},
+            "daily": {"uv_index_max_ecmwf_ifs025": [None], "uv_index_max_best_match": [8.3]}}
+
+
+def test_uv_by_day_is_this_hours_value(monkeypatch):
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer("2026-09-23T09:45", 1))
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
+    assert got["uv"] == 3.8 and got["uv_max"] == 8.3
+    assert "uv_index" in dashboard_mod.WEATHER_URL.split("&hourly=")[1]
+
+
+def test_uv_at_night_is_not_shown_and_never_the_days_peak(monkeypatch):
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer("2026-09-23T21:15", 0))
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
+    assert got["uv"] is None and got["uv_max"] == 8.3
+
+
+def test_uv_for_an_hour_that_is_missing_is_none():
+    assert dashboard_mod.uv_now(["2026-09-23T09:00"], [3.0], "2026-09-23T10:05") is None
+    assert dashboard_mod.uv_now(None, None, None) is None

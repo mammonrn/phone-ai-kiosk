@@ -1004,7 +1004,7 @@ SQLite ด้วย ถ้า CoinGecko ล่มก็ใช้อันดั�
 ### อยากลดความถี่ที่ยิงออกนอก
 
 ```json
-{"dashboard_weather_ttl": 600, "dashboard_gold_ttl": 300, "dashboard_crypto_ttl": 60}
+{"dashboard_weather_ttl": 600, "dashboard_gold_ttl": 120, "dashboard_crypto_ttl": 30, "dashboard_oil_ttl": 5400}
 ```
 
 หน่วยเป็นวินาที มือถือถามทุก 60 วินาทีอยู่แล้ว ค่าพวกนี้คุมว่า "ถามแล้ว

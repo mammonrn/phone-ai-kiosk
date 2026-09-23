@@ -127,20 +127,25 @@ class Config:
     #: Cache lifetimes, chosen from each source's own published limits rather
     #: than from what feels responsive:
     #:   Open-Meteo allows 10,000 calls a day; 10 minutes is 144.
-    #:   The gold association updates a few times an hour at most, and the
-    #:   third party in front of it deserves not to be hammered.
-    #:   Binance is generous enough for a minute, which is the only one of the
-    #:   three where freshness is worth anything.
+    #:   The gold association announces about a dozen times a trading day
+    #:   ("ครั้งที่ 12" at 15:48 on 2026-09-23). Two minutes (Poom asked for
+    #:   prices ~50% sooner, 2026-09-23): the worst delay after an
+    #:   announcement goes from 6 minutes (5 + the phone's 1) to 3, at 720
+    #:   calls a day to a free API that asks for no key.
+    #:   Binance: 30 s, under the phone's 60 s, so every phone request gets a
+    #:   fresh price — worst delay 2 minutes -> 1, and the same ~1,440 calls a
+    #:   day as before (Binance's limit is 6,000 request weight a MINUTE).
     dashboard_weather_ttl: int = 600
     #:   PM2.5 (Open-Meteo air quality, CAMS): hourly data, so every 30
     #:   minutes is already twice as often as it changes.
     dashboard_air_ttl: int = 1800
-    dashboard_gold_ttl: int = 300
+    dashboard_gold_ttl: int = 120
     #:   Oil prices change at most once a day, and every call to the source is a
-    #:   page load on Kapook: three hours, and the old value with its age if
-    #:   the source is down.
-    dashboard_oil_ttl: int = 3 * 3600
-    dashboard_crypto_ttl: int = 60
+    #:   page load on Kapook: 90 minutes (was three hours) is 16 loads a day,
+    #:   and the old value with its age if the source is down. Faster than
+    #:   this buys nothing: the price itself moves once a day.
+    dashboard_oil_ttl: int = 90 * 60
+    dashboard_crypto_ttl: int = 30
 
     #: A province does not move. A day is short enough that carrying the kiosk
     #: somewhere else renames the title bar the same day, and long enough that

@@ -73,13 +73,15 @@ class PackageVisibilityTest {
      */
     @Test
     fun `visibility is granted to exactly the packages the actions open`() {
-        // Two now: Google Maps, and Xiaomi Home for "ขอดูกล้อง". Each is named,
-        // each belongs to one action, and a third is a decision.
+        // Three now: Google Maps, Xiaomi Home for "ขอดูกล้อง", and the system
+        // settings app for the Control Panel's WiFi button (Poom, 0.42.0). Each
+        // is named, each belongs to one action, and a fourth is a decision.
         val declared = Regex("""<package\s+android:name="([^"]+)"""")
             .findAll(manifest).map { it.groupValues[1] }.toList()
         assertEquals(
             listOf(MapsLauncher.MAPS_PACKAGE,
-                   com.mammonrn.phoneaikiosk.voice.CameraAppLauncher.PACKAGE),
+                   com.mammonrn.phoneaikiosk.voice.CameraAppLauncher.PACKAGE,
+                   com.mammonrn.phoneaikiosk.settings.WifiPanel.SETTINGS_PACKAGE),
             declared,
         )
     }

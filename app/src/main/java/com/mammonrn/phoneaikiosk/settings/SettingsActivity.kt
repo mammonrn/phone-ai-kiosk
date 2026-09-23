@@ -70,7 +70,9 @@ class SettingsActivity : Activity() {
 
     private enum class Page { HOME, ALARMS, EDIT, SOURCES, AUTH }
 
-    private class Category(val icon: Int, val label: Int, val open: (SettingsActivity) -> Unit)
+    /** [label] is read each time the panel is drawn, so a switch can say its state. */
+    private class Category(val icon: Int, val label: (SettingsActivity) -> String,
+                           val open: (SettingsActivity) -> Unit)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,6 +86,69 @@ class SettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
+        // Back from the WiFi panel: the settings app leaves the allowlist.
+        WifiPanel.restore(this)
+        torch.watch(true)
+        if (page == Page.HOME) showHome()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        torch.watch(false)
+    }
+
+    // --------------------------------------------------------- the torch
+
+    /**
+     * The phone's flash as a torch (0.42.0). setTorchMode needs no permission
+     * and no camera session; the state comes back from the system's callback,
+     * so the label is what the LED is really doing — including when the
+     * identity check's camera takes the flash and turns it off.
+     */
+    private val torch by lazy { Torch() }
+
+    private inner class Torch {
+        private val cameras = getSystemService(android.hardware.camera2.CameraManager::class.java)
+        private val id: String? = runCatching {
+            cameras?.cameraIdList?.firstOrNull { cid ->
+                cameras.getCameraCharacteristics(cid)
+                    .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        }.getOrNull()
+        var on = false
+            private set
+        val available get() = id != null
+        private val callback = object : android.hardware.camera2.CameraManager.TorchCallback() {
+            override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                if (cameraId != id || on == enabled) return
+                on = enabled
+                if (page == Page.HOME) showHome()
+            }
+        }
+
+        fun watch(yes: Boolean) {
+            if (id == null || cameras == null) return
+            if (yes) runCatching { cameras.registerTorchCallback(callback, repeatHandler) }
+            else runCatching { cameras.unregisterTorchCallback(callback) }
+        }
+
+        fun toggle() {
+            val cid = id ?: return
+            runCatching { cameras?.setTorchMode(cid, !on) }
+                .onFailure { android.util.Log.i("KioskTorch", "refused ${it.javaClass.simpleName}") }
+        }
+
+        fun label(): String = getString(when {
+            !available -> R.string.torch_unavailable
+            on -> R.string.torch_on
+            else -> R.string.torch_off
+        })
+    }
+
+    private fun openWifi() {
+        if (!WifiPanel.open(this)) {
+            android.widget.Toast.makeText(this, R.string.wifi_unavailable, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")
@@ -184,7 +249,7 @@ class SettingsActivity : Activity() {
                 setOnClickListener { category.open(this@SettingsActivity) }
                 addView(ImageView(context).apply { setImageResource(category.icon) },
                         LinearLayout.LayoutParams(dp(48), dp(48)))
-                addView(text(getString(category.label), 14f).apply {
+                addView(text(category.label(this@SettingsActivity), 14f).apply {
                     gravity = Gravity.CENTER
                     setPadding(0, dp(6), 0, 0)
                 })
@@ -255,6 +320,52 @@ class SettingsActivity : Activity() {
 
     private var confirmingAuthDelete: String? = null
     private var lastAuthOutcome: String? = null
+
+    /** What is deleted once the identity check passes: "face" or "pattern". */
+    private var deleteAfterPass: String? = null
+
+    /** A line under the delete buttons: deleted, not deleted, or the VPS's answer. */
+    private var deleteNote: String? = null
+
+    private fun deleteNow(key: String) {
+        if (key == "face") AuthStore.deleteFace(this) else AuthStore.deletePattern(this)
+        AccessGrant.close()
+        android.util.Log.i("KioskAuth", "deleted $key")
+    }
+
+    /**
+     * THE WAY OUT when the camera is broken AND the pattern is forgotten
+     * (Poom, 0.42.0): Poom runs `allow-auth-reset` on the VPS, and for ten
+     * minutes this phone may delete without a pass — once. Needs both the VPS
+     * and the phone in hand; a stranger holding only the phone gets "not yet".
+     */
+    private fun askVpsForReset(key: String) {
+        val token = com.mammonrn.phoneaikiosk.voice.TokenStore(this).token()
+        if (token.isNullOrEmpty()) {
+            deleteNote = getString(R.string.auth_reset_error)
+            showAuth()
+            return
+        }
+        deleteNote = getString(R.string.auth_reset_checking)
+        showAuth()
+        Thread {
+            val answer = runCatching {
+                com.mammonrn.phoneaikiosk.voice.Broker(
+                    com.mammonrn.phoneaikiosk.voice.VoiceState.brokerBaseUrl, token).authReset()
+            }
+            runOnUiThread {
+                val allowed = answer.getOrNull()
+                deleteNote = when (allowed) {
+                    true -> { deleteNow(key); getString(R.string.auth_delete_done) }
+                    false -> getString(R.string.auth_reset_denied)
+                    null -> getString(R.string.auth_reset_error)
+                }
+                android.util.Log.i("KioskAuth", "reset asked allowed=$allowed")
+                confirmingAuthDelete = null
+                if (page == Page.AUTH) showAuth()
+            }
+        }.start()
+    }
     private var grantLine: TextView? = null
     private var grantClose: View? = null
     private val grantTicker = object : Runnable {
@@ -308,11 +419,7 @@ class SettingsActivity : Activity() {
             primary = getString(if (face != null) R.string.auth_reenroll_face else R.string.auth_enroll_face),
             onPrimary = { openVerify(VerifyActivity.Mode.ENROLL) },
             deleteKey = if (face != null) "face" else null,
-            confirm = getString(R.string.auth_delete_face_confirm),
-            onDelete = {
-                AuthStore.deleteFace(this)
-                AccessGrant.close()
-            }))
+            confirm = getString(R.string.auth_delete_face_confirm)))
 
         list.addView(label(getString(if (hasPattern) R.string.auth_pattern_yes else R.string.auth_pattern_no)),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
@@ -320,11 +427,10 @@ class SettingsActivity : Activity() {
             primary = getString(if (hasPattern) R.string.auth_change_pattern else R.string.auth_set_pattern),
             onPrimary = { openVerify(VerifyActivity.Mode.SET_PATTERN) },
             deleteKey = if (hasPattern) "pattern" else null,
-            confirm = getString(R.string.auth_delete_pattern_confirm),
-            onDelete = {
-                AuthStore.deletePattern(this)
-                AccessGrant.close()
-            }))
+            confirm = getString(R.string.auth_delete_pattern_confirm)))
+        deleteNote?.let {
+            list.addView(text(it, 13f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        }
 
         val enrolled = face != null || hasPattern
         list.addView(button(getString(R.string.auth_test), enabled = enrolled) {
@@ -370,25 +476,40 @@ class SettingsActivity : Activity() {
         repeatHandler.post(grantTicker)
     }
 
-    /** "enrol / change" beside "delete", which asks once in place, like an alarm. */
+    /**
+     * "enrol / change" beside "delete". Delete asks once in place and then
+     * NEEDS A PASS (0.42.0, Poom: deleting without one was a hole): the
+     * identity check opens, and only a pass deletes. "ยืนยันตัวตนไม่ได้" is the
+     * way out through the VPS ([askVpsForReset]).
+     */
     private fun authRow(primary: String, onPrimary: () -> Unit, deleteKey: String?,
-                        confirm: String, onDelete: () -> Unit): View {
+                        confirm: String): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(6), 0, 0)
         }
         if (deleteKey != null && confirmingAuthDelete == deleteKey) {
-            row.addView(text(confirm, 13f), LinearLayout.LayoutParams(0, WRAP, 1f))
-            row.addView(button(getString(R.string.auth_delete)) {
-                onDelete()
-                confirmingAuthDelete = null
-                showAuth()
-            }, LinearLayout.LayoutParams(dp(72), dp(48)))
-            row.addView(button(getString(R.string.cancel)) {
-                confirmingAuthDelete = null
-                showAuth()
-            }, LinearLayout.LayoutParams(dp(80), dp(48)).apply { marginStart = dp(6) })
+            val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            box.addView(text(confirm, 13f))
+            box.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(button(getString(R.string.auth_delete_verify)) {
+                    deleteAfterPass = deleteKey
+                    deleteNote = null
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(VerifyActivity.intent(this@SettingsActivity,
+                        VerifyActivity.Mode.VERIFY), REQUEST_DELETE)
+                }, LinearLayout.LayoutParams(0, dp(48), 1f))
+                addView(button(getString(R.string.cancel)) {
+                    confirmingAuthDelete = null
+                    deleteNote = null
+                    showAuth()
+                }, LinearLayout.LayoutParams(dp(80), dp(48)).apply { marginStart = dp(6) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+            box.addView(button(getString(R.string.auth_reset_ask)) { askVpsForReset(deleteKey) },
+                        LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
+            row.addView(box, LinearLayout.LayoutParams(MATCH, WRAP))
             return row
         }
         row.addView(button(primary) { onPrimary() }, LinearLayout.LayoutParams(0, dp(48), 1f))
@@ -405,6 +526,16 @@ class SettingsActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_DELETE) {
+            val key = deleteAfterPass
+            deleteAfterPass = null
+            val passed = data?.getStringExtra(VerifyActivity.EXTRA_OUTCOME) == VerifyActivity.OUTCOME_PASSED
+            if (passed && key != null) deleteNow(key)
+            deleteNote = getString(if (passed) R.string.auth_delete_done else R.string.auth_delete_no_pass)
+            confirmingAuthDelete = null
+            if (page == Page.AUTH) showAuth()
+            return
+        }
         if (requestCode != REQUEST_AUTH) return
         lastAuthOutcome = data?.getStringExtra(VerifyActivity.EXTRA_OUTCOME)
         if (page == Page.AUTH) {
@@ -726,15 +857,20 @@ class SettingsActivity : Activity() {
         private const val REPEAT_MS = 110L
         private const val ICONS_PER_ROW = 3
         private const val REQUEST_AUTH = 37
+        private const val REQUEST_DELETE = 38
 
         /**
          * The panel's categories, in order. ADD A SETTING HERE: an icon, a
          * name, and the page it opens (DESIGN.md, "Control Panel").
          */
         private val CATEGORIES = listOf(
-            Category(R.drawable.ic_pixel_alarm_clock, R.string.window_alarms) { it.showAlarms() },
-            Category(R.drawable.ic_pixel_face, R.string.window_auth) { it.showAuth() },
-            Category(R.drawable.ic_pixel_sources, R.string.window_sources) { it.showSources() },
+            Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
+            Category(R.drawable.ic_pixel_face, { it.getString(R.string.window_auth) }) { it.showAuth() },
+            Category(R.drawable.ic_pixel_sources, { it.getString(R.string.window_sources) }) { it.showSources() },
+            // 0.42.0: WiFi opens the system's panel for one visit (WifiPanel);
+            // the torch is a switch, and its label is its state.
+            Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
+            Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
         )
     }
 }

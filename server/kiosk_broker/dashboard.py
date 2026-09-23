@@ -96,7 +96,7 @@ WEATHER_URL = (
     "&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m"
     "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,"
     "precipitation_probability_max,wind_speed_10m_max,uv_index_max"
-    "&hourly=precipitation_probability"
+    "&hourly=precipitation_probability,uv_index"
     "&timezone=Asia%2FBangkok&forecast_days=4&models=ecmwf_ifs025,best_match"
 )
 PLACE_URL = (
@@ -273,11 +273,14 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
     raw = _get(WEATHER_URL.format(lat=latitude, lon=longitude), timeout)
     current = raw["current"]
     daily = _picked(raw.get("daily", {}) or {}, (
-        "temperature_2m_max", "temperature_2m_min", "sunrise", "sunset", "precipitation_sum",
+        "time", "temperature_2m_max", "temperature_2m_min", "sunrise", "sunset", "precipitation_sum",
         "precipitation_probability_max", "wind_speed_10m_max", "uv_index_max"))
     hourly_raw = raw.get("hourly", {}) or {}
     hourly = {"time": hourly_raw.get("time"),
               "precipitation_probability": _pick(hourly_raw, "precipitation_probability")}
+    # UV NOW, NOT THE DAY'S PEAK (Poom, 2026-09-23: the card said "UV 8" at
+    # night). `current` answers for the first model only, and ECMWF has no
+    # UV, so the value is best_match's for this hour from the hourly block.
     code = int(current["weather_code"])
     # Open-Meteo sends 1 or 0. Missing would mean the field was dropped from the
     # API, and then nothing says whether the sun is up — so a missing value is
@@ -303,11 +306,28 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
         "rain_chance": _first_int(daily.get("precipitation_probability_max")),
         "rain_mm": _first_number(daily.get("precipitation_sum")),
         "wind_kmh": _first_int(daily.get("wind_speed_10m_max")),
-        "uv": _first_number(daily.get("uv_index_max")),
+        # The card's UV is the value for this hour, and none at all after
+        # dark: the sun is down, there is nothing to warn about, and the cell
+        # goes. The day's peak stays for a spoken question, named as the peak.
+        "uv": uv_now(hourly_raw.get("time"), _pick(hourly_raw, "uv_index"), current.get("time"))
+              if is_day else None,
+        "uv_max": _first_number(daily.get("uv_index_max")),
         # The next three days in one sentence (forecast.py), or None.
         "outlook": forecast.outlook(daily, hourly),
         "model": "ECMWF",
     }
+
+
+def uv_now(times, values, current_time) -> float | None:
+    """The hourly value for the hour [current_time] ("2026-09-23T13:15") falls
+    in, or None when the hour or the value is missing."""
+    if not (isinstance(times, list) and isinstance(values, list) and isinstance(current_time, str)):
+        return None
+    hour = current_time[:13] + ":00"
+    for when, value in zip(times, values):
+        if when == hour and isinstance(value, (int, float)) and not isinstance(value, bool):
+            return round(max(float(value), 0.0), 1)
+    return None
 
 
 def _first_int(values) -> int | None:
@@ -864,7 +884,11 @@ def weather_detail_line(board: "Dashboard", now: float | None = None) -> str:
     if data.get("wind_kmh") is not None:
         today.append(f"ลม {data['wind_kmh']} กม./ชม.")
     if data.get("uv") is not None:
-        today.append(f"UV {_n(data['uv'])} ({uv_word(float(data['uv']))})")
+        today.append(f"UV ตอนนี้ {_n(data['uv'])} ({uv_word(float(data['uv']))})")
+    elif data.get("is_day") == 0:
+        today.append("UV ตอนนี้ 0 (กลางคืน)")
+    if data.get("uv_max") is not None:
+        today.append(f"UV สูงสุดของวัน {_n(data['uv_max'])}")
     if today:
         parts.append("วันนี้ " + " ".join(today))
     air = board.latest("air", now)

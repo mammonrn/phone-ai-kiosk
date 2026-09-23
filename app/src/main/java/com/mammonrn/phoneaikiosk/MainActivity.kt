@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.home.HomeControl
+import com.mammonrn.phoneaikiosk.alarm.AlarmBook
 import com.mammonrn.phoneaikiosk.alarm.AlarmScheduler
 import com.mammonrn.phoneaikiosk.alarm.AlarmStore
 import com.mammonrn.phoneaikiosk.ui.BatteryLabel
@@ -105,6 +106,9 @@ class MainActivity : Activity() {
     /** Fixed order since 0.36.0: news opens a card, it never moves one (DESIGN.md, ก). */
     private val board = CardBoard(fixedOrder = true)
     private lateinit var cardStack: android.widget.LinearLayout
+    private lateinit var cardJarvis: android.view.View
+    private lateinit var netText: TextView
+    private var networkWatch: com.mammonrn.phoneaikiosk.ui.NetworkWatch? = null
 
     private class Card(val id: String, val root: android.view.View, val body: android.view.View,
                        val badge: TextView, val openWeight: Float,
@@ -404,8 +408,12 @@ class MainActivity : Activity() {
         // a room.
         VoiceState.weatherFallback = screen.locationFallback || withoutPosition
 
-        val place = screen.place.ifEmpty { getString(R.string.place_unknown) }
-        weatherTitle.text = "${getString(R.string.window_weather)} · $place"
+        // WHICH POSITION (0.42.0, Poom): the real one the phone reported, or the
+        // university's fallback — said in a word, never a coordinate.
+        val source = getString(if (VoiceState.weatherFallback == true) R.string.weather_source_fallback
+                               else R.string.weather_source_phone)
+        weatherTitle.text = if (screen.place.isEmpty()) "${getString(R.string.window_weather)} · $source"
+                            else "${getString(R.string.window_weather)} · ${screen.place} · $source"
 
         // The gold title carries the PURITY, as a word and a number:
         // "ราคาทอง · ความบริสุทธิ์ 96.5%". What the price move is measured
@@ -498,8 +506,10 @@ class MainActivity : Activity() {
             val card = cards.getValue(slot.id)
             val bodyState = if (slot.open) android.view.View.VISIBLE else android.view.View.GONE
             if (card.body.visibility != bodyState) card.body.visibility = bodyState
+            // No window takes a share of spare height any more (0.42.0): each
+            // is as tall as its content, and the rest is Jarvis's.
             val params = card.root.layoutParams as android.widget.LinearLayout.LayoutParams
-            val weight = if (slot.open) card.openWeight else 0f
+            val weight = 0f
             if (params.weight != weight) {
                 params.weight = weight
                 card.root.layoutParams = params
@@ -521,8 +531,13 @@ class MainActivity : Activity() {
      */
     private fun fitToStack(slots: List<CardBoard.Slot>, nowMs: Long): List<CardBoard.Slot> {
         val width = cardStack.width - cardStack.paddingLeft - cardStack.paddingRight
-        val height = cardStack.height - cardStack.paddingTop - cardStack.paddingBottom
-        if (width <= 0 || height <= 0) return slots
+        // The stack is as tall as its content now (0.42.0), so the room it
+        // may use is measured from Jarvis, whose bottom never moves: all the
+        // way down to it, less Jarvis's 156dp floor and the gap above it.
+        val jarvisLp = cardJarvis.layoutParams as android.view.ViewGroup.MarginLayoutParams
+        val height = cardJarvis.bottom - cardStack.top - cardJarvis.minimumHeight - jarvisLp.topMargin -
+            cardStack.paddingTop - cardStack.paddingBottom
+        if (width <= 0 || height <= 0 || cardJarvis.bottom <= 0) return slots
         val unspecified = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
         val openPx = HashMap<String, Int>()
         val barPx = HashMap<String, Int>()
@@ -579,7 +594,9 @@ class MainActivity : Activity() {
         val off = getString(R.string.alarm_off)
         val lines = book.alarms.joinToString("\n") { alarm ->
             val name = if (alarm.label.isNotEmpty()) "  ${alarm.label}" else ""
-            "${DashboardState.clock12(alarm.time)}$name  · ${if (alarm.enabled) on else off}"
+            // Every day or once, in words, on every row (0.42.0, Poom).
+            "${DashboardState.clock12(alarm.time)}$name  · ${AlarmBook.repeatText(alarm)}" +
+                "  · ${if (alarm.enabled) on else off}"
         }
         alarmsBody.text = RetroType.pixelify(lines, pixelFace)
         alarmStop.visibility = if (ringing.isNotEmpty()) android.view.View.VISIBLE
@@ -819,6 +836,8 @@ class MainActivity : Activity() {
         }
         taskbarClock = findViewById(R.id.taskbar_clock)
         taskbarDate = findViewById(R.id.taskbar_date)
+        cardJarvis = findViewById(R.id.card_jarvis)
+        netText = findViewById(R.id.net_text)
         batteryIcon = findViewById(R.id.battery_icon)
         batteryText = findViewById(R.id.battery_text)
         homeNote = findViewById(R.id.home_note)
@@ -906,6 +925,11 @@ class MainActivity : Activity() {
         ringIfAsked(intent)
         grantMicrophoneToSelf()
         grantLocationToSelf()
+        // After the grants: 4G or 5G needs READ_PHONE_STATE, granted just above.
+        networkWatch = com.mammonrn.phoneaikiosk.ui.NetworkWatch(this) { word ->
+            netText.text = word
+            netText.contentDescription = getString(R.string.net_description, word)
+        }.also { it.start() }
 
         // A fix on every fresh start, so a kiosk that was carried somewhere and
         // plugged back in does not show the old town's weather while it waits
@@ -979,6 +1003,10 @@ class MainActivity : Activity() {
         idleScreen.used(SystemClock.elapsedRealtime())
         applyScreenRule()
 
+        // The Control Panel's WiFi button opens the system's WiFi panel by
+        // allowing the settings app for that one visit; back here, it is the
+        // kiosk's own list again, whatever happened in between.
+        com.mammonrn.phoneaikiosk.settings.WifiPanel.restore(this)
         enterLockTaskIfWanted()
 
         // Started from here and only from here. A microphone foreground service
@@ -989,6 +1017,12 @@ class MainActivity : Activity() {
         // Also the recovery path: if the service dies, the next resume restarts
         // it without anything else having to notice.
         VoiceService.start(this)
+    }
+
+    override fun onDestroy() {
+        networkWatch?.stop()
+        networkWatch = null
+        super.onDestroy()
     }
 
     override fun onPause() {
@@ -1158,6 +1192,9 @@ class MainActivity : Activity() {
             android.Manifest.permission.RECORD_AUDIO,
             android.Manifest.permission.POST_NOTIFICATIONS,
             android.Manifest.permission.CAMERA,
+            // 0.42.0: which mobile network — 4G or 5G — for the taskbar tray
+            // (ui/NetworkWatch). Read for that word only; nothing is logged.
+            android.Manifest.permission.READ_PHONE_STATE,
         )
         for (permission in permissions) {
             try {

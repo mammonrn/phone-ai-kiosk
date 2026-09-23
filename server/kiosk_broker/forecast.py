@@ -7,8 +7,11 @@ fixed rules rather than a model: the words must be the same every time for the
 same numbers, and a sentence costs nothing to write here.
 
 THE RULES, over the next THREE days (tomorrow and the two after):
-  rain     a day "has rain" at >= 50% chance or >= 2 mm. 0 days: "ไม่ค่อยมีฝน";
-           1-2: "มีฝนบางวัน"; 3: "ฝนตกเกือบทุกวัน".
+  rain     a day "has rain" at >= 50% chance or >= 2 mm. 0 days: "ไม่ค่อยมีฝน
+           โอกาสไม่เกิน 20%"; 1-2: "มีฝน 2 วัน (พฤ. ศ.) โอกาสสูงสุด 70%";
+           3: "ฝนตกทุกวัน โอกาส 60–90%". THE NUMBERS ARE SAID (Poom,
+           2026-09-23): "มีฝนบางวัน" alone read the same for one day at 50% and
+           two at 90%, so a changed forecast looked like an unchanged one.
   when     the part of the day with the highest average chance of rain across
            those days — เช้า 06-12, บ่าย 12-18, ค่ำ 18-24, กลางคืน 00-06 —
            said only when there is rain to say it about.
@@ -51,12 +54,22 @@ def outlook(daily: dict, hourly: dict | None = None) -> str | None:
                 if (at(chances, i) or 0) >= RAIN_CHANCE or (at(rain_mm, i) or 0) >= RAIN_MM)
     days = len(ahead)
     head = f"{days} วันข้างหน้า"
+    odds = [c for c in (at(chances, i) for i in ahead) if c is not None]
     if rainy == 0:
-        rain = "ไม่ค่อยมีฝน"
+        rain = "ไม่ค่อยมีฝน" + (f" โอกาสไม่เกิน {round(max(odds))}%" if odds else "")
     elif rainy >= days:
-        rain = "ฝนตกเกือบทุกวัน"
+        rain = "ฝนตกทุกวัน"
+        if odds:
+            low, high = round(min(odds)), round(max(odds))
+            rain += f" โอกาส {high}%" if low == high else f" โอกาส {low}–{high}%"
     else:
-        rain = "มีฝนบางวัน"
+        names = [_weekday(at(daily.get("time") or [], i)) for i in ahead
+                 if (at(chances, i) or 0) >= RAIN_CHANCE or (at(rain_mm, i) or 0) >= RAIN_MM]
+        rain = f"มีฝน {rainy} วัน"
+        if names and all(names):
+            rain += f" ({' '.join(names)})"
+        if odds:
+            rain += f" โอกาสสูงสุด {round(max(odds))}%"
     when = _rainy_part(hourly, ahead) if rainy else None
 
     today = at(highs, 0)
@@ -70,6 +83,18 @@ def outlook(daily: dict, hourly: dict | None = None) -> str | None:
     if heat:
         words.append(heat)
     return " ".join(words)
+
+
+_WEEKDAYS = ("จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส.", "อา.")
+
+
+def _weekday(date) -> str | None:
+    """"2026-09-24" -> "พฤ.", or None."""
+    import datetime
+    try:
+        return _WEEKDAYS[datetime.date.fromisoformat(str(date)[:10]).weekday()]
+    except ValueError:
+        return None
 
 
 def _rainy_part(hourly: dict | None, ahead: range) -> str | None:

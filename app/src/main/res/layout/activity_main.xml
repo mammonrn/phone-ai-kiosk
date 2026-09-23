@@ -27,22 +27,13 @@
   WHAT IS BIGGEST IS WHAT MATTERS: what Jarvis is doing and what it heard, then
   the numbers, then their labels, then the diagnostics.
 
-  SHARES FOLLOW CONTENT (v0.23). Every window measures its content first and
-  then takes a share of what is left over, in proportion to its weight. The
-  crypto window already has four coins to show, so an equal share left it the
-  loosest-looking box on the screen; it takes 0.25 now. The Google Home
-  placeholder has one button and takes 0.7. Weather and gold keep 1 and Jarvis
-  2, so what those two gave up goes to the windows with room to use it.
-
-  THE SPARE HEIGHT IS SHARED, NOT HOARDED. Smaller type left about a third of
-  the screen over, and the Jarvis window — the only one with a weight — took
-  all of it, so the kiosk sat there with a grey box the size of a postcard and
-  one line of text in the middle of it. Every window now carries a weight and
-  gets a share: one each for the four that hold data, two for Jarvis, which
-  still needs the most because it is the one that fills up when somebody talks
-  to it. Inside each window the sunken panel carries the same weight again, so
-  the share lands in the panel and the content centres in it, rather than
-  pooling as dead grey under the last line.
+  THE SPARE HEIGHT GOES TO JARVIS (0.42.0, Poom, from the A07's own
+  screenshot). Until 0.41 every window took a weighted share of the spare
+  height, and on the screen that was grey under the last line of every window:
+  63 px under the weather, 111 px under gold and oil, 97 px under Jarvis's
+  one-line invitation. What Jarvis says is the heart of the kiosk, so the
+  windows above are now exactly as tall as their content and everything left
+  goes to Jarvis, which never drops below its 156dp.
 
   Those inner panels are wrap_content AND weighted on purpose. A child of a
   wrap_content LinearLayout that asks for 0dp measures to nothing; asking for
@@ -68,11 +59,14 @@
              title bar, reordered at most once a minute. MainActivity moves the
              views; DESIGN.md, "Cards", has the rules. Jarvis and the taskbar
              are outside this stack and never move. -->
+        <!-- CONTENT HEIGHT, NO SHARE (0.42.0, Poom): every window above Jarvis
+             is exactly as tall as what it holds, and the height left over goes
+             to Jarvis. MainActivity.fitToStack folds windows when they would
+             push Jarvis under its 156dp floor. DESIGN.md, "แบ่งพื้นที่". -->
         <LinearLayout
             android:id="@+id/card_stack"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
             android:orientation="vertical">
 
         <!-- ================================================= google home window -->
@@ -688,14 +682,19 @@
         <!-- ======================================================= end of stack -->
 
         <!-- ===================================================== jarvis window -->
-        <!-- FIXED: same place, same size, always (Poom, 2026-09-23). 156dp is
-             the height it had on 0.30.3, measured from the A07's screenshot,
-             which Poom judged right. The card stack above takes whatever is
-             left; when windows fold, THEY give up room, never this one. -->
+        <!-- SAME PLACE, NEVER SMALLER, AND ALL THE SPARE ROOM (Poom, 0.42.0).
+             Directly above the taskbar, always open. 156dp — its height on
+             0.30.3, which Poom judged right — is now the FLOOR: the height the
+             other windows do not use is added to it, because what Jarvis says
+             is the heart of the kiosk and a longer answer should read without
+             scrolling. When windows fold, Jarvis gains; it never gives up
+             room below 156dp (MainActivity.fitToStack). -->
         <LinearLayout
             android:id="@+id/card_jarvis"
             android:layout_width="match_parent"
-            android:layout_height="156dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:minHeight="156dp"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"
@@ -817,8 +816,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:contentDescription="@string/jarvis_button_description"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="11dp"
+                android:paddingEnd="11dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="6dp"
                 android:text="@string/taskbar_button"
@@ -860,7 +859,6 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:visibility="invisible"
-                android:layout_marginStart="6dp"
                 android:textColor="@color/retro_dim"
                 android:textSize="8sp"
                 android:fontFamily="@font/plex_thai" />
@@ -889,6 +887,18 @@
                 android:paddingEnd="7dp"
                 android:paddingTop="5dp"
                 android:paddingBottom="5dp">
+
+                <!-- THE CONNECTION (0.42.0): "WiFi", "4G", "5G" or "ออฟไลน์",
+                     a word in the tray's small type like the battery beside
+                     it — no icon alone, and no signal bars to read. -->
+                <TextView
+                    android:id="@+id/net_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="7dp"
+                    android:textColor="@color/retro_dim"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
 
                 <!-- The phone's own battery: a small pixel battery and the
                      percentage in words. First in the tray because it is the

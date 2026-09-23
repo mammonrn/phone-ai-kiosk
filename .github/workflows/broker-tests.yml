@@ -116,6 +116,15 @@ jobs:
           [ "$code" = "400" ] || { echo "the Google callback answered $code to a made-up state"; cat "$home/serve.log"; kill "$pid"; exit 1; }
           if grep -q "made-up" "$home/serve.log"; then echo "the callback's query string reached the log"; kill "$pid"; exit 1; fi
           grep -q "wordcut ready" "$home/serve.log"             || { echo "the Thai segmenter did not load in the running broker:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          # 0.42.0, the way out of the identity check: refused without a token,
+          # "not allowed" with one until allow-auth-reset, then allowed once.
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18770/v1/auth/reset -d '{}')"
+          [ "$code" = "401" ] || { echo "/v1/auth/reset without a token answered $code"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          answer="$(curl -sS -X POST http://127.0.0.1:18770/v1/auth/reset -H "Authorization: Bearer $token" -d '{}')"
+          [ "$answer" = '{"allowed": false}' ] || { echo "reset allowed before allow-auth-reset: $answer"; kill "$pid"; exit 1; }
+          python -m kiosk_broker allow-auth-reset
+          answer="$(curl -sS -X POST http://127.0.0.1:18770/v1/auth/reset -H "Authorization: Bearer $token" -d '{}')"
+          [ "$answer" = '{"allowed": true}' ] || { echo "reset not allowed after allow-auth-reset: $answer"; kill "$pid"; exit 1; }
           # PHASE 6, the soak sample: refused without a token; with one, kept
           # only after soak-start, and soak-report reads it back.
           code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18770/v1/health -d '{}')"

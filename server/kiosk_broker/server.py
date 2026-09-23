@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import store
 from .config import Config
-from .service import (handle_chat, handle_dashboard, handle_grant, handle_health,
+from .service import (handle_auth_reset, handle_chat, handle_dashboard, handle_grant, handle_health,
                       handle_oauth_callback, handle_stt, handle_tts)
 
 log = logging.getLogger("kiosk_broker")
@@ -200,7 +200,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
 
     def do_POST(self) -> None:
-        if self.path not in ("/v1/chat", "/v1/stt", "/v1/tts", "/v1/auth/grant", "/v1/health"):
+        if self.path not in ("/v1/chat", "/v1/stt", "/v1/tts", "/v1/auth/grant", "/v1/health",
+                             "/v1/auth/reset"):
             self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
             return
 
@@ -237,6 +238,9 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/v1/health":
                 status, payload = handle_health(
                     conn, self.config, authorization=self.headers.get("Authorization"), body=body)
+            elif self.path == "/v1/auth/reset":
+                status, payload = handle_auth_reset(
+                    conn, self.config, authorization=self.headers.get("Authorization"))
             elif self.path == "/v1/auth/grant":
                 status, payload = handle_grant(
                     conn, self.config, authorization=self.headers.get("Authorization"), body=body)

@@ -53,7 +53,8 @@ class CameraActionTest {
         // Exactly the two named packages, no <intent> that would widen it.
         val queries = Regex("<queries>(.*?)</queries>", RegexOption.DOT_MATCHES_ALL)
             .find(manifest)!!.groupValues[1]
-        assertEquals(2, Regex("<package ").findAll(queries).count())
+        // Maps, Xiaomi Home, and the settings app for the WiFi button (0.42.0).
+        assertEquals(3, Regex("<package ").findAll(queries).count())
         assertTrue(!queries.contains("<intent"))
     }
 

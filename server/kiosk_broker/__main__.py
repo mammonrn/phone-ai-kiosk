@@ -473,6 +473,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("identity")
     p = sub.add_parser("revoke-enrollment", help="retire an identity now, grants and all")
     p.add_argument("identity")
+    sub.add_parser("allow-auth-reset",
+                   help="for 10 minutes, let the phone delete its face or pattern once without "
+                        "a pass (camera broken AND pattern forgotten)")
 
     sub.add_parser("persona-eval",
                    help="ask the real model the scenarios Poom named (can't hear, time, weather, "
@@ -960,6 +963,16 @@ def main(argv: list[str] | None = None) -> int:
                 state = ("RETIRED" if row["retired_at"] else "APPROVED" if row["approved_at"]
                          else "pending")
                 print(f"  {row['id']}  {state:<9} device={row['label'] or '?':<12} first seen {seen}")
+            return 0
+
+        if args.cmd == "allow-auth-reset":
+            import datetime as _datetime
+
+            from . import auth_reset
+
+            until = auth_reset.allow(conn)
+            print(f"allowed until {_datetime.datetime.fromtimestamp(until):%H:%M:%S}: on the phone, "
+                  "Control Panel > ยืนยันตัวตน > ลบ > ยืนยันตัวตนไม่ได้. Works once.")
             return 0
 
         if args.cmd in ("approve-enrollment", "revoke-enrollment"):

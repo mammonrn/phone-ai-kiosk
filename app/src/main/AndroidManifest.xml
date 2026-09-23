@@ -58,6 +58,16 @@
       front camera falls back to the pattern.
     -->
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      0.42.0: the taskbar says WiFi, 4G or 5G (ui/NetworkWatch). WiFi or mobile
+      needs only the ordinary network state; which mobile generation needs
+      READ_PHONE_STATE, granted by the Device Owner like the microphone. Read
+      for that one word; nothing about the network is logged or sent.
+      The torch (Control Panel) needs no permission: setTorchMode does not.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
     <!--
@@ -92,6 +102,9 @@
     <queries>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.xiaomi.smarthome" />
+        <!-- 0.42.0: the system settings app, for the Control Panel's WiFi
+             button only (settings/WifiPanel, Poom's decision). -->
+        <package android:name="com.android.settings" />
     </queries>
 
     <application

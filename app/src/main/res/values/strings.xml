@@ -175,4 +175,28 @@
     <string name="auth_server_error">สถานะบน VPS: ติดต่อไม่ได้ กรุณาลองทดสอบอีกครั้ง</string>
     <string name="auth_server_unknown">สถานะบน VPS: กดทดสอบการยืนยันตัวตนเพื่อส่งรหัสขึ้น VPS</string>
     <string name="auth_identity">รหัสการลงทะเบียน: %s (สำหรับอนุมัติบน VPS)</string>
+
+    <!-- Deleting the face or the pattern needs a pass first (0.42.0, Poom). -->
+    <string name="auth_delete_verify">ยืนยันตัวตนแล้วลบ</string>
+    <string name="auth_delete_no_pass">ยังไม่ได้ลบ เพราะยืนยันตัวตนไม่สำเร็จ</string>
+    <string name="auth_delete_done">ลบแล้ว</string>
+    <string name="auth_reset_ask">ยืนยันตัวตนไม่ได้</string>
+    <string name="auth_reset_checking">กำลังตรวจสิทธิ์จาก VPS…</string>
+    <string name="auth_reset_denied">VPS ยังไม่อนุญาต กรุณารัน allow-auth-reset บน VPS แล้วกดอีกครั้งภายใน 10 นาที</string>
+    <string name="auth_reset_error">ติดต่อ VPS ไม่ได้ กรุณาลองใหม่อีกครั้ง</string>
+
+    <!-- Where the weather's position comes from (0.42.0). Never a coordinate. -->
+    <string name="weather_source_phone">ตำแหน่งจริง</string>
+    <string name="weather_source_fallback">ตำแหน่งสำรอง</string>
+
+    <!-- Control panel: WiFi and the torch (0.42.0). -->
+    <string name="window_wifi">WiFi</string>
+    <string name="wifi_unavailable">เปิดหน้า WiFi ไม่ได้</string>
+    <string name="torch_off">ไฟฉาย: ปิด</string>
+    <string name="torch_on">ไฟฉาย: เปิด</string>
+    <string name="torch_unavailable">ไฟฉาย: ใช้ไม่ได้</string>
+
+    <!-- The connection, in the taskbar tray (0.42.0). -->
+    <string name="net_offline">ออฟไลน์</string>
+    <string name="net_description">การเชื่อมต่อ: %s</string>
 </resources>

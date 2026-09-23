@@ -20,23 +20,34 @@ def _hourly(rainy_hours):
 
 
 def test_rain_on_some_afternoons_with_steady_heat():
-    daily = {"temperature_2m_max": [31.4, 30.8, 30.4, 30.6],
+    daily = {"time": ["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"],
+             "temperature_2m_max": [31.4, 30.8, 30.4, 30.6],
              "precipitation_probability_max": [12, 45, 49, 55], "precipitation_sum": [0.3, 0.3, 3.0, 5.5]}
     assert forecast.outlook(daily, _hourly(range(13, 17))) == \
-        "3 วันข้างหน้า มีฝนบางวัน ส่วนใหญ่ช่วงบ่าย อุณหภูมิใกล้เคียงเดิม"
+        "3 วันข้างหน้า มีฝน 2 วัน (ศ. ส.) โอกาสสูงสุด 55% ส่วนใหญ่ช่วงบ่าย อุณหภูมิใกล้เคียงเดิม"
+
+
+def test_a_changed_forecast_reads_differently():
+    """Poom, 2026-09-23: the chance of rain moved and the sentence did not."""
+    base = {"time": ["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"],
+            "temperature_2m_max": [31, 31, 31, 31], "precipitation_sum": [0, 0, 0, 3]}
+    one = forecast.outlook({**base, "precipitation_probability_max": [10, 20, 30, 55]}, None)
+    two = forecast.outlook({**base, "precipitation_probability_max": [10, 20, 60, 90]}, None)
+    assert one != two
+    assert "มีฝน 1 วัน (ส.) โอกาสสูงสุด 55%" in one and "มีฝน 2 วัน (ศ. ส.) โอกาสสูงสุด 90%" in two
 
 
 def test_dry_and_warmer():
     daily = {"temperature_2m_max": [30, 32, 32, 33], "precipitation_probability_max": [0, 10, 5, 0],
              "precipitation_sum": [0, 0, 0, 0]}
-    assert forecast.outlook(daily, _hourly([])) == "3 วันข้างหน้า ไม่ค่อยมีฝน ร้อนขึ้น"
+    assert forecast.outlook(daily, _hourly([])) == "3 วันข้างหน้า ไม่ค่อยมีฝน โอกาสไม่เกิน 10% ร้อนขึ้น"
 
 
 def test_rain_every_day_in_the_evening_and_cooler():
     daily = {"temperature_2m_max": [33, 30, 31, 30], "precipitation_probability_max": [60, 80, 70, 90],
              "precipitation_sum": [5, 8, 6, 9]}
     assert forecast.outlook(daily, _hourly(range(18, 22))) == \
-        "3 วันข้างหน้า ฝนตกเกือบทุกวัน ส่วนใหญ่ช่วงค่ำ เย็นลง"
+        "3 วันข้างหน้า ฝนตกทุกวัน โอกาส 70–90% ส่วนใหญ่ช่วงค่ำ เย็นลง"
 
 
 @pytest.mark.parametrize("daily", [{}, {"temperature_2m_max": [31]}, {"temperature_2m_max": [None, None]}])
@@ -48,7 +59,12 @@ def test_nothing_usable_is_no_sentence_or_a_short_one(daily):
 def test_the_sentence_fits_two_lines():
     daily = {"temperature_2m_max": [33, 30, 31, 30], "precipitation_probability_max": [60, 80, 70, 90],
              "precipitation_sum": [5, 8, 6, 9]}
-    assert len(forecast.outlook(daily, _hourly(range(0, 6)))) <= 60
+    assert len(forecast.outlook(daily, _hourly(range(0, 6)))) <= 70
+    # The longest shape: some days, named, with the odds — two card lines.
+    daily = {"time": ["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"],
+             "temperature_2m_max": [31, 31, 31, 31], "precipitation_probability_max": [10, 90, 90, 10],
+             "precipitation_sum": [0, 9, 9, 0]}
+    assert len(forecast.outlook(daily, _hourly(range(0, 6)))) <= 95
 
 
 @pytest.mark.parametrize("uv,word", [(0, "ต่ำ"), (2.9, "ต่ำ"), (3, "ปานกลาง"), (6, "สูง"), (8.3, "สูงมาก"), (11, "อันตราย")])
@@ -73,7 +89,7 @@ def test_the_detail_line_comes_from_the_cache_and_says_dust_is_unknown(cfg, monk
         "outlook": "3 วันข้างหน้า มีฝนบางวัน ส่วนใหญ่ช่วงบ่าย อุณหภูมิใกล้เคียงเดิม"}))
     line = dashboard_mod.weather_detail_line(board)
     assert line.startswith("พยากรณ์(ECMWF): 3 วันข้างหน้า")
-    assert "โอกาสฝน 12%" in line and "ลม 8 กม./ชม." in line and "UV 8.3 (สูงมาก)" in line
+    assert "โอกาสฝน 12%" in line and "ลม 8 กม./ชม." in line and "UV ตอนนี้ 8.3 (สูงมาก)" in line
     assert "ฝุ่น PM2.5 ยังไม่มีข้อมูล ห้ามเดา" in line
     assert len(line) <= dashboard_mod.MAX_WEATHER_DETAIL_CHARS
     forget_dashboards()

@@ -101,10 +101,10 @@ def test_the_source_is_asked_at_most_every_few_hours(cfg, monkeypatch):
     for name in ("fetch_weather", "fetch_place", "fetch_gold", "fetch_crypto"):
         monkeypatch.setattr(dashboard_mod, name, lambda *a, **k: {})
     board = _dashboard(cfg)
-    for minute in range(0, 120):
+    for minute in range(0, 90):
         board.snapshot(now=5_000.0 + minute * 60)
     assert len([u for u in calls if "oil" in u]) == 1
-    assert cfg.dashboard_oil_ttl >= 3 * 3600
+    assert cfg.dashboard_oil_ttl >= 90 * 60
     forget_dashboards()
 
 
