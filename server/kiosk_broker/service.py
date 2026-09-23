@@ -107,7 +107,24 @@ def _check_caps(conn: sqlite3.Connection, cfg: Config, *, device_id: int, day: s
                              text_len=text_len, endpoint=endpoint)
         return 402, _error(budget.code, budget.message)
 
+    _warn_about_budget(conn, cfg, month)
     return None
+
+
+#: Months already warned about in this process: once a month is plenty for a
+#: log line that says the same thing until the 1st.
+_budget_warned: set[str] = set()
+
+
+def _warn_about_budget(conn: sqlite3.Connection, cfg: Config, month: str) -> None:
+    if month in _budget_warned:
+        return
+    spent = store.month_spend_usd(conn, month)
+    if limits.budget_warning(spent, cfg.monthly_budget_usd) is None:
+        return
+    _budget_warned.add(month)
+    log.warning("budget past %d%% month=%s spent=%.4f cap=%.2f",
+                int(limits.BUDGET_WARN_SHARE * 100), month, spent, cfg.monthly_budget_usd)
 
 
 def handle_chat(
@@ -507,7 +524,8 @@ def handle_tts(
     # is reserved and the cost that is charged are both the cost of what is
     # actually spoken. Sending a long reply and counting it afterwards would be
     # a budget that finds out too late.
-    spoken_text, truncated = shorten.for_speech(spoken_text, cfg.tts_spoken_chars)
+    spoken_text, cut_how = shorten.cut(spoken_text, cfg.tts_spoken_chars)
+    truncated = cut_how != shorten.NOT_CUT
 
     refusal = _check_caps(conn, cfg, device_id=device_id, day=day, month=month, endpoint="tts",
                           worst_case_usd=cfg.worst_case_tts_usd, text_len=len(text))
@@ -578,9 +596,10 @@ def handle_tts(
     # The pair is what tells "the reply was cut before synthesis" apart from
     # "playback stopped early" — on 2026-09-23 a 158-character weather answer
     # was heard as one sentence, and nothing in the log said which.
-    log.info("tts ok device=%s voice=%s chars_in=%d chars=%d truncated=%s respellings=%d bytes=%d"
-             " cost=%.6f register_fixes=%d upstream_ms=%d handler_ms=%d audio_ms=%s",
-             label, cfg.tts_voice, len(text), speech.billed_characters, truncated, respellings,
+    log.info("tts ok device=%s voice=%s chars_in=%d chars=%d truncated=%s cut=%s respellings=%d"
+             " bytes=%d cost=%.6f register_fixes=%d upstream_ms=%d handler_ms=%d audio_ms=%s",
+             label, cfg.tts_voice, len(text), speech.billed_characters, truncated, cut_how,
+             respellings,
              len(speech.audio), cost, register_fixes, upstream_ms, handler_ms,
              "unknown" if audio_ms is None else audio_ms)
 

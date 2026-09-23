@@ -276,6 +276,41 @@ def month_spend_by_service(conn: sqlite3.Connection, month: str) -> dict[str, di
                            "quantity": r["quantity"], "unit": r["unit"]} for r in rows}
 
 
+def spend_by_day(conn: sqlite3.Connection, month: str, tz: str) -> dict[str, dict[str, float]]:
+    """{day: {service: usd}} for the month, days in the budget's own timezone.
+
+    Read from the same ledger the budget sums, so a day's figures always add up
+    to the month's. Grouped here rather than in SQL because SQLite does not know
+    Asia/Bangkok, and a day that starts at 07:00 local is not a day.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    zone = ZoneInfo(tz)
+    days: dict[str, dict[str, float]] = {}
+    for row in conn.execute("SELECT ts, COALESCE(service, 'chat') AS service, cost_usd"
+                            " FROM usage WHERE month = ?", (month,)):
+        day = datetime.fromtimestamp(row["ts"], zone).strftime("%Y-%m-%d")
+        services = days.setdefault(day, {})
+        services[row["service"]] = services.get(row["service"], 0.0) + row["cost_usd"]
+    return days
+
+
+def tts_length_stats(conn: sqlite3.Connection, month: str, over_chars: int) -> dict:
+    """What one spoken answer costs: all of them, and those over `over_chars`.
+
+    Counts and money only — the ledger never held the words.
+    """
+    def stats(where: str, params: tuple) -> dict:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n, COALESCE(AVG(quantity), 0) AS avg_chars,"
+            " COALESCE(MAX(quantity), 0) AS max_chars, COALESCE(AVG(cost_usd), 0) AS avg_cost,"
+            " COALESCE(MAX(cost_usd), 0) AS max_cost FROM usage"
+            " WHERE month = ? AND service = 'tts'" + where, (month,) + params).fetchone()
+        return dict(row)
+    return {"all": stats("", ()), "long": stats(" AND quantity > ?", (over_chars,))}
+
+
 def month_spend_usd(conn: sqlite3.Connection, month: str) -> float:
     row = conn.execute("SELECT COALESCE(SUM(cost_usd), 0.0) AS s FROM usage WHERE month = ?",
                        (month,)).fetchone()

@@ -148,3 +148,39 @@ def test_the_result_is_never_longer_than_the_limit():
         for limit in (1, 5, 37, 100, 499):
             out, _ = for_speech(text, limit)
             assert len(out) <= limit, (limit, repr(out[:20]))
+
+
+# ------------------------------------------- 2026-09-23: cut only at a sentence
+
+from kiosk_broker.shorten import CUT_AT_PHRASE, CUT_AT_SENTENCE, NOT_CUT, cut
+
+
+def test_the_answer_that_was_heard_short_now_fits_whole():
+    """158 characters, cut to its first sentence at the old cap of 100."""
+    text = ("วันนี้เชียงรายอากาศ 28 องศา แดดจัด ความชื้น 70% ครับ "
+            "ช่วงบ่ายร้อนสุดราว 31 องศา ส่วนกลางคืนเย็นลงเหลือ 22 องศาครับ "
+            "ถ้าออกไปข้างนอกพกน้ำกับหมวกไปด้วยนะครับ")
+    assert 100 < len(text) <= 200
+    assert cut(text, 200) == (text, NOT_CUT)
+
+
+def test_the_latest_sentence_end_wins_whatever_marks_it():
+    text = "ข้อแรกครับ ข้อสองจบด้วยจุด. " + "ต่อไปยาวมาก" * 20
+    out, how = cut(text, 40)
+    assert how == CUT_AT_SENTENCE
+    assert out == "ข้อแรกครับ ข้อสองจบด้วยจุด."
+
+
+@pytest.mark.parametrize("text", [
+    "อุณหภูมิ 28.4 องศา " + "ก" * 60,        # a decimal point is not a full stop
+    "ฝนตกบ่อยๆ ช่วงนี้ " + "ก" * 60,          # ๆ repeats a word, the sentence goes on
+])
+def test_marks_inside_a_sentence_are_not_sentence_ends(text):
+    out, how = cut(text, 30)
+    assert how == CUT_AT_PHRASE
+    assert not out.endswith("28.") and not out.endswith("ๆ")
+
+
+def test_a_line_break_ends_a_sentence():
+    out, how = cut("บรรทัดแรก\nบรรทัดสอง" + "ก" * 50, 30)
+    assert (out, how) == ("บรรทัดแรก", CUT_AT_SENTENCE)

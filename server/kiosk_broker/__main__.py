@@ -406,7 +406,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("label")
 
     sub.add_parser("list-devices")
-    sub.add_parser("usage", help="this month's spend for the phone")
+    p = sub.add_parser("usage", help="this month's spend, by service and by day, and what a "
+                                     "spoken answer costs")
+    p.add_argument("--days", type=int, default=7, help="how many recent days to list (this month)")
     sub.add_parser("keys", help="which secrets are configured (present/missing, never the value)")
     p = sub.add_parser("set-key", help="append one secret to the env file, read without echo; "
                                        "never rewrites the file, refuses a name already there")
@@ -594,6 +596,38 @@ def main(argv: list[str] | None = None) -> int:
                 share = row["cost"] / spent * 100 if spent else 0.0
                 print(f"  {name:<5} : ${row['cost']:.4f}  ({share:4.1f}%)  "
                       f"{row['calls']} calls{quantity}")
+
+            # By day, from the same ledger, so the days add up to the month.
+            days = store.spend_by_day(conn, month, cfg.budget_timezone)
+            print()
+            print(f"by day ({cfg.budget_timezone}):")
+            print(f"  {'day':<10}  {'chat':>8}  {'stt':>8}  {'tts':>8}  {'total':>8}")
+            if not days:
+                print("  —")
+            for day in sorted(days)[-max(args.days, 1):]:
+                row = days[day]
+                cells = "  ".join(f"${row.get(name, 0.0):7.4f}" for name in ("chat", "stt", "tts"))
+                print(f"  {day:<10}  {cells}  ${sum(row.values()):7.4f}")
+
+            # What a spoken answer really costs, and one past the old 100 cap.
+            tts_stats = store.tts_length_stats(conn, month, over_chars=100)
+            print()
+            print(f"spoken answers (tts cap {cfg.tts_spoken_chars} characters):")
+            for key, label in (("all", "all"), ("long", "over 100 chars")):
+                s = tts_stats[key]
+                if not s["n"]:
+                    print(f"  {label:<15}: —")
+                    continue
+                print(f"  {label:<15}: {s['n']} answers  avg {s['avg_chars']:.0f} chars "
+                      f"${s['avg_cost']:.5f}  max {s['max_chars']:.0f} chars ${s['max_cost']:.5f}")
+
+            print()
+            warning = limits.budget_warning(spent, cfg.monthly_budget_usd)
+            if warning:
+                print(warning)
+            elif cfg.monthly_budget_usd > 0:
+                print(f"budget       : {spent / cfg.monthly_budget_usd * 100:.0f}% used "
+                      f"(warns at {limits.BUDGET_WARN_SHARE * 100:.0f}%)")
 
             # How often the prompt failed to hold ผม/ครับ on its own. Counts
             # only; the replies themselves are not kept.

@@ -30,9 +30,15 @@ took the sentence count. The first answer measured on the A07 came back at 94
 characters. So the character count is now the rule and the sentence count
 follows from it, and the two habits that pad a Thai reply past 80 without adding
 anything — restating the question, and offering further help at the end — are
-named and forbidden. The 100-character cap is stated because it is real: what
-goes past it is cut before it is spoken, so the model may as well know where the
-edge is rather than be truncated at it.
+named and forbidden. "ห้ามเกิน 100" stays although the spoken cap is 200 since
+2026-09-23: 100 is the target's edge, 200 is the safety net under it, and
+telling the model 200 would move the target.
+
+NUMBERS ARE DIGITS (2026-09-23, Poom). The prompt used to ask for numbers
+written as they are said, "ยี่สิบห้าองศา", and the answers read "ยี่สิบสอง องศา"
+on the screen. "22 องศา" is what a person expects to see, the voice reads a
+digit inside Thai as the Thai number, and it is shorter: "ยี่สิบสอง" is nine
+characters of text-to-speech where "22" is two.
 
 WHAT IT IS NOW ALLOWED TO KNOW. The clock. Everything else in the "cannot see"
 list is something the broker genuinely cannot find out — the weather, a price,
@@ -52,7 +58,7 @@ SYSTEM_PROMPT = """\
 ห้ามทวนคำถาม ห้ามถามท้ายว่าให้ช่วยอะไรอีก
 ไม่ใช้หัวข้อ บุลเล็ต ตาราง อิโมจิ
 เรื่องยาวสรุปสั้น แล้วถามว่าเล่าต่อไหม
-ตัวเลขเขียนแบบพูด เช่น ยี่สิบห้าองศา
+ตัวเลขเขียนเป็นเลข เช่น 25 องศา
 ถ้ากำกวม ถามกลับหนึ่งคำถาม
 ทำไม่ได้บอกสั้นๆ แล้วเสนอทางอื่นถ้ามี
 วันเวลาและอากาศอยู่บรรทัดท้าย ใช้ค่านั้น ห้ามเดาเอง

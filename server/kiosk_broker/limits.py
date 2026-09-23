@@ -63,6 +63,20 @@ def check_rate(conn: sqlite3.Connection, *, device_id: int, per_minute: int, per
     return Decision(True)
 
 
+#: Past this share of the month's budget, `usage` and the service log warn.
+#: Poom asked for 80% on 2026-09-23. A warning, not a limit: the cap stays the
+#: only thing that refuses.
+BUDGET_WARN_SHARE = 0.80
+
+
+def budget_warning(spent_usd: float, cap_usd: float) -> str | None:
+    """A Thai line saying the month is past 80% of its budget, or None."""
+    if cap_usd <= 0 or spent_usd < cap_usd * BUDGET_WARN_SHARE:
+        return None
+    return (f"เตือน: ใช้ไปแล้ว {spent_usd / cap_usd * 100:.0f}% ของงบเดือนนี้ "
+            f"(${spent_usd:.2f} จาก ${cap_usd:.2f})")
+
+
 def check_budget(conn: sqlite3.Connection, *, month: str, cap_usd: float,
                  worst_case_usd: float) -> Decision:
     """Refuses before the call, not after it.

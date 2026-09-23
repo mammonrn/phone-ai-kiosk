@@ -99,7 +99,12 @@ class Config:
     #: longer is cut before the request goes out — never sent and then counted
     #: afterwards. The prompt asks for 60–80 characters; this is the ceiling for
     #: when it does not get them, and it is what bounds the cost of one answer.
-    tts_spoken_chars: int = 100
+    #:
+    #: 200 since 2026-09-23, Poom's decision. At 100 a 158-character weather
+    #: answer was heard as its first sentence only. 200 costs at most $0.006 a
+    #: synthesis; the prompt still asks for 60–80, so this is a ceiling that a
+    #: normal answer never reaches, not a new target.
+    tts_spoken_chars: int = 200
 
     # ---- the kiosk screen ------------------------------------------------
     #: There is no latitude here any more. The phone reports its own coarse

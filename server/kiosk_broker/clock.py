@@ -44,8 +44,6 @@ _DAYS = ("จันทร์", "อังคาร", "พุธ", "พฤหั�
 _MONTHS = ("มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
            "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม")
 
-_ONES = ("", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า")
-
 #: Buddhist era. A Thai speaker asked for the year expects 2569, not 2026.
 BE_OFFSET = 543
 
@@ -73,54 +71,39 @@ def now_in(name: str = "Asia/Bangkok", *, now: datetime | None = None) -> dateti
     return now.astimezone(zone(name))
 
 
-def thai_number(value: int) -> str:
-    """0-99 in Thai words. Enough for minutes and days of the month."""
-    if value == 0:
-        return "ศูนย์"
-    if value < 10:
-        return _ONES[value]
-    tens, units = divmod(value, 10)
-    # Two irregulars, both of which a digit-by-digit version gets wrong: ten is
-    # "สิบ" with nothing in front of it, twenty is "ยี่สิบ" and never "สองสิบ".
-    # And the unit 1 becomes "เอ็ด" once there is a ten in front of it.
-    head = {1: "สิบ", 2: "ยี่สิบ"}.get(tens, _ONES[tens] + "สิบ")
-    if units == 0:
-        return head
-    return head + ("เอ็ด" if units == 1 else _ONES[units])
-
-
 def thai_hour(hour: int) -> str:
-    """The hour on the Thai six-hour clock, as it is said aloud."""
+    """The hour on the Thai six-hour clock, as it is said aloud, in digits.
+
+    Digits, not words, since 2026-09-23 (Poom): "บ่าย 2 โมง", not
+    "บ่ายสองโมง". The synthesiser reads a digit inside Thai as the Thai number,
+    and the text is shorter. The conversion itself stays here, in code — which
+    word goes with which hour is the part a model gets wrong.
+    """
     if hour == 0:
         return "เที่ยงคืน"
     if hour <= 5:
-        return "ตี" + thai_number(hour)
+        return f"ตี {hour}"
     if hour <= 11:
-        # 10 and 11 need the words for ten and eleven, not a digit lookup — the
-        # first version indexed a ten-entry tuple with the hour and raised on
-        # every morning after nine.
-        return thai_number(hour) + "โมงเช้า"
+        return f"{hour} โมงเช้า"
     if hour == 12:
         return "เที่ยง"
     if hour == 13:
         return "บ่ายโมง"
     if hour <= 15:
-        return "บ่าย" + thai_number(hour - 12) + "โมง"
-    if hour <= 17:
-        return thai_number(hour - 12) + "โมงเย็น"
-    if hour == 18:
-        return "หกโมงเย็น"
-    return thai_number(hour - 18) + "ทุ่ม"
+        return f"บ่าย {hour - 12} โมง"
+    if hour <= 18:
+        return f"{hour - 12} โมงเย็น"
+    return f"{hour - 18} ทุ่ม"
 
 
 def thai_time(dt: datetime) -> str:
-    """e.g. 13:30 -> "บ่ายโมงครึ่ง", 22:05 -> "สี่ทุ่มห้านาที"."""
+    """e.g. 13:30 -> "บ่ายโมงครึ่ง", 22:05 -> "4 ทุ่ม 5 นาที"."""
     hour = thai_hour(dt.hour)
     if dt.minute == 0:
         return hour
     if dt.minute == 30:
         return hour + "ครึ่ง"
-    return hour + thai_number(dt.minute) + "นาที"
+    return f"{hour} {dt.minute} นาที"
 
 
 def thai_date(dt: datetime) -> str:

@@ -86,56 +86,39 @@ def test_a_leap_day_is_a_normal_day():
 @pytest.mark.parametrize("hour,minute,expected", [
     (0, 0, "เที่ยงคืน"),
     (0, 30, "เที่ยงคืนครึ่ง"),
-    (0, 5, "เที่ยงคืนห้านาที"),
-    (1, 0, "ตีหนึ่ง"),
-    (5, 45, "ตีห้าสี่สิบห้านาที"),
-    (6, 0, "หกโมงเช้า"),
-    (10, 30, "สิบโมงเช้าครึ่ง"),
-    # The one that raised an IndexError in the first draft: hours 10 and 11 need
-    # the WORDS for ten and eleven, not a lookup in a table of single digits.
-    (11, 20, "สิบเอ็ดโมงเช้ายี่สิบนาที"),
+    (0, 5, "เที่ยงคืน 5 นาที"),
+    (1, 0, "ตี 1"),
+    (5, 45, "ตี 5 45 นาที"),
+    (6, 0, "6 โมงเช้า"),
+    (10, 30, "10 โมงเช้าครึ่ง"),
+    (11, 20, "11 โมงเช้า 20 นาที"),
     (12, 0, "เที่ยง"),
     (12, 30, "เที่ยงครึ่ง"),
     (13, 0, "บ่ายโมง"),
     (13, 30, "บ่ายโมงครึ่ง"),
-    (14, 0, "บ่ายสองโมง"),
-    (15, 10, "บ่ายสามโมงสิบนาที"),
-    (16, 0, "สี่โมงเย็น"),
-    (18, 0, "หกโมงเย็น"),
-    (19, 0, "หนึ่งทุ่ม"),
-    (22, 5, "สี่ทุ่มห้านาที"),
-    (23, 59, "ห้าทุ่มห้าสิบเก้านาที"),
+    (14, 0, "บ่าย 2 โมง"),
+    (15, 10, "บ่าย 3 โมง 10 นาที"),
+    (16, 0, "4 โมงเย็น"),
+    (18, 0, "6 โมงเย็น"),
+    (19, 0, "1 ทุ่ม"),
+    (22, 5, "4 ทุ่ม 5 นาที"),
+    (23, 59, "5 ทุ่ม 59 นาที"),
 ])
 def test_the_six_hour_clock_is_said_the_way_thai_says_it(hour, minute, expected):
     at = datetime(2026, 9, 22, hour, minute, tzinfo=clock.FIXED_OFFSET)
     assert clock.thai_time(at) == expected
 
 
-@pytest.mark.parametrize("value,expected", [
-    (1, "หนึ่ง"), (5, "ห้า"), (10, "สิบ"),
-    # เอ็ด, not หนึ่ง, once there is a ten in front of it.
-    (11, "สิบเอ็ด"),
-    # ยี่สิบ, never สองสิบ. The first draft got this wrong and said
-    # "สองสิบห้านาที" for twenty-five past.
-    (20, "ยี่สิบ"), (21, "ยี่สิบเอ็ด"), (25, "ยี่สิบห้า"),
-    (30, "สามสิบ"), (31, "สามสิบเอ็ด"), (59, "ห้าสิบเก้า"),
-])
-def test_thai_numbers_handle_their_two_irregulars(value, expected):
-    assert clock.thai_number(value) == expected
-
-
-def test_no_arabic_numeral_ever_reaches_the_spoken_form():
-    """The bracketed half of the line is what gets read out, so it must be words.
-
-    A digit surviving into it would be read by the voice as a digit, and a Thai
-    voice reading "11" mid-sentence is the kind of thing that only shows up when
-    somebody listens.
-    """
+def test_numbers_in_the_spoken_form_are_digits():
+    """Digits, since 2026-09-23 (Poom): the voice reads a digit inside Thai as
+    the Thai number, and "บ่าย 2 โมง" is shorter than "บ่ายสองโมง". What stays
+    words is the part that is not a number — โมง, ทุ่ม, ตี, เที่ยง, ครึ่ง."""
     for hour in range(24):
         for minute in range(60):
             at = datetime(2026, 9, 22, hour, minute, tzinfo=clock.FIXED_OFFSET)
             spoken = clock.thai_time(at)
-            assert not any(character.isdigit() for character in spoken), spoken
+            for word in ("หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า", "สิบ"):
+                assert word not in spoken, spoken
 
 
 def test_every_weekday_and_month_has_a_thai_name():
@@ -180,8 +163,8 @@ def test_the_prompt_and_the_clock_together_stay_affordable():
 
 
 def test_the_line_carries_both_the_digits_and_the_words():
-    """Digits so a date question has something exact; words so nothing is derived."""
+    """Digits so a date question has something exact; the Thai clock so nothing is derived."""
     line = clock.context_line(now=utc(2026, 9, 22, 4, 20))
     assert "11:20" in line
-    assert "สิบเอ็ดโมงเช้ายี่สิบนาที" in line
+    assert "11 โมงเช้า 20 นาที" in line
     assert "วันอังคาร 22 กันยายน 2569" in line
