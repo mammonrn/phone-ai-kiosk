@@ -50,7 +50,7 @@ class AlarmBookTest {
         assertEquals(1, book.enable("05:00", false))
         assertEquals(1, book.enable("ไปทำงาน", false))       // part of the name
         assertEquals(0, book.enable("ไปทำงาน", false))       // already off: nothing changed
-        assertEquals(3, book.enable("all", true))
+        assertEquals(2, book.enable("all", true))           // the two that were off
         assertFalse(book.matches("ไม่มีชื่อนี้"))
     }
 
