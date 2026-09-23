@@ -130,6 +130,7 @@ CREDITS = {
     "weather": "Open-Meteo (CC BY 4.0)",
     "crypto": "Binance · อันดับจาก CoinGecko",
     "gold": "สมาคมค้าทองคำ ผ่าน chnwt.dev",
+    "oil": "ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev",
     "place": "© OpenStreetMap contributors (ODbL)",
 }
 
@@ -345,6 +346,12 @@ def fetch_place(latitude: float, longitude: float, timeout: float) -> dict:
 #: will be a new row with its own price, and this is where it would go.
 GOLD_PURITY_PCT = 96.5
 GOLD_PURITY_SOURCE = "https://classic.goldtraders.or.th/default.aspx"
+
+
+def fetch_oil(timeout: float) -> dict:
+    """Thai fuel prices, the three cheapest brands per fuel. See oil.py."""
+    from . import oil
+    return oil.parse(_get(oil.OIL_URL, timeout))
 
 
 def fetch_gold(timeout: float) -> dict:
@@ -594,6 +601,11 @@ class Dashboard:
         gold = self._panel(
             "gold", now, self.cfg.dashboard_gold_ttl,
             lambda: self._gold_with_change(marks), credit=CREDITS["gold"])
+        # Oil: the source scrapes Kapook on every call, and prices move at
+        # most once a day, so it is asked every few hours at most. See oil.py.
+        oil = self._panel(
+            "oil", now, self.cfg.dashboard_oil_ttl,
+            lambda: fetch_oil(self.cfg.dashboard_timeout), credit=CREDITS["oil"])
         crypto = self._panel(
             "crypto", now, self.cfg.dashboard_crypto_ttl,
             lambda: fetch_crypto(symbols or [], self.cfg.dashboard_timeout),
@@ -602,6 +614,7 @@ class Dashboard:
         return {
             "weather": weather.as_json(),
             "gold": gold.as_json(),
+            "oil": oil.as_json(),
             "crypto": crypto.as_json(),
             # Empty string when the lookup failed or the name could not be read.
             # The phone shows "ตำแหน่งปัจจุบัน" for that, never a coordinate.

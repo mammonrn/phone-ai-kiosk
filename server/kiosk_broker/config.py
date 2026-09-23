@@ -123,6 +123,10 @@ class Config:
     #:   three where freshness is worth anything.
     dashboard_weather_ttl: int = 600
     dashboard_gold_ttl: int = 300
+    #:   Oil prices change at most once a day, and every call to the source is a
+    #:   page load on Kapook: three hours, and the old value with its age if
+    #:   the source is down.
+    dashboard_oil_ttl: int = 3 * 3600
     dashboard_crypto_ttl: int = 60
 
     #: A province does not move. A day is short enough that carrying the kiosk
