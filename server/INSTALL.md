@@ -262,6 +262,20 @@ scp "poom@45.76.157.64:/tmp/say/*.ogg" .
 จะได้ `as-written-Schedar.ogg` กับ `as-spoken-Schedar.ogg` ฟังเทียบได้เลย
 ค่าใช้จ่ายราว $0.000001 และ**บันทึกในบัญชีเทรน ไม่ใช่งบมือถือ**
 
+คำที่แก้แล้ว (มีหลักฐานว่าอ่านผิดจริงทุกคำ): `อากาศดี`, `อากาศ`, และ `แผนที่`
+(2026-09-23 ได้ยินเป็น "เปิดแผน ที่ ไป" แก้ด้วย `เปิดแผนที่` → `เปิด แผนที่`
+และ `แผนที่ไป` → `แผนที่ ไป`)
+
+`install.sh` **ไม่เขียนทับ** ไฟล์นี้ถ้ามีอยู่แล้ว เมื่อ repo มีคำใหม่ต้องคัดลอกเอง
+(ดูความต่างก่อน ถ้าเคยเพิ่มคำเองบน VPS คำนั้นจะหาย) broker อ่านไฟล์ใหม่เองเมื่อไฟล์เปลี่ยน
+ไม่ต้อง restart:
+
+```bash
+sudo diff /home/kioskbroker/.config/kiosk-broker/pronunciation.json ~/phone-ai-kiosk/server/pronunciation.json
+sudo install -o kioskbroker -g kioskbroker -m 0644 ~/phone-ai-kiosk/server/pronunciation.json \
+  /home/kioskbroker/.config/kiosk-broker/pronunciation.json
+```
+
 เพิ่มคำใหม่: แก้ไฟล์ JSON ไม่ต้องแตะโค้ด
 
 ```json

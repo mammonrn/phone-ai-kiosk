@@ -174,3 +174,43 @@ def test_a_broken_file_is_refused_cleanly(tmp_path, content):
     path.write_text(content, encoding="utf-8")
     with pytest.raises(ValueError):          # InvalidEntry and JSONDecodeError both are
         Dictionary.load(path)
+
+
+# ------------------------------------------- แผนที่ (production, 2026-09-23)
+
+@pytest.mark.parametrize("reply,spoken", [
+    ("กำลังเปิดแผนที่ไปให้พี่นะครับ", "กำลังเปิด แผนที่ ไปให้พี่นะครับ"),
+    ("กำลังเปิดแผนที่ไปบิ๊กซี 2 เชียงรายให้ครับ", "กำลังเปิด แผนที่ ไปบิ๊กซี 2 เชียงรายให้ครับ"),
+    ("กำลังเปิดแผนที่ไปเซ็นทรัลเชียงรายให้ครับ", "กำลังเปิด แผนที่ ไปเซ็นทรัลเชียงรายให้ครับ"),
+    ("ได้ครับ เปิดแผนที่ให้แล้ว", "ได้ครับ เปิด แผนที่ให้แล้ว"),
+])
+def test_map_replies_keep_the_word_whole(shipped, reply, spoken):
+    """Heard on production: "เปิดแผน ที่ ไป". Nothing between us and the voice
+    added a space; the voice split the word. A space at each end of แผนที่
+    leaves it no other way to read it."""
+    out, _ = shipped.apply(reply)
+    assert out == spoken
+    assert "แผนที่" in out
+
+
+def test_the_map_failure_reply_is_respelled_too(shipped):
+    from kiosk_broker import actions
+    out, changes = shipped.apply(actions.MAPS_FAILED_REPLY)
+    assert changes == 1 and "เปิด แผนที่" in out
+
+
+def test_the_screen_and_the_history_keep_the_spelling(conn, cfg):
+    """Only what goes to the voice is respelled: the chat reply the phone
+    shows and stores is the model's text, untouched."""
+    import json
+
+    from conftest import FakeClient
+    from kiosk_broker import auth
+    from kiosk_broker.service import handle_chat
+
+    token = auth.issue(conn, "kiosk-a07")
+    model_says = "กำลังเปิดแผนที่ไปบิ๊กซีให้ครับ [[action: open_maps | บิ๊กซี]]"
+    status, body = handle_chat(conn, cfg, FakeClient(model_says),
+                               authorization=f"Bearer {token}",
+                               body=json.dumps({"text": "พาไปบิ๊กซี"}).encode("utf-8"))
+    assert status == 200 and body["reply"] == "กำลังเปิดแผนที่ไปบิ๊กซีให้ครับ"
