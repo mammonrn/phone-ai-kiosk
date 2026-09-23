@@ -157,7 +157,7 @@ jobs:
           # listing grew past the pipe buffer (0.37.0, 519 entries).
           fail=0
           # The three wake word models, and SFace for the identity check (0.37.0).
-          for model in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx                        face_recognition_sface_2021dec_int8.onnx; do
+          for model in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx face_recognition_sface_2021dec_int8.onnx; do
             if grep -q "assets/models/$model" <<< "$LIST"; then
               echo "  ok   assets/models/$model"
             else
