@@ -29,6 +29,7 @@ import com.mammonrn.phoneaikiosk.home.HomeControl
 import com.mammonrn.phoneaikiosk.ui.BatteryLabel
 import com.mammonrn.phoneaikiosk.ui.FadingLine
 import com.mammonrn.phoneaikiosk.ui.RetroType
+import com.mammonrn.phoneaikiosk.ui.SpeechFollow
 import com.mammonrn.phoneaikiosk.ui.ThaiDate
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.DashboardState
@@ -52,6 +53,18 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var voiceStatus: TextView
     private lateinit var transcript: TextView
+    private lateinit var transcriptScroll: android.widget.ScrollView
+
+    /** What the transcript shows now, so it is only set when it changes — a
+     *  setText every second would fight the scroll position. */
+    private var shownTranscript = ""
+
+    /** The answer the window is following, and whether a finger took over. */
+    private var followedReply = ""
+    private var followTakenOver = false
+
+    /** The last touch on the answer, which keeps it on screen while read. */
+    private var transcriptTouchedAt = 0L
     private lateinit var taskbarClock: TextView
     private lateinit var taskbarDate: TextView
     private lateinit var batteryIcon: ImageView
@@ -160,13 +173,15 @@ class MainActivity : Activity() {
             // the kiosk. Display only — transcriptLine() is untouched.
             // What was heard and answered stays up for a minute after it last
             // changed, then gives way to the invitation again — see FadingLine.
+            val nowMs = SystemClock.elapsedRealtime()
+            // Somebody scrolling back through an answer is still reading it:
+            // their touch holds it up the same way a turn in progress does.
             val busy = IdleScreen.voiceBusy(
-                VoiceState.wake, VoiceState.stt, VoiceState.chat, VoiceState.tts)
-            transcript.text = RetroType.pixelify(
-                recentTurn.visible(transcriptLine(), SystemClock.elapsedRealtime(), busy)
-                    .ifEmpty { getString(R.string.kiosk_prompt) },
-                pixelFace,
-            )
+                VoiceState.wake, VoiceState.stt, VoiceState.chat, VoiceState.tts) ||
+                nowMs - transcriptTouchedAt < READING_HOLD_MS
+            val line = recentTurn.visible(transcriptLine(), nowMs, busy)
+                .ifEmpty { getString(R.string.kiosk_prompt) }
+            if (line != shownTranscript) showTranscript(line)
             jarvisState.text = DashboardState.jarvisState(
                 VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
                 getString(R.string.jarvis_ready),
@@ -314,6 +329,48 @@ class MainActivity : Activity() {
     }
 
     /**
+     * New text in the Jarvis window. A new answer starts at the top with the
+     * voice-following switched back on; long text reads from the left, since
+     * a centred paragraph of Thai is hard to follow line to line.
+     */
+    private fun showTranscript(line: String) {
+        shownTranscript = line
+        transcript.text = RetroType.pixelify(line, pixelFace)
+        if (VoiceState.reply != followedReply) {
+            followedReply = VoiceState.reply
+            followTakenOver = false
+            transcriptScroll.scrollTo(0, 0)
+        }
+        transcript.post {
+            transcript.gravity = if (transcript.height > transcriptScroll.height)
+                android.view.Gravity.START or android.view.Gravity.TOP
+            else android.view.Gravity.CENTER
+        }
+    }
+
+    /**
+     * While an answer plays, keeps the line being said a third of the way
+     * down the window — until a finger takes over. See ui/SpeechFollow.
+     */
+    private val followSpeech = object : Runnable {
+        override fun run() {
+            val layout = transcript.layout
+            val offset = SpeechFollow.spokenOffset(
+                transcript.text, VoiceState.speakingSinceMs, VoiceState.speakingDurationMs,
+                SystemClock.elapsedRealtime())
+            if (layout != null && offset != null && !followTakenOver &&
+                transcript.height > transcriptScroll.height) {
+                val lineTop = layout.getLineTop(layout.getLineForOffset(offset)) +
+                    transcript.paddingTop
+                val target = SpeechFollow.scrollTarget(
+                    lineTop, transcriptScroll.height, transcript.height)
+                if (target != transcriptScroll.scrollY) transcriptScroll.smoothScrollTo(0, target)
+            }
+            handler.postDelayed(this, FOLLOW_INTERVAL_MILLIS)
+        }
+    }
+
+    /**
      * Each coin's own pixel icon in front of its ticker, the height of the
      * text. Inserted from the end so the earlier indices stay true. A coin
      * with no icon of its own gets the generic coin: the top four can change.
@@ -341,6 +398,9 @@ class MainActivity : Activity() {
     private val isDeviceOwner: Boolean
         get() = dpm.isDeviceOwnerApp(packageName)
 
+    // The transcript's touch listener only notes the touch and returns false, so
+    // the ScrollView's own handling — and its accessibility — are untouched.
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -353,6 +413,18 @@ class MainActivity : Activity() {
         status = findViewById(R.id.status)
         voiceStatus = findViewById(R.id.voice_status)
         transcript = findViewById(R.id.transcript)
+        transcriptScroll = findViewById(R.id.transcript_scroll)
+        // A finger on the answer: stop following the voice for this answer,
+        // and keep it on screen while it is being read. Returns false, so the
+        // ScrollView still gets the touch and scrolls.
+        transcriptScroll.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN ||
+                event.actionMasked == android.view.MotionEvent.ACTION_MOVE) {
+                followTakenOver = true
+                transcriptTouchedAt = SystemClock.elapsedRealtime()
+            }
+            false
+        }
         taskbarClock = findViewById(R.id.taskbar_clock)
         taskbarDate = findViewById(R.id.taskbar_date)
         batteryIcon = findViewById(R.id.battery_icon)
@@ -446,6 +518,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         handler.post(tick)
+        handler.post(followSpeech)
         hideSystemBars()
         handler.post(refreshDashboard)
 
@@ -487,6 +560,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(tick)
+        handler.removeCallbacks(followSpeech)
         // Stopped with the clock: a paused kiosk polling the broker every
         // minute forever is a background job nobody asked for.
         handler.removeCallbacks(refreshDashboard)
@@ -891,6 +965,12 @@ class MainActivity : Activity() {
 
         /** A blank line between two coins, as a fraction of a full one. */
         const val COIN_GAP = 0.4f
+
+        /** How often the Jarvis window checks where the voice has got to. */
+        const val FOLLOW_INTERVAL_MILLIS = 250L
+
+        /** A touch on the answer keeps it up this long past the touch. */
+        const val READING_HOLD_MS = 30_000L
 
         /** A coin icon's side, as a share of the text size: level with the digits. */
         const val COIN_ICON_SCALE = 0.95f

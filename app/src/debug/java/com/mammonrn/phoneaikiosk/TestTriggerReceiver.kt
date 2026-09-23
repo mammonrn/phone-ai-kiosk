@@ -26,6 +26,17 @@ class TestTriggerReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
+            ACTION_SHOW_REPLY -> {
+                // A fixed long answer on screen, "spoken" for 15 seconds with
+                // no audio, no network and no cost — so the Jarvis window's
+                // scrolling and voice-following can be checked on the phone
+                // with a screenshot. Our own sample text, never anybody's.
+                VoiceState.heard = SAMPLE_QUESTION
+                VoiceState.reply = SAMPLE_REPLY
+                VoiceState.speakingDurationMs = SAMPLE_SPEAKING_MS
+                VoiceState.speakingSinceMs = android.os.SystemClock.elapsedRealtime()
+            }
+
             ACTION_LISTEN -> {
                 // Goes through the service, not around it: the service owns the
                 // microphone and the foreground notification, and starting a
@@ -182,6 +193,14 @@ class TestTriggerReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_LISTEN = "com.mammonrn.phoneaikiosk.TEST_LISTEN"
+        const val ACTION_SHOW_REPLY = "com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY"
+
+        const val SAMPLE_QUESTION = "วันนี้อากาศที่เชียงรายเป็นยังไงบ้าง แล้วควรพกร่มไหม"
+        const val SAMPLE_REPLY = "ตอนนี้เชียงราย 28 องศา ฝนปรอย ความชื้น 70% ครับ " +
+            "ช่วงบ่ายร้อนสุดราว 31 องศา ส่วนกลางคืนเย็นลงเหลือ 22 องศาครับ " +
+            "ถ้าออกไปข้างนอกควรพกร่มไปด้วย เพราะอาจมีฝนตกเป็นช่วงๆ ครับ " +
+            "และอย่าลืมดื่มน้ำเยอะๆ นะครับ"
+        const val SAMPLE_SPEAKING_MS = 15_000L
         const val ACTION_STATS = "com.mammonrn.phoneaikiosk.TEST_STATS"
         const val ACTION_RESET_STATS = "com.mammonrn.phoneaikiosk.TEST_RESET_STATS"
         const val ACTION_SET_BROKER = "com.mammonrn.phoneaikiosk.TEST_SET_BROKER"

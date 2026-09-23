@@ -44,6 +44,7 @@ class Speaker(private val context: Context) {
         return try {
             file.writeBytes(audio)
             val done = CountDownLatch(1)
+            var endedAt = -1
             val player = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
@@ -52,18 +53,31 @@ class Speaker(private val context: Context) {
                         .build(),
                 )
                 setDataSource(file.absolutePath)
-                setOnCompletionListener { done.countDown() }
+                setOnCompletionListener { endedAt = it.currentPosition; done.countDown() }
                 setOnErrorListener { _, _, _ -> done.countDown(); true }
                 prepare()
                 start()
             }
+            VoiceState.speakingDurationMs = player.duration.toLong()
+            VoiceState.speakingSinceMs = android.os.SystemClock.elapsedRealtime()
             done.await()
+            // THE TAIL. Completion means the last data went to the audio
+            // output, not that the speaker has finished sounding it, and
+            // release() straight away can drop what is still buffered — the
+            // last syllable, which in Thai is the "ครับ" that ends every answer.
+            // A short hold lets the output drain before the player goes.
+            Thread.sleep(TAIL_HOLD_MS)
+            // Where playback ended against how long the file is: equal means
+            // the whole file was played. Numbers only.
+            android.util.Log.i(VoiceService.TAG, "playback done duration=${player.duration}ms " +
+                "ended_at=${endedAt}ms hold=${TAIL_HOLD_MS}ms")
             player.release()
             lastUsed = "cloud"
             true
         } catch (e: Exception) {
             false
         } finally {
+            VoiceState.speakingSinceMs = 0
             file.delete()
         }
     }
@@ -77,6 +91,11 @@ class Speaker(private val context: Context) {
             return true
         }
         return false
+    }
+
+    companion object {
+        /** How long the player is kept after completion so the output drains. */
+        const val TAIL_HOLD_MS = 300L
     }
 
     fun shutdown() {

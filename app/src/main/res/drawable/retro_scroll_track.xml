@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The scroll bar's groove in the Jarvis window: a darker strip of the
+     window face, so the bar reads as a 1995 scroll bar, not a phone's. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFA8A8A8" />
+</shape>

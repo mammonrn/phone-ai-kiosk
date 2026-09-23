@@ -391,6 +391,12 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN -p com.mammonrn.
 **`-p` จำเป็น** Android จำกัด implicit broadcast ไปยังแอปที่ไม่ได้ทำงาน
 ถ้าไม่ระบุ package คำสั่งจะขึ้นว่าส่งสำเร็จแต่แอปไม่เคยได้รับ
 
+ตรวจการ์ดจาร์วิสกับคำตอบยาว โดยไม่อัดเสียงและไม่เสียเงิน: คำสั่งนี้วางคำตอบตัวอย่างของเราเองไว้บนจอ แล้วทำเหมือนกำลังพูดอยู่ 15 วินาที เพื่อดูว่าจอเลื่อนตามเสียงไหม
+
+```powershell
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY -p com.mammonrn.phoneaikiosk.debug
+```
+
 ### อ่านสถานะด้วย dumpsys (แนะนำ ไม่ต้องพึ่ง uiautomator)
 
 ```powershell

@@ -453,6 +453,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("text")
     p.add_argument("--out", default="say", help="directory to write the audio into")
 
+    p = sub.add_parser("tts-tail", help="synthesise one line as WAV in the production voice and "
+                                         "measure its last second: fade, cut, or neither")
+    p.add_argument("text")
+    p.add_argument("--out", default="tts-tail", help="directory to write the WAV into")
+
     p = sub.add_parser("voice-samples",
                        help="synthesise the same Thai line in every male Chirp 3 HD voice")
     p.add_argument("--out", default="voice-samples", help="directory to write the audio into")
@@ -715,6 +720,48 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "botnoi-voices":
             return _botnoi_voices(conn, cfg, args)
+
+        if args.cmd == "tts-tail":
+            from pathlib import Path as _Path
+
+            from . import pronounce as pronounce_mod, tail_check, tts as tts_mod
+
+            try:
+                dictionary = pronounce_mod.Dictionary.load(cfg.pronunciation_path)
+            except FileNotFoundError:
+                dictionary = pronounce_mod.Dictionary.empty()
+            # Exactly what the phone would be sent: respelled, then cut.
+            from . import shorten
+            spoken, _ = dictionary.apply(args.text)
+            spoken, cut_how = shorten.cut(spoken, cfg.tts_spoken_chars)
+
+            api_key = _require("GOOGLE_TTS_API_KEY")
+            pricing = Pricing.load(cfg.pricing_path)
+            speech = tts_mod.synthesize(
+                api_key=api_key, text=spoken, language_code=cfg.tts_language,
+                voice=cfg.tts_voice, encoding="LINEAR16", endpoint=cfg.tts_endpoint)
+            out = _Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            path = out / f"tail-{cfg.tts_voice}.wav"
+            path.write_bytes(speech.audio)
+            cost = pricing.tts_cost(cfg.tts_voice_family, speech.billed_characters)
+            store.record_training_usage(conn, job="voice-test", service="tts",
+                                        quantity=speech.billed_characters, unit="characters",
+                                        cost_usd=cost, note="tts-tail")
+
+            result = tail_check.analyse(speech.audio)
+            print(f"voice            : {cfg.tts_voice}   chars sent: {speech.billed_characters}"
+                  f"   cut: {cut_how}")
+            print(f"file             : {path}")
+            print(f"duration         : {result['duration_ms']} ms   "
+                  f"({speech.billed_characters / max(result['duration_ms'], 1) * 1000:.1f} chars/s)")
+            print(f"typical speech   : {result['typical_dbfs']} dBFS")
+            print(f"trailing silence : {result['trailing_silence_ms']} ms")
+            print(f"last 1 s, 100 ms : {result['last_second_dbfs']}")
+            print(f"reading          : {tail_check.verdict(result)}")
+            print(f"list price ${cost:.6f} (inside Google's free million this month unless "
+                  f"`usage` says otherwise); training ledger, not the $5")
+            return 0
 
         if args.cmd == "say":
             from pathlib import Path as _Path

@@ -85,6 +85,14 @@ object VoiceState : VoiceSink {
     @Volatile override var reply: String = ""
     @Volatile override var lastError: String = ""
 
+    /**
+     * When the cloud answer now playing started (elapsedRealtime), 0 when none
+     * is, and how long MediaPlayer says it lasts. The Jarvis window scrolls
+     * the answer along with these, so the line being said stays in view.
+     */
+    @Volatile var speakingSinceMs: Long = 0
+    @Volatile var speakingDurationMs: Long = 0
+
     /** Set by the service so `dumpsys` can say whether a token is installed. */
     @Volatile var hasToken: Boolean = false
 
