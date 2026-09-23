@@ -82,7 +82,8 @@ def _analysis(cfg, action: str, audio: bool) -> int:
                 audio = "audio" if row["audio_file"] else "     "
                 print(f"  #{row['id']:<4} {when}  {audio} {row['provider']:<11} "
                       f"{row['action'] or 'pending':<16} {row['intent'] or '-':<22} {row['text']}")
-            print("\nfor stt-compare, name the four recordings in sentence order: --ids 12,13,14,15")
+            print("\nfor stt-compare: --ids 12,15 (blind), and to score them say which sentence "
+                  "each is: --expect 12=1,15=3")
         return 0
     finally:
         conn.close()
@@ -108,24 +109,35 @@ def _stt_compare(cfg, args) -> int:
               f"spent so far ${spent():.4f}\n")
 
         # ---- the audio ------------------------------------------------------
-        samples: list[tuple[str, str, bytes, float]] = []
-        sentences = list(stt_compare.SENTENCES)
+        # A recording gets an answer key ONLY when the pairing is certain. See
+        # stt_compare.Sample: pairing by position scored the weather question
+        # against the Central sentence once, and that is not happening again.
+        Sample = stt_compare.Sample
+        samples: list[stt_compare.Sample] = []
+        try:
+            expect = stt_compare.parse_expect(args.expect)
+        except ValueError as exc:
+            print(f"--expect: {exc} (write it as 12=1,15=3)")
+            return 2
         if args.from_analysis or args.ids:
             ids = [int(x) for x in args.ids.split(",") if x.strip()] if args.ids else None
-            kept = analysis.rows_with_audio(conn, cfg.home, args.from_analysis or 4, ids=ids)
-            for (sentence, keyword), (_, audio) in zip(sentences, kept):
-                samples.append((sentence, keyword, audio, google_stt.wav_info(audio)[1]))
+            for row, audio in analysis.rows_with_audio(conn, cfg.home, args.from_analysis or 4,
+                                                       ids=ids):
+                known = stt_compare.sentence_for(expect[row["id"]]) if row["id"] in expect else None
+                samples.append(Sample(f"#{row['id']}", audio, google_stt.wav_info(audio)[1],
+                                      *(known or (None, None))))
             if not samples:
                 print("no kept recordings — run `analysis on --audio` and speak to the kiosk first")
                 return 1
         elif args.dir:
-            files = sorted(Path(args.dir).glob("*.wav"))
-            for (sentence, keyword), path in zip(sentences, files):
+            for path in sorted(Path(args.dir).glob("*.wav")):
                 audio = path.read_bytes()
-                samples.append((sentence, keyword, audio, google_stt.wav_info(audio)[1]))
+                known = stt_compare.sentence_from_filename(path.name)
+                samples.append(Sample(path.name, audio, google_stt.wav_info(audio)[1],
+                                      *(known or (None, None))))
         elif args.synth:
             key = _require("GOOGLE_TTS_API_KEY")
-            for sentence, keyword in sentences:
+            for number, (sentence, keyword) in enumerate(stt_compare.SENTENCES, 1):
                 cost = pricing.tts_cost(cfg.tts_voice_family, len(sentence))
                 if spent() + cost > stt_compare.COMPARE_BUDGET_USD:
                     print("stopped before synthesis: budget")
@@ -136,15 +148,17 @@ def _stt_compare(cfg, args) -> int:
                 store.record_training_usage(conn, job=stt_compare.JOB, service="tts",
                                             quantity=len(sentence), unit="characters",
                                             cost_usd=cost, note="synth sample")
-                samples.append((sentence, keyword, speech.audio,
-                                google_stt.wav_info(speech.audio)[1]))
+                samples.append(Sample(f"synth-{number}", speech.audio,
+                                      google_stt.wav_info(speech.audio)[1], sentence, keyword))
 
         if not samples:
             print("no audio found for that choice")
             return 1
-        print("pairing (sentence <- recording length):")
-        for sentence, _, audio, seconds in samples:
-            print(f"  {sentence:<24} <- {seconds:4.1f} s")
+        print("recordings:")
+        for sample in samples:
+            said = (f"answer key: {sample.expected}" if sample.expected
+                    else "NO answer key — compared blind, no accuracy shown")
+            print(f"  {sample.label:<14} {sample.seconds:4.1f} s   {said}")
         print()
 
         # ---- the transcribers -------------------------------------------------
@@ -181,16 +195,26 @@ def _stt_compare(cfg, args) -> int:
 
         # ---- the table ----------------------------------------------------------
         for row in rows:
-            mark = "OK " if row.ok else "MISS"
             heard = row.heard or f"(error: {row.error})"
-            print(f"{mark} {row.provider:<11} CER {row.cer:4.0%} {row.ms:>5} ms "
-                  f"${row.cost_usd:.5f}  [{row.keyword}] {row.sentence} -> {heard}")
+            if row.ok is None:
+                # Blind: what was heard, how long, what it cost. No verdict.
+                print(f"  -  {row.label:<10} {row.provider:<11} {'':>8} {row.ms:>5} ms "
+                      f"${row.cost_usd:.5f}  {heard}")
+            else:
+                mark = "OK " if row.ok else "MISS"
+                print(f"{mark} {row.label:<10} {row.provider:<11} CER {row.cer:4.0%} "
+                      f"{row.ms:>5} ms ${row.cost_usd:.5f}  [{row.keyword}] {heard}")
         print()
-        print(f"{'transcriber':<12} {'key word':>8} {'mean CER':>9} {'mean ms':>8} {'cost':>10}")
+        print(f"{'transcriber':<12} {'scored':>6} {'key word':>8} {'mean CER':>9} "
+              f"{'mean ms':>8} {'cost':>10}")
         for s in stt_compare.summary(rows, providers):
-            print(f"{s['provider']:<12} {s['keyword_hits']:>8} {s['mean_cer']:>9.0%} "
+            rate = "-" if s["mean_cer"] is None else f"{s['mean_cer']:.0%}"
+            print(f"{s['provider']:<12} {s['scored']:>6} {s['keyword_hits']:>8} {rate:>9} "
                   f"{s['mean_ms']:>8.0f} {'$%.5f' % s['cost_usd']:>10}"
                   f"{'  errors: %d' % s['errors'] if s['errors'] else ''}")
+        if not any(s["scored"] for s in stt_compare.summary(rows, providers)):
+            print("no recording had an answer key, so no accuracy is shown — "
+                  "pair them with --expect ID=N to score")
         print(f"\ncomparison spend so far: ${spent():.4f} of ${stt_compare.COMPARE_BUDGET_USD:.2f}")
         if stopped:
             print(stopped)
@@ -398,7 +422,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--from-analysis", type=int, default=0,
                    help="use the last N turns kept by `analysis on --audio` (say the 4 in order)")
     p.add_argument("--ids", default="",
-                   help="kept recordings by id from `analysis summary`, in sentence order")
+                   help="kept recordings by id from `analysis summary` (blind unless --expect)")
+    p.add_argument("--expect", default="",
+                   help="which sentence each id is, e.g. 12=1,15=3 (1-4). Only these are scored")
     p.add_argument("--dir", default="", help="WAV files, sorted, paired with the 4 sentences")
     p.add_argument("--synth", action="store_true", help="the 4 sentences in the kiosk's TTS voice")
     p.add_argument("--providers", default="groq,groq-hints,google")

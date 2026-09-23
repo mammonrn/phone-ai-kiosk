@@ -63,9 +63,18 @@ def _stt(conn, cfg, *, provider=None, groq=None, google=None, audio=None):
 
 # ------------------------------------------------------------ the choice ---
 
-def test_groq_is_the_default_and_stays_it():
+def test_groq_hints_is_the_default():
+    """Poom's decision after the comparison on his own voice."""
     from kiosk_broker.config import Config
-    assert Config.__dataclass_fields__["stt_provider"].default == "groq"
+    assert Config.__dataclass_fields__["stt_provider"].default == "groq-hints"
+    assert stt_router.choose(None, "groq-hints") == "groq-hints"
+    # A config naming something unknown falls back to the default, not to plain groq.
+    assert stt_router.choose(None, "nonsense") == "groq-hints"
+
+
+def test_the_default_can_still_be_overridden_per_request_and_by_config():
+    assert stt_router.choose("groq", "groq-hints") == "groq"
+    assert stt_router.choose("google", "groq-hints") == "google"
     assert stt_router.choose(None, "groq") == "groq"
 
 
@@ -77,11 +86,18 @@ def test_only_a_known_transcriber_can_be_asked_for(asked, got):
     assert stt_router.choose(asked, "groq") == got
 
 
-def test_plain_groq_sends_exactly_what_it_always_did(conn, cfg, hints_file):
+def test_plain_groq_sends_no_prompt(conn, cfg, hints_file):
     groq = FakeGroq()
-    status, body = _stt(conn, cfg, groq=groq)
+    status, body = _stt(conn, cfg, provider="groq", groq=groq)
     assert status == 200 and body["provider"] == "groq"
     assert "prompt" not in groq.calls[0]
+
+
+def test_with_no_override_the_hints_go_out(conn, cfg, hints_file):
+    groq = FakeGroq()
+    status, body = _stt(conn, cfg, groq=groq)
+    assert body["provider"] == "groq-hints"
+    assert groq.calls[0]["prompt"] == "กล้อง แผนที่ เชียงราย"
 
 
 def test_groq_hints_sends_the_words_as_its_prompt(conn, cfg, hints_file):
@@ -159,7 +175,7 @@ def test_analysis_on_stores_the_turn_and_never_logs_the_words(conn, cfg, caplog)
         _stt(conn, cfg, groq=groq)
     row = conn.execute("SELECT * FROM analysis_turns").fetchone()
     assert row["text"] == "ขอดูกล่องหน่อยครับ"
-    assert row["provider"] == "groq"
+    assert row["provider"] == "groq-hints"          # the default since 2026-09-23
     assert row["intent"] == "near-miss:กล่อง"
     assert row["audio_file"] is None                    # audio needs its own switch
     written = "\n".join(r.getMessage() for r in caplog.records)

@@ -2,11 +2,12 @@
 
 Three on the server, for the comparison Poom asked for:
 
-  groq        Groq whisper-large-v3-turbo, as it has always been. THE DEFAULT,
-              and it stays the default until Poom picks another (config
-              `stt_provider`).
-  groq-hints  The same call with Groq's documented `prompt` carrying the words
-              in stt_hints.json.
+  groq        Groq whisper-large-v3-turbo, with no hints — how it was until
+              2026-09-23.
+  groq-hints  THE DEFAULT (Poom's choice, from his own voice): the same call
+              with Groq's documented `prompt` carrying the words in
+              stt_hints.json. Same price and speed as groq; it heard "กล้อง"
+              where groq heard "กล่อง".
   google      Google Cloud Speech-to-Text v1, latest_short, th-TH, with the
               same words as speechContexts phrases.
 
@@ -44,7 +45,7 @@ def choose(requested: str | None, default: str) -> str:
     wanted = (requested or "").strip().lower()
     if wanted in PROVIDERS:
         return wanted
-    return default if default in PROVIDERS else "groq"
+    return default if default in PROVIDERS else "groq-hints"
 
 
 def cost_of(provider: str, pricing: Pricing, *, groq_model: str, google_model: str,

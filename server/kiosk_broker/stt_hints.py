@@ -27,9 +27,14 @@ FILENAME = "stt_hints.json"
 MAX_PHRASES = 50
 MAX_PHRASE_CHARS = 40
 
-#: Whisper reads at most 224 prompt tokens and Thai runs close to one token a
-#: character; the prompt is cut, phrase by phrase, to stay well inside that.
-MAX_PROMPT_CHARS = 180
+#: Groq documents the prompt as "limited to 224 tokens". MEASURED with
+#: Whisper's own tokenizer (openai/whisper multilingual.tiktoken, 2026-09-23):
+#: the shipped 17 phrases are 142 characters and 127 tokens — about 0.9 a
+#: character overall, but a short word can cost two a character ("ไฟ" is 2
+#: characters and 4 tokens). 150 characters keeps even a list of short words
+#: under the limit; the prompt is cut phrase by phrase, from the END, so the
+#: file lists the most important words first.
+MAX_PROMPT_CHARS = 150
 
 #: Google's boost is a weight; 0 means "no boost". Kept to a sane range.
 MAX_BOOST = 20.0

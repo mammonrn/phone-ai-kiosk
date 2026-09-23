@@ -148,8 +148,12 @@ def test_the_shipped_hints_file_is_valid():
     path = Path(__file__).parent.parent / "stt_hints.json"
     assert stt_hints.check_file(path) == []
     phrases = json.loads(path.read_text(encoding="utf-8"))["phrases"]
-    for word in ("กล้อง", "แผนที่", "ไฟ", "เชียงราย", "จาร์วิส"):
+    for word in ("กล้อง", "แผนที่", "ไฟ", "เชียงราย", "เซ็นทรัล", "จาร์วิส", "อากาศ"):
         assert word in phrases
+    # All of them fit: nothing in the shipped list is silently cut off.
+    hints = stt_hints.load(path)
+    assert hints.whisper_prompt() == " ".join(hints.phrases)
+    assert len(hints.whisper_prompt()) <= stt_hints.MAX_PROMPT_CHARS
 
 
 @pytest.mark.parametrize("content,expect", [

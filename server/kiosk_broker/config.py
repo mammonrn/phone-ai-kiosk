@@ -45,10 +45,14 @@ class Config:
     stt_language: str = "th"
 
     #: Which transcriber /v1/stt uses when the phone does not ask for one:
-    #: "groq" (default — Poom's choice until he picks another), "groq-hints"
-    #: or "google". See stt_router.py. The phone's per-request override exists
-    #: only in the debug build and resets when the app restarts.
-    stt_provider: str = "groq"
+    #: "groq-hints" (THE DEFAULT, Poom's decision on 2026-09-23), "groq" or
+    #: "google". Chosen from Poom's own voice: "ขอดูกล้องหน่อยครับ" came back
+    #: "ขอดูกล่องหน่อย" from plain groq and "ขอดูกล้อง หน่อย" with the hints, at
+    #: the same price and speed; google also got it right at 4x the time and
+    #: 15x the cost, and stays available for comparison. Settable in
+    #: config.json; the phone's debug-build adb override still wins per request
+    #: and resets when the app restarts. See stt_router.py.
+    stt_provider: str = "groq-hints"
 
     #: Google Speech-to-Text v1 model for the "google" transcriber. latest_short
     #: lists th-TH and model adaptation on Google's supported-languages page.
