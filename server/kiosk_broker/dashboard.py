@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 import urllib.error
@@ -84,7 +85,7 @@ WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude={lat}&longitude={lon}"
     "&current=temperature_2m,relative_humidity_2m,weather_code,is_day"
-    "&daily=temperature_2m_max,temperature_2m_min"
+    "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset"
     "&timezone=Asia%2FBangkok&forecast_days=1"
 )
 PLACE_URL = (
@@ -257,7 +258,25 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
         "word": weather_word(code, is_day),
         "high_c": _first_number(daily.get("temperature_2m_max")),
         "low_c": _first_number(daily.get("temperature_2m_min")),
+        # Same request, same position, no new source: Open-Meteo answers these
+        # in the daily block beside the high and low. Local time, since the URL
+        # asks for Asia/Bangkok. None when missing, and the card goes without.
+        "sunrise": _clock_time(daily.get("sunrise")),
+        "sunset": _clock_time(daily.get("sunset")),
     }
+
+
+_ISO_LOCAL_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})")
+
+
+def _clock_time(values) -> str | None:
+    """"2026-09-23T06:05" -> "06:05", or None for anything else."""
+    if not (isinstance(values, list) and values and isinstance(values[0], str)):
+        return None
+    match = _ISO_LOCAL_TIME.match(values[0])
+    if not match or int(match.group(1)) > 23 or int(match.group(2)) > 59:
+        return None
+    return f"{match.group(1)}:{match.group(2)}"
 
 
 def _first_number(values) -> float | None:

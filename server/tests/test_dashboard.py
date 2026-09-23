@@ -322,9 +322,33 @@ def _open_meteo(monkeypatch, **current):
     just the word table — is what is under test."""
     body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
                         "weather_code": 0, **current},
-            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4]}}
+            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4],
+                      "sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
     monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
     return dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
+
+
+def test_sunrise_and_sunset_come_from_the_same_request(monkeypatch):
+    urls = []
+    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
+                        "weather_code": 0, "is_day": 1},
+            "daily": {"sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: urls.append(url) or body)
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
+    assert (got["sunrise"], got["sunset"]) == ("06:05", "18:13")
+    assert len(urls) == 1 and "sunrise,sunset" in urls[0]
+
+
+@pytest.mark.parametrize("daily", [
+    {}, {"sunrise": []}, {"sunrise": [None]}, {"sunrise": ["06:05"]},
+    {"sunrise": ["2026-09-23T25:05"]}, {"sunrise": "2026-09-23T06:05"},
+])
+def test_a_missing_or_odd_sunrise_is_none_not_a_crash(monkeypatch, daily):
+    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
+                        "weather_code": 0, "is_day": 1}, "daily": daily}
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
+    assert got["sunrise"] is None and got["sunset"] is None
 
 
 def test_a_clear_sky_by_day_is_sunny(monkeypatch):

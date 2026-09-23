@@ -1,19 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Our own pixel art: a house on a 16x16 grid, drawn from squares like the
-     other window icons. Not Google's logo, and not an icon pack. -->
+     other window icons. Not Google's logo, and not an icon pack.
+     Recoloured 2026-09-23 into this screen's own palette (DESIGN.md): the
+     first version used Google's four brand colours, which read as borrowing
+     the brand even though the shape was ours. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="16" android:viewportHeight="16">
     <!-- roof, stepped -->
-    <path android:fillColor="#FF5A36" android:pathData="M7,2h2v1h-2z" />
-    <path android:fillColor="#FF5A36" android:pathData="M6,3h4v1h-4z" />
-    <path android:fillColor="#FF5A36" android:pathData="M5,4h6v1h-6z" />
-    <path android:fillColor="#FF5A36" android:pathData="M4,5h8v1h-8z" />
-    <path android:fillColor="#FF5A36" android:pathData="M3,6h10v1h-10z" />
+    <path android:fillColor="#B03A2E" android:pathData="M7,2h2v1h-2z" />
+    <path android:fillColor="#B03A2E" android:pathData="M6,3h4v1h-4z" />
+    <path android:fillColor="#B03A2E" android:pathData="M5,4h6v1h-6z" />
+    <path android:fillColor="#B03A2E" android:pathData="M4,5h8v1h-8z" />
+    <path android:fillColor="#B03A2E" android:pathData="M3,6h10v1h-10z" />
     <!-- walls -->
     <path android:fillColor="#FFFFFF" android:pathData="M4,7h8v7h-8z" />
     <!-- door and window -->
-    <path android:fillColor="#4285F4" android:pathData="M7,10h2v4h-2z" />
-    <path android:fillColor="#34A853" android:pathData="M5,8h2v2h-2z" />
-    <path android:fillColor="#FBBC05" android:pathData="M10,8h1v1h-1z" />
+    <path android:fillColor="#000080" android:pathData="M7,10h2v4h-2z" />
+    <path android:fillColor="#008080" android:pathData="M5,8h2v2h-2z" />
+    <path android:fillColor="#008080" android:pathData="M9,8h2v2h-2z" />
 </vector>

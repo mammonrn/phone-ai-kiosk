@@ -212,6 +212,28 @@ object RetroType {
     }
 
     /**
+     * Where a coin's ticker opens a line, and which ticker: "BTC +1.81%" gives
+     * (its index, "BTC"). The crypto window puts each coin's own icon there.
+     *
+     * Any 2-6 capital letters at a line start followed by a space or the end,
+     * not a fixed list: the broker's top four can change, and a new coin gets
+     * the generic coin icon rather than nothing. A price line starts with "$"
+     * and a freshness note with "(", so neither is taken for a ticker.
+     */
+    fun coinTickers(text: CharSequence): List<Pair<Int, String>> {
+        val out = ArrayList<Pair<Int, String>>()
+        var lineStart = 0
+        for (i in 0..text.length) {
+            if (i < text.length && text[i] != '\n') continue
+            TICKER.find(text.subSequence(lineStart, i))?.let { out.add(lineStart to it.groupValues[1]) }
+            lineStart = i + 1
+        }
+        return out
+    }
+
+    private val TICKER = Regex("""^([A-Z]{2,6})(?: |$)""")
+
+    /**
      * One span, three jobs: swap the face, shrink it to match, put it back on
      * the baseline. They have to travel together — change the size without the
      * shift and the digits float; do either in a plain CharacterStyle and the

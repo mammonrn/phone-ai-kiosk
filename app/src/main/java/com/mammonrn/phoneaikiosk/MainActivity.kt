@@ -66,6 +66,9 @@ class MainActivity : Activity() {
     private lateinit var weatherIcon: ImageView
     private lateinit var goldTitle: TextView
     private lateinit var jarvisState: TextView
+    private lateinit var sunRow: android.view.View
+    private lateinit var sunriseText: TextView
+    private lateinit var sunsetText: TextView
 
     /**
      * Press Start 2P, loaded once.
@@ -263,9 +266,26 @@ class MainActivity : Activity() {
         // tell the pairs apart, not the full empty line that spread four coins
         // over the whole window.
         cryptoBody.text = RetroType.tightenBlankLines(
-            RetroType.pixelifyWithAge(screen.crypto.text, pixelFace, dim), COIN_GAP)
+            withCoinIcons(RetroType.pixelifyWithAge(screen.crypto.text, pixelFace, dim),
+                          cryptoBody.textSize),
+            COIN_GAP)
         cryptoBodyRight.text = RetroType.tightenBlankLines(
-            RetroType.pixelify(screen.crypto.text2, pixelFace), COIN_GAP)
+            withCoinIcons(RetroType.pixelify(screen.crypto.text2, pixelFace),
+                          cryptoBodyRight.textSize),
+            COIN_GAP)
+
+        // Sunrise and sunset, or no line at all. Both or neither: half a pair
+        // on a screen looks like a fault, and the weather above it is complete
+        // without them.
+        if (screen.sunrise.isNotEmpty() && screen.sunset.isNotEmpty()) {
+            sunriseText.text = RetroType.pixelify(getString(R.string.sunrise_at, screen.sunrise),
+                                                  pixelFace)
+            sunsetText.text = RetroType.pixelify(getString(R.string.sunset_at, screen.sunset),
+                                                 pixelFace)
+            sunRow.visibility = android.view.View.VISIBLE
+        } else {
+            sunRow.visibility = android.view.View.GONE
+        }
 
         // Sun or moon, from the same `is_day` the broker chose the word from.
         // Deciding it here from the phone's own clock would be a second opinion
@@ -291,6 +311,28 @@ class MainActivity : Activity() {
         goldTitle.text = if (screen.goldPurity.isEmpty()) getString(R.string.window_gold)
                          else "${getString(R.string.window_gold)} · " +
                              getString(R.string.gold_purity, screen.goldPurity)
+    }
+
+    /**
+     * Each coin's own pixel icon in front of its ticker, the height of the
+     * text. Inserted from the end so the earlier indices stay true. A coin
+     * with no icon of its own gets the generic coin: the top four can change.
+     */
+    private fun withCoinIcons(text: CharSequence, textSizePx: Float): CharSequence {
+        val out = android.text.SpannableStringBuilder(text)
+        val size = (textSizePx * COIN_ICON_SCALE).toInt()
+        for ((index, ticker) in RetroType.coinTickers(text).asReversed()) {
+            val icon = ContextCompat.getDrawable(this, COIN_ICONS[ticker] ?: R.drawable.ic_pixel_coin)
+                ?: continue
+            icon.setBounds(0, 0, size, size)
+            out.insert(index, "\uFFFC ")
+            val align = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                android.text.style.DynamicDrawableSpan.ALIGN_CENTER
+            else android.text.style.DynamicDrawableSpan.ALIGN_BASELINE
+            out.setSpan(android.text.style.ImageSpan(icon, align), index, index + 1,
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return out
     }
 
     private val dpm: DevicePolicyManager
@@ -324,6 +366,9 @@ class MainActivity : Activity() {
         weatherIcon = findViewById(R.id.weather_icon)
         goldTitle = findViewById(R.id.gold_title)
         jarvisState = findViewById(R.id.jarvis_state)
+        sunRow = findViewById(R.id.sun_row)
+        sunriseText = findViewById(R.id.sunrise_text)
+        sunsetText = findViewById(R.id.sunset_text)
 
         // The system bars are already off via Samsung's gesture setting, but a
         // setting is somebody's preference and this is the app's own statement.
@@ -846,6 +891,17 @@ class MainActivity : Activity() {
 
         /** A blank line between two coins, as a fraction of a full one. */
         const val COIN_GAP = 0.4f
+
+        /** A coin icon's side, as a share of the text size: level with the digits. */
+        const val COIN_ICON_SCALE = 0.95f
+
+        /** Our own drawings, one per coin (DESIGN.md, "Icons"). */
+        val COIN_ICONS = mapOf(
+            "BTC" to R.drawable.ic_pixel_btc,
+            "ETH" to R.drawable.ic_pixel_eth,
+            "BNB" to R.drawable.ic_pixel_bnb,
+            "XRP" to R.drawable.ic_pixel_xrp,
+        )
 
 
         /**

@@ -67,6 +67,14 @@ object DashboardState {
          * both say "fallback", and neither ever says a coordinate.
          */
         val locationFallback: Boolean = false,
+        /**
+         * Sunrise and sunset on the screen's own clock, "6:05 AM", or empty.
+         * From the same weather reading, for the same position. Empty when the
+         * broker did not send them (an older broker, or Open-Meteo left them
+         * out), and the weather window then simply has no sun line.
+         */
+        val sunrise: String = "",
+        val sunset: String = "",
     )
 
     /**
@@ -86,10 +94,27 @@ object DashboardState {
             goldBasis = usable(gold)?.first?.optString("change_basis", "") ?: "",
             goldPurity = goldPurity(usable(gold)?.first),
             locationFallback = root.optBoolean("location_fallback", false),
+            sunrise = clock12(usable(weather)?.first?.optString("sunrise", "") ?: ""),
+            sunset = clock12(usable(weather)?.first?.optString("sunset", "") ?: ""),
         )
     } catch (e: Exception) {
         val panel = Panel(unavailable, false)
         Screen(panel, panel, panel, "")
+    }
+
+    /**
+     * "06:05" -> "6:05 AM", "18:13" -> "6:13 PM": the taskbar clock's format,
+     * so every time on the screen reads the same way. Empty for anything that
+     * is not a 24-hour HH:MM, including the "null" optString makes of a null.
+     */
+    fun clock12(hhmm: String): String {
+        val match = Regex("""^(\d{2}):(\d{2})$""").matchEntire(hhmm) ?: return ""
+        val hour = match.groupValues[1].toInt()
+        val minute = match.groupValues[2]
+        if (hour > 23 || minute.toInt() > 59) return ""
+        val half = if (hour < 12) "AM" else "PM"
+        val twelve = when (val h = hour % 12) { 0 -> 12; else -> h }
+        return "$twelve:$minute $half"
     }
 
     /**

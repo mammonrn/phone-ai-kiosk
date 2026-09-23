@@ -195,20 +195,71 @@
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/weather_body"
+            <!-- The sunken panel is a column now: the reading, and under it one
+                 line of sunrise and sunset. The sun line is GONE until both
+                 times arrive, so an older broker or a missing value leaves the
+                 window exactly as it was rather than showing an empty row. -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:orientation="vertical"
                 android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
-                android:padding="7dp"
-                android:lineSpacingExtra="1dp"
-                android:textColor="@color/retro_text"
-                android:textSize="14sp"
-                android:fontFamily="@font/plex_thai"
-                android:text="@string/data_loading" />
+                android:padding="7dp">
+
+                <TextView
+                    android:id="@+id/weather_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="1dp"
+                    android:textColor="@color/retro_text"
+                    android:textSize="14sp"
+                    android:fontFamily="@font/plex_thai"
+                    android:text="@string/data_loading" />
+
+                <LinearLayout
+                    android:id="@+id/sun_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:src="@drawable/ic_pixel_sunrise"
+                        android:contentDescription="@string/sunrise" />
+
+                    <TextView
+                        android:id="@+id/sunrise_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:textColor="@color/retro_text"
+                        android:textSize="12sp"
+                        android:fontFamily="@font/plex_thai" />
+
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_marginStart="16dp"
+                        android:src="@drawable/ic_pixel_sunset"
+                        android:contentDescription="@string/sunset" />
+
+                    <TextView
+                        android:id="@+id/sunset_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:textColor="@color/retro_text"
+                        android:textSize="12sp"
+                        android:fontFamily="@font/plex_thai" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ======================================================= gold window -->
