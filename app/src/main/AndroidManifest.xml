@@ -24,6 +24,17 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!--
+      Alarms (2026-09-23). AlarmManager.setAlarmClock is the only timer Android
+      promises to fire on time in Doze, and it needs an exact-alarm permission:
+      USE_EXACT_ALARM on Android 13+ (granted at install, no dialog — this is a
+      clock for the household), SCHEDULE_EXACT_ALARM below that. See
+      alarm/AlarmScheduler.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+
+    <!--
       WHERE THE KIOSK IS, TO ABOUT THREE KILOMETRES.
 
       COARSE AND ONLY COARSE. ACCESS_FINE_LOCATION is deliberately not here and
@@ -120,6 +131,12 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- AlarmManager's call when an alarm is due. Not exported: only our own
+             PendingIntent reaches it. -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
 
         <!-- The admin `dpm set-device-owner` is pointed at.
              BIND_DEVICE_ADMIN must be on the receiver, and it must be exported,

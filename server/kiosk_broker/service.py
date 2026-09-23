@@ -15,8 +15,8 @@ import sqlite3
 import time
 from typing import Any
 
-from . import (actions, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier, limits,
-               speech_gate,
+from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
+               limits, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -215,8 +215,9 @@ def handle_chat(
     is_camera, why = actions.camera_match(text)
     log.info("intent device=%s camera=%s reason=%s chars=%d",
              label, "yes" if is_camera else "no", why, len(text))
-    if is_camera:
-        reply = actions.CAMERA_REPLY
+    def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
+        """A reply decided by code, no model, nothing paid: the camera and the
+        alarms. Stored in the conversation like any other turn."""
         store.record_request(conn, device_id=device_id, day=day, outcome="ok",
                              text_len=len(text))
         store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
@@ -225,13 +226,22 @@ def handle_chat(
                              role="assistant", content=reply)
         store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
                              ttl_hours=cfg.history_ttl_hours)
-        # The type and how it was reached. Nothing about which camera or whose
-        # account: the broker knows neither and the log should not either.
-        log.info("action device=%s type=open_camera_app via=phrase", label)
-        analysis.record_chat(conn, cfg.home, device=label, text=text, intent=why,
-                             action="open_camera_app", cost_usd=0.0)
-        return 200, {"reply": reply, "action": actions.camera_action(),
-                     "conversation_id": conversation_id}
+        # The type and how it was reached — never the time, the label or
+        # which camera: those are the household's, not the journal's.
+        log.info("action device=%s type=%s via=phrase", label,
+                 action["type"] if action else "none")
+        analysis.record_chat(conn, cfg.home, device=label, text=text, intent=intent,
+                             action=action["type"] if action else "none", cost_usd=0.0)
+        return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
+
+    if is_camera:
+        return answer_in_code(actions.CAMERA_REPLY, actions.camera_action(), why)
+
+    # ---- alarms: "ปลุกตีห้า", "ปิดปลุกไปทำงาน" — also code, no model ---------
+    alarm = alarms.alarm_command(text)
+    if alarm is not None:
+        action, reply = alarms.action_and_reply(alarm)
+        return answer_in_code(reply, action, f"alarm:{alarm['kind']}")
 
     pricing = Pricing.load(cfg.pricing_path)
 

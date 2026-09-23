@@ -26,7 +26,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.home.HomeControl
+import com.mammonrn.phoneaikiosk.alarm.AlarmScheduler
+import com.mammonrn.phoneaikiosk.alarm.AlarmStore
 import com.mammonrn.phoneaikiosk.ui.BatteryLabel
+import com.mammonrn.phoneaikiosk.ui.CardBoard
 import com.mammonrn.phoneaikiosk.ui.FadingLine
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.ui.SpeechFollow
@@ -80,6 +83,26 @@ class MainActivity : Activity() {
     private lateinit var goldTitle: TextView
     private lateinit var jarvisState: TextView
     private lateinit var sunRow: android.view.View
+
+    // ---------------------------------------------------------- the card stack
+    // Which window is open, folded or first: ui/CardBoard decides, this moves
+    // the views. The Jarvis window and the taskbar are not in the stack.
+    private val board = CardBoard()
+    private lateinit var cardStack: android.widget.LinearLayout
+
+    private class Card(val id: String, val root: android.view.View, val body: android.view.View,
+                       val badge: TextView, val openWeight: Float)
+
+    private val cards = LinkedHashMap<String, Card>()
+
+    /** Each window's one-line summary, shown in its title bar when folded. */
+    private val summaries = HashMap<String, String>()
+    private var shownOrder: List<String> = emptyList()
+
+    private lateinit var alarmsBody: TextView
+    private lateinit var alarmStop: TextView
+    private var shownAlarmsVersion = -1
+    private var alarmsVisible = false
     private lateinit var sunriseText: TextView
     private lateinit var sunsetText: TextView
 
@@ -186,6 +209,8 @@ class MainActivity : Activity() {
                     if (noticeOnly) FadingLine.NOTICE_HOLD_MS else FadingLine.HOLD_MS)
                 .ifEmpty { getString(R.string.kiosk_prompt) }
             if (line != shownTranscript) showTranscript(line)
+            if (VoiceState.alarmsVersion != shownAlarmsVersion) showAlarms(nowMs)
+            renderCards(nowMs)
             jarvisState.text = DashboardState.jarvisState(
                 VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
                 getString(R.string.jarvis_ready),
@@ -275,6 +300,12 @@ class MainActivity : Activity() {
      */
     private fun applyDashboard(payload: String, withoutPosition: Boolean = false) {
         val screen = DashboardState.parse(payload, getString(R.string.data_unavailable))
+        // What counts as news for each window: DashboardState.cardFacts.
+        val nowMs = SystemClock.elapsedRealtime()
+        for ((id, fact) in DashboardState.cardFacts(payload)) {
+            board.report(id, fact.first, nowMs)
+            summaries[id] = fact.second
+        }
         // Numbers into the pixel face, the freshness note turned down. The
         // strings themselves are DashboardState's business and are not touched
         // here — this only decides what they look like.
@@ -330,6 +361,111 @@ class MainActivity : Activity() {
         goldTitle.text = if (screen.goldPurity.isEmpty()) getString(R.string.window_gold)
                          else "${getString(R.string.window_gold)} · " +
                              getString(R.string.gold_purity, screen.goldPurity)
+    }
+
+    /**
+     * The windows of the card stack, their rules (DESIGN.md, "Cards"):
+     *   weather  folds after 60 min without news
+     *   gold     folds after 2 h (the shop announces a few times a day)
+     *   crypto   folds after 60 min
+     *   alarms   folds 10 min after a change; pinned open while one rings;
+     *            not shown at all while there are no alarms
+     *   home     the Google Home placeholder: never news, so a bar from the
+     *            start — its room goes to the windows with something to say
+     * Registration order is the order of windows that have never had news.
+     */
+    private fun setUpCards() {
+        fun card(id: String, root: Int, body: Int, badge: Int, titlebar: Int, weight: Float,
+                 foldAfterMs: Long) {
+            cards[id] = Card(id, findViewById(root), findViewById(body), findViewById(badge), weight)
+            board.register(CardBoard.Spec(id, foldAfterMs))
+            // Tapping a folded window's bar opens it for two minutes.
+            findViewById<android.view.View>(titlebar).setOnClickListener {
+                board.touch(id, SystemClock.elapsedRealtime())
+                renderCards(SystemClock.elapsedRealtime())
+            }
+        }
+        val minute = CardBoard.MINUTE
+        card("weather", R.id.card_weather, R.id.weather_panel, R.id.weather_badge,
+             R.id.weather_titlebar, 1f, 60 * minute)
+        card("gold", R.id.card_gold, R.id.gold_body, R.id.gold_badge, R.id.gold_titlebar,
+             1f, 120 * minute)
+        card("crypto", R.id.card_crypto, R.id.crypto_panel, R.id.crypto_badge,
+             R.id.crypto_titlebar, 0.25f, 60 * minute)
+        card("alarms", R.id.card_alarms, R.id.alarms_panel, R.id.alarms_badge,
+             R.id.alarms_titlebar, 0.5f, 10 * minute)
+        card("home", R.id.card_home, R.id.home_body, R.id.home_badge, R.id.home_titlebar,
+             0.7f, 0)
+        summaries["home"] = getString(R.string.home_not_connected)
+        alarmStop.setOnClickListener {
+            VoiceService.start(this, VoiceService.ACTION_ALARM_STOP)
+        }
+    }
+
+    /**
+     * Puts the stack in CardBoard's order and folds or opens each window.
+     * Touches a view only when its state changes, so nothing redraws for
+     * nothing — the "no flicker" rule is here as much as in CardBoard.
+     */
+    private fun renderCards(nowMs: Long) {
+        val slots = board.layout(nowMs).filter { it.id != "alarms" || alarmsVisible }
+        val ids = slots.map { it.id }
+        if (ids != shownOrder) {
+            for ((index, id) in ids.withIndex()) {
+                val view = cards.getValue(id).root
+                if (cardStack.getChildAt(index) !== view) {
+                    cardStack.removeView(view)
+                    cardStack.addView(view, index)
+                }
+            }
+            shownOrder = ids
+        }
+        val alarmsRoot = cards.getValue("alarms").root
+        val alarmsState = if (alarmsVisible) android.view.View.VISIBLE else android.view.View.GONE
+        if (alarmsRoot.visibility != alarmsState) alarmsRoot.visibility = alarmsState
+
+        for (slot in slots) {
+            val card = cards.getValue(slot.id)
+            val bodyState = if (slot.open) android.view.View.VISIBLE else android.view.View.GONE
+            if (card.body.visibility != bodyState) card.body.visibility = bodyState
+            val params = card.root.layoutParams as android.widget.LinearLayout.LayoutParams
+            val weight = if (slot.open) card.openWeight else 0f
+            if (params.weight != weight) {
+                params.weight = weight
+                card.root.layoutParams = params
+            }
+            val badge = when {
+                !slot.open -> summaries[slot.id].orEmpty()
+                slot.fresh -> getString(R.string.card_fresh)
+                else -> ""
+            }
+            if (card.badge.text.toString() != badge) card.badge.text = badge
+        }
+    }
+
+    /** The alarms window: the list, the stop button while one rings, its news. */
+    private fun showAlarms(nowMs: Long) {
+        shownAlarmsVersion = VoiceState.alarmsVersion
+        val book = AlarmStore.load(this)
+        val ringing = VoiceState.alarmRinging
+        alarmsVisible = book.alarms.isNotEmpty() || ringing.isNotEmpty()
+        val on = getString(R.string.alarm_on)
+        val off = getString(R.string.alarm_off)
+        val lines = book.alarms.joinToString("\n") { alarm ->
+            val name = if (alarm.label.isNotEmpty()) "  ${alarm.label}" else ""
+            "${DashboardState.clock12(alarm.time)}$name  · ${if (alarm.enabled) on else off}"
+        }
+        alarmsBody.text = RetroType.pixelify(lines, pixelFace)
+        alarmStop.visibility = if (ringing.isNotEmpty()) android.view.View.VISIBLE
+                               else android.view.View.GONE
+        val next = book.next(System.currentTimeMillis(), java.util.TimeZone.getDefault())
+        summaries["alarms"] = when {
+            ringing.isNotEmpty() -> getString(R.string.alarm_ringing)
+            next != null -> getString(R.string.alarm_next, DashboardState.clock12(next.first.time))
+            else -> off
+        }
+        board.report("alarms", book.toJson() + "|" + ringing, nowMs)
+        board.pin("alarms", ringing.isNotEmpty())
     }
 
     /**
@@ -449,6 +585,10 @@ class MainActivity : Activity() {
         goldTitle = findViewById(R.id.gold_title)
         jarvisState = findViewById(R.id.jarvis_state)
         sunRow = findViewById(R.id.sun_row)
+        cardStack = findViewById(R.id.card_stack)
+        alarmsBody = findViewById(R.id.alarms_body)
+        alarmStop = findViewById(R.id.alarm_stop)
+        setUpCards()
         sunriseText = findViewById(R.id.sunrise_text)
         sunsetText = findViewById(R.id.sunset_text)
 
@@ -494,6 +634,10 @@ class MainActivity : Activity() {
         }
 
         applyDeviceOwnerPolicies()
+        // Android forgets alarms on reboot and on update; this activity is HOME
+        // and starts after both, so the next alarm is booked again here.
+        AlarmScheduler.schedule(this)
+        ringIfAsked(intent)
         grantMicrophoneToSelf()
         grantLocationToSelf()
 
@@ -523,6 +667,20 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION", "MissingSuperCall")
     override fun onBackPressed() {
         // Deliberately no super call — see onCreate.
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        ringIfAsked(intent)
+    }
+
+    /** Brought up by AlarmReceiver because the voice service was not running. */
+    private fun ringIfAsked(intent: Intent?) {
+        val id = intent?.getIntExtra(VoiceService.EXTRA_ALARM_ID, -1) ?: -1
+        if (id >= 0) {
+            intent?.removeExtra(VoiceService.EXTRA_ALARM_ID)
+            VoiceService.ringFromActivity(this, id)
+        }
     }
 
     override fun onResume() {

@@ -20,4 +20,7 @@
     <color name="retro_dim">#FF404040</color>
     <color name="retro_good">#FF008000</color>
     <color name="retro_bad">#FF800000</color>
+    <!-- The title-bar badge ("เพิ่งอัปเดต", or a folded window's summary): the
+         palette's gold, readable on the navy bar. -->
+    <color name="retro_badge">#FFFFD700</color>
 </resources>

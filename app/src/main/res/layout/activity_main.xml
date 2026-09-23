@@ -58,7 +58,22 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="7dp">
+        android:paddingStart="7dp"
+        android:paddingEnd="7dp"
+        android:paddingBottom="7dp">
+
+        <!-- ======================================================= the card stack
+             Every window above Jarvis lives here and is arranged by
+             ui/CardBoard: the newest news first, a quiet window folded to its
+             title bar, reordered at most once a minute. MainActivity moves the
+             views; DESIGN.md, "Cards", has the rules. Jarvis and the taskbar
+             are outside this stack and never move. -->
+        <LinearLayout
+            android:id="@+id/card_stack"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
         <!-- ================================================= google home window -->
         <!-- Where the big clock was. The time lives in the taskbar now, bottom
@@ -69,14 +84,17 @@
              place a real implementation will go in the last phase. Nothing
              behind it talks to Google. -->
         <LinearLayout
+            android:id="@+id/card_home"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="0.7"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
+            android:layout_marginTop="7dp"
             android:padding="5dp">
 
             <LinearLayout
+                android:id="@+id/home_titlebar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -94,17 +112,34 @@
                     android:contentDescription="@string/window_home" />
 
                 <TextView
-                    android:layout_width="match_parent"
+                    android:id="@+id/home_title"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:text="@string/window_home"
                     android:textColor="@color/retro_title_text"
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:fontFamily="@font/plex_thai" />
+
+                <!-- "เพิ่งอัปเดต" when this window has news, or its one-line
+                     summary when it is folded. Set by MainActivity. -->
+                <TextView
+                    android:id="@+id/home_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/home_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -149,6 +184,7 @@
 
         <!-- ==================================================== weather window -->
         <LinearLayout
+            android:id="@+id/card_weather"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -158,6 +194,7 @@
             android:padding="5dp">
 
             <LinearLayout
+                android:id="@+id/weather_titlebar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -183,7 +220,8 @@
                      that wraps stops looking like a title bar. -->
                 <TextView
                     android:id="@+id/weather_title"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="5dp"
                     android:maxLines="1"
@@ -193,6 +231,18 @@
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:fontFamily="@font/plex_thai" />
+
+                <!-- "เพิ่งอัปเดต" when this window has news, or its one-line
+                     summary when it is folded. Set by MainActivity. -->
+                <TextView
+                    android:id="@+id/weather_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
             <!-- The sunken panel is a column now: the reading, and under it one
@@ -200,6 +250,7 @@
                  times arrive, so an older broker or a missing value leaves the
                  window exactly as it was rather than showing an empty row. -->
             <LinearLayout
+                android:id="@+id/weather_panel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -264,6 +315,7 @@
 
         <!-- ======================================================= gold window -->
         <LinearLayout
+            android:id="@+id/card_gold"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -273,6 +325,7 @@
             android:padding="5dp">
 
             <LinearLayout
+                android:id="@+id/gold_titlebar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -294,7 +347,8 @@
                      is not. One line, cut at the end if it has to be. -->
                 <TextView
                     android:id="@+id/gold_title"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="5dp"
                     android:maxLines="1"
@@ -303,6 +357,18 @@
                     android:textColor="@color/retro_title_text"
                     android:textSize="11sp"
                     android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+
+                <!-- "เพิ่งอัปเดต" when this window has news, or its one-line
+                     summary when it is folded. Set by MainActivity. -->
+                <TextView
+                    android:id="@+id/gold_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
@@ -324,6 +390,7 @@
 
         <!-- ===================================================== crypto window -->
         <LinearLayout
+            android:id="@+id/card_crypto"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="0.25"
@@ -333,6 +400,7 @@
             android:padding="5dp">
 
             <LinearLayout
+                android:id="@+id/crypto_titlebar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -350,13 +418,29 @@
                     android:contentDescription="@string/window_crypto" />
 
                 <TextView
-                    android:layout_width="match_parent"
+                    android:id="@+id/crypto_title"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:text="@string/window_crypto"
                     android:textColor="@color/retro_title_text"
                     android:textSize="11sp"
                     android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+
+                <!-- "เพิ่งอัปเดต" when this window has news, or its one-line
+                     summary when it is folded. Set by MainActivity. -->
+                <TextView
+                    android:id="@+id/crypto_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
@@ -373,6 +457,7 @@
                  is untouched. The widest column today is "BTC +0.13%" at about
                  130dp, so two of them and the gap are well inside 350dp. -->
             <LinearLayout
+                android:id="@+id/crypto_panel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -404,15 +489,119 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ===================================================== jarvis window -->
-        <!-- Second only to the clock, and the one window that grows: it takes
-             whatever the four above leave behind. That is deliberate. The
-             question "is it listening, and did it hear me right" is the one
-             thing on this screen you actually stand in front of. -->
+        <!-- ======================================================= alarms window
+             Hidden until there is an alarm. While one rings it is pinned open
+             at the top of the stack with a big stop button — the one control
+             that must be found in the dark. -->
         <LinearLayout
+            android:id="@+id/card_alarms"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="2"
+            android:layout_weight="0.5"
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:layout_marginTop="7dp"
+            android:padding="5dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/alarms_titlebar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/retro_titlebar"
+                android:gravity="center_vertical"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp">
+
+                <ImageView
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
+                    android:src="@drawable/ic_pixel_bell"
+                    android:contentDescription="@string/window_alarms" />
+
+                <TextView
+                    android:id="@+id/alarms_title"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="@string/window_alarms"
+                    android:textColor="@color/retro_title_text"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+
+                <!-- "เพิ่งอัปเดต" when this window has news, or its one-line
+                     summary when it is folded. Set by MainActivity. -->
+                <TextView
+                    android:id="@+id/alarms_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/alarms_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_vertical"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="3dp"
+                android:padding="7dp">
+
+                <!-- Only while ringing: big, raised, the whole width. -->
+                <TextView
+                    android:id="@+id/alarm_stop"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:background="@drawable/retro_raised"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minHeight="56dp"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp"
+                    android:text="@string/alarm_stop"
+                    android:textColor="@color/retro_text"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/alarms_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="1dp"
+                    android:textColor="@color/retro_text"
+                    android:textSize="14sp"
+                    android:fontFamily="@font/plex_thai" />
+            </LinearLayout>
+        </LinearLayout>
+        </LinearLayout>
+        <!-- ======================================================= end of stack -->
+
+        <!-- ===================================================== jarvis window -->
+        <!-- FIXED: same place, same size, always (Poom, 2026-09-23). 156dp is
+             the height it had on 0.30.3, measured from the A07's screenshot,
+             which Poom judged right. The card stack above takes whatever is
+             left; when windows fold, THEY give up room, never this one. -->
+        <LinearLayout
+            android:id="@+id/card_jarvis"
+            android:layout_width="match_parent"
+            android:layout_height="156dp"
             android:orientation="vertical"
             android:background="@drawable/retro_raised"
             android:layout_marginTop="7dp"

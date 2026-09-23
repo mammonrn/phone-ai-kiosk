@@ -190,3 +190,9 @@ def test_a_gated_turn_is_still_billed(conn, cfg):
     """Groq charged for the audio either way; the ledger has to say so."""
     _stt(conn, cfg, GroqWithSegments("เสียงดัง", -0.3), "0.41")
     assert conn.execute("SELECT COUNT(*) AS c FROM usage WHERE service = 'stt'").fetchone()["c"] == 1
+
+
+@pytest.mark.parametrize("text", ["ปลุกตีห้า", "ตั้งปลุกหกโมงครึ่ง", "ปิดปลุกไปทำงาน"])
+def test_alarm_commands_are_the_kiosks_own_commands(text):
+    verdict = judge(text, avg_logprob=-0.7, source="wake", wake_score=0.41)
+    assert verdict.passed and verdict.reason == "command"

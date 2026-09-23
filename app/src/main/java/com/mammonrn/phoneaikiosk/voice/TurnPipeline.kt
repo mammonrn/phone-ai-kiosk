@@ -207,8 +207,19 @@ class TurnPipeline(
  * is added this class should fail to compile rather than quietly do the wrong
  * thing with it.
  */
-class KioskAction(val type: String, val destination: String) {
+class KioskAction(
+    val type: String,
+    val destination: String,
+    /** The alarm actions' fields, already checked by Broker.parseAction. */
+    val params: Map<String, String> = emptyMap(),
+) {
     companion object {
+        /** From the broker's alarm grammar, never a model: {time "06:30", label}. */
+        const val SET_ALARM = "set_alarm"
+
+        /** {target "all" | "06:30" | a name, enabled "true" | "false"}. */
+        const val ALARM_ENABLE = "alarm_enable"
+
         const val OPEN_MAPS = "open_maps"
 
         /**

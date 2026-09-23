@@ -58,6 +58,22 @@ class Broker(private val baseUrl: String, private val token: String) {
                     if (destination.isEmpty()) null else KioskAction(type, destination)
                 }
                 KioskAction.OPEN_CAMERA_APP -> KioskAction(type, "")
+                // The alarms: a time that parses, a name of bounded length, a
+                // boolean. Anything else is no action at all.
+                KioskAction.SET_ALARM -> {
+                    val time = json.optString("time")
+                    if (com.mammonrn.phoneaikiosk.alarm.AlarmBook.parseTime(time) == null) null
+                    else KioskAction(type, "", mapOf(
+                        "time" to time,
+                        "label" to json.optString("label").trim()
+                            .take(com.mammonrn.phoneaikiosk.alarm.AlarmBook.MAX_LABEL_CHARS)))
+                }
+                KioskAction.ALARM_ENABLE -> {
+                    val target = json.optString("target").trim()
+                    if (target.isEmpty() || target.length > 20 || !json.has("enabled")) null
+                    else KioskAction(type, "", mapOf(
+                        "target" to target, "enabled" to json.optBoolean("enabled").toString()))
+                }
                 else -> null
             }
         }

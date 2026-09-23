@@ -99,6 +99,12 @@ object VoiceState : VoiceSink {
     /** Why the broker's gate stopped the last transcript, or "" if it did not. */
     @Volatile var lastGate: String = ""
 
+    /** Bumped whenever the alarms change or one starts or stops ringing. */
+    @Volatile var alarmsVersion: Int = 0
+
+    /** "6:30 AM  ไปทำงาน" while an alarm rings, "" otherwise. */
+    @Volatile var alarmRinging: String = ""
+
     @Volatile var speakingSinceMs: Long = 0
     @Volatile var speakingDurationMs: Long = 0
 

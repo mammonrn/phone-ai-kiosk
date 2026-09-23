@@ -14,7 +14,8 @@ HOW IT DECIDES — every rule is here, and every answer carries its reason:
   1. hallucination   Phrases speech-to-text models produce from noise or music
                      (video outros, subtitle credits). Rejected outright.
   2. no-words        Fewer than two letters or digits. Rejected outright.
-  3. command         The camera phrase (actions.camera_match) or a Maps request.
+  3. command         The camera phrase (actions.camera_match), an alarm command
+                     (alarms.alarm_command) or a Maps request.
                      Always passes: these are the kiosk's own commands.
   4. button          Started with the Jarvis button, not the wake word. A press
                      is deliberate, so only rules 1-2 apply.
@@ -46,7 +47,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import actions
+from . import actions, alarms
 
 #: Wake scores under this are "weak": within 0.05 of Poom's 0.40 threshold.
 WEAK_WAKE = 0.45
@@ -124,7 +125,8 @@ def judge(text: str, *, no_speech_prob: float | None = None,
         return Verdict(False, "hallucination")
     if len(_LETTER_OR_DIGIT.findall(squashed)) < 2:
         return Verdict(False, "no-words")
-    if actions.camera_request(text) or any(word in squashed for word in _MAPS_WORDS):
+    if (actions.camera_request(text) or alarms.alarm_command(text) is not None
+            or any(word in squashed for word in _MAPS_WORDS)):
         return Verdict(True, "command")
     if source == "button":
         return Verdict(True, "button")

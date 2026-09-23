@@ -43,7 +43,9 @@ ENABLED_ACTION_TYPES: frozenset[str] = frozenset({"open_maps"})
 #: a reply is dropped by sanitize() like any other unknown type, and a person
 #: talking the model into writing one gets nothing. The only way this action
 #: reaches the phone is the phrase match below, on the transcript itself.
-PHRASE_ACTION_TYPES: frozenset[str] = frozenset({"open_camera_app"})
+PHRASE_ACTION_TYPES: frozenset[str] = frozenset({"open_camera_app", "set_alarm", "alarm_enable"})
+#: set_alarm and alarm_enable come from alarms.py by the same rule: a fixed
+#: grammar on the transcript, never a model's reply.
 
 #: What Jarvis says before the phone opens the camera app. Fixed, short, and
 #: spoken BEFORE the app comes up — the phone performs actions after the reply.

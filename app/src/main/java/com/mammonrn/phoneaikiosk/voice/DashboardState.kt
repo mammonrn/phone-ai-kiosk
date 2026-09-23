@@ -103,6 +103,51 @@ object DashboardState {
     }
 
     /**
+     * For the card stack (ui/CardBoard): per window, the SIGNATURE whose change
+     * counts as news, and the one-line SUMMARY a folded window shows.
+     *
+     * WHAT COUNTS AS NEWS is decided here and nowhere else (DESIGN.md, "Cards"):
+     *   weather  the whole degree and the sky word — 30.2 to 30.4 is not news
+     *   gold     either sell price — the shop announces a few times a day
+     *   crypto   BTC's and ETH's day move in whole percent — every coin to the
+     *            decimal would make this window news every minute
+     * A window with nothing usable is absent: no signature, no news.
+     */
+    fun cardFacts(json: String): Map<String, Pair<String, String>> {
+        val out = HashMap<String, Pair<String, String>>()
+        val root = runCatching { JSONObject(json) }.getOrNull() ?: return out
+        usable(root.optJSONObject("weather"))?.first?.let { w ->
+            val temp = w.optDouble("temp_c", Double.NaN)
+            if (!temp.isNaN()) {
+                val degrees = Math.round(temp)
+                val word = w.optString("word", "")
+                out["weather"] = "$degrees|$word" to "$degrees°C $word".trim()
+            }
+        }
+        usable(root.optJSONObject("gold"))?.first?.let { g ->
+            val ornament = g.optDouble("ornament_sell", Double.NaN)
+            val bar = g.optDouble("bar_sell", Double.NaN)
+            if (!ornament.isNaN() || !bar.isNaN()) {
+                val summary = if (!bar.isNaN()) "ทองแท่ง ${baht(bar)}" else "รูปพรรณ ${baht(ornament)}"
+                out["gold"] = "$ornament|$bar" to summary
+            }
+        }
+        usable(root.optJSONObject("crypto"))?.first?.let { c ->
+            val coins = coinList(c)
+            if (coins.isNotEmpty()) {
+                val signature = coins.filter { it.optString("symbol") in setOf("BTC", "ETH") }
+                    .joinToString(",") { coin ->
+                        val change = coin.optDouble("change_pct", Double.NaN)
+                        "${coin.optString("symbol")}:${if (change.isNaN()) "-" else Math.round(change)}"
+                    }
+                val first = coins.first()
+                out["crypto"] = signature to (first.optString("symbol") + move(first)).trim()
+            }
+        }
+        return out
+    }
+
+    /**
      * "06:05" -> "6:05 AM", "18:13" -> "6:13 PM": the taskbar clock's format,
      * so every time on the screen reads the same way. Empty for anything that
      * is not a 24-hour HH:MM, including the "null" optString makes of a null.

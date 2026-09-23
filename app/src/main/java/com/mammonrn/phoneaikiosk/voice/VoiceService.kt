@@ -91,6 +91,7 @@ class VoiceService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // Asks whether an on-device Thai recognizer exists, for dumpsys. Asks
         // only: no recognition, no microphone. See DeviceSttProbe.
         runCatching { DeviceSttProbe.probe(this) }
@@ -132,7 +133,18 @@ class VoiceService : Service() {
             Log.i(TAG, "armed by adb trigger; capture thread will pick it up next frame")
         }
 
-        if (intent?.action == ACTION_BUTTON_LISTEN) {
+        if (intent?.action == ACTION_ALARM_RING) {
+            startAlarm(intent.getIntExtra(EXTRA_ALARM_ID, -1))
+        }
+
+        if (intent?.action == ACTION_ALARM_STOP) {
+            stopAlarm("stop-button")
+        }
+
+        // The Jarvis button stops a ringing alarm rather than asking a question.
+        if (intent?.action == ACTION_BUTTON_LISTEN && VoiceState.alarmRinging.isNotEmpty()) {
+            stopAlarm("jarvis-button")
+        } else if (intent?.action == ACTION_BUTTON_LISTEN) {
             // The taskbar's "จาร์วิส" button: the same as saying Hey Jarvis.
             // Accepted only while listening — a press mid-turn does nothing,
             // so a second turn can never start on top of the first. The beep
@@ -201,7 +213,10 @@ class VoiceService : Service() {
                 // a second turn on top of the first — and that second capture
                 // recorded the first answer.
                 val busy = machine.mode != CaptureMachine.Mode.LISTENING
-                val deaf = busy || android.os.SystemClock.elapsedRealtime() < hearingFrom.get()
+                // And while an alarm rings: the alarm tone is loud, close and
+                // looping, and must never be heard as the wake word.
+                val deaf = busy || VoiceState.alarmRinging.isNotEmpty() ||
+                    android.os.SystemClock.elapsedRealtime() < hearingFrom.get()
 
                 // SILENCE, NOT NOTHING. This used to skip the detector entirely
                 // while deaf and then reset() it on the way back — and reset
@@ -534,6 +549,8 @@ class VoiceService : Service() {
      */
     private fun performAction(action: KioskAction): String? {
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
+        if (action.type == KioskAction.SET_ALARM) return setAlarm(action)
+        if (action.type == KioskAction.ALARM_ENABLE) return enableAlarm(action)
         if (action.type != KioskAction.OPEN_MAPS) {
             Log.w(TAG, "refused action type=${action.type}")
             VoiceState.lastAction = "${action.type}:refused"
@@ -561,6 +578,74 @@ class VoiceService : Service() {
             return null
         }
         return MapsLauncher.spokenFailure(result)
+    }
+
+    // ------------------------------------------------------------ alarms
+
+    private val alarmRinger by lazy { com.mammonrn.phoneaikiosk.alarm.AlarmRinger(this) }
+    private val alarmHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val alarmTimeout = Runnable { stopAlarm("timeout") }
+
+    /** "ปลุกตีห้า ไปทำงาน": the broker parsed it; the phone keeps and rings it. */
+    private fun setAlarm(action: KioskAction): String? {
+        val (hour, minute) = com.mammonrn.phoneaikiosk.alarm.AlarmBook.parseTime(
+            action.params["time"].orEmpty()) ?: return "ตั้งปลุกไม่สำเร็จครับ เวลาไม่ถูกต้อง"
+        val book = com.mammonrn.phoneaikiosk.alarm.AlarmStore.load(this)
+        val alarm = book.set(hour, minute, action.params["label"].orEmpty())
+            ?: return "ตั้งปลุกไม่ได้ครับ มีครบ ${com.mammonrn.phoneaikiosk.alarm.AlarmBook.MAX_ALARMS} รายการแล้ว"
+        com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(this, book)
+        VoiceState.lastAction = "set_alarm:ok"
+        Log.i(TAG, "action set_alarm id=${alarm.id}")
+        return null
+    }
+
+    private fun enableAlarm(action: KioskAction): String? {
+        val book = com.mammonrn.phoneaikiosk.alarm.AlarmStore.load(this)
+        val target = action.params["target"].orEmpty()
+        val on = action.params["enabled"] == "true"
+        if (!book.matches(target)) {
+            VoiceState.lastAction = "alarm_enable:no-match"
+            return "ไม่พบการปลุกนั้นครับ"
+        }
+        val changed = book.enable(target, on)
+        com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(this, book)
+        VoiceState.lastAction = "alarm_enable:changed=$changed"
+        Log.i(TAG, "action alarm_enable on=$on changed=$changed")
+        return null
+    }
+
+    /**
+     * Rings alarm [id]: the screen on, the kiosk in front, the tone looping at
+     * alarm volume, the alarm card pinned at the top with its stop button, and
+     * the wake word deaf until it stops. Stops itself after AlarmRinger.MAX_RING_MS.
+     */
+    fun startAlarm(id: Int) {
+        val book = com.mammonrn.phoneaikiosk.alarm.AlarmStore.load(this)
+        val alarm = book.byId(id)
+        if (alarm == null || !alarm.enabled) {
+            Log.i(TAG, "alarm id=$id not rung: gone or off")
+            return
+        }
+        runCatching { ScreenWaker.wakeIfAsleep(this) }
+        // Over Maps or the camera app, the kiosk comes back so the stop button
+        // is on screen; over the kiosk itself this changes nothing.
+        returnToKiosk("alarm")
+        val rang = alarmRinger.start()
+        VoiceState.alarmRinging = com.mammonrn.phoneaikiosk.voice.DashboardState.clock12(alarm.time) +
+            if (alarm.label.isNotEmpty()) "  ${alarm.label}" else ""
+        VoiceState.alarmsVersion += 1
+        alarmHandler.removeCallbacks(alarmTimeout)
+        alarmHandler.postDelayed(alarmTimeout, com.mammonrn.phoneaikiosk.alarm.AlarmRinger.MAX_RING_MS)
+        Log.i(TAG, "alarm ringing id=$id sound=$rang")
+    }
+
+    fun stopAlarm(reason: String) {
+        if (VoiceState.alarmRinging.isEmpty() && !alarmRinger.ringing) return
+        alarmHandler.removeCallbacks(alarmTimeout)
+        alarmRinger.stop()
+        VoiceState.alarmRinging = ""
+        VoiceState.alarmsVersion += 1
+        Log.i(TAG, "alarm stopped reason=$reason")
     }
 
     /**
@@ -713,6 +798,8 @@ class VoiceService : Service() {
     }
 
     override fun onDestroy() {
+        instance = null
+        stopAlarm("service-stopped")
         running.set(false)
         capture.shutdownNow()
         network.shutdownNow()
@@ -875,6 +962,39 @@ class VoiceService : Service() {
          * foreground service cannot be launched from the background on
          * Android 15.
          */
+        /** The running service, for AlarmManager's receiver. Null when there is none. */
+        @Volatile
+        private var instance: VoiceService? = null
+
+        const val ACTION_ALARM_RING = "com.mammonrn.phoneaikiosk.ALARM_RING"
+        const val ACTION_ALARM_STOP = "com.mammonrn.phoneaikiosk.ALARM_STOP"
+        const val EXTRA_ALARM_ID = "alarm_id"
+
+        /**
+         * From AlarmReceiver. The service normally runs all the time, and then
+         * it rings straight away. If it does not — the process was killed —
+         * the kiosk activity is brought up with the alarm id; it starts the
+         * service from the foreground, which rings. A Device Owner may start
+         * its activity from the background; a microphone service may not be.
+         */
+        fun ringAlarm(context: Context, id: Int) {
+            val service = instance
+            if (service != null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post { service.startAlarm(id) }
+                return
+            }
+            runCatching {
+                context.startActivity(Intent(context, com.mammonrn.phoneaikiosk.MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra(EXTRA_ALARM_ID, id))
+            }.onFailure { Log.w(TAG, "alarm: could not bring the kiosk up: ${it.javaClass.simpleName}") }
+        }
+
+        fun ringFromActivity(context: Context, id: Int) {
+            context.startForegroundService(Intent(context, VoiceService::class.java)
+                .setAction(ACTION_ALARM_RING).putExtra(EXTRA_ALARM_ID, id))
+        }
+
         fun start(context: Context, action: String? = null) {
             val intent = Intent(context, VoiceService::class.java).apply {
                 if (action != null) this.action = action
