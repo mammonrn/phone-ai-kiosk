@@ -7,6 +7,12 @@
       "spelling": "อากาศดี",
       "say": "อากาด ดี",
       "why": "Read aloud as อา-กา-สะ-ดี. The ศ closes อากาศ (pronounced อา-กาด) and is not the start of a syllable with ดี. Respelling the final as ด and inserting a space forces both the right final consonant and the right word boundary."
+    },
+    {
+      "spelling": "อากาศ",
+      "say": "อากาด",
+      "why": "ศ is the final consonant here, in มาตราแม่กด, and is said as ด: อา-กาด. The voice sounded the ศ. Source: DLTV worksheet มาตราตัวสะกด แม่กด (โครงการสื่อ ๖๐ พรรษาสมเด็จพระเทพรัตนราชสุดาฯ), which lists ศ among the 16 finals of แม่กด and gives อากาศ as the example. The longer อากาศดี entry still applies first."
     }
-  ]
+  ],
+  "_how_to_add": "Add {\"spelling\": ..., \"say\": ..., \"why\": ...}. At least 3 characters. Longest entries apply first. The broker re-reads this file when it changes; no restart. A broken file is ignored with a warning in the journal."
 }

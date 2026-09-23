@@ -35,7 +35,7 @@ def test_the_line_says_what_the_screen_says(cfg):
     board = _dashboard(cfg)
     _seed(board)
     line = dashboard_mod.weather_line(board, NOW)
-    assert line == "อากาศตอนนี้ เชียงราย 28.4°C แดดจัด ความชื้น 70% สูง 31.1 ต่ำ 22.1 (3 นาทีก่อน)"
+    assert line == "อากาศ(ถูกถามให้ตอบประโยคเดียว): เชียงราย 28.4°C แดดจัด ความชื้น 70% สูง 31.1 ต่ำ 22.1 (3 นาทีก่อน)"
     assert len(line) <= dashboard_mod.MAX_WEATHER_LINE_CHARS
 
 
@@ -60,7 +60,7 @@ def test_a_failed_panel_is_not_weather(cfg):
 def test_no_place_name_still_gives_the_weather(cfg):
     board = _dashboard(cfg)
     _seed(board, place="")
-    assert dashboard_mod.weather_line(board, NOW).startswith("อากาศตอนนี้ 28.4°C แดดจัด")
+    assert dashboard_mod.weather_line(board, NOW).startswith("อากาศ(ถูกถามให้ตอบประโยคเดียว): 28.4°C แดดจัด")
 
 
 def test_the_newest_position_wins(cfg):
@@ -93,7 +93,7 @@ def test_the_model_is_given_the_weather_line(conn, cfg):
     _ask(conn, cfg, client)
     system = client.calls[0]["system"]
     system = system if isinstance(system, str) else json.dumps(system, ensure_ascii=False)
-    assert "อากาศตอนนี้ 28.4°C แดดจัด" in system
+    assert "ประโยคเดียว): 28.4°C แดดจัด" in system
 
 
 def test_the_model_is_told_there_is_none_when_there_is_none(conn, cfg):
@@ -113,3 +113,11 @@ def test_what_every_question_pays_is_still_bounded():
     # Prompt + clock line + weather line: the fixed input of every request.
     total = len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS + 1 + dashboard_mod.MAX_WEATHER_LINE_CHARS
     assert total <= 1250, total
+
+
+def test_the_answer_rule_survives_any_cut(cfg):
+    board = _dashboard(cfg)
+    _seed(board, place="ก" * 200)                    # an absurdly long place name
+    line = dashboard_mod.weather_line(board, NOW)
+    assert line.startswith(dashboard_mod.WEATHER_ANSWER_RULE)
+    assert len(line) <= dashboard_mod.MAX_WEATHER_LINE_CHARS

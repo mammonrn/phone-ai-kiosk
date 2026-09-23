@@ -30,8 +30,21 @@ log = logging.getLogger("kiosk_broker")
 _PRONUNCIATION: dict[str, pronounce.Dictionary] = {}
 
 
+_PRONUNCIATION_MTIME: dict[str, float] = {}
+
+
 def _pronunciation(cfg: Config) -> pronounce.Dictionary:
+    """The respelling dictionary, re-read whenever the file changes — so an
+    added word takes effect on the next answer, without a deploy or a restart.
+    A broken file is an empty dictionary and a warning, never a failed answer."""
     key = str(cfg.pronunciation_path)
+    try:
+        mtime = cfg.pronunciation_path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    if _PRONUNCIATION_MTIME.get(key) != mtime:
+        _PRONUNCIATION.pop(key, None)
+        _PRONUNCIATION_MTIME[key] = mtime
     if key not in _PRONUNCIATION:
         try:
             _PRONUNCIATION[key] = pronounce.Dictionary.load(cfg.pronunciation_path)
@@ -561,9 +574,13 @@ def handle_tts(
     # upstream_ms is the vendor. handler_ms - upstream_ms is everything this
     # broker did around it. audio_ms is how long the result takes to say, which
     # is not latency at all and was being counted as if it were.
-    log.info("tts ok device=%s voice=%s chars=%d truncated=%s respellings=%d bytes=%d"
+    # chars_in is what /v1/chat answered; chars is what was actually spoken.
+    # The pair is what tells "the reply was cut before synthesis" apart from
+    # "playback stopped early" — on 2026-09-23 a 158-character weather answer
+    # was heard as one sentence, and nothing in the log said which.
+    log.info("tts ok device=%s voice=%s chars_in=%d chars=%d truncated=%s respellings=%d bytes=%d"
              " cost=%.6f register_fixes=%d upstream_ms=%d handler_ms=%d audio_ms=%s",
-             label, cfg.tts_voice, speech.billed_characters, truncated, respellings,
+             label, cfg.tts_voice, len(text), speech.billed_characters, truncated, respellings,
              len(speech.audio), cost, register_fixes, upstream_ms, handler_ms,
              "unknown" if audio_ms is None else audio_ms)
 
@@ -576,6 +593,7 @@ def handle_tts(
         # makes one log line on the phone enough to say which layer was slow,
         # without anyone having to line it up against a server log by hand.
         "headers": {
+            "X-Kiosk-Input-Chars": str(len(text)),
             "X-Kiosk-Spoken-Chars": str(speech.billed_characters),
             "X-Kiosk-Truncated": "1" if truncated else "0",
             "X-Kiosk-Respellings": str(respellings),

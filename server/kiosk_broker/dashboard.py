@@ -651,8 +651,14 @@ def _log_name(name: str) -> str:
 # ------------------------------------------------------- the chat's weather ---
 
 #: The weather line's ceiling. It is paid for on every question, like the
-#: clock line, so it is short and bounded: ~75 characters in practice.
-MAX_WEATHER_LINE_CHARS = 90
+#: clock line, so it is short and bounded: ~95 characters in practice.
+MAX_WEATHER_LINE_CHARS = 110
+
+#: Said to the model before the numbers, and FIRST so the cap can only ever
+#: cut data, never this. Measured on the A07: with every number laid out, the
+#: model recited them all — a 158-character answer, of which the broker's
+#: 100-character speech cap left one sentence audible. One sentence fits.
+WEATHER_ANSWER_RULE = "อากาศ(ถูกถามให้ตอบประโยคเดียว):"
 
 #: Older than this and the screen's weather is not "now" any more: the kiosk
 #: polls only while its screen is on, so a night with the screen off leaves a
@@ -682,7 +688,7 @@ def weather_line(board: "Dashboard", now: float | None = None) -> str:
     named = board.latest("place", now)
     if named and named[1].get("place"):
         place = f" {named[1]['place']}"
-    parts = [f"อากาศตอนนี้{place} {_n(temp)}°C {data.get('word', '')}".rstrip()]
+    parts = [f"{WEATHER_ANSWER_RULE}{place} {_n(temp)}°C {data.get('word', '')}".rstrip()]
     if data.get("humidity") is not None:
         parts.append(f"ความชื้น {data['humidity']}%")
     if data.get("high_c") is not None and data.get("low_c") is not None:

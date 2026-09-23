@@ -577,3 +577,31 @@ def test_the_tts_key_rides_in_the_url_and_never_in_an_error(monkeypatch, failure
     assert secret not in refused.value.detail
     assert secret not in refused.value.user_message
     assert secret not in str(refused.value)
+
+
+def test_a_broken_pronunciation_file_never_stops_the_voice(conn, cfg):
+    (cfg.home / "pronunciation.json").write_text('{"entries": [1]}', encoding="utf-8")
+    status, _ = _post(conn, cfg, _token(conn), {"text": "อากาศดีครับ"})
+    assert status == 200
+
+
+def test_an_edited_pronunciation_file_is_used_without_a_restart(conn, cfg):
+    import os as _os
+    from kiosk_broker import service as service_mod
+    path = cfg.home / "pronunciation.json"
+    path.write_text('{"entries": []}', encoding="utf-8")
+    assert service_mod._pronunciation(cfg).apply("อากาศร้อน")[1] == 0
+    path.write_text('{"entries": [{"spelling": "อากาศ", "say": "อากาด"}]}', encoding="utf-8")
+    later = path.stat().st_mtime + 5
+    _os.utime(path, (later, later))
+    assert service_mod._pronunciation(cfg).apply("อากาศร้อน") == ("อากาดร้อน", 1)
+
+
+def test_the_answer_s_length_and_what_was_spoken_both_go_back(conn, cfg):
+    long = "ตอนนี้ที่เชียงรายอากาศยี่สิบเก้าองศาครับ " * 5
+    status, body = _post(conn, cfg, _token(conn), {"text": long})
+    assert status == 200
+    headers = body["headers"]
+    assert int(headers["X-Kiosk-Input-Chars"]) == len(long.strip())
+    assert int(headers["X-Kiosk-Spoken-Chars"]) <= cfg.tts_spoken_chars
+    assert headers["X-Kiosk-Truncated"] == "1"

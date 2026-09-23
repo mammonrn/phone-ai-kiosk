@@ -95,6 +95,11 @@ install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$CONF_DIR"
 install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/pricing.json" "$CONF_DIR/pricing.json"
 # The transcriber hint words: written ONCE, then Poom's to edit — a deploy
 # never overwrites them. Check an edit with `stt-hints-check`.
+# The TTS respelling dictionary: the same rule, written once and then Poom's.
+if [[ ! -f $CONF_DIR/pronunciation.json ]]; then
+    install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/pronunciation.json" "$CONF_DIR/pronunciation.json"
+    echo "  wrote a default pronunciation.json"
+fi
 if [[ ! -f $CONF_DIR/stt_hints.json ]]; then
     install -o "$USER_NAME" -g "$USER_NAME" -m 0644 "$REPO_SERVER_DIR/stt_hints.json"         "$CONF_DIR/stt_hints.json"
     echo "  wrote a default stt_hints.json"

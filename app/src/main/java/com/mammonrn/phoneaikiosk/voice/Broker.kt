@@ -61,6 +61,13 @@ class Broker(private val baseUrl: String, private val token: String) {
             else "/v1/dashboard?lat=${KioskLocation.round(latitude)}" +
                 "&lon=${KioskLocation.round(longitude)}"
 
+        /** " spoken=79/158 cut=yes", or "" when the broker sent no counts. */
+        fun spokenChars(input: Int?, spoken: Int?, truncated: Boolean): String {
+            if (spoken == null) return ""
+            val of = if (input != null) "/$input" else ""
+            return " spoken=$spoken$of cut=${if (truncated) "yes" else "no"}"
+        }
+
         /**
          * A failure, for logcat: the HTTP status and the broker's error code
          * when there is one, otherwise the exception type.
@@ -134,11 +141,11 @@ class Broker(private val baseUrl: String, private val token: String) {
         val result = post("/v1/tts",
                           JSONObject().put("text", text).toString().toByteArray(Charsets.UTF_8),
                           "application/json; charset=utf-8")
-        return SpokenAudio(result.bytes, result.timing)
+        return SpokenAudio(result.bytes, result.timing, result.audioMs)
     }
 
     /** A response, and how long each layer took to produce it. */
-    private class Result(val bytes: ByteArray, val timing: String)
+    private class Result(val bytes: ByteArray, val timing: String, val audioMs: Long? = null)
 
     private fun get(path: String): Result = send(path, "GET", null, null)
 
@@ -186,7 +193,8 @@ class Broker(private val baseUrl: String, private val token: String) {
             val downloadMs = System.currentTimeMillis() - headersAt
 
             if (status !in 200..299) throw failure(status, bytes)
-            return Result(bytes, describeTiming(connection, headersAt - sent, downloadMs))
+            return Result(bytes, describeTiming(connection, headersAt - sent, downloadMs),
+                          connection.getHeaderField("X-Kiosk-Audio-Ms")?.toLongOrNull())
         } finally {
             connection.disconnect()
         }
@@ -224,6 +232,14 @@ class Broker(private val baseUrl: String, private val token: String) {
             }
             if (vendor != null) append(" vendor=${vendor}ms")
             if (audio != null) append(" audio=${audio}ms")
+            // What the broker was asked to say and what it actually said. A
+            // gap here is the reply being cut before synthesis; "played=early"
+            // in the same line is playback stopping. Counts, never the words.
+            append(spokenChars(
+                connection.getHeaderField("X-Kiosk-Input-Chars")?.toIntOrNull(),
+                connection.getHeaderField("X-Kiosk-Spoken-Chars")?.toIntOrNull(),
+                connection.getHeaderField("X-Kiosk-Truncated") == "1",
+            ))
         }
     }
 

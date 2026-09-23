@@ -126,7 +126,8 @@ class TurnPipeline(
             val playMs = System.currentTimeMillis() - playStarted
 
             log("tts ${if (ok) "ok" else "play-failed"} ${audio.bytes.size} bytes " +
-                "synth=${synthMs}ms play=${playMs}ms ${audio.timing}")
+                "synth=${synthMs}ms play=${playMs}ms " +
+                "played=${SpokenAudio.played(playMs, audio.audioMs)} ${audio.timing}")
             ok
         } catch (e: Exception) {
             state.lastError = describe(e)
@@ -233,7 +234,26 @@ class Answer(val reply: String, val conversationId: String, val action: KioskAct
  * consumer is a log line. Giving it fields would invite something to start
  * making decisions on a number measured across two different clocks.
  */
-class SpokenAudio(val bytes: ByteArray, val timing: String)
+class SpokenAudio(
+    val bytes: ByteArray,
+    val timing: String,
+    /** How long the broker says the audio plays, when it could read it. */
+    val audioMs: Long? = null,
+) {
+    companion object {
+        /**
+         * "full" when playback ran at least as long as the audio (less a small
+         * margin for timer granularity), "early" when it stopped short, "?"
+         * without a duration. With the broker's spoken/input characters this
+         * is what tells "cut before synthesis" from "stopped while playing".
+         */
+        fun played(playMs: Long, audioMs: Long?): String = when {
+            audioMs == null -> "?"
+            playMs + 150 >= audioMs -> "full"
+            else -> "early"
+        }
+    }
+}
 
 /**
  * The fields the pipeline reports into. An interface so a test can watch the

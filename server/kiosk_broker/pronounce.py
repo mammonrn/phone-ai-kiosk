@@ -63,12 +63,21 @@ class Dictionary:
     @classmethod
     def load(cls, path: Path) -> "Dictionary":
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
-        return cls.from_list(raw.get("entries", []))
+        if not isinstance(raw, dict):
+            raise InvalidEntry("the file must be a JSON object with an \"entries\" list")
+        entries = raw.get("entries", [])
+        if not isinstance(entries, list):
+            raise InvalidEntry("\"entries\" must be a list")
+        return cls.from_list(entries)
 
     @classmethod
     def from_list(cls, items) -> "Dictionary":
         entries = []
         for item in items:
+            if not isinstance(item, dict):
+                raise InvalidEntry("every entry must be an object with spelling and say")
+            if not isinstance(item.get("spelling", ""), str) or not isinstance(item.get("say", ""), str):
+                raise InvalidEntry("spelling and say must be text")
             spelling = (item.get("spelling") or "").strip()
             say = (item.get("say") or "").strip()
 

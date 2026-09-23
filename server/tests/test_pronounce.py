@@ -51,9 +51,6 @@ def test_it_fires_wherever_the_phrase_appears(shipped, sentence):
 
 
 @pytest.mark.parametrize("sentence", [
-    "อากาศแย่ครับ",
-    "อากาศร้อนมากครับ",
-    "พยากรณ์อากาศประจำวันครับ",
     "ดีใจที่ได้เจอครับ",
     "น้ำมันดีเซลขึ้นราคาครับ",
     "ไม่มีคำนั้นในประโยคนี้เลยครับ",
@@ -153,3 +150,27 @@ def test_adding_a_word_needs_no_code_change(home):
     out, changes = d.apply("โทรศัพท์อยู่ไหนครับ")
     assert changes == 1
     assert out == "โท-ระ-สับอยู่ไหนครับ"
+
+
+@pytest.mark.parametrize("sentence,spoken", [
+    # 2026-09-23: "อากาศ" on its own was still read with the ศ sounded — the
+    # dictionary only held "อากาศดี". ศ closes the syllable, แม่กด, said as ด.
+    ("อากาศร้อนมากครับ", "อากาดร้อนมากครับ"),
+    ("พยากรณ์อากาศประจำวันครับ", "พยากรณ์อากาดประจำวันครับ"),
+    ("ตอนนี้อากาศยี่สิบเก้าองศาครับ", "ตอนนี้อากาดยี่สิบเก้าองศาครับ"),
+    ("วันนี้อากาศดีครับ", "วันนี้อากาด ดีครับ"),          # the longer entry still wins
+    ("อากาศแย่ครับ", "อากาดแย่ครับ"),
+])
+def test_akat_alone_is_respelled_too(shipped, sentence, spoken):
+    assert shipped.apply(sentence)[0] == spoken
+
+
+@pytest.mark.parametrize("content", [
+    "{not json", "[]", '{"entries": "x"}', '{"entries": [1, 2]}',
+    '{"entries": [{"spelling": 5, "say": "x"}]}',
+])
+def test_a_broken_file_is_refused_cleanly(tmp_path, content):
+    path = tmp_path / "pronunciation.json"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError):          # InvalidEntry and JSONDecodeError both are
+        Dictionary.load(path)
