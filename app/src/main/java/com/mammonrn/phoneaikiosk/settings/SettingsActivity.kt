@@ -256,12 +256,19 @@ class SettingsActivity : Activity() {
     private var confirmingAuthDelete: String? = null
     private var lastAuthOutcome: String? = null
     private var grantLine: TextView? = null
+    private var grantClose: View? = null
     private val grantTicker = object : Runnable {
         override fun run() {
             if (page != Page.AUTH) return
-            grantLine?.text = grantText()
+            showGrant()
             repeatHandler.postDelayed(this, 1000)
         }
+    }
+
+    /** The countdown, and the close button only while there is something to close. */
+    private fun showGrant() {
+        grantLine?.text = grantText()
+        grantClose?.visibility = if (AccessGrant.isOpen()) View.VISIBLE else View.GONE
     }
 
     private fun grantText(): String {
@@ -335,10 +342,13 @@ class SettingsActivity : Activity() {
         val line = text(grantText(), 13f)
         grantLine = line
         list.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
-        list.addView(button(getString(R.string.auth_close_grant)) {
+        val close = button(getString(R.string.auth_close_grant)) {
             AccessGrant.close()
-            line.text = grantText()
-        }, LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
+            showGrant()
+        }
+        grantClose = close
+        list.addView(close, LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
+        showGrant()
 
         list.addView(text(getString(R.string.auth_privacy), 12f, dim = true),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16) })

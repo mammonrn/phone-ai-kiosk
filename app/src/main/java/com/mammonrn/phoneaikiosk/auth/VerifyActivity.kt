@@ -75,6 +75,7 @@ class VerifyActivity : Activity(), LifecycleOwner {
     private lateinit var previewFrame: FrameLayout
     private lateinit var pad: PatternPad
     private lateinit var switchButton: TextView
+    private lateinit var cancelButton: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private var analysis: ExecutorService? = null
@@ -95,6 +96,10 @@ class VerifyActivity : Activity(), LifecycleOwner {
     private var lastSampleAt = 0L
     private var faceStartedAt = 0L
     private var bestScore = -1f
+    private var frames = 0
+    private var oneFace = 0
+    private var embedded = 0
+    private var statsAt = 0L
 
     private var firstPattern: List<Int>? = null
 
@@ -200,6 +205,7 @@ class VerifyActivity : Activity(), LifecycleOwner {
         blink = BlinkCheck()
         synchronized(samples) { samples.clear() }
         bestScore = -1f
+        frames = 0; oneFace = 0; embedded = 0; statsAt = 0L
         faceStartedAt = SystemClock.elapsedRealtime()
         pad.visibility = View.GONE
         previewFrame.visibility = View.VISIBLE
@@ -358,6 +364,7 @@ class VerifyActivity : Activity(), LifecycleOwner {
                 frame, 0, 0, frame.width, frame.height,
                 Matrix().apply { postRotate(rotation.toFloat()) }, true)
             val seen = s.scan(upright)
+            countFrame(seen)
             if (mode == Mode.ENROLL) enrolFrame(seen) else verifyFrame(seen)
         } catch (e: Exception) {
             log("frame failed: ${e.javaClass.simpleName}")
@@ -365,6 +372,19 @@ class VerifyActivity : Activity(), LifecycleOwner {
             if (upright != null && upright !== frame) upright.recycle()
             frame?.recycle()
             proxy.close()
+        }
+    }
+
+    /** Counts only: frames seen, frames with one face, faces turned into numbers. */
+    private fun countFrame(seen: FaceScanner.Seen) {
+        frames++
+        if (seen.faces == 1) oneFace++
+        if (seen.embedding != null) embedded++
+        val now = SystemClock.elapsedRealtime()
+        if (now - statsAt >= STATS_EVERY_MS) {
+            statsAt = now
+            log("scan mode=${mode.name.lowercase()} frames=$frames one_face=$oneFace embedded=$embedded" +
+                if (mode == Mode.VERIFY && bestScore > -1f) " best=%.2f".format(bestScore) else "")
         }
     }
 
@@ -488,6 +508,7 @@ class VerifyActivity : Activity(), LifecycleOwner {
         previewFrame.visibility = View.GONE
         pad.visibility = View.GONE
         switchButton.visibility = View.GONE
+        cancelButton.visibility = View.INVISIBLE
         handler.postDelayed({ close() }, RESULT_SHOW_MS)
     }
 
@@ -571,9 +592,9 @@ class VerifyActivity : Activity(), LifecycleOwner {
 
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         switchButton = button("") {}.apply { visibility = View.GONE }
-        buttons.addView(switchButton, LinearLayout.LayoutParams(0, dp(56), 1f))
-        buttons.addView(button(getString(R.string.auth_cancel)) { finishWith(OUTCOME_CANCELLED, null) },
-                        LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(7) })
+        buttons.addView(switchButton, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginEnd = dp(7) })
+        cancelButton = button(getString(R.string.auth_cancel)) { finishWith(OUTCOME_CANCELLED, null) }
+        buttons.addView(cancelButton, LinearLayout.LayoutParams(0, dp(56), 1f))
         root.addView(buttons, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT)
             .apply { topMargin = dp(7) })
         return root
@@ -635,6 +656,7 @@ class VerifyActivity : Activity(), LifecycleOwner {
         const val FACE_TIMEOUT_MS = 20_000L
         const val IDLE_MS = 90_000L
         const val RESULT_SHOW_MS = 1_500L
+        const val STATS_EVERY_MS = 3_000L
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
 
         fun intent(context: Context, mode: Mode, returnHome: Boolean = false): Intent =
