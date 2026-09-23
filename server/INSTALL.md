@@ -276,6 +276,15 @@ sudo install -o kioskbroker -g kioskbroker -m 0644 ~/phone-ai-kiosk/server/pronu
   /home/kioskbroker/.config/kiosk-broker/pronunciation.json
 ```
 
+### ตรวจความยาวคำตอบกับโมเดลจริง (`persona-eval`)
+
+ถามโมเดลจริงด้วยสถานการณ์ที่ Poom กำหนด (ฟังไม่ออก ถามเวลา อากาศ เปิดแผนที่ ตั้งปลุก เรื่องยาว สิ่งที่ทำไม่ได้)
+ผ่านเส้นทางเดียวกับ `/v1/chat` แล้วบอกความยาวและปัญหาของแต่ละคำตอบ รอบละราว $0.01 (บัญชีเทรน ไม่ใช่งบมือถือ)
+
+```bash
+sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker   PYTHONPATH=/home/kioskbroker/app   /home/kioskbroker/venv/bin/python -m kiosk_broker persona-eval
+```
+
 ### ตัวตัดคำไทยก่อนส่งไปสร้างเสียง (0.38)
 
 broker หาขอบเขตคำก่อนส่งข้อความไปสร้างเสียง (`kiosk_broker/wordcut.py`, nlpo3 + รายการคำ CC0)

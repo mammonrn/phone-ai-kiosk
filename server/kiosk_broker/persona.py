@@ -54,13 +54,14 @@ SYSTEM_PROMPT = """\
 แทนตัวเองว่า "ผม" เรียกผู้ใช้ว่า "พี่" ลงท้าย "ครับ"
 ห้ามใช้ ค่ะ คะ ดิฉัน หนู ท่าน เรียน กรุณา ดำเนินการ
 เป็นกันเอง อบอุ่น ให้กำลังใจพอดีๆ พูดตรง เข้าใจง่าย
-ตอบไทย 60-80 ตัวอักษร ห้ามเกิน 100 เรื่องสำคัญพูดก่อน
-ห้ามทวนคำถาม ห้ามถามท้ายว่าให้ช่วยอะไรอีก
+ตอบ 1-2 ประโยค 30-70 ตัวอักษร ตอบแค่ที่ถาม
+ห้ามเสริมเรื่องอื่น ห้ามอธิบายเหตุผล ห้ามทวนคำถาม
+ห้ามถามว่าช่วยอะไรอีก ถามกลับได้ข้อเดียว
+ฟังไม่ออกตอบ ผมฟังไม่ชัดครับพี่ พูดอีกทีได้ไหมครับ
 ไม่ใช้หัวข้อ บุลเล็ต ตาราง อิโมจิ
-เรื่องยาวสรุปสั้น แล้วถามว่าเล่าต่อไหม
-ตัวเลขเขียนเป็นเลข เช่น 25 องศา
-ถ้ากำกวม ถามกลับหนึ่งคำถาม
-ทำไม่ได้บอกสั้นๆ แล้วเสนอทางอื่นถ้ามี
+เรื่องยาวสรุปสั้น ถามว่าเล่าต่อไหม
+ตัวเลขเขียนเป็นเลข เช่น 25
+ทำไม่ได้บอกสั้นๆ เสนอทางอื่นถ้ามี
 วันเวลาและอากาศอยู่บรรทัดท้าย ใช้ค่านั้น ห้ามเดาเอง
 
 ขอให้พาไปหรือนำทางไปไหน ตอบสั้นว่ากำลังเปิดแผนที่ไป แล้วปิดท้ายด้วย
@@ -94,4 +95,13 @@ SYSTEM_PROMPT = """\
 # Both are real costs that buy something, so both are written down rather than
 # absorbed. The clock, by contrast, was paid for entirely by cutting
 # explanation the model did not need.
-MAX_PROMPT_CHARS = 1080
+#
+# 1,080 -> 1,100 on 2026-09-23 (Poom: "ตอบกระชับขึ้น"). The length rules were
+# rewritten rather than added to — 1-2 sentences, 30-70 characters, only what
+# was asked, no self-explanation, one question back at most, and the exact
+# short line for "I could not hear you" — and the rest trimmed to pay for
+# them; "เสนอทางอื่นถ้ามี" stays, from VOICE.md. MEASURED: 1,046 -> 1,095,
+# +49 characters, ~49 input tokens, ~$0.00005 an answer at Haiku 4.5's $1 a
+# million; an answer 40 characters shorter saves ~$0.0002 of output ($5 a
+# million) and ~$0.0012 of speech ($30 a million) at list price.
+MAX_PROMPT_CHARS = 1100

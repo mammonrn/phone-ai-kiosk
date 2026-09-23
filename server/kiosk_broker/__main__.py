@@ -453,6 +453,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("text")
     p.add_argument("--out", default="say", help="directory to write the audio into")
 
+    sub.add_parser("persona-eval",
+                   help="ask the real model the scenarios Poom named (can't hear, time, weather, "
+                        "maps, alarm, ...) and show each answer's length — ~$0.01 a run")
+
     p = sub.add_parser("segment-check",
                        help="show where the Thai segmenter splits a line, and what the voice "
                             "would be sent — free, nothing is synthesised")
@@ -797,6 +801,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"list price ${cost:.6f} (inside Google's free million this month unless "
                   f"`usage` says otherwise); training ledger, not the $5")
             return 0
+
+        if args.cmd == "persona-eval":
+            from . import persona_eval, service
+
+            pricing = Pricing.load(cfg.pricing_path)
+            results = persona_eval.run(_client(cfg), cfg, pricing, service.system_prompt_for)
+            print(persona_eval.report(results))
+            spent = sum(r.cost_usd for r in results)
+            store.record_training_usage(conn, job="persona-eval", service="chat",
+                                        quantity=sum(1 for r in results if r.by == "model"),
+                                        unit="questions", cost_usd=spent, note="persona-eval")
+            return 0 if all(not r.problems for r in results) else 1
 
         if args.cmd == "segment-check":
             from . import pronounce as pronounce_mod, voicetext, wordcut

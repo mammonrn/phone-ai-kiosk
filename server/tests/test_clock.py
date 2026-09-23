@@ -159,7 +159,8 @@ def test_the_prompt_and_the_clock_together_stay_affordable():
     assert len(SYSTEM_PROMPT) <= MAX_PROMPT_CHARS
     # Thai runs about a token a character on this model, so this is roughly the
     # input tokens every request pays before the question is even read.
-    assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1160
+    # 1,160 -> 1,180 when the prompt grew 1,046 -> 1,095 (persona.py says why).
+    assert len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS <= 1180
 
 
 def test_the_line_gives_the_time_the_way_thai_says_it_and_no_other_way():

@@ -18,7 +18,7 @@ from typing import Any
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
-               voicetext)
+               voicetext, brevity)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -57,6 +57,23 @@ def _pronunciation(cfg: Config) -> pronounce.Dictionary:
             log.warning("pronunciation dictionary unusable, ignoring it: %s", exc)
             _PRONUNCIATION[key] = pronounce.Dictionary.empty()
     return _PRONUNCIATION[key]
+
+def system_prompt_for(cfg: Config, text: str) -> str:
+    """The system prompt for one question: the persona, this minute's clock,
+    the weather on the kiosk's own screen, and — only when the question is
+    about them — the forecast detail and fuel prices, all from the dashboard's
+    cache, never fetched. One function so `persona-eval` sends exactly what
+    /v1/chat sends."""
+    system = (SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
+              + "\n" + dashboard_mod.weather_line(_dashboard(cfg)))
+    # Fuel prices only when the question is about fuel, so every other
+    # question pays nothing for them. From the dashboard's cache, never fetched.
+    if dashboard_mod.asks_weather_detail(text):
+        system += "\n" + dashboard_mod.weather_detail_line(_dashboard(cfg))
+    if oil_mod.asks_about_oil(text):
+        system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
+    return system
+
 
 CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -283,14 +300,7 @@ def handle_chat(
     # used to say it had no data while the answer sat beside it. Read from the
     # dashboard's cache — never fetched — so it costs no outside request and
     # cannot disagree with the screen. ~75 characters a question.
-    system = (SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
-              + "\n" + dashboard_mod.weather_line(_dashboard(cfg)))
-    # Fuel prices only when the question is about fuel, so every other
-    # question pays nothing for them. From the dashboard's cache, never fetched.
-    if dashboard_mod.asks_weather_detail(text):
-        system += "\n" + dashboard_mod.weather_detail_line(_dashboard(cfg))
-    if oil_mod.asks_about_oil(text):
-        system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
+    system = system_prompt_for(cfg, text)
 
     started = time.monotonic()
     try:
@@ -338,6 +348,11 @@ def handle_chat(
     # After the action marker is stripped, before anything is stored or spoken:
     # the reply goes out in one voice whether or not the prompt managed it.
     reply, register_fixes = register.enforce(reply)
+    # "I could not hear you" in one short line, not three sentences (Poom,
+    # 2026-09-23). Only that case is rewritten in code; see brevity.py.
+    reply, brevity_fix = brevity.tidy(reply)
+    if brevity_fix:
+        log.info("brevity device=%s fixed=%s", label, brevity_fix)
     # Counted, not corrected: taking "กรุณา" or "ดำเนินการ" out of a Thai
     # sentence means rewriting it, and half a rewritten sentence read aloud is
     # worse than a slightly formal one. See VOICE.md.
