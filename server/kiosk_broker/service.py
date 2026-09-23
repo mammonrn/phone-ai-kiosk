@@ -621,7 +621,8 @@ def handle_dashboard(
     device_id, label = int(device["id"]), str(device["label"])
 
     rate = limits.check_rate(conn, device_id=device_id, per_minute=cfg.rate_per_minute,
-                             per_day=cfg.rate_per_day, day=day, endpoint="dashboard")
+                             per_day=cfg.dashboard_rate_per_day, day=day,
+                             endpoint="dashboard")
     if not rate.allowed:
         store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
                              text_len=None, endpoint="dashboard")

@@ -587,6 +587,45 @@ def test_the_endpoint_is_rate_limited_like_everything_else(conn, cfg, fake_sourc
     assert handle_dashboard(conn, cfg, authorization=f"Bearer {token}")[0] == 429
 
 
+def _earlier_today(conn, cfg, device_id, n, endpoint):
+    """n accepted requests from an hour ago: counted for the day, not the minute."""
+    import time
+    from kiosk_broker import limits
+
+    day = limits.day_key(cfg.budget_timezone)
+    ts = time.time() - 3600
+    conn.executemany(
+        "INSERT INTO requests (device_id, ts, day, outcome, text_len, endpoint)"
+        " VALUES (?, ?, ?, 'ok', NULL, ?)",
+        [(device_id, ts, day, endpoint)] * n)
+
+
+def test_a_minute_poll_outlives_the_question_allowance(conn, cfg, fake_sources):
+    """The screen polls every minute. Under the questions' daily cap it froze
+    at five in the morning — on the A07 it answered 429 rate_limited_daily at
+    07:12 — so the dashboard has a ceiling of its own."""
+    token = _token(conn)
+    device_id = conn.execute("SELECT id FROM devices").fetchone()["id"]
+    _earlier_today(conn, cfg, device_id, cfg.rate_per_day + 1, "dashboard")
+    assert handle_dashboard(conn, cfg, authorization=f"Bearer {token}")[0] == 200
+
+
+def test_the_dashboard_ceiling_still_stops_a_runaway(conn, cfg, fake_sources):
+    cfg = dataclasses.replace(cfg, dashboard_rate_per_day=8)
+    token = _token(conn)
+    device_id = conn.execute("SELECT id FROM devices").fetchone()["id"]
+    _earlier_today(conn, cfg, device_id, 8, "dashboard")
+    status, body = handle_dashboard(conn, cfg, authorization=f"Bearer {token}")
+    assert status == 429
+    assert body["error"]["code"] == "rate_limited_daily"
+
+
+def test_a_healthy_day_of_polling_fits_the_default_ceiling():
+    from kiosk_broker.config import Config
+
+    assert Config.__dataclass_fields__["dashboard_rate_per_day"].default >= 24 * 60 * 2
+
+
 def test_the_screen_costs_nothing_against_the_month(conn, cfg, fake_sources):
     """None of the sources charges, so a busy screen must not be able to stop
     the kiosk answering questions."""

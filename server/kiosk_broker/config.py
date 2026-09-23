@@ -124,6 +124,15 @@ class Config:
     rate_per_minute: int = 10
     rate_per_day: int = 300
 
+    #: The dashboard's own daily ceiling, because rate_per_day is sized for
+    #: questions and the screen is not a question. The phone polls once a
+    #: minute — 1,440 a day before a single resume or retry — so under the
+    #: shared 300 the screen froze at about five every morning and stayed on
+    #: yesterday's numbers until midnight. The endpoint costs nothing (see
+    #: handle_dashboard), so this is only a runaway guard: about twice what a
+    #: healthy phone uses, and still a stop on one polling every few seconds.
+    dashboard_rate_per_day: int = 3000
+
     max_body_bytes: int = 8 * 1024
     max_text_chars: int = 600
 
