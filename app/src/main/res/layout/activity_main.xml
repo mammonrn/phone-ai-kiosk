@@ -455,12 +455,19 @@
                  there is more below — DESIGN.md, "Cards".
 
                  fillViewport so a short line still fills the window and sits
-                 centred in it, the way it did before this was a ScrollView. -->
-            <ScrollView
+                 centred in it, the way it did before this was a ScrollView.
+
+                 A RestingScrollView, not a plain one: a plain ScrollView made
+                 the window as tall as the answer and crushed the windows above
+                 it (0.30.0 on the A07). minHeight is the window's resting size
+                 — about the one-line invitation it held before — and its
+                 weight share is added on top as for every other window. -->
+            <com.mammonrn.phoneaikiosk.ui.RestingScrollView
                 android:id="@+id/transcript_scroll"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
+                android:minHeight="48dp"
                 android:background="@drawable/retro_sunken"
                 android:layout_marginTop="3dp"
                 android:padding="3dp"
@@ -484,7 +491,7 @@
                     android:textSize="15sp"
                     android:fontFamily="@font/plex_thai"
                     android:text="@string/kiosk_prompt" />
-            </ScrollView>
+            </com.mammonrn.phoneaikiosk.ui.RestingScrollView>
 
             <!-- Diagnostics. HIDDEN unless debug mode is switched on over adb
                  (VoiceState.showDiagnostics, TEST_DIAGNOSTICS): the household

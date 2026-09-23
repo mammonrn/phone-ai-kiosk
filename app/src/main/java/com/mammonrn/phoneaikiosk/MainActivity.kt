@@ -53,7 +53,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var voiceStatus: TextView
     private lateinit var transcript: TextView
-    private lateinit var transcriptScroll: android.widget.ScrollView
+    private lateinit var transcriptScroll: android.widget.ScrollView  // a RestingScrollView
 
     /** What the transcript shows now, so it is only set when it changes — a
      *  setText every second would fight the scroll position. */
