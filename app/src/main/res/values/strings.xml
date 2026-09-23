@@ -170,5 +170,9 @@
     <string name="auth_result_failed">ผลล่าสุด: ยืนยันตัวตนไม่สำเร็จ</string>
     <string name="auth_result_cancelled">ผลล่าสุด: ยกเลิก</string>
     <string name="auth_deleted">ลบแล้ว</string>
+    <string name="auth_server_approved">สถานะบน VPS: อนุมัติแล้ว</string>
+    <string name="auth_server_pending">สถานะบน VPS: รออนุมัติ กรุณารัน approve-enrollment %s บน VPS</string>
+    <string name="auth_server_error">สถานะบน VPS: ติดต่อไม่ได้ กรุณาลองทดสอบอีกครั้ง</string>
+    <string name="auth_server_unknown">สถานะบน VPS: กดทดสอบการยืนยันตัวตนเพื่อส่งรหัสขึ้น VPS</string>
     <string name="auth_identity">รหัสการลงทะเบียน: %s (สำหรับอนุมัติบน VPS)</string>
 </resources>

@@ -479,14 +479,15 @@ class VerifyActivity : Activity(), LifecycleOwner {
             Mode.ENROLL -> { hint.text = getString(R.string.auth_privacy); startEnroll() }
             Mode.SET_PATTERN -> startSetPattern()
             Mode.VERIFY -> {
-                // Opened for a private question: tell the voice service, which
-                // asks the broker for the grant and asks the question again.
-                if (intent.getBooleanExtra(EXTRA_FOR_PRIVATE, false)) {
-                    startService(Intent(this, com.mammonrn.phoneaikiosk.voice.VoiceService::class.java)
-                        .setAction(com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_AUTH_PASSED)
-                        .putExtra(com.mammonrn.phoneaikiosk.voice.VoiceService.EXTRA_METHOD,
-                                  how.name.lowercase()))
-                }
+                // EVERY pass goes to the broker for its grant — the Control
+                // Panel's test too, which is how the identity first reaches the
+                // VPS for Poom to approve (2026-09-23: the test stayed on the
+                // phone, and `enrollments` said "no identity yet"). Only a pass
+                // opened for a private question asks that question again.
+                startService(Intent(this, com.mammonrn.phoneaikiosk.voice.VoiceService::class.java)
+                    .setAction(com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_AUTH_PASSED)
+                    .putExtra(com.mammonrn.phoneaikiosk.voice.VoiceService.EXTRA_METHOD, how.name.lowercase())
+                    .putExtra(EXTRA_FOR_PRIVATE, intent.getBooleanExtra(EXTRA_FOR_PRIVATE, false)))
                 finishWith(OUTCOME_PASSED, getString(R.string.auth_passed))
             }
         }

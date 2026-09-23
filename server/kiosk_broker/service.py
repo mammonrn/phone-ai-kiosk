@@ -328,6 +328,8 @@ def handle_chat(
     # camera check was written down.
     alarm, alarm_why = alarms.alarm_match(text)
 
+    calendar_yes, calendar_why = calendar_read.calendar_match(text)
+
     def log_intent(maps: str) -> None:
         """One line per question, written once its way is known. maps= says
         what became of the map (2026-09-23, "I was told the map was opening
@@ -338,10 +340,13 @@ def handle_chat(
         maps_word says whether the transcript had a map word at all, which
         tells a mishearing from a model that did not choose. Reasons and
         counts only — never the words, never the destination."""
+        # calendar= since 2026-09-23: "วันนี้มีนัดอะไรบ้าง" went to the model and
+        # nothing in the log could say why (the transcript had one letter off).
         log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s"
-                 " maps=%s maps_word=%s chars=%d",
+                 " calendar=%s calendar_reason=%s maps=%s maps_word=%s chars=%d",
                  label, "yes" if is_camera else "no", why,
                  "yes" if alarm is not None else "no", alarm_why,
+                 "yes" if calendar_yes else "no", calendar_why,
                  maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text))
     def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
         """A reply decided by code, no model, nothing paid: the camera and the
@@ -362,7 +367,7 @@ def handle_chat(
                              action=action["type"] if action else "none", cost_usd=0.0)
         return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
 
-    private_kind = "calendar" if calendar_read.asks_for_calendar(text) else None
+    private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:
         log_intent("skipped")
     if is_camera:

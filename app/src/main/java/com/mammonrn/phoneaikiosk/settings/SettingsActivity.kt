@@ -355,6 +355,13 @@ class SettingsActivity : Activity() {
         AuthStore.identityId(this)?.let { id ->
             list.addView(text(getString(R.string.auth_identity, id.take(4)), 13f),
                          LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            val server = when (com.mammonrn.phoneaikiosk.voice.VoiceState.grantStatus) {
+                "approved" -> getString(R.string.auth_server_approved)
+                "pending" -> getString(R.string.auth_server_pending, id.take(4))
+                "error" -> getString(R.string.auth_server_error)
+                else -> getString(R.string.auth_server_unknown)
+            }
+            list.addView(text(server, 13f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
         }
         list.addView(text(getString(R.string.auth_privacy), 12f, dim = true),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16) })
@@ -400,7 +407,11 @@ class SettingsActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_AUTH) return
         lastAuthOutcome = data?.getStringExtra(VerifyActivity.EXTRA_OUTCOME)
-        if (page == Page.AUTH) showAuth()
+        if (page == Page.AUTH) {
+            showAuth()
+            // The grant is asked for in the background; show its answer when it lands.
+            repeatHandler.postDelayed({ if (page == Page.AUTH) showAuth() }, 2500)
+        }
     }
 
     /** One alarm: tick box, time, name, when it repeats, and edit / delete. */

@@ -32,17 +32,60 @@ SPOKEN_PER_DAY = 3
 MAX_TITLE_CHARS = 40
 TIMEOUT = 10.0
 
-#: "นัด" as a word — not inside "ถนัด" — or the calendar by name.
-_ASKS = re.compile(r"(?<!ถ)นัด|ปฏิทิน|ตารางงาน|กำหนดการ|ประชุมอะไร|มีประชุม")
+#: The calendar by name. "นัด" as a word — never inside "ถนัด".
+_ASKS = (
+    ("นัดหมาย", re.compile(r"นัดหมาย")),
+    ("นัด", re.compile(r"(?<!ถ)นัด")),
+    ("ปฏิทิน", re.compile(r"ปฏิทิน")),
+    ("ตาราง", re.compile(r"ตาราง(งาน|นัด)|ตาราง(วันนี้|พรุ่งนี้)|(วันนี้|พรุ่งนี้)(มี)?ตาราง")),
+    ("กำหนดการ", re.compile(r"กำหนดการ")),
+    ("ประชุม", re.compile(r"มีประชุม|ประชุมอะไร|ประชุมกี่โมง")),
+)
+
+#: THE TRANSCRIBER'S "นัด" (2026-09-23, the same story as ปลุก/ปลูก): Poom said
+#: "วันนี้มีนัดอะไรบ้าง", the transcript was 19 characters — exactly that
+#: length — and did not match, so one letter came out different. Accepted only
+#: in the SHAPE of the question — a day, "มี", the misheard word, then a
+#: question word — so "นักเรียน", "นักข่าว" and "นะ" are never a calendar.
+_MISHEARD = re.compile(
+    r"(วันนี้|พรุ่งนี้|มะรืน|คืนนี้)?มี(นัก|นัต|นัท|หนัด|นัส|นั่ด|หนัก)(อะไร|ไหม|มั้ย|หรือเปล่า|บ้าง|กี่)")
+
 #: Things that mention an appointment but are not asking to hear them.
-_NOT_A_READ = re.compile(r"ตั้งปลุก|ปลุก|เพิ่มนัด|ลงนัด|ยกเลิกนัด|เลื่อนนัด|นัดใหม่")
+_NOT_A_READ = re.compile(r"ตั้งปลุก|ปลุก|เพิ่มนัด|ลงนัด|ยกเลิกนัด|เลื่อนนัด|นัดใหม่|จองนัด")
 
 HISTORY_PLACEHOLDER = "[นัดหมาย]"
 
 
+def calendar_match(text) -> tuple[bool, str]:
+    """(is it asking for the appointments, why) — the why is our own fixed
+    words, safe to log, never the transcript:
+      phrase:<which>     asks for the calendar
+      misheard:<word>    the transcriber's "นัด", in the shape of the question
+      not-a-read:<word>  about appointments, but to add or change one
+      near-miss:<word>   a misheard "นัด" NOT in the question's shape
+      no-calendar-word   not about the calendar
+      empty
+    """
+    if not isinstance(text, str) or not text.strip():
+        return False, "empty"
+    squashed = "".join(text.split())
+    blocked = _NOT_A_READ.search(squashed)
+    for name, pattern in _ASKS:
+        if pattern.search(squashed):
+            if blocked:
+                return False, f"not-a-read:{blocked.group(0)}"
+            return True, f"phrase:{name}"
+    misheard = _MISHEARD.search(squashed)
+    if misheard:
+        return True, f"misheard:{misheard.group(2)}"
+    for near in ("นัก", "นัต", "นัท", "หนัด"):
+        if near in squashed:
+            return False, f"near-miss:{near}"
+    return False, "no-calendar-word"
+
+
 def asks_for_calendar(text: str) -> bool:
-    squashed = "".join((text or "").split())
-    return bool(_ASKS.search(squashed)) and not _NOT_A_READ.search(squashed)
+    return calendar_match(text)[0]
 
 
 @dataclass(frozen=True)

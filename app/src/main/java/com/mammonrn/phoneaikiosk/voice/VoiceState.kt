@@ -44,6 +44,13 @@ object VoiceState : VoiceSink {
      */
     @Volatile var lastAction: String = "none"
 
+    /**
+     * What the broker said about this phone's identity at the last pass:
+     * "" (not asked yet this run), "approved", "pending" (Poom has not run
+     * approve-enrollment), or "error" (the VPS could not be reached).
+     */
+    @Volatile var grantStatus: String = ""
+
     /** Google Maps: installed, and does it have its location permission. */
     @Volatile var mapsState: String = "unknown"
 

@@ -144,7 +144,9 @@ class VoiceService : Service() {
         }
 
         if (intent?.action == ACTION_AUTH_PASSED) {
-            resumePrivate(intent.getStringExtra(EXTRA_METHOD) ?: "face")
+            resumePrivate(intent.getStringExtra(EXTRA_METHOD) ?: "face",
+                          intent.getBooleanExtra(com.mammonrn.phoneaikiosk.auth.VerifyActivity.EXTRA_FOR_PRIVATE,
+                                                 false))
         }
 
         if (intent?.action == ACTION_ALARM_RING) {
@@ -626,30 +628,42 @@ class VoiceService : Service() {
         return null
     }
 
-    /** VerifyActivity passed: ask the broker for the grant, then ask again. */
-    private fun resumePrivate(method: String) {
-        val question = pendingPrivate
-        pendingPrivate = null
-        if (question == null ||
-            android.os.SystemClock.elapsedRealtime() - pendingSince > PENDING_PRIVATE_MS) return
+    /**
+     * VerifyActivity passed: ask the broker for the grant — always, so the
+     * identity reaches the VPS for Poom to approve — and, if the pass was for
+     * a private question still waiting, ask that question again. The outcome
+     * goes to VoiceState.grantStatus for the Control Panel to show.
+     */
+    private fun resumePrivate(method: String, forPrivate: Boolean) {
+        val question = if (forPrivate) pendingPrivate else null
+        if (forPrivate) pendingPrivate = null
+        val stillWaiting = question != null &&
+            android.os.SystemClock.elapsedRealtime() - pendingSince <= PENDING_PRIVATE_MS
         val identityId = com.mammonrn.phoneaikiosk.auth.AuthStore.identityId(this) ?: return
         val token = TokenStore(this).token() ?: return
         network.execute {
             try {
                 Broker(VoiceState.brokerBaseUrl, token).grant(identityId, method)
                 Log.i(TAG, "grant ok method=$method")
+                VoiceState.grantStatus = "approved"
             } catch (e: Broker.Failure) {
                 Log.i(TAG, "grant refused ${e.code} (${e.status})")
-                VoiceState.lastError = "grant-refused"
-                VoiceState.reply = e.message ?: "ยังเปิดข้อมูลส่วนตัวไม่ได้ครับ"
-                deafWhile { speaker.sayLocally(VoiceState.reply) }
+                VoiceState.grantStatus = if (e.status == 403) "pending" else "error"
+                if (stillWaiting) {
+                    VoiceState.lastError = "grant-refused"
+                    VoiceState.reply = e.message ?: "ยังเปิดข้อมูลส่วนตัวไม่ได้ครับ"
+                    deafWhile { speaker.sayLocally(VoiceState.reply) }
+                }
                 return@execute
             } catch (e: Exception) {
                 Log.i(TAG, "grant failed ${e.javaClass.simpleName}")
-                deafWhile { speaker.sayLocally("ตอนนี้ติดต่อเซิร์ฟเวอร์ไม่ได้ครับ") }
+                VoiceState.grantStatus = "error"
+                if (stillWaiting) deafWhile { speaker.sayLocally("ตอนนี้ติดต่อเซิร์ฟเวอร์ไม่ได้ครับ") }
                 return@execute
             }
-            runTurn(ByteArray(TurnPipeline.WAV_HEADER_BYTES + 2), 0L, question)
+            if (stillWaiting && question != null) {
+                runTurn(ByteArray(TurnPipeline.WAV_HEADER_BYTES + 2), 0L, question)
+            }
         }
     }
 

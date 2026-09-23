@@ -286,13 +286,35 @@ def test_the_label_stays_so_the_sentence_still_makes_sense():
 
 # ============================================================== calendar
 
-@pytest.mark.parametrize("text,asks", [
-    ("วันนี้มีนัดอะไรบ้าง", True), ("พรุ่งนี้มีนัดไหม", True), ("ดูปฏิทินให้หน่อย", True),
-    ("วันนี้มีประชุมไหม", True), ("ผมถนัดซ้าย", False), ("ตั้งปลุก 6 โมงเช้า", False),
-    ("เพิ่มนัดพรุ่งนี้บ่ายสอง", False), ("วันนี้อากาศเป็นยังไง", False),
+@pytest.mark.parametrize("text,asks,why", [
+    # The ways Poom asks (2026-09-23).
+    ("วันนี้มีนัดอะไรบ้าง", True, "phrase:นัด"), ("มีนัดไหม", True, "phrase:นัด"),
+    ("พรุ่งนี้มีนัดอะไร", True, "phrase:นัด"), ("ตารางวันนี้เป็นยังไง", True, "phrase:ตาราง"),
+    ("นัดหมายวันนี้", True, "phrase:นัดหมาย"), ("วันนี้มีนัดอะไรบ้างครับ", True, "phrase:นัด"),
+    ("ดูปฏิทินให้หน่อย", True, "phrase:ปฏิทิน"), ("วันนี้มีประชุมไหม", True, "phrase:ประชุม"),
+    ("พรุ่งนี้มีตารางอะไร", True, "phrase:ตาราง"),
+    # The transcriber's "นัด", one letter off — the same length as what was said.
+    ("วันนี้มีนักอะไรบ้าง", True, "misheard:นัก"), ("วันนี้มีนัตอะไรบ้าง", True, "misheard:นัต"),
+    ("พรุ่งนี้มีนัทไหม", True, "misheard:นัท"),
+    # Not asking to hear them.
+    ("ผมถนัดซ้าย", False, "no-calendar-word"), ("นักเรียนเยอะไหม", False, "near-miss:นัก"),
+    ("ตั้งปลุก 6 โมงเช้า", False, "no-calendar-word"),
+    ("เพิ่มนัดพรุ่งนี้บ่ายสอง", False, "not-a-read:เพิ่มนัด"),
+    ("วันนี้อากาศเป็นยังไง", False, "no-calendar-word"), ("", False, "empty"),
 ])
-def test_what_counts_as_asking_for_the_calendar(text, asks):
-    assert calendar_read.asks_for_calendar(text) is asks
+def test_what_counts_as_asking_for_the_calendar(text, asks, why):
+    assert calendar_read.calendar_match(text) == (asks, why)
+
+
+def test_the_intent_line_says_what_became_of_the_calendar_without_the_words(conn, cfg, caplog):
+    token = _token(conn)
+    with caplog.at_level(logging.INFO, logger="kiosk_broker"):
+        _ask(conn, cfg, FakeClient(), "วันนี้มีนักอะไรบ้าง", token)
+        _ask(conn, cfg, FakeClient(), "นักเรียนเยอะไหม", token)
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("intent ")]
+    assert "calendar=yes calendar_reason=misheard:นัก" in lines[0]
+    assert "calendar=no calendar_reason=near-miss:นัก" in lines[1]
+    assert not any("นักเรียน" in r.getMessage() for r in caplog.records)
 
 
 NOW = datetime(2026, 9, 23, 3, 0, tzinfo=timezone.utc)  # 10:00 in Bangkok
