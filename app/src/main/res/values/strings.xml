@@ -113,4 +113,61 @@
         <item>ราคาน้ำมัน|ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev</item>
         <item>คริปโต|ราคาจาก Binance อันดับจาก CoinGecko</item>
     </string-array>
+    <!-- Identity check (0.37.0): face with a blink, pattern as the fallback.
+         DESIGN.md, "ยืนยันตัวตน". Formal written Thai, as every screen. -->
+    <string name="window_auth">ยืนยันตัวตน</string>
+    <string name="auth_title_verify">ยืนยันตัวตน</string>
+    <string name="auth_title_enroll">ลงทะเบียนใบหน้า</string>
+    <string name="auth_title_set_pattern">ตั้งรูปแบบสำรอง</string>
+    <string name="auth_starting">กำลังเปิดกล้อง…</string>
+    <string name="auth_find_face">กรุณามองกล้อง ให้เห็นใบหน้าคนเดียว</string>
+    <string name="auth_look">มองกล้องค้างไว้</string>
+    <string name="auth_blink">กรุณากะพริบตา 1 ครั้ง</string>
+    <string name="auth_reopen">ลืมตาแล้วมองกล้อง</string>
+    <string name="auth_passed">ยืนยันตัวตนแล้ว เปิดสิทธิ์ 2 นาที</string>
+    <string name="auth_not_recognised">จำใบหน้าไม่ได้</string>
+    <string name="auth_not_recognised_pattern">จำใบหน้าไม่ได้ กรุณาลากรูปแบบแทน</string>
+    <string name="auth_failed">ยืนยันตัวตนไม่สำเร็จ</string>
+    <string name="auth_camera_unavailable">เปิดกล้องไม่ได้</string>
+    <string name="auth_nothing_enrolled">ยังไม่ได้ลงทะเบียนใบหน้าหรือรูปแบบ กรุณาตั้งค่าที่แผงควบคุม</string>
+    <string name="auth_verify_first">กรุณายืนยันตัวตนก่อนเปลี่ยนข้อมูล</string>
+    <string name="auth_use_pattern">ใช้รูปแบบแทน</string>
+    <string name="auth_use_face">ใช้ใบหน้า</string>
+    <string name="auth_cancel">ยกเลิก</string>
+    <string name="auth_draw_pattern">กรุณาลากรูปแบบ</string>
+    <string name="auth_pattern_wrong">รูปแบบไม่ถูกต้อง ลองได้อีก %d ครั้ง</string>
+    <string name="auth_pattern_locked">ลากผิดหลายครั้ง กรุณารอ %s</string>
+    <string name="auth_pattern_too_short">กรุณาลากอย่างน้อย 4 จุด</string>
+    <string name="auth_pattern_draw_new">ลากรูปแบบใหม่ อย่างน้อย 4 จุด</string>
+    <string name="auth_pattern_confirm">ลากรูปแบบเดิมอีกครั้งเพื่อยืนยัน</string>
+    <string name="auth_pattern_mismatch">สองครั้งไม่ตรงกัน กรุณาลากใหม่</string>
+    <string name="auth_pattern_saved">บันทึกรูปแบบแล้ว</string>
+    <string name="auth_pattern_pad">ช่องลากรูปแบบ 9 จุด</string>
+    <string name="auth_pattern_dots">เลือกแล้ว %d จุด</string>
+    <string name="auth_enroll_hold">มองกล้องค้างไว้ กำลังบันทึก %1$d/%2$d</string>
+    <string name="auth_enroll_blink">บันทึกครบแล้ว กรุณากะพริบตา 1 ครั้ง</string>
+    <string name="auth_enroll_restart">พบใบหน้าไม่ต่อเนื่อง กรุณาให้เห็นใบหน้าคนเดียว ระบบเริ่มบันทึกใหม่</string>
+    <string name="auth_enroll_saved">ลงทะเบียนใบหน้าแล้ว</string>
+    <string name="auth_privacy">ระบบเก็บเฉพาะตัวเลขที่แปลงจากใบหน้า ไม่เก็บภาพ ข้อมูลเข้ารหัสและอยู่ในเครื่องนี้เท่านั้น</string>
+    <string name="auth_face_yes">ใบหน้า: ลงทะเบียนแล้ว (%s)</string>
+    <string name="auth_face_no">ใบหน้า: ยังไม่ได้ลงทะเบียน</string>
+    <string name="auth_pattern_yes">รูปแบบสำรอง: ตั้งแล้ว</string>
+    <string name="auth_pattern_no">รูปแบบสำรอง: ยังไม่ได้ตั้ง</string>
+    <string name="auth_grant_open">สิทธิ์เปิดอยู่ ปิดเองในอีก %s</string>
+    <string name="auth_grant_closed">สิทธิ์ปิดอยู่</string>
+    <string name="auth_enroll_face">ลงทะเบียนใบหน้า</string>
+    <string name="auth_reenroll_face">ลงทะเบียนใบหน้าใหม่</string>
+    <string name="auth_set_pattern">ตั้งรูปแบบสำรอง</string>
+    <string name="auth_change_pattern">เปลี่ยนรูปแบบสำรอง</string>
+    <string name="auth_delete_face">ลบข้อมูลใบหน้า</string>
+    <string name="auth_delete_pattern">ลบรูปแบบสำรอง</string>
+    <string name="auth_delete_face_confirm">ลบข้อมูลใบหน้าใช่หรือไม่ เมื่อลบแล้วจะกู้คืนไม่ได้</string>
+    <string name="auth_delete_pattern_confirm">ลบรูปแบบสำรองใช่หรือไม่ เมื่อลบแล้วจะกู้คืนไม่ได้</string>
+    <string name="auth_delete">ลบ</string>
+    <string name="auth_test">ทดสอบการยืนยันตัวตน</string>
+    <string name="auth_close_grant">ปิดสิทธิ์ทันที</string>
+    <string name="auth_result_passed">ผลล่าสุด: ยืนยันตัวตนสำเร็จ</string>
+    <string name="auth_result_failed">ผลล่าสุด: ยืนยันตัวตนไม่สำเร็จ</string>
+    <string name="auth_result_cancelled">ผลล่าสุด: ยกเลิก</string>
+    <string name="auth_deleted">ลบแล้ว</string>
 </resources>

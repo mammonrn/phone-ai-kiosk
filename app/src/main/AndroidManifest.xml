@@ -51,6 +51,16 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!--
+      THE FRONT CAMERA, for the identity check only (auth/VerifyActivity).
+      Open only while that window is on screen; frames are analysed in memory
+      and never written or sent. Granted by the Device Owner without a dialog,
+      for the same reason as the microphone. Not required: a phone without a
+      front camera falls back to the pattern.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
+    <!--
       WHY THIS BLOCK EXISTS, AND WHY IT IS ONE LINE LONG.
 
       From Android 11, an app that targets API 30 or higher cannot see other
@@ -139,6 +149,13 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- The identity check: face with a blink, or the pattern. Our own
+             activity, so lock task mode allows it; not exported. -->
+        <activity
+            android:name=".auth.VerifyActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <!-- AlarmManager's call when an alarm is due. Not exported: only our own
              PendingIntent reaches it. -->

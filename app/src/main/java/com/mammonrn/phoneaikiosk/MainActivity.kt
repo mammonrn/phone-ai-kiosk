@@ -1099,9 +1099,12 @@ class MainActivity : Activity() {
         // foreground service whose notification is suppressed is a kiosk holding
         // the mic with no visible sign of it, which is the wrong default for a
         // device in somebody's living room.
+        // CAMERA since 0.37.0, for the identity check: the same "nobody can
+        // answer a dialog" reason. Used only while VerifyActivity is open.
         val permissions = listOf(
             android.Manifest.permission.RECORD_AUDIO,
             android.Manifest.permission.POST_NOTIFICATIONS,
+            android.Manifest.permission.CAMERA,
         )
         for (permission in permissions) {
             try {

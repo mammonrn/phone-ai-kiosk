@@ -35,6 +35,19 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .putExtra(VoiceService.EXTRA_TEXT, intent.getStringExtra("text")))
             }
 
+            ACTION_VERIFY -> {
+                // Opens the identity check as a private request will in part 2,
+                // and goes back to the kiosk after. The outcome is in logcat
+                // under KioskAuth. --es mode VERIFY|ENROLL|SET_PATTERN
+                val mode = runCatching {
+                    com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.valueOf(
+                        intent.getStringExtra("mode") ?: "VERIFY")
+                }.getOrDefault(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.VERIFY)
+                context.startActivity(com.mammonrn.phoneaikiosk.auth.VerifyActivity
+                    .intent(context, mode, returnHome = true)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+
             ACTION_ALARM_IN -> {
                 // An alarm named "ทดสอบ" N minutes from now (default 1), set
                 // through the same store and scheduler a spoken command uses,
@@ -232,6 +245,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_ALARM_IN = "com.mammonrn.phoneaikiosk.TEST_ALARM_IN"
         const val ACTION_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK"
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
+        const val ACTION_VERIFY = "com.mammonrn.phoneaikiosk.TEST_VERIFY"
         const val TEST_ALARM_LABEL = "ทดสอบ"
 
         const val SAMPLE_QUESTION = "วันนี้อากาศที่เชียงรายเป็นยังไงบ้าง แล้วควรพกร่มไหม"

@@ -29,6 +29,10 @@ import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
 import com.mammonrn.phoneaikiosk.alarm.AlarmBook
 import com.mammonrn.phoneaikiosk.alarm.AlarmStore
+import com.mammonrn.phoneaikiosk.auth.AccessGrant
+import com.mammonrn.phoneaikiosk.auth.AuthStore
+import com.mammonrn.phoneaikiosk.auth.VerifyActivity
+import com.mammonrn.phoneaikiosk.ui.ScreenDate
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.voice.DashboardState
 
@@ -64,7 +68,7 @@ class SettingsActivity : Activity() {
     /** The page on screen, so Back can go up one level before leaving. */
     private var page = Page.HOME
 
-    private enum class Page { HOME, ALARMS, EDIT, SOURCES }
+    private enum class Page { HOME, ALARMS, EDIT, SOURCES, AUTH }
 
     private class Category(val icon: Int, val label: Int, val open: (SettingsActivity) -> Unit)
 
@@ -89,7 +93,7 @@ class SettingsActivity : Activity() {
     private fun goBack() {
         when (page) {
             Page.EDIT -> showAlarms()
-            Page.ALARMS, Page.SOURCES -> showHome()
+            Page.ALARMS, Page.SOURCES, Page.AUTH -> showHome()
             Page.HOME -> goHome()
         }
     }
@@ -161,13 +165,17 @@ class SettingsActivity : Activity() {
     private fun showHome() {
         page = Page.HOME
         titleText.text = getString(R.string.settings_title)
+        // Three icons to a row, as many rows as there are categories: one
+        // row of fixed-width icons ran off the screen at the third (0.37.0).
         val grid = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(10), dp(10), dp(10), dp(4))
         }
-        for (category in CATEGORIES) {
-            grid.addView(LinearLayout(this).apply {
+        for (row in CATEGORIES.chunked(ICONS_PER_ROW)) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            grid.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) })
+            for ((index, category) in row.withIndex()) line.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 isClickable = true
@@ -180,7 +188,11 @@ class SettingsActivity : Activity() {
                     gravity = Gravity.CENTER
                     setPadding(0, dp(6), 0, 0)
                 })
-            }, LinearLayout.LayoutParams(dp(112), WRAP).apply { marginEnd = dp(10) })
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (index > 0) marginStart = dp(6) })
+            // A short last row keeps the icons the same width as the rows above.
+            repeat(ICONS_PER_ROW - row.size) {
+                line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(6) })
+            }
         }
         setPage(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -237,6 +249,142 @@ class SettingsActivity : Activity() {
             list.addView(text(detail, 13f))
         }
         setPage(ScrollView(this).apply { addView(list) })
+    }
+
+    // ------------------------------------------------------ identity check
+
+    private var confirmingAuthDelete: String? = null
+    private var lastAuthOutcome: String? = null
+    private var grantLine: TextView? = null
+    private val grantTicker = object : Runnable {
+        override fun run() {
+            if (page != Page.AUTH) return
+            grantLine?.text = grantText()
+            repeatHandler.postDelayed(this, 1000)
+        }
+    }
+
+    private fun grantText(): String {
+        val left = AccessGrant.remainingMs()
+        if (left <= 0) return getString(R.string.auth_grant_closed)
+        val seconds = (left + 999) / 1000
+        return getString(R.string.auth_grant_open, "%d:%02d".format(seconds / 60, seconds % 60))
+    }
+
+    private fun openVerify(mode: VerifyActivity.Mode) {
+        @Suppress("DEPRECATION")
+        startActivityForResult(VerifyActivity.intent(this, mode), REQUEST_AUTH)
+    }
+
+    /**
+     * The identity check's page: whether a face and a pattern are enrolled,
+     * enrol or change them (VerifyActivity asks for a pass first when either
+     * exists), delete either at once, and try the check. DESIGN.md, "ยืนยันตัวตน".
+     */
+    private fun showAuth() {
+        page = Page.AUTH
+        titleText.text = getString(R.string.window_auth)
+        val face = AuthStore.loadFace(this)
+        val hasPattern = AuthStore.hasPattern(this)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        list.addView(button(getString(R.string.settings_back_to_panel)) { showHome() },
+                     LinearLayout.LayoutParams(WRAP, dp(48)))
+
+        val faceStatus = if (face != null) {
+            getString(R.string.auth_face_yes, ScreenDate.format(
+                java.util.Calendar.getInstance().apply { timeInMillis = face.createdAtMs }))
+        } else {
+            getString(R.string.auth_face_no)
+        }
+        list.addView(label(faceStatus), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+        list.addView(authRow(
+            primary = getString(if (face != null) R.string.auth_reenroll_face else R.string.auth_enroll_face),
+            onPrimary = { openVerify(VerifyActivity.Mode.ENROLL) },
+            deleteKey = if (face != null) "face" else null,
+            confirm = getString(R.string.auth_delete_face_confirm),
+            onDelete = {
+                AuthStore.deleteFace(this)
+                AccessGrant.close()
+            }))
+
+        list.addView(label(getString(if (hasPattern) R.string.auth_pattern_yes else R.string.auth_pattern_no)),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+        list.addView(authRow(
+            primary = getString(if (hasPattern) R.string.auth_change_pattern else R.string.auth_set_pattern),
+            onPrimary = { openVerify(VerifyActivity.Mode.SET_PATTERN) },
+            deleteKey = if (hasPattern) "pattern" else null,
+            confirm = getString(R.string.auth_delete_pattern_confirm),
+            onDelete = {
+                AuthStore.deletePattern(this)
+                AccessGrant.close()
+            }))
+
+        val enrolled = face != null || hasPattern
+        list.addView(button(getString(R.string.auth_test), enabled = enrolled) {
+            openVerify(VerifyActivity.Mode.VERIFY)
+        }, LinearLayout.LayoutParams(MATCH, dp(52)).apply { topMargin = dp(16) })
+        val result = when (lastAuthOutcome) {
+            VerifyActivity.OUTCOME_PASSED -> R.string.auth_result_passed
+            VerifyActivity.OUTCOME_CANCELLED -> R.string.auth_result_cancelled
+            VerifyActivity.OUTCOME_FAILED -> R.string.auth_result_failed
+            else -> null
+        }
+        if (result != null) {
+            list.addView(text(getString(result), 13f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        }
+        val line = text(grantText(), 13f)
+        grantLine = line
+        list.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        list.addView(button(getString(R.string.auth_close_grant)) {
+            AccessGrant.close()
+            line.text = grantText()
+        }, LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
+
+        list.addView(text(getString(R.string.auth_privacy), 12f, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16) })
+        setPage(ScrollView(this).apply { addView(list) })
+        repeatHandler.removeCallbacks(grantTicker)
+        repeatHandler.post(grantTicker)
+    }
+
+    /** "enrol / change" beside "delete", which asks once in place, like an alarm. */
+    private fun authRow(primary: String, onPrimary: () -> Unit, deleteKey: String?,
+                        confirm: String, onDelete: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, 0)
+        }
+        if (deleteKey != null && confirmingAuthDelete == deleteKey) {
+            row.addView(text(confirm, 13f), LinearLayout.LayoutParams(0, WRAP, 1f))
+            row.addView(button(getString(R.string.auth_delete)) {
+                onDelete()
+                confirmingAuthDelete = null
+                showAuth()
+            }, LinearLayout.LayoutParams(dp(72), dp(48)))
+            row.addView(button(getString(R.string.cancel)) {
+                confirmingAuthDelete = null
+                showAuth()
+            }, LinearLayout.LayoutParams(dp(80), dp(48)).apply { marginStart = dp(6) })
+            return row
+        }
+        row.addView(button(primary) { onPrimary() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        if (deleteKey != null) {
+            row.addView(button(getString(R.string.auth_delete)) {
+                confirmingAuthDelete = deleteKey
+                showAuth()
+            }, LinearLayout.LayoutParams(dp(72), dp(48)).apply { marginStart = dp(6) })
+        }
+        return row
+    }
+
+    @Deprecated("startActivityForResult's partner; this app has no androidx.activity.")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_AUTH) return
+        lastAuthOutcome = data?.getStringExtra(VerifyActivity.EXTRA_OUTCOME)
+        if (page == Page.AUTH) showAuth()
     }
 
     /** One alarm: tick box, time, name, when it repeats, and edit / delete. */
@@ -549,6 +697,8 @@ class SettingsActivity : Activity() {
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         private const val REPEAT_START_MS = 450L
         private const val REPEAT_MS = 110L
+        private const val ICONS_PER_ROW = 3
+        private const val REQUEST_AUTH = 37
 
         /**
          * The panel's categories, in order. ADD A SETTING HERE: an icon, a
@@ -556,6 +706,7 @@ class SettingsActivity : Activity() {
          */
         private val CATEGORIES = listOf(
             Category(R.drawable.ic_pixel_alarm_clock, R.string.window_alarms) { it.showAlarms() },
+            Category(R.drawable.ic_pixel_face, R.string.window_auth) { it.showAuth() },
             Category(R.drawable.ic_pixel_sources, R.string.window_sources) { it.showSources() },
         )
     }

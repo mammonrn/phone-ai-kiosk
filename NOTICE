@@ -130,3 +130,40 @@ day: about 30 calls a month against a free tier of 10,000. No key is sent and
 nothing is redistributed. The PRICES are Binance's, as they were before —
 CoinGecko is asked which coins, never what they cost.
 
+
+SFace — recognising Poom's face (0.37.0)
+----------------------------------------
+app/src/main/assets/models/face_recognition_sface_2021dec_int8.onnx comes from
+OpenCV Zoo, models/face_recognition_sface:
+https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface
+
+    sha256 2b0e941e6f16cc048c20aee0c8e31f569118f65d702914540f7bfdc14048d78a
+    (matches the Git LFS pointer in OpenCV Zoo)
+
+That directory states: "All files in this directory are licensed under Apache
+2.0 License." The licence text is licenses/SFACE-LICENSE. The model is a
+MobileFaceNet trained with the SFace loss by Yaoyao Zhong
+(https://github.com/zhongyy/SFace, paper arXiv:2205.12010), converted to ONNX
+by Chengrui Wang.
+
+WORTH KNOWING: the original SFace repository carries no licence of its own, and
+the paper trains on CASIA-WebFace, VGGFace2 and MS-Celeb-1M, face datasets
+released for research. The Apache-2.0 grant is OpenCV Zoo's. This project is a
+personal, non-commercial home kiosk (see LICENSE), which is the use those
+datasets allow; if that ever changes, this model is the second thing to review
+after openWakeWord's.
+
+It runs on the phone with ONNX Runtime, which the wake word already ships. No
+face image or embedding ever leaves the phone.
+
+ML Kit face detection — finding the face and the blink (0.37.0)
+---------------------------------------------------------------
+com.google.mlkit:face-detection (bundled model, on-device), under the ML Kit
+Terms of Service: https://developers.google.com/ml-kit/terms. It finds the face,
+its five landmarks for alignment, and the eye-open probability for the blink.
+Nothing is sent to Google by it.
+
+CameraX — the front camera (0.37.0)
+-----------------------------------
+androidx.camera, Apache-2.0. Open only while a verification or an enrolment is
+on screen; frames are analysed in memory and never written.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art: a face in a viewfinder's corners, for the identity
+     check. 16x16 grid, the panel icons' palette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFF" android:pathData="M1,1h4v1h-4z M1,2h1v3h-1z M11,1h4v1h-4z M14,2h1v3h-1z
+        M1,11h1v3h-1z M1,14h4v1h-4z M14,11h1v3h-1z M11,14h4v1h-4z" />
+    <path android:fillColor="#FFD700" android:pathData="M6,3h4v1h-4z M5,4h6v1h-6z M4,5h8v6h-8z M5,11h6v1h-6z M6,12h4v1h-4z" />
+    <path android:fillColor="#000000" android:pathData="M6,6h1v2h-1z M9,6h1v2h-1z M6,10h4v1h-4z" />
+</vector>

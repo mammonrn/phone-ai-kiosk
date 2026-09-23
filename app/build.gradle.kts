@@ -14,8 +14,8 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionCode = 43
-        versionName = "0.36.1"
+        versionCode = 44
+        versionName = "0.37.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
@@ -105,6 +105,13 @@ dependencies {
     // before "Hey Jarvis" has been heard, so the three ONNX models have to be
     // executed locally.
     implementation(libs.onnxruntime.android)
+
+    // The identity check: the front camera, and ML Kit to find the face and
+    // the blink. The frames never leave the phone. See auth/VerifyActivity.
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+    implementation(libs.mlkit.face)
 
     testImplementation(libs.junit)
     // Test classpath only — see the note in libs.versions.toml.

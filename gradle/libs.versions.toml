@@ -21,6 +21,12 @@ json = "20260814"
 # and execution providers three small models do not touch. 1.22.0 lands on the
 # number that was actually agreed.
 onnxruntime = "1.22.0"
+# The identity check (0.37.0). CameraX for the front camera, ML Kit's BUNDLED
+# face detector (about +6.9 MB, per its docs) so it works with no download and
+# no Play services step first. The face model itself (SFace) runs on the ONNX
+# Runtime above. See NOTICE.
+camerax = "1.4.2"
+mlkitFace = "16.1.7"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,6 +34,10 @@ json = { group = "org.json", name = "json", version.ref = "json" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 onnxruntime-jvm = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntime" }
+camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+mlkit-face = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
