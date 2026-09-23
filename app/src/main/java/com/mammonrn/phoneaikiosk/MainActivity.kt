@@ -362,8 +362,14 @@ class MainActivity : Activity() {
                 transcript.height > transcriptScroll.height) {
                 val lineTop = layout.getLineTop(layout.getLineForOffset(offset)) +
                     transcript.paddingTop
-                val target = SpeechFollow.scrollTarget(
+                val raw = SpeechFollow.scrollTarget(
                     lineTop, transcriptScroll.height, transcript.height)
+                // Snapped to the top of a line, so the window never opens on half
+                // a line of Thai cut through its vowels (seen on 0.30.2).
+                val max = (transcript.height - transcriptScroll.height).coerceAtLeast(0)
+                val line = layout.getLineForVertical((raw - transcript.paddingTop).coerceAtLeast(0))
+                val target = (if (line == 0) 0
+                              else layout.getLineTop(line) + transcript.paddingTop).coerceIn(0, max)
                 if (target != transcriptScroll.scrollY) transcriptScroll.smoothScrollTo(0, target)
             }
             handler.postDelayed(this, FOLLOW_INTERVAL_MILLIS)
