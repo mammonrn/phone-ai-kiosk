@@ -194,7 +194,7 @@ class MainActivity : Activity() {
                     attempt == null -> Log.i(DASHBOARD_TAG, "refresh skipped: no token")
                     attempt.isSuccess -> Log.i(DASHBOARD_TAG, "refresh ok")
                     else -> Log.w(DASHBOARD_TAG, "refresh failed: " +
-                        (attempt.exceptionOrNull()?.javaClass?.simpleName ?: "unknown"))
+                        Broker.describe(attempt.exceptionOrNull()))
                 }
                 val payload = attempt?.getOrNull()
                 if (payload != null) {

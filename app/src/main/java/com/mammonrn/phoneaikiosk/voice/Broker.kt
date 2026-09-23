@@ -20,6 +20,24 @@ class Broker(private val baseUrl: String, private val token: String) {
     class Failure(val status: Int, val code: String, override val message: String) :
         RuntimeException(message)
 
+    companion object {
+        /**
+         * A failure, for logcat: the HTTP status and the broker's error code
+         * when there is one, otherwise the exception type.
+         *
+         * "Failure" on its own said the broker answered and nothing about what
+         * it answered — 401, 404 and 502 need three different fixes. Status
+         * and code are both safe to log; the message and anything carrying the
+         * URL are not, because the dashboard URL's query string is the phone's
+         * position.
+         */
+        fun describe(error: Throwable?): String = when (error) {
+            null -> "unknown"
+            is Failure -> "http ${error.status} ${error.code}"
+            else -> error.javaClass.simpleName
+        }
+    }
+
     /** Audio in, Thai text out. The audio is not kept here or there. */
     fun transcribe(wav: ByteArray): String {
         val body = post("/v1/stt", wav, "audio/wav").bytes
