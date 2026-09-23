@@ -530,6 +530,22 @@ class Dashboard:
         self._lock = threading.Lock()
         self._cache: dict[str, tuple[float, Panel]] = {}
 
+    def latest(self, kind: str, now: float | None = None) -> tuple[int, dict] | None:
+        """The newest GOOD cached panel of this kind — (age in seconds, data) —
+        from any position, or None. Never fetches: this is for the chat
+        prompt, which must cost no outside request at all."""
+        now = time.time() if now is None else now
+        best: tuple[float, Panel] | None = None
+        with self._lock:
+            for name, (fetched_at, panel) in self._cache.items():
+                if name.split(":", 1)[0] != kind or not panel.ok:
+                    continue
+                if best is None or fetched_at > best[0]:
+                    best = (fetched_at, panel)
+        if best is None:
+            return None
+        return max(0, int(now - best[0])), dict(best[1].data)
+
     def forget(self) -> None:
         """Drops every cached panel. For tests, and for a config reload."""
         with self._lock:
@@ -630,3 +646,53 @@ class Dashboard:
 def _log_name(name: str) -> str:
     """"weather:20.05:99.89" is a cache key; "weather" is what a log may say."""
     return name.split(":", 1)[0]
+
+
+# ------------------------------------------------------- the chat's weather ---
+
+#: The weather line's ceiling. It is paid for on every question, like the
+#: clock line, so it is short and bounded: ~75 characters in practice.
+MAX_WEATHER_LINE_CHARS = 90
+
+#: Older than this and the screen's weather is not "now" any more: the kiosk
+#: polls only while its screen is on, so a night with the screen off leaves a
+#: reading from yesterday evening in the cache.
+MAX_WEATHER_AGE_SECONDS = 3 * 3600
+
+#: What the model is told when there is nothing usable — worded so it says so
+#: rather than guessing, which is what the persona forbids anyway.
+NO_WEATHER_LINE = "อากาศ: ยังไม่มีข้อมูล ห้ามเดา"
+
+
+def weather_line(board: "Dashboard", now: float | None = None) -> str:
+    """One line for the system prompt: the weather the screen is showing.
+
+    Read from the board's cache — the same numbers the kiosk's weather window
+    has — and never fetched: a question must not cost an outside request, and
+    the answer must not disagree with the screen beside it.
+    """
+    found = board.latest("weather", now)
+    if found is None or found[0] > MAX_WEATHER_AGE_SECONDS:
+        return NO_WEATHER_LINE
+    age, data = found
+    temp = data.get("temp_c")
+    if temp is None:
+        return NO_WEATHER_LINE
+    place = ""
+    named = board.latest("place", now)
+    if named and named[1].get("place"):
+        place = f" {named[1]['place']}"
+    parts = [f"อากาศตอนนี้{place} {_n(temp)}°C {data.get('word', '')}".rstrip()]
+    if data.get("humidity") is not None:
+        parts.append(f"ความชื้น {data['humidity']}%")
+    if data.get("high_c") is not None and data.get("low_c") is not None:
+        parts.append(f"สูง {_n(data['high_c'])} ต่ำ {_n(data['low_c'])}")
+    minutes = age // 60
+    parts.append("(เมื่อครู่)" if minutes < 1 else f"({minutes} นาทีก่อน)")
+    return " ".join(parts)[:MAX_WEATHER_LINE_CHARS]
+
+
+def _n(value) -> str:
+    """28.0 -> "28", 28.4 -> "28.4"."""
+    number = float(value)
+    return str(int(number)) if number == int(number) else f"{number:.1f}"

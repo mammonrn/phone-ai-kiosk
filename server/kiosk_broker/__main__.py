@@ -79,8 +79,11 @@ def _analysis(cfg, action: str, audio: bool) -> int:
             print("\nlatest:")
             for row in s["recent"]:
                 when = _dt.datetime.fromtimestamp(row["ts"]).strftime("%m-%d %H:%M")
-                print(f"  {when}  {row['provider']:<11} {row['action'] or 'pending':<16} "
-                      f"{row['intent'] or '-':<22} {row['text']}")
+                audio = "audio" if row["audio_file"] else "     "
+                print(f"  #{row['id']:<4} {when}  {audio} {row['provider']:<11} "
+                      f"{row['action'] or 'pending':<16} {row['intent'] or '-':<22} {row['text']}")
+            print("
+for stt-compare, name the four recordings in sentence order: --ids 12,13,14,15")
         return 0
     finally:
         conn.close()
@@ -95,8 +98,8 @@ def _stt_compare(cfg, args) -> int:
     if unknown or not providers:
         print(f"unknown transcriber(s): {unknown}; choose from {', '.join(stt_router.PROVIDERS)}")
         return 2
-    if not (args.from_analysis or args.dir or args.synth):
-        print("choose the audio: --from-analysis 4, --dir DIR, or --synth")
+    if not (args.from_analysis or args.ids or args.dir or args.synth):
+        print("choose the audio: --ids 12,13,14,15, --from-analysis 4, --dir DIR, or --synth")
         return 2
     pricing = Pricing.load(cfg.pricing_path)
     conn = store.connect(cfg.db_path)
@@ -108,8 +111,9 @@ def _stt_compare(cfg, args) -> int:
         # ---- the audio ------------------------------------------------------
         samples: list[tuple[str, str, bytes, float]] = []
         sentences = list(stt_compare.SENTENCES)
-        if args.from_analysis:
-            kept = analysis.rows_with_audio(conn, cfg.home, args.from_analysis)
+        if args.from_analysis or args.ids:
+            ids = [int(x) for x in args.ids.split(",") if x.strip()] if args.ids else None
+            kept = analysis.rows_with_audio(conn, cfg.home, args.from_analysis or 4, ids=ids)
             for (sentence, keyword), (_, audio) in zip(sentences, kept):
                 samples.append((sentence, keyword, audio, google_stt.wav_info(audio)[1]))
             if not samples:
@@ -135,6 +139,14 @@ def _stt_compare(cfg, args) -> int:
                                             cost_usd=cost, note="synth sample")
                 samples.append((sentence, keyword, speech.audio,
                                 google_stt.wav_info(speech.audio)[1]))
+
+        if not samples:
+            print("no audio found for that choice")
+            return 1
+        print("pairing (sentence <- recording length):")
+        for sentence, _, audio, seconds in samples:
+            print(f"  {sentence:<24} <- {seconds:4.1f} s")
+        print()
 
         # ---- the transcribers -------------------------------------------------
         groq_client = _stt_client() if any(p.startswith("groq") for p in providers) else None
@@ -386,6 +398,8 @@ def main(argv: list[str] | None = None) -> int:
                                            "capped at $0.20 across all runs")
     p.add_argument("--from-analysis", type=int, default=0,
                    help="use the last N turns kept by `analysis on --audio` (say the 4 in order)")
+    p.add_argument("--ids", default="",
+                   help="kept recordings by id from `analysis summary`, in sentence order")
     p.add_argument("--dir", default="", help="WAV files, sorted, paired with the 4 sentences")
     p.add_argument("--synth", action="store_true", help="the 4 sentences in the kiosk's TTS voice")
     p.add_argument("--providers", default="groq,groq-hints,google")

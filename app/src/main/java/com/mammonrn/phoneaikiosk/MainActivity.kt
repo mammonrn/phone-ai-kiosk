@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.home.HomeControl
+import com.mammonrn.phoneaikiosk.ui.BatteryLabel
 import com.mammonrn.phoneaikiosk.ui.FadingLine
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.ui.ThaiDate
@@ -53,6 +54,9 @@ class MainActivity : Activity() {
     private lateinit var transcript: TextView
     private lateinit var taskbarClock: TextView
     private lateinit var taskbarDate: TextView
+    private lateinit var batteryIcon: ImageView
+    private lateinit var batteryText: TextView
+    private var ticks = 0
     private lateinit var homeNote: TextView
     private lateinit var weatherTitle: TextView
     private lateinit var weatherBody: TextView
@@ -106,6 +110,8 @@ class MainActivity : Activity() {
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             charging = intent.action == Intent.ACTION_POWER_CONNECTED
+            // The bolt appears the moment the cable goes in, not ten seconds later.
+            ticks = 0
         }
     }
 
@@ -138,6 +144,9 @@ class MainActivity : Activity() {
             // Thai, "พ. 23 ก.ย.": the time stays AM/PM as asked, the date is
             // in the language of everything else on the screen.
             taskbarDate.text = ThaiDate.short(java.util.Calendar.getInstance().apply { time = now })
+            // Every ten seconds: a battery moves a percent in minutes, and the
+            // sticky broadcast is cheap but not free.
+            if (ticks++ % 10 == 0) showBattery()
             VoiceState.locationState = location.describe()
             // Always written to VoiceState, so dumpsys has it; only DRAWN in
             // debug mode. The household's screen shows data and Jarvis's
@@ -304,6 +313,8 @@ class MainActivity : Activity() {
         transcript = findViewById(R.id.transcript)
         taskbarClock = findViewById(R.id.taskbar_clock)
         taskbarDate = findViewById(R.id.taskbar_date)
+        batteryIcon = findViewById(R.id.battery_icon)
+        batteryText = findViewById(R.id.battery_text)
         homeNote = findViewById(R.id.home_note)
         weatherTitle = findViewById(R.id.weather_title)
         weatherBody = findViewById(R.id.weather_body)
@@ -326,6 +337,12 @@ class MainActivity : Activity() {
 
         findViewById<android.view.View>(R.id.home_button).setOnClickListener {
             onHomeTap()
+        }
+
+        // "จาร์วิส": the same as saying Hey Jarvis. The service decides whether
+        // a question can start now (never on top of one already running).
+        findViewById<android.view.View>(R.id.jarvis_button).setOnClickListener {
+            VoiceService.start(this, VoiceService.ACTION_BUTTON_LISTEN)
         }
 
         // If the platform ever puts a keyguard between a dark screen and this
@@ -464,6 +481,24 @@ class MainActivity : Activity() {
         val middle = if (on) android.view.View.VISIBLE else android.view.View.INVISIBLE
         if (voiceStatus.visibility != lines) voiceStatus.visibility = lines
         if (status.visibility != middle) status.visibility = middle
+    }
+
+    /** The tray's battery, from the sticky ACTION_BATTERY_CHANGED broadcast. */
+    private fun showBattery() {
+        val status = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+        val percent = BatteryLabel.percent(
+            status.getIntExtra(BatteryManager.EXTRA_LEVEL, -1),
+            status.getIntExtra(BatteryManager.EXTRA_SCALE, -1),
+        )
+        val plugged = status.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        batteryText.text = BatteryLabel.text(percent)
+        batteryIcon.setImageResource(when (BatteryLabel.icon(percent, plugged)) {
+            BatteryLabel.Icon.CHARGING -> R.drawable.ic_pixel_battery_charging
+            BatteryLabel.Icon.LOW -> R.drawable.ic_pixel_battery_low
+            BatteryLabel.Icon.NORMAL -> R.drawable.ic_pixel_battery
+        })
+        batteryIcon.contentDescription = getString(R.string.battery_description) + " " +
+            batteryText.text + if (plugged) " กำลังชาร์จ" else ""
     }
 
     /** Every touch anywhere is use. Seen here, before any view can eat it. */

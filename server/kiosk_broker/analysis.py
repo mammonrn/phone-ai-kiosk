@@ -182,8 +182,21 @@ def summary(conn: sqlite3.Connection, home: Path, recent: int = 10,
     }
 
 
-def rows_with_audio(conn: sqlite3.Connection, home: Path, limit: int) -> list[tuple[dict, bytes]]:
-    """The newest kept recordings, for stt-compare. Missing files are skipped."""
+def rows_with_audio(conn: sqlite3.Connection, home: Path, limit: int,
+                    ids: list[int] | None = None) -> list[tuple[dict, bytes]]:
+    """Kept recordings for stt-compare, oldest first: the rows named in `ids`
+    (in that order), or else the newest `limit`. Missing files are skipped."""
+    if ids:
+        out = []
+        for row_id in ids:
+            row = conn.execute("SELECT * FROM analysis_turns WHERE id = ? AND audio_file IS NOT NULL",
+                               (row_id,)).fetchone()
+            if row is None:
+                continue
+            path = audio_dir(home) / Path(row["audio_file"]).name
+            if path.is_file():
+                out.append((dict(row), path.read_bytes()))
+        return out
     out = []
     for row in conn.execute(
             "SELECT * FROM analysis_turns WHERE audio_file IS NOT NULL ORDER BY id DESC LIMIT ?",

@@ -437,14 +437,25 @@
             android:layout_marginTop="7dp"
             android:padding="3dp">
 
+            <!-- THE JARVIS BUTTON, pressable now: the same as saying "Hey
+                 Jarvis" — beep, "ฟังอยู่ครับ", then the question. Ignored while
+                 a turn is under way (CaptureMachine.canStartByButton), so a
+                 press can never start a second turn on top of the first.
+                 Bottom LEFT; the exit is bottom RIGHT and untouched. Padding
+                 grown to a finger's worth without making the taskbar taller
+                 than the clock tray beside it. -->
             <TextView
+                android:id="@+id/jarvis_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/retro_raised"
-                android:paddingStart="9dp"
-                android:paddingEnd="9dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/jarvis_button_description"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
                 android:text="@string/taskbar_button"
                 android:textColor="@color/retro_text"
                 android:textSize="11sp"
@@ -491,6 +502,26 @@
                 android:paddingEnd="7dp"
                 android:paddingTop="5dp"
                 android:paddingBottom="5dp">
+
+                <!-- The phone's own battery: a small pixel battery and the
+                     percentage in words. First in the tray because it is the
+                     least read; the time stays at the right edge. -->
+                <ImageView
+                    android:id="@+id/battery_icon"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:src="@drawable/ic_pixel_battery"
+                    android:contentDescription="@string/battery_description" />
+
+                <TextView
+                    android:id="@+id/battery_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginEnd="7dp"
+                    android:textColor="@color/retro_dim"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
 
                 <TextView
                     android:id="@+id/taskbar_date"

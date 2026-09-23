@@ -210,7 +210,14 @@ def handle_chat(
     # would still be sitting in the conversation an hour later, and the model
     # would have two times in front of it and no way to tell which was now.
     # In the system prompt there is only ever one, and it is this minute's.
-    system = SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
+    #
+    # The weather goes the same way and for the same reason: the kiosk's own
+    # screen shows it, the model cannot know it, and asked "อากาศเป็นยังไง" it
+    # used to say it had no data while the answer sat beside it. Read from the
+    # dashboard's cache — never fetched — so it costs no outside request and
+    # cannot disagree with the screen. ~75 characters a question.
+    system = (SYSTEM_PROMPT + "\n" + clock.context_line(cfg.clock_timezone)
+              + "\n" + dashboard_mod.weather_line(_dashboard(cfg)))
 
     started = time.monotonic()
     try:

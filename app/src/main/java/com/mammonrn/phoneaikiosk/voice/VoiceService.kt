@@ -85,6 +85,10 @@ class VoiceService : Service() {
     @Volatile
     private var tone: android.media.ToneGenerator? = null
 
+    /** Set by a button press, consumed by the capture thread when the capture starts. */
+    @Volatile
+    private var ackOnStart = false
+
     override fun onCreate() {
         super.onCreate()
         // Asks whether an on-device Thai recognizer exists, for dumpsys. Asks
@@ -125,6 +129,22 @@ class VoiceService : Service() {
             machine.arm()
             VoiceState.wake = "triggered"
             Log.i(TAG, "armed by adb trigger; capture thread will pick it up next frame")
+        }
+
+        if (intent?.action == ACTION_BUTTON_LISTEN) {
+            // The taskbar's "จาร์วิส" button: the same as saying Hey Jarvis.
+            // Accepted only while listening — a press mid-turn does nothing,
+            // so a second turn can never start on top of the first. The beep
+            // and "heard" state come from the capture thread when the capture
+            // actually starts (ackOnStart), exactly as the wake word's do.
+            if (!VoiceState.wakeOnly && machine.canStartByButton()) {
+                ackOnStart = true
+                machine.arm()
+                VoiceState.wake = "triggered"
+                Log.i(TAG, "armed by the Jarvis button")
+            } else {
+                Log.i(TAG, "Jarvis button ignored: mode=${machine.mode} wakeOnly=${VoiceState.wakeOnly}")
+            }
         }
 
         if (intent?.action == ACTION_RETURN_HOME) {
@@ -235,6 +255,8 @@ class VoiceService : Service() {
                     // Something has to tell the person it heard them, or the
                     // only feedback is an answer several seconds later.
                     acknowledge()
+                    // A button press in the same frame must not beep twice.
+                    ackOnStart = false
                     Log.i(TAG, "beep %d ms after the best score"
                         .format(android.os.SystemClock.elapsedRealtime() - now + climb))
                 }
@@ -253,6 +275,12 @@ class VoiceService : Service() {
 
                     CaptureMachine.Step.STARTED -> {
                         buffer.reset()
+                        // Started by the Jarvis button: the beep, the screen
+                        // and "ฟังอยู่ครับ" now, as a wake word would have.
+                        if (ackOnStart) {
+                            ackOnStart = false
+                            acknowledge()
+                        }
                         VoiceState.stt = "recording"
                         // Logged at the start as well, so the calibration is
                         // visible on the turns that WORK, not only the ones
@@ -813,6 +841,9 @@ class VoiceService : Service() {
         /** Used by the debug-only adb trigger. */
         const val ACTION_LISTEN_NOW = "com.mammonrn.phoneaikiosk.LISTEN_NOW"
         const val ACTION_RETURN_HOME = "com.mammonrn.phoneaikiosk.RETURN_HOME"
+
+        /** The on-screen Jarvis button. Sent by MainActivity only (not exported). */
+        const val ACTION_BUTTON_LISTEN = "com.mammonrn.phoneaikiosk.BUTTON_LISTEN"
 
         /**
          * Wake-word-only test mode. Counted and shown, never recorded.

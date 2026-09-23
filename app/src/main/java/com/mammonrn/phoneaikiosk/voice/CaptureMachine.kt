@@ -191,6 +191,16 @@ class CaptureMachine(
     @Synchronized
     fun isArmed(): Boolean = armed
 
+    /**
+     * Whether a press of the on-screen Jarvis button may start a question now:
+     * only while listening. During a capture or a turn (BUSY) the press is
+     * refused outright rather than armed — arm() while BUSY would be dropped
+     * anyway, but refusing up front means no beep promises a turn that will
+     * not happen, and no second turn can ever start on top of the first.
+     */
+    @Synchronized
+    fun canStartByButton(): Boolean = mode == Mode.LISTENING
+
     /** The room level behind the current threshold, for the dump. */
     @Synchronized
     fun ambientLevel(): Int = ambient

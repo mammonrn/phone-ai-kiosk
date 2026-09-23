@@ -189,3 +189,14 @@ def test_an_edited_hints_file_is_picked_up_without_a_restart(tmp_path):
     later = path.stat().st_mtime + 5
     _os.utime(path, (later, later))
     assert stt_hints.load(path).phrases == ("กล้อง", "แผนที่")
+
+
+def test_compare_can_name_recordings_by_id_in_sentence_order(db):
+    conn, home = db
+    analysis.set_mode(conn, on=True, audio=True)
+    a = _stt(conn, home, text="หนึ่ง", audio=WAV + b"1")
+    b = _stt(conn, home, text="สอง", audio=WAV + b"2")
+    c = _stt(conn, home, text="อื่น", audio=WAV + b"3")
+    picked = analysis.rows_with_audio(conn, home, 4, ids=[c, a, 999])
+    assert [row["text"] for row, _ in picked] == ["อื่น", "หนึ่ง"]      # missing id skipped
+    assert picked[0][1].endswith(b"3")
