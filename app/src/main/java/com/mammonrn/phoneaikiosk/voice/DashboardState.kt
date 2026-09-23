@@ -432,6 +432,106 @@ object DashboardState {
     /** 68850.0 -> "68,850" — no decimals, because nobody reads satang at 2 m.
      *  ROUNDED, not truncated: 999.7 baht is 1,000, and a price that reads low
      *  every time is a worse lie than one that is occasionally a baht high. */
+    // ------------------------------------------------ the commodities table
+
+    /** One table row: what it is, its price, and what follows the price. */
+    class Row(val label: String, val price: String, val extra: String)
+
+    /**
+     * The commodities window as a TABLE, not a paragraph (2026-09-23).
+     *
+     * On the A07 the fuel lines were one string each, so each price started
+     * wherever its label ended — "ดีเซล 40.69" and "โซฮอล์ 95 39.94" did not
+     * line up, and "95" ran into "39.94" in the pixel face. Rows of cells fix
+     * both: MainActivity lays them out in columns with the prices
+     * right-aligned. Each section carries a one-line HEADER instead of a
+     * footnote: the unit, what the move is measured against, that fuel is
+     * Bangkok's price and the date — said once, where it explains the rows.
+     *
+     * [oil] is null when the broker sent no fuel at all (an older broker).
+     */
+    class Commodities(val goldHeader: String, val gold: List<Row>,
+                      val oilHeader: String?, val oil: List<Row>?)
+
+    fun commodities(json: String, unavailable: String): Commodities {
+        val root = runCatching { JSONObject(json) }.getOrNull()
+            ?: return Commodities("ทองคำ: $unavailable", emptyList(), null, null)
+
+        val goldPanel = root.optJSONObject("gold")
+        val goldData = usable(goldPanel)?.first
+        val gold = ArrayList<Row>()
+        var goldHeader = "ทองคำ: $unavailable"
+        if (goldData != null) {
+            for ((label, key) in listOf("รูปพรรณ" to "ornament_sell", "ทองแท่ง" to "bar_sell")) {
+                val price = goldData.optDouble(key, Double.NaN)
+                if (!price.isNaN()) gold += Row(label, group(Math.round(price)),
+                                                goldMove(goldData, "${key}_change_pct").trim())
+            }
+            if (gold.isNotEmpty()) {
+                val basis = goldData.optString("change_basis", "")
+                goldHeader = listOf("ทองคำ บาทละ",
+                                    if (basis.isNotEmpty() && gold.any { it.extra.isNotEmpty() }) "+/− $basis" else "",
+                                    ageWords(goldPanel)).filter { it.isNotEmpty() }.joinToString(" · ")
+            }
+        }
+
+        if (!root.has("oil")) return Commodities(goldHeader, gold, null, null)
+        val oilPanel = root.optJSONObject("oil")
+        val oilData = usable(oilPanel)?.first
+        val fuels = oilData?.optJSONArray("fuels")
+        val oil = ArrayList<Row>()
+        if (fuels != null) {
+            for (i in 0 until fuels.length()) {
+                val fuel = fuels.optJSONObject(i) ?: continue
+                oilRow(fuel.optString("label"), fuel.optJSONArray("cheapest"))?.let { oil += it }
+            }
+        }
+        if (oil.isEmpty()) return Commodities(goldHeader, gold, "น้ำมัน: $unavailable", emptyList())
+        val area = oilData?.optString("area", "กรุงเทพฯ") ?: "กรุงเทพฯ"
+        val oilHeader = listOf("น้ำมันถูกสุด บาท/ลิตร", "ราคา$area ${shortThaiDate(oilData?.optString("date", "") ?: "")}".trim(),
+                               ageWords(oilPanel)).filter { it.isNotEmpty() }.joinToString(" · ")
+        return Commodities(goldHeader, gold, oilHeader, oil)
+    }
+
+    /**
+     * "ดีเซล | 40.69 | ปตท. บางจาก เชลล์": the cheapest price in the price
+     * column, the brands selling at it after it, and a dearer brand of the top
+     * three as "PT +0.04" — so the column is always the lowest price and what
+     * follows says who, and by how much the rest are dearer.
+     */
+    fun oilRow(label: String, cheapest: org.json.JSONArray?): Row? {
+        if (label.isEmpty() || cheapest == null) return null
+        val offers = (0 until cheapest.length()).mapNotNull { i ->
+            val o = cheapest.optJSONObject(i) ?: return@mapNotNull null
+            val price = o.optDouble("price", Double.NaN)
+            val brand = o.optString("brand")
+            if (price.isNaN() || brand.isEmpty()) null else brand to price
+        }
+        if (offers.isEmpty()) return null
+        val low = offers.minOf { it.second }
+        val same = offers.filter { it.second == low }.map { it.first }
+        val dearer = offers.filter { it.second != low }.map { (brand, price) ->
+            "$brand +" + String.format(java.util.Locale.US, "%.2f", price - low)
+        }
+        return Row(label, String.format(java.util.Locale.US, "%.2f", low),
+                   (same + dearer).joinToString(" "))
+    }
+
+    private val THAI_MONTHS = listOf(
+        "มกราคม" to "ม.ค.", "กุมภาพันธ์" to "ก.พ.", "มีนาคม" to "มี.ค.", "เมษายน" to "เม.ย.",
+        "พฤษภาคม" to "พ.ค.", "มิถุนายน" to "มิ.ย.", "กรกฎาคม" to "ก.ค.", "สิงหาคม" to "ส.ค.",
+        "กันยายน" to "ก.ย.", "ตุลาคม" to "ต.ค.", "พฤศจิกายน" to "พ.ย.", "ธันวาคม" to "ธ.ค.",
+    )
+
+    /** "23 กันยายน 2569" -> "23 ก.ย.", the taskbar's own form; anything else as it came. */
+    fun shortThaiDate(date: String): String {
+        val parts = date.trim().split(Regex("\\s+"))
+        if (parts.size >= 2) THAI_MONTHS.firstOrNull { it.first == parts[1] }?.let {
+            return "${parts[0]} ${it.second}"
+        }
+        return date.trim()
+    }
+
     fun baht(value: Double): String = group(Math.round(value)) + " บ."
 
     /** 85986.58 -> "$85,987" for the same reason. */

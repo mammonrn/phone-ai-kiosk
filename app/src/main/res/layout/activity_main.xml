@@ -387,25 +387,50 @@
                 android:layout_marginTop="3dp"
                 android:padding="7dp">
 
+                <!-- A TABLE, not paragraphs (2026-09-23): name | price | what
+                     follows, each a column, prices right-aligned, so every
+                     price sits under the one above it. Each section opens with
+                     a one-line header that says what the numbers are — the
+                     unit, the basis of the move, "ราคากรุงเทพฯ" and the date —
+                     instead of a footnote under them. Rows are built in
+                     MainActivity.showCommodities from DashboardState.commodities.
+                     DESIGN.md, "การ์ดทองและน้ำมัน". -->
                 <TextView
-                    android:id="@+id/gold_body"
+                    android:id="@+id/gold_header"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:lineSpacingExtra="1dp"
-                    android:textColor="@color/retro_text"
-                    android:textSize="15sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/retro_dim"
+                    android:textSize="11sp"
                     android:fontFamily="@font/plex_thai"
                     android:text="@string/data_loading" />
 
+                <TableLayout
+                    android:id="@+id/gold_table"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:shrinkColumns="2"
+                    android:stretchColumns="2" />
+
                 <TextView
-                    android:id="@+id/oil_body"
+                    android:id="@+id/oil_header"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:lineSpacingExtra="1dp"
-                    android:textColor="@color/retro_text"
-                    android:textSize="13sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/retro_dim"
+                    android:textSize="11sp"
                     android:fontFamily="@font/plex_thai"
+                    android:visibility="gone" />
+
+                <TableLayout
+                    android:id="@+id/oil_table"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:shrinkColumns="2"
+                    android:stretchColumns="2"
                     android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>

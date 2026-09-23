@@ -76,8 +76,10 @@ class MainActivity : Activity() {
     private lateinit var homeNote: TextView
     private lateinit var weatherTitle: TextView
     private lateinit var weatherBody: TextView
-    private lateinit var goldBody: TextView
-    private lateinit var oilBody: TextView
+    private lateinit var goldHeader: TextView
+    private lateinit var goldTable: android.widget.TableLayout
+    private lateinit var oilHeader: TextView
+    private lateinit var oilTable: android.widget.TableLayout
     private lateinit var cryptoBody: TextView
     private lateinit var cryptoBodyRight: TextView
     private lateinit var weatherIcon: ImageView
@@ -312,16 +314,7 @@ class MainActivity : Activity() {
         // here — this only decides what they look like.
         val dim = ContextCompat.getColor(this, R.color.retro_dim)
         weatherBody.text = RetroType.pixelifyHeadline(screen.weather.text, pixelFace, dim)
-        goldBody.text = RetroType.pixelifyWithAge(screen.gold.text, pixelFace, dim)
-        // Fuel under the gold: GONE with a broker too old to send it, so gold
-        // alone looks exactly as it did.
-        val oil = screen.oil
-        if (oil == null) {
-            if (oilBody.visibility != android.view.View.GONE) oilBody.visibility = android.view.View.GONE
-        } else {
-            oilBody.text = RetroType.pixelifyWithAge(oil.text, pixelFace, dim)
-            if (oilBody.visibility != android.view.View.VISIBLE) oilBody.visibility = android.view.View.VISIBLE
-        }
+        showCommodities(DashboardState.commodities(payload, getString(R.string.data_unavailable)))
         // The blank line between two coins at under half height: enough to
         // tell the pairs apart, not the full empty line that spread four coins
         // over the whole window.
@@ -484,6 +477,58 @@ class MainActivity : Activity() {
     }
 
     /**
+     * The commodities window as a table: a header line per section, then rows
+     * of name | price | what follows. Prices are right-aligned in their own
+     * column so they line up (DESIGN.md, "การ์ดทองและน้ำมัน"). Fuel is GONE with
+     * a broker too old to send it. Rebuilt only when the rows change.
+     */
+    private var shownCommodities = ""
+
+    private fun showCommodities(c: DashboardState.Commodities) {
+        val key = listOf(c.goldHeader, c.gold.joinToString { "${it.label}${it.price}${it.extra}" },
+                         c.oilHeader, c.oil?.joinToString { "${it.label}${it.price}${it.extra}" })
+            .joinToString("|")
+        if (key == shownCommodities) return
+        shownCommodities = key
+
+        goldHeader.text = RetroType.pixelify(c.goldHeader, pixelFace)
+        fillTable(goldTable, c.gold, labelSp = 15f, extraSp = 13f, extraDim = true)
+        val oilState = if (c.oilHeader == null) android.view.View.GONE else android.view.View.VISIBLE
+        oilHeader.visibility = oilState
+        oilTable.visibility = oilState
+        if (c.oilHeader != null) {
+            oilHeader.text = RetroType.pixelify(c.oilHeader, pixelFace)
+            fillTable(oilTable, c.oil.orEmpty(), labelSp = 14f, extraSp = 13f, extraDim = false)
+        }
+    }
+
+    private fun fillTable(table: android.widget.TableLayout, rows: List<DashboardState.Row>,
+                          labelSp: Float, extraSp: Float, extraDim: Boolean) {
+        table.removeAllViews()
+        val density = resources.displayMetrics.density
+        fun cell(text: CharSequence, sp: Float, end: Boolean, color: Int, padEndDp: Int) =
+            TextView(this).apply {
+                this.text = text
+                textSize = sp
+                typeface = ResourcesCompat.getFont(this@MainActivity, R.font.plex_thai)
+                setTextColor(ContextCompat.getColor(this@MainActivity, color))
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                gravity = if (end) android.view.Gravity.END else android.view.Gravity.START
+                setPadding(0, (2 * density).toInt(), (padEndDp * density).toInt(), 0)
+            }
+        for (row in rows) {
+            table.addView(android.widget.TableRow(this).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(cell(row.label, labelSp, false, R.color.retro_text, 10))
+                addView(cell(RetroType.pixelify(row.price, pixelFace), labelSp, true, R.color.retro_text, 10))
+                addView(cell(RetroType.pixelify(row.extra, pixelFace), extraSp, false,
+                             if (extraDim) R.color.retro_dim else R.color.retro_text, 0))
+            })
+        }
+    }
+
+    /**
      * New text in the Jarvis window. A new answer starts at the top with the
      * voice-following switched back on; long text reads from the left, since
      * a centred paragraph of Thai is hard to follow line to line.
@@ -593,8 +638,10 @@ class MainActivity : Activity() {
         homeNote = findViewById(R.id.home_note)
         weatherTitle = findViewById(R.id.weather_title)
         weatherBody = findViewById(R.id.weather_body)
-        goldBody = findViewById(R.id.gold_body)
-        oilBody = findViewById(R.id.oil_body)
+        goldHeader = findViewById(R.id.gold_header)
+        goldTable = findViewById(R.id.gold_table)
+        oilHeader = findViewById(R.id.oil_header)
+        oilTable = findViewById(R.id.oil_table)
         // The Control Panel: our own activity, so it stays inside lock task.
         findViewById<android.view.View>(R.id.settings_button).setOnClickListener {
             startActivity(Intent(this, com.mammonrn.phoneaikiosk.settings.SettingsActivity::class.java))

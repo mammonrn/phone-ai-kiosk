@@ -197,4 +197,41 @@ class AlarmBookTest {
         val down = """"oil":{"ok":false,"error":"URLError"}"""
         assertEquals("น้ำมัน: -", DashboardState.parse("{$gold,$down}", "-").oil!!.text)
     }
+
+    // ------------------------------------ the commodities table (2026-09-23)
+
+    private val table = """{"gold":{"ok":true,"ornament_sell":68950,"bar_sell":68150,
+        "ornament_sell_change_pct":0.07,"bar_sell_change_pct":0.07,"change_basis":"เทียบครั้งก่อน"},
+        "oil":{"ok":true,"area":"กรุงเทพฯ","date":"23 กันยายน 2569","fuels":[
+        {"id":"diesel","label":"ดีเซล","cheapest":[{"brand":"ปตท.","price":40.69},{"brand":"บางจาก","price":40.69},{"brand":"เชลล์","price":40.99}]},
+        {"id":"gasohol_95","label":"โซฮอล์ 95","cheapest":[{"brand":"PT","price":39.9},{"brand":"ปตท.","price":39.94}]}]}}"""
+
+    @Test
+    fun `the price is its own cell, so it can line up in a column`() {
+        val c = DashboardState.commodities(table, "-")
+        assertEquals(listOf("รูปพรรณ", "ทองแท่ง"), c.gold.map { it.label })
+        assertEquals(listOf("68,950", "68,150"), c.gold.map { it.price })
+        assertEquals("+0.07%", c.gold[0].extra)
+        val diesel = c.oil!![0]
+        assertEquals(Triple("ดีเซล", "40.69", "ปตท. บางจาก เชลล์ +0.30"),
+                     Triple(diesel.label, diesel.price, diesel.extra))
+        assertEquals("39.90", c.oil!![1].price)                 // the cheapest is the column
+        assertEquals("PT ปตท. +0.04", c.oil!![1].extra)
+    }
+
+    @Test
+    fun `each section says what its numbers are, once, in its header`() {
+        val c = DashboardState.commodities(table, "-")
+        assertEquals("ทองคำ บาทละ · +/− เทียบครั้งก่อน", c.goldHeader)
+        assertEquals("น้ำมันถูกสุด บาท/ลิตร · ราคากรุงเทพฯ 23 ก.ย.", c.oilHeader)
+    }
+
+    @Test
+    fun `no fuel from an older broker, and a source that is down, are told apart`() {
+        val goldOnly = DashboardState.commodities("""{"gold":{"ok":true,"bar_sell":68150}}""", "ข้อมูลไม่พร้อม")
+        assertNull(goldOnly.oilHeader)
+        val down = DashboardState.commodities("""{"gold":{"ok":false},"oil":{"ok":false}}""", "ข้อมูลไม่พร้อม")
+        assertEquals("ทองคำ: ข้อมูลไม่พร้อม", down.goldHeader)
+        assertEquals("น้ำมัน: ข้อมูลไม่พร้อม", down.oilHeader)
+    }
 }
