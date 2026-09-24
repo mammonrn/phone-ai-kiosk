@@ -1,0 +1,58 @@
+name: Build LibVLC (LGPL, arm64) - once
+
+# 0.60.0 (Poom): LibVLC plays what Media3 cannot, built by us under the LGPL
+# only. It is NOT built on every push: this workflow is run by hand, once per
+# pinned version, and publishes the AAR as a GitHub Release asset with its
+# SHA-256. The app's build downloads that asset and refuses it if the checksum
+# differs (app/build.gradle.kts). No large .so ever goes into git.
+#
+# Build and pins: tools/libvlc/build-lgpl.sh. The image is VideoLAN's own for
+# VLC 3.0 on Android, the one vlc-android's CI uses for libvlc-3.7.6.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Make room (the contribs need tens of GB)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Build inside VideoLAN's image
+        run: |
+          mkdir -p work
+          cp tools/libvlc/build-lgpl.sh work/
+          docker run --rm -v "$PWD/work:/work" \
+            registry.videolan.org/vlc-debian-android-3.0:20260701183656 \
+            bash /work/build-lgpl.sh 2>&1 | tee work/build.log
+          test -f work/out/SHA256SUMS
+
+      - name: Keep the log and the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: libvlc-lgpl-build
+          path: |
+            work/build.log
+            work/out/license-report.txt
+            work/out/build-info.txt
+          retention-days: 30
+
+      - name: Publish as a release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=libvlc-lgpl-3.7.6-arm64-${{ github.run_number }}
+          gh release create "$tag" work/out/libvlc-lgpl-3.7.6-arm64.aar work/out/SHA256SUMS \
+            work/out/license-report.txt work/out/build-info.txt \
+            --title "LibVLC 3.7.6, LGPL only, arm64 (${{ github.run_number }})" \
+            --notes-file work/out/build-info.txt
+          echo "### $tag" >> "$GITHUB_STEP_SUMMARY"
+          cat work/out/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
