@@ -50,8 +50,13 @@ _ASKS = (
 _MISHEARD = re.compile(
     r"(วันนี้|พรุ่งนี้|มะรืน|คืนนี้)?มี(นัก|นัต|นัท|หนัด|นัส|นั่ด|หนัก)(อะไร|ไหม|มั้ย|หรือเปล่า|บ้าง|กี่)")
 
-#: Things that mention an appointment but are not asking to hear them.
-_NOT_A_READ = re.compile(r"ตั้งปลุก|ปลุก|เพิ่มนัด|ลงนัด|ยกเลิกนัด|เลื่อนนัด|นัดใหม่|จองนัด")
+#: Things that mention an appointment but are not asking to hear them. The
+#: adding phrases are calendar_add's (it is checked first in service.py); they
+#: are listed here too so this check never reads a calendar it was asked to
+#: write to ("เพิ่มในปฏิทิน" has the word ปฏิทิน in it).
+_NOT_A_READ = re.compile(r"ตั้งปลุก|ปลุก|เพิ่มนัด|ลงนัด|ยกเลิกนัด|เลื่อนนัด|นัดใหม่|จองนัด"
+                         r"|จดนัด|บันทึกนัด|ใส่นัด|ลบนัด|แก้นัด"
+                         r"|(?:เพิ่ม|ใส่|ลง|จด|บันทึก)(?:ใน|ลง)?ปฏิทิน")
 
 HISTORY_PLACEHOLDER = "[นัดหมาย]"
 

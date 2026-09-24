@@ -20,7 +20,7 @@ from typing import Any
 from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
-               voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
+               voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
                auth_reset, local_facts, envfile, maps_rescue, music, video)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -150,6 +150,75 @@ def _calendar_reply(cfg: Config, label: str) -> str:
              sum(1 for e in events if e.day == "tomorrow"),
              int((time.monotonic() - started) * 1000))
     return calendar_read.spoken(events)
+
+
+def _calendar_add_turn(conn: sqlite3.Connection, cfg: Config, *, device_id: int, label: str,
+                       answer: str | None, heard: calendar_add.Heard | None,
+                       why: str, expired: bool = False) -> tuple[str, dict | None]:
+    """One turn of adding an appointment (round 2B): a new sentence (`heard`)
+    or the answer to a held draft (`answer`) — or to one that ran out
+    (`expired`). The reply and the action; one log line with the step —
+    never the title, the day or the time."""
+    def step(name: str, **extra) -> None:
+        more = "".join(f" {k}={v}" for k, v in extra.items())
+        log.info("calendar-add device=%s step=%s%s", label, name, more)
+
+    if expired:
+        # Answered once; the next lone "ใช่" is ordinary again.
+        calendar_add.drop(conn, device_id)
+        step("expired", answer=answer)
+        return (calendar_add.EXPIRED_REPLY if answer == "yes"
+                else calendar_add.NOTHING_HELD_REPLY), None
+
+    if answer == "no":
+        calendar_add.drop(conn, device_id)
+        step("cancelled")
+        return calendar_add.CANCELLED_REPLY, None
+
+    if answer is None and heard is not None and heard.draft is None:
+        # Asked back — nothing private in it, nothing held, no grant needed.
+        step("asked-back", reason=why)
+        return heard.reply, None
+
+    if not identity.granted(conn, device_id):
+        # For a "ยืนยัน", the draft stays held until its own expiry: the phone
+        # verifies and repeats the answer.
+        step("verify", answer=answer or "-")
+        return VERIFY_FIRST_REPLY, {"type": "verify_identity"}
+
+    if not google_auth.connected(cfg.google_token_path):
+        calendar_add.drop(conn, device_id)
+        step("not-connected")
+        return calendar_add.NOT_CONNECTED_REPLY, None
+
+    today = clock.now_in(cfg.clock_timezone).date()
+    if answer is None:
+        calendar_add.hold(conn, device_id, heard.draft)
+        step("asked", reason=why)
+        return heard.reply, None
+
+    draft = calendar_add.take(conn, device_id)
+    if draft is None:
+        step("gone")
+        return "ไม่มีนัดที่รอยืนยันแล้วครับ", None
+    started = time.monotonic()
+    try:
+        client = google_auth.load_client(cfg.google_client_path)
+        token = google_auth.access_token(client, key_path=cfg.vault_key_path,
+                                         token_path=cfg.google_token_path)
+    except Exception as exc:  # noqa: BLE001 — nothing was sent: certainly not added
+        step("failed", reason=f"token:{type(exc).__name__}")
+        return calendar_add.NOT_ADDED_REPLY, None
+    try:
+        calendar_add.insert(token, draft, cfg.clock_timezone)
+    except calendar_add.AddError as exc:
+        step("failed", http=exc.http or "-", sure="yes" if exc.sure else "no")
+        return (calendar_add.NOT_ADDED_REPLY if exc.sure else calendar_add.UNSURE_REPLY), None
+    except Exception as exc:  # noqa: BLE001 — sent or not, nobody knows
+        step("failed", reason=type(exc).__name__, sure="no")
+        return calendar_add.UNSURE_REPLY, None
+    step("confirmed", ms=int((time.monotonic() - started) * 1000))
+    return calendar_add.done_reply(draft, today), None
 
 
 def handle_auth_reset(conn: sqlite3.Connection, cfg: Config, *,
@@ -580,6 +649,23 @@ def handle_chat(
 
     calendar_yes, calendar_why = calendar_read.calendar_match(text)
 
+    # Adding an appointment (round 2B). A draft held from this device's last
+    # turn is answered first; any other sentence drops it, silently, and is
+    # handled as usual — a held write must never wait behind a new question.
+    # A draft that ran out in the last ten minutes still claims a lone yes or
+    # no, so it is answered "หมดเวลา" in code, never guessed at by the model.
+    held = calendar_add.look(conn, device_id)
+    add_answer = calendar_add.answer_word(text) if held != "none" else None
+    if held != "none" and add_answer is None:
+        calendar_add.drop(conn, device_id)
+        log.info("calendar-add device=%s step=dropped held=%s", label, held)
+    add_expired = held == "expired" and add_answer is not None
+    if add_answer:
+        add_heard = None
+        add_why = f"answer:{add_answer}" + (":expired" if add_expired else "")
+    else:
+        add_heard, add_why = calendar_add.match(text, cfg.clock_timezone)
+
     def log_intent(maps: str) -> None:
         """One line per question, written once its way is known. maps= says
         what became of the map (2026-09-23, "I was told the map was opening
@@ -592,12 +678,15 @@ def handle_chat(
         counts only — never the words, never the destination."""
         # calendar= since 2026-09-23: "วันนี้มีนัดอะไรบ้าง" went to the model and
         # nothing in the log could say why (the transcript had one letter off).
+        # calendar_add= since round 2B: draft:<day>, a reason it was asked
+        # back or not taken, or answer:yes|no to a held draft. Last, so the
+        # lines CI and the tests look for keep their shape.
         log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s"
-                 " calendar=%s calendar_reason=%s maps=%s maps_word=%s chars=%d",
+                 " calendar=%s calendar_reason=%s maps=%s maps_word=%s chars=%d calendar_add=%s",
                  label, "yes" if is_camera else "no", why,
                  "yes" if alarm is not None else "no", alarm_why,
                  "yes" if calendar_yes else "no", calendar_why,
-                 maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text))
+                 maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text), add_why)
     def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
         """A reply decided by code, no model, nothing paid: the camera and the
         alarms. Stored in the conversation like any other turn."""
@@ -615,6 +704,27 @@ def handle_chat(
                  action["type"] if action else "none")
         analysis.record_chat(conn, cfg.home, device=label, text=text, intent=intent,
                              action=action["type"] if action else "none", cost_usd=0.0)
+        return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
+
+    # ---- private data: adding an appointment (round 2B) ------------------
+    # Before the lights and the alarms: it needs an adding phrase ("ลงนัด",
+    # "เพิ่มในปฏิทิน"), which none of them say, and its title may contain
+    # their words. Like reading: no model, the history keeps a placeholder
+    # for BOTH sides (the sentence carries the title), analysis keeps nothing.
+    if not is_camera and (add_answer or add_heard is not None):
+        log_intent("skipped")
+        reply, action = _calendar_add_turn(conn, cfg, device_id=device_id, label=label,
+                                           answer=add_answer, heard=add_heard, why=add_why,
+                                           expired=add_expired)
+        store.record_request(conn, device_id=device_id, day=day, outcome="ok",
+                             text_len=len(text))
+        store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
+                             role="user", content=calendar_add.HISTORY_PLACEHOLDER)
+        store.append_message(conn, conversation_id=conversation_id, device_id=device_id,
+                             role="assistant",
+                             content=reply if action else calendar_add.HISTORY_PLACEHOLDER)
+        store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
+                             ttl_hours=cfg.history_ttl_hours)
         return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
 
     # ---- the lights (0.46.0): switched in code, answered from eWeLink ----
@@ -975,7 +1085,8 @@ def handle_stt(
         transcript.text, no_speech_prob=getattr(transcript, "no_speech_prob", None),
         avg_logprob=getattr(transcript, "avg_logprob", None), source=source,
         wake_score=wake_score, seconds=transcript.seconds,
-        awaiting_answer=lights.awaiting(label))
+        # A held calendar draft waits for a two-syllable "ยืนยัน" the same way.
+        awaiting_answer=lights.awaiting(label) or calendar_add.awaiting(conn, device_id))
     store.record_request(conn, device_id=device_id, day=day,
                          outcome="ok" if verdict.passed else "gated",
                          text_len=len(transcript.text), endpoint="stt")
