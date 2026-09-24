@@ -651,7 +651,13 @@ class MainActivity : Activity() {
             (!player.hasMedia || video.state == com.mammonrn.phoneaikiosk.media.VideoPlayer.State.PLAYING)
         val titleView = findViewById<android.widget.TextView>(R.id.music_title)
         val title = getString(if (cardIsVideo) R.string.window_video else R.string.window_music)
-        if (titleView.text.toString() != title) titleView.text = title
+        if (titleView.text.toString() != title) {
+            titleView.text = title
+            findViewById<android.widget.ImageView>(R.id.music_icon).apply {
+                setImageResource(if (cardIsVideo) R.drawable.ic_pixel_video_light else R.drawable.ic_pixel_music_light)
+                contentDescription = title
+            }
+        }
         if (cardIsVideo) {
             val v = video.current ?: return
             val playing = video.state == com.mammonrn.phoneaikiosk.media.VideoPlayer.State.PLAYING

@@ -407,16 +407,16 @@ class VideoActivity : Activity() {
         top.addView(right, LinearLayout.LayoutParams(dp(UiScale.TOUCH), WRAP).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(top, LinearLayout.LayoutParams(MATCH, WRAP))
 
-        // The row of settings.
+        // The row of settings: two short lines each ("ความเร็ว / 1.0×"), so 64dp tall.
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         speedButton = dvdButton("", small = true) { VideoPlayer.cycleSpeed(this); poke() }
-        row.addView(speedButton, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
+        row.addView(speedButton, LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f))
         row.addView(dvdButton(getString(R.string.video_audio), small = true) { chooseTrack(C.TRACK_TYPE_AUDIO, it) },
-                    LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
+                    LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
         row.addView(dvdButton(getString(R.string.video_subtitles), small = true) { chooseTrack(C.TRACK_TYPE_TEXT, it) },
-                    LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
+                    LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
         fillButton = dvdButton("", small = true) { fill = !fill; frame?.fill = fill; refresh(); poke() }
-        row.addView(fillButton, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
+        row.addView(fillButton, LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         return body
     }

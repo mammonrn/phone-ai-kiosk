@@ -607,6 +607,7 @@
                 android:paddingBottom="2dp">
 
                 <ImageView
+                    android:id="@+id/music_icon"
                     android:layout_width="13dp"
                     android:layout_height="13dp"
                     android:src="@drawable/ic_pixel_music_light"
