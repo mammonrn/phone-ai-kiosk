@@ -206,16 +206,20 @@ def forget() -> None:
         _cache.clear()
 
 
-def read(ctx: Context, *, now: float | None = None, force: bool = False) -> tuple[dict | None, int, str]:
-    """(the house, its age in seconds, error). Cached ten minutes; a failure is
-    not asked again for five. (None, 0, error) when nothing was ever read."""
+def read(ctx: Context, *, now: float | None = None, force: bool = False,
+         max_age: float | None = None) -> tuple[dict | None, int, str]:
+    """(the house, its age in seconds, error). Cached ten minutes — or
+    [max_age] seconds, for a voice command that must know the state now; a
+    failure is not asked again for five. (None, 0, error) when nothing was
+    ever read."""
     now = time.time() if now is None else now
     if not ewelink.connected(ctx.token_path):
         return None, 0, "not-connected"
+    ttl = HOME_TTL if max_age is None else max_age
     with _lock:
         cached = _cache.get("home")
         failed = _cache.get("failed")
-        if cached and not force and now - cached[0] < HOME_TTL:
+        if cached and not force and now - cached[0] < ttl:
             return cached[1], int(now - cached[0]), ""
         if failed and not force and now - failed[0] < FAILURE_BACKOFF:
             return (cached[1], int(now - cached[0]), failed[1]) if cached else (None, 0, failed[1])
@@ -258,8 +262,9 @@ def _remember(results: list[tuple[Target, str]], on: bool) -> None:
                     d["online"] = False
 
 
-def targets(ctx: Context, *, now: float | None = None) -> tuple[list[Target], int, str]:
-    home, age, error = read(ctx, now=now)
+def targets(ctx: Context, *, now: float | None = None,
+            max_age: float | None = None) -> tuple[list[Target], int, str]:
+    home, age, error = read(ctx, now=now, max_age=max_age)
     if home is None:
         return [], 0, error
     return build_targets(home, allowlist(ctx.home_dir), names(ctx.home_dir),

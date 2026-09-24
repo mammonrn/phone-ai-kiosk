@@ -56,6 +56,13 @@ NEGATED = re.compile(r"(อย่า|ไม่ต้อง|ไม่ให้|�
 #: Other appliances and media are not lights either: "เปิดเพลงในห้องนอน".
 NOT_LIGHTS = re.compile(r"แผนที่|นำทาง|แมพ|พาไป|ปลุก|กล้อง|เพลง|ทีวี|แอร์|วิดีโอ|หนัง|ยูทูบ|youtube")
 CANCEL = re.compile(r"ยกเลิก|ไม่เอา|ไม่ต้อง|ช่างมัน")
+#: "Yes" to "…ปิดอยู่แล้วครับ ต้องการเปิดใช่ไหมครับ". Checked after CANCEL and
+#: after NO, so "ไม่ใช่" is never a yes.
+YES = re.compile(r"^(ใช่|ครับ|ค่ะ|คะ|ได้|เอา|ตกลง|โอเค|ok|ถูก|ถูกต้อง|ช่วย)")
+NO = re.compile(r"^(ไม่|ผิด)")
+#: "That was wrong" right after a switch: undoes it (0.47.1). Short on
+#: purpose — a whole sentence that happens to hold "ไม่ใช่" is not an undo.
+UNDO = re.compile(r"^(ไม่ใช่|ผิด|ผิดแล้ว|สั่งผิด|ย้อนกลับ|กลับคืน|เอาคืน)(ครับ|ค่ะ|คะ|นะ)?$")
 LIGHT = "ไฟ"
 
 
@@ -241,6 +248,19 @@ def state_reply(chosen: list[Target]) -> str:
     return line
 
 
+def already_reply(same: list[Target], on: bool) -> str:
+    """The lights are already as asked: say so, and ask the opposite back —
+    "เปิด" and "ปิด" differ by one vowel, and a command for the state a light
+    is already in is how a mishearing shows (2026-09-24: "เปิดไฟหน้าบ้าน" came
+    through as "ปิดหน้าบ้าน" twice, and the porch light was switched off)."""
+    names = _join([t.name for t in same])
+    now_word, other = ("เปิด", "ปิด") if on else ("ปิด", "เปิด")
+    return (_glue("", names, f"{now_word}อยู่แล้วครับ ") +
+            _glue(f"ต้องการ{other}", names, "ใช่ไหมครับ"))
+
+
+UNDONE_PREFIX = "ขอโทษครับ "
+
 NOT_CONNECTED_REPLY = "ยังไม่ได้เชื่อมต่อระบบไฟบ้านครับ"
 NOT_FOUND_REPLY = "ไม่พบไฟชื่อนั้นครับ กรุณาพูดชื่อไฟหรือชื่อห้องอีกครั้ง"
 BOTH_REPLY = "กรุณาสั่งเปิดหรือปิดทีละอย่างครับ"
@@ -261,12 +281,22 @@ def claims_lights(reply: str) -> bool:
 
 @dataclass
 class Pending:
+    """What the next short answer refers to. "which": the room or name that
+    matched several lights. "confirm": a command for the state the lights are
+    already in — the sign of a misheard เปิด/ปิด — asked back. "undo": the
+    last switch, which "ไม่ใช่" reverses. [on] is the state an answer sets."""
     on: bool
     keys: list[str]
     expires: float
+    kind: str = "which"
 
 
 PENDING_SECONDS = 90
+#: "ไม่ใช่" undoes a switch only this soon after it.
+UNDO_SECONDS = 30
+#: How old the house may be when a voice command decides "already on/off".
+#: A wall switch or the eWeLink app may have changed it since the card read.
+FRESH_SECONDS = 20
 _pending: dict[str, Pending] = {}
 _pending_lock = threading.Lock()
 
@@ -288,6 +318,34 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
             pending = None
     intent = parse(text)
 
+    # Right after a switch: "ไม่ใช่" / "ผิด" puts it back (0.47.1).
+    if pending and pending.kind == "undo":
+        t = normalize(text)
+        if UNDO.match(t):
+            with _pending_lock:
+                _pending.pop(who, None)
+            found, _, _ = home_control.targets(ctx, now=now)
+            back = [x for x in found if x.key in pending.keys]
+            handled = _switch(ctx, back, pending.on, now, who=who, checked=True)
+            return Handled(UNDONE_PREFIX + handled.reply, handled.changed, "lights:undone")
+        with _pending_lock:
+            _pending.pop(who, None)
+        pending = None
+
+    # An answer to "…ปิดอยู่แล้วครับ ต้องการเปิดใช่ไหมครับ": yes switches to
+    # the OTHER state, no leaves it; a new command is handled as one.
+    if pending and pending.kind == "confirm" and (intent is None or intent.on is None):
+        t = normalize(text)
+        with _pending_lock:
+            _pending.pop(who, None)
+        if CANCEL.search(t) or NO.match(t):
+            return Handled(CANCELLED_REPLY, False, "lights:cancelled")
+        if YES.match(t):
+            found, _, _ = home_control.targets(ctx, now=now)
+            return _switch(ctx, [x for x in found if x.key in pending.keys], pending.on, now,
+                           who=who, checked=True)
+        pending = None
+
     # An answer to "ดวงไหน": a name, "ทั้งหมด", or "ยกเลิก" — no verb needed.
     if pending and (intent is None or intent.on is None and not intent.text.startswith("both:")):
         t = normalize(text)
@@ -301,7 +359,7 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
         if answer.chosen and (answer.by in ("name", "device", "room", "all")):
             with _pending_lock:
                 _pending.pop(who, None)
-            return _switch(ctx, answer.chosen, pending.on, now)
+            return _switch(ctx, answer.chosen, pending.on, now, who=who)
         if intent is None:
             with _pending_lock:
                 _pending.pop(who, None)
@@ -338,10 +396,43 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
         return Handled(ask_reply(answer.ask, intent.on), False, f"lights:ask-{answer.by}")
     if not answer.chosen:
         return Handled(NOT_FOUND_REPLY, False, "lights:not-found")
-    return _switch(ctx, answer.chosen, intent.on, now)
+    return _switch(ctx, answer.chosen, intent.on, now, who=who)
 
 
-def _switch(ctx: Context, chosen: list[Target], on: bool, now: float) -> Handled:
-    outcome = home_control.switch(ctx, chosen, on, via="voice", now=now)
-    return Handled(outcome_reply(outcome, on), bool(outcome.done),
+def _switch(ctx: Context, chosen: list[Target], on: bool, now: float, *, who: str = "",
+            checked: bool = False) -> Handled:
+    """Switches [chosen] to [on] — but first looks at the house as it is NOW.
+
+    A light already in the asked state is not switched again silently: when
+    every chosen light is, the command is asked back ("…ปิดอยู่แล้วครับ
+    ต้องการเปิดใช่ไหมครับ"), because that is exactly what a misheard เปิด/ปิด
+    looks like. [checked]: the person has just answered that question (or
+    said "ไม่ใช่"), so the command goes as it is. When the state cannot be
+    read fresh, nothing is assumed and the command goes as asked."""
+    keys = {t.key for t in chosen}
+    fresh, age, error = home_control.targets(ctx, now=now, max_age=FRESH_SECONDS)
+    known = not error and age <= FRESH_SECONDS
+    if fresh:
+        chosen = [t for t in fresh if t.key in keys] or chosen
+    same = [t for t in chosen if known and t.allowed and t.online and t.on is on]
+    todo = [t for t in chosen if t not in same]
+    # Nothing that can change would change (the rest is offline): still the
+    # sign of a mishearing, so still asked back — and the offline ones named.
+    if same and not any(t.online for t in todo) and not checked:
+        with _pending_lock:
+            _pending[who] = Pending(not on, [t.key for t in same], now + PENDING_SECONDS, "confirm")
+        gone = [t.name for t in todo if not t.online]
+        tail = (" " + _glue("ส่วน", _join(gone), "ออฟไลน์อยู่")) if gone else ""
+        return Handled(already_reply(same, on) + tail, False, "lights:already")
+    if not todo:
+        return Handled(_glue("", _join([t.name for t in same]), f"{'เปิด' if on else 'ปิด'}อยู่แล้วครับ"),
+                       False, "lights:already")
+    outcome = home_control.switch(ctx, todo, on, via="voice", now=now)
+    reply = outcome_reply(outcome, on)
+    if same and outcome.done:
+        reply += " " + _glue("ส่วน", _join([t.name for t in same]), f"{'เปิด' if on else 'ปิด'}อยู่แล้ว")
+    if outcome.done and who:
+        with _pending_lock:
+            _pending[who] = Pending(not on, [t.key for t in outcome.done], now + UNDO_SECONDS, "undo")
+    return Handled(reply, bool(outcome.done),
                    "lights:" + ("done" if outcome.done else "offline" if outcome.offline else "not-done"))

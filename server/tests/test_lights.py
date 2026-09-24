@@ -155,9 +155,9 @@ def test_the_question_can_be_answered_all_or_cancelled_and_expires(house):
     say(ctx, "ปิดไฟห้องนั่งเล่น")
     assert say(ctx, "ยกเลิก", now=NOW + 65).reply == lights.CANCELLED_REPLY
     assert not cloud.commands()
-    say(ctx, "ปิดไฟห้องนั่งเล่น", now=NOW + 66)
+    say(ctx, "เปิดไฟห้องนั่งเล่น", now=NOW + 66)
     got = say(ctx, "ทั้งหมด", now=NOW + 70)
-    assert got.reply == "ปิด 5 ดวงแล้วครับ" and len(cloud.commands()) == 2   # Light1, and Switch1 merged
+    assert got.reply == "เปิด 5 ดวงแล้วครับ" and len(cloud.commands()) == 2   # Light1, and Switch1 merged
     say(ctx, "ปิดไฟห้องนั่งเล่น", now=NOW + 80)
     assert say(ctx, "ไฟเพดาน", now=NOW + 80 + lights.PENDING_SECONDS + 1) is None   # expired
 
@@ -308,3 +308,114 @@ def test_nginx_passes_the_tap_route_post_only_with_a_small_body():
     block = conf.split("location = /v1/home/switch {", 1)[1].split("\n    }", 1)[0]
     assert "limit_except POST" in block and "client_max_body_size 1k;" in block
     assert "proxy_pass http://127.0.0.1:8770;" in block
+
+
+# --------------------------------------- เปิด and ปิด, one vowel apart (0.47.1)
+#
+# Production, 2026-09-24: Poom said "เปิดไฟหน้าบ้าน" twice; the transcript
+# was 11 characters — "ปิดหน้าบ้าน" — and the porch light was switched OFF
+# both times (it was already off). A misheard เปิด/ปิด always asks for the
+# state the light is already in, so that is what is caught.
+
+def _state(cloud, *, porch=None, light1=None):
+    switch = cloud.things["thingList"][2]["itemData"]["params"]["switches"]
+    if porch is not None:
+        switch[0]["switch"] = "on" if porch else "off"
+    if light1 is not None:
+        cloud.things["thingList"][0]["itemData"]["params"]["switch"] = "on" if light1 else "off"
+    home_control.forget()
+
+
+@pytest.mark.parametrize("heard,on", [
+    ("เปิดไฟหน้าบ้าน", True), ("ปิดไฟหน้าบ้าน", False), ("ปิดหน้าบ้าน", False), ("เปิดหน้าบ้าน", True),
+    ("เปิ้ดไฟหน้าบ้าน", True), ("เปิดไปหน้าบ้าน", True), ("ปิ้ดไฟหน้าบ้าน", False), ("ดับไฟหน้าบ้าน", False),
+    ("เปิดไฟหน้าบ้านหน่อยครับ", True), ("ช่วยปิดไฟหน้าบ้านให้หน่อย", False),
+    ("เปิดไฟทั้งหมด", True), ("ปิดไฟทั้งหมด", False), ("ดับไฟทั้งหมด", False), ("เปิดไฟทุกดวง", True),
+])
+def test_the_real_sentences_and_their_mishearings_parse_to_the_verb_heard(heard, on):
+    intent = lights.parse(heard)
+    assert intent is not None and intent.on is on
+
+
+def test_the_production_case_is_asked_back_and_never_switched_silently(house):
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    got = say(ctx, "ปิดหน้าบ้าน")                      # what the transcriber wrote for "เปิดไฟหน้าบ้าน"
+    assert got.reply == "ไฟหน้าบ้านปิดอยู่แล้วครับ ต้องการเปิดไฟหน้าบ้านใช่ไหมครับ"
+    assert not got.changed and not cloud.commands()
+    # One word puts it right: the OTHER state, the one that was meant.
+    got = say(ctx, "ใช่ครับ", now=NOW + 65)
+    assert got.reply == "เปิดไฟหน้าบ้านแล้วครับ" and got.changed
+    assert cloud.commands() == [{"type": 1, "id": "10003ccc03",
+                                 "params": {"switches": [{"switch": "on", "outlet": 0}]}}]
+
+
+def test_the_ask_back_can_be_refused_or_replaced_by_a_new_command(house):
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    say(ctx, "ปิดไฟหน้าบ้าน")
+    assert say(ctx, "ไม่ใช่", now=NOW + 62).reply == lights.CANCELLED_REPLY
+    say(ctx, "ปิดไฟหน้าบ้าน", now=NOW + 63)
+    assert say(ctx, "ไม่เอา", now=NOW + 64).reply == lights.CANCELLED_REPLY
+    assert not cloud.commands()
+    # A clear new command is simply done — the light was off, so "เปิด" switches.
+    say(ctx, "ปิดไฟหน้าบ้าน", now=NOW + 65)
+    assert say(ctx, "เปิดไฟหน้าบ้าน", now=NOW + 66).reply == "เปิดไฟหน้าบ้านแล้วครับ"
+    # And a "yes" after the question expired does nothing.
+    _state(cloud, porch=True)
+    say(ctx, "เปิดไฟหน้าบ้าน", now=NOW + 200)
+    sent = len(cloud.commands())
+    assert say(ctx, "ใช่", now=NOW + 200 + lights.PENDING_SECONDS + 1) is None
+    assert len(cloud.commands()) == sent
+
+
+def test_a_real_change_is_done_at_once_and_said_with_its_verb(house):
+    ctx, cloud = house
+    _state(cloud, porch=True)
+    assert say(ctx, "ปิดไฟหน้าบ้าน").reply == "ปิดไฟหน้าบ้านแล้วครับ"
+    _state(cloud, porch=False)
+    assert say(ctx, "เปิดไฟหน้าบ้าน", now=NOW + 61).reply == "เปิดไฟหน้าบ้านแล้วครับ"
+
+
+def test_right_after_a_switch_ไม่ใช่_puts_it_back(house):
+    ctx, cloud = house
+    _state(cloud, porch=True)
+    assert say(ctx, "ปิดไฟหน้าบ้าน").changed                   # heard wrong, light went off
+    got = say(ctx, "ไม่ใช่ครับ", now=NOW + 70)
+    assert got.reply == "ขอโทษครับ เปิดไฟหน้าบ้านแล้วครับ" and got.changed
+    assert cloud.commands()[-1]["params"] == {"switches": [{"switch": "on", "outlet": 0}]}
+    # Only soon after, and only as a short answer.
+    _state(cloud, porch=True)
+    say(ctx, "ปิดไฟหน้าบ้าน", now=NOW + 100)
+    sent = len(cloud.commands())
+    assert say(ctx, "ไม่ใช่", now=NOW + 100 + lights.UNDO_SECONDS + 1) is None
+    _state(cloud, porch=False)                     # the stub does not apply commands to itself
+    assert say(ctx, "เปิดไฟหน้าบ้าน", now=NOW + 200).changed
+    assert say(ctx, "ไม่ใช่แบบนั้นหรอก วันนี้อากาศเป็นไง", now=NOW + 201) is None
+    assert len(cloud.commands()) == sent + 1
+
+
+def test_all_skips_the_lights_already_there_and_says_so(house):
+    ctx, cloud = house
+    _state(cloud, porch=True)                                    # Light1 off, porch on, rest off
+    got = say(ctx, "เปิดไฟทั้งหมด")
+    assert got.changed and "ส่วนไฟหน้าบ้านเปิดอยู่แล้ว" in got.reply and "Light2 ออฟไลน์อยู่" in got.reply
+    sent = [c for c in cloud.commands() if c["id"] == "10003ccc03"][0]
+    assert [x["outlet"] for x in sent["params"]["switches"]] == [1, 2, 3]   # not the porch again
+    _state(cloud, porch=False, light1=False)
+    for i in range(4):
+        cloud.things["thingList"][2]["itemData"]["params"]["switches"][i]["switch"] = "off"
+    sent = len(cloud.commands())
+    got = say(ctx, "ปิดไฟทั้งหมด", now=NOW + 61)                 # all already off: asked back
+    assert "ปิดอยู่แล้วครับ ต้องการเปิด" in got.reply and "ส่วน Light2 ออฟไลน์อยู่" in got.reply
+    assert not got.changed and len(cloud.commands()) == sent
+
+
+def test_the_state_is_read_fresh_before_deciding_already(house):
+    """A wall switch changed the light after the card's reading."""
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    home_control.card(ctx, now=NOW)                               # cached: off
+    cloud.things["thingList"][2]["itemData"]["params"]["switches"][0]["switch"] = "on"
+    got = say(ctx, "ปิดไฟหน้าบ้าน", now=NOW + lights.FRESH_SECONDS + 1)
+    assert got.reply == "ปิดไฟหน้าบ้านแล้วครับ"                    # it WAS on: a real change
