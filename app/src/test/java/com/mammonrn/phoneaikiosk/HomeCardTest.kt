@@ -95,6 +95,8 @@ class HomeCardTest {
         assertNull("a key that is not a key is dropped", d[4].target)
         assertEquals("สั่งปิด", HomeCard.buttonWord(d[0]))
         assertEquals("สั่งเปิด", HomeCard.buttonWord(d[2]))
+        assertEquals(listOf("เปิดอยู่ · กดเพื่อปิด", "ออฟไลน์", "ปิดอยู่ · กดเพื่อเปิด", "ปิด", "ปิด"),
+                     d.map { HomeCard.tileLine(card, it) })
         // ewelink-control off: the broker sends control=false and no keys.
         val stopped = HomeCard.parse(switching.replace("\"control\": true", "\"control\": false"))!!
         assertTrue(stopped.systems.single().devices.none { HomeCard.canSwitch(stopped, it) })

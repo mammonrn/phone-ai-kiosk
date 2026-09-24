@@ -124,6 +124,16 @@ object HomeCard {
     fun canSwitch(card: Card, device: Device): Boolean =
         card.control && device.target != null && device.online && device.channels.isEmpty() && device.on != null
 
+    /**
+     * A tile's second line: the state, and for a light that can be switched,
+     * what a tap does. Words, never a colour alone.
+     */
+    fun tileLine(card: Card, device: Device): String = when {
+        !device.online -> "ออฟไลน์"
+        canSwitch(card, device) -> if (device.on == true) "เปิดอยู่ · กดเพื่อปิด" else "ปิดอยู่ · กดเพื่อเปิด"
+        else -> stateWord(device)
+    }
+
     /** The button says what a tap will do. */
     fun buttonWord(device: Device): String = if (device.on == true) "สั่งปิด" else "สั่งเปิด"
 
