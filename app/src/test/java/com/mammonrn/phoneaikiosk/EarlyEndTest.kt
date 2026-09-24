@@ -28,9 +28,20 @@ class EarlyEndTest {
         assertNull(EarlyEnd.goOnAt(10_000, length, EarlyEnd.MAX_TIMES))
     }
 
-    @Test fun anEndThatMadeNoProgressIsTheEnd() {
-        // Went on from 249 s but the file started again at 0:00 and ended at the same spot.
-        assertNull(EarlyEnd.goOnAt(247_000, length, 1, lastFromMs = 249_000))
-        assertEquals(496_000L + EarlyEnd.SKIP_MS, EarlyEnd.goOnAt(496_000, length, 1, lastFromMs = 249_000))
+    @Test fun withinOneDamagedStretchEachStepGoesTwiceAsFar() {
+        // คู่โจร2: damaged from 0:25 to 0:37. 25 s -> 27 s; ends again at 28 s -> 32 s; at 33 s -> 41 s.
+        assertEquals(27_000L, EarlyEnd.goOnAt(25_000, length, 0, 0, 0))
+        assertEquals(32_000L, EarlyEnd.goOnAt(28_000, length, 1, 27_000, 1))
+        assertEquals(41_000L, EarlyEnd.goOnAt(33_000, length, 2, 32_000, 2))
+    }
+
+    @Test fun aClockThatSaysAnEarlierTimeStillGoesForward() {
+        // The damaged stretch made VLC's time read 6 s after going on from 27 s.
+        assertEquals(31_000L, EarlyEnd.goOnAt(6_000, length, 1, 27_000, 1))
+    }
+
+    @Test fun aNewSpotStartsSmallAgain() {
+        assertEquals(true, EarlyEnd.isNewSpot(600_000, 249_000))
+        assertEquals(false, EarlyEnd.isNewSpot(260_000, 249_000))
     }
 }

@@ -85,6 +85,7 @@ class VlcDeck(context: Context, private val events: Events) {
     private var rescues = 0
     /** Where the last rescue went on from: an end that is not past it made no progress. */
     private var rescuedFromMs = 0L
+    private var streak = 0
     /**
      * Where the file is to start, until VLC can seek. Not VLC's ":start-time":
      * a VCD ignores it and starts at 0:00 (0.60.0, found on the A07), so the
@@ -115,6 +116,7 @@ class VlcDeck(context: Context, private val events: Events) {
     fun load(track: Track, startMs: Long, play: Boolean) {
         rescues = 0
         rescuedFromMs = 0
+        streak = 0
         open(track, startMs, play)
     }
 
@@ -122,7 +124,8 @@ class VlcDeck(context: Context, private val events: Events) {
     private fun rescue(atMs: Long): Boolean {
         val t = track ?: return false
         if (!loaded) return false
-        val from = EarlyEnd.goOnAt(atMs, lengthMs.takeIf { it > 0 } ?: player.length, rescues, rescuedFromMs) ?: return false
+        streak = if (EarlyEnd.isNewSpot(atMs, rescuedFromMs)) 0 else streak + 1
+        val from = EarlyEnd.goOnAt(atMs, lengthMs.takeIf { it > 0 } ?: player.length, rescues, rescuedFromMs, streak) ?: return false
         rescues++
         rescuedFromMs = from
         Log.w(TAG, "vlc: early end, going on past it ($rescues)")
@@ -138,6 +141,7 @@ class VlcDeck(context: Context, private val events: Events) {
         startAtMs = startMs
         seekTries = 0
         shownSize = null
+        if (!track.onNas && MediaKinds.extension(track.path) in MPEG_KINDS) sniffSize(track)
         val m = if (track.onNas) nasMedia(track) else Media(lib(app), Uri.fromFile(java.io.File(track.path)))
         // Kept (and released at stop): the player's getMedia() would take a reference each time it is asked.
         media = m
@@ -255,6 +259,18 @@ class VlcDeck(context: Context, private val events: Events) {
     /** The picture's size as VLC laid it out (sample aspect applied); null before it is known. */
     private var shownSize: Pair<Int, Int>? = null
 
+    /** An MPEG file's shape from its own header ([MpegSniff]), off the main thread. */
+    private fun sniffSize(t: Track) {
+        sniffer.execute {
+            val size = MpegSniff.shownSize(java.io.File(t.path)) ?: return@execute
+            main.post {
+                if (track !== t || !loaded || shownSize != null) return@post
+                shownSize = size
+                events.onVideo(size.first, size.second)
+            }
+        }
+    }
+
     /** The picture as it is shown (its sample aspect applied), or null before it is known. */
     fun videoSize(): Pair<Int, Int>? {
         shownSize?.let { return it }
@@ -309,6 +325,9 @@ class VlcDeck(context: Context, private val events: Events) {
 
     companion object {
         private const val TAG = "KioskVlc"
+        /** MPEG-1/2 program streams, whose shape [MpegSniff] reads. */
+        private val MPEG_KINDS = setOf("dat", "mpg", "mpeg", "vob")
+        private val sniffer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-vlc-sniff") }
         /** A start this close to where it was asked counts as there. */
         private const val START_NEAR_MS = 3_000L
         private const val MAX_SEEK_TRIES = 5
