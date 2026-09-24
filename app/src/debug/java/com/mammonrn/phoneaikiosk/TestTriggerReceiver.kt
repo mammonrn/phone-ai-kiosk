@@ -320,6 +320,31 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "pre-roll ${if (on) "ON" else "off"}")
             }
 
+            ACTION_FOCUS -> {
+                // 0.61.0: another app's sound, for VlcDeck's audio focus. --es kind
+                // loss|transient|duck [--ei ms 4000]: focus is taken as that kind of
+                // sound would, held for ms, then given back.
+                val kind = intent.getStringExtra("kind") ?: "transient"
+                val ms = intent.getIntExtra("ms", 4000).toLong()
+                val gain = when (kind) {
+                    "loss" -> android.media.AudioManager.AUDIOFOCUS_GAIN
+                    "duck" -> android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                    else -> android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                }
+                val audio = context.getSystemService(android.media.AudioManager::class.java)
+                val request = android.media.AudioFocusRequest.Builder(gain)
+                    .setAudioAttributes(android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).build())
+                    .setOnAudioFocusChangeListener { }
+                    .build()
+                val got = audio.requestAudioFocus(request)
+                android.util.Log.i("KioskStats", "test focus kind=$kind granted=${got == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED}")
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    audio.abandonAudioFocusRequest(request)
+                    android.util.Log.i("KioskStats", "test focus given back")
+                }, ms)
+            }
+
             ACTION_BEEP -> {
                 // Is the first syllable lost under the wake tone? (0.61.0, DESIGN 11ก)
                 // --es value off, play the same clip N times, --es value on, again.
@@ -441,6 +466,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
         const val ACTION_PREROLL = "com.mammonrn.phoneaikiosk.TEST_PREROLL"
         const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
+        const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
         const val ACTION_SET_MARGIN = "com.mammonrn.phoneaikiosk.TEST_SET_MARGIN"
         const val ACTION_SET_WAIT = "com.mammonrn.phoneaikiosk.TEST_SET_WAIT"
