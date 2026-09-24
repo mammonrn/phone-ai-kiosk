@@ -67,6 +67,9 @@ class VoiceService : Service() {
     /** Capture-thread only: whether the previous frame was during playback. */
     private var wasDeaf = false
 
+    /** The last second of microphone frames, for the first syllable (PreRoll). Capture thread only. */
+    private val preRoll = PreRoll()
+
     /** Capture-thread only: the best score of the phrase being spoken now. */
     private var bestScore = 0f
     private var bestScoreAt = 0L
@@ -279,6 +282,10 @@ class VoiceService : Service() {
                 val deaf = WakeGate.deaf(busy, VoiceState.alarmRinging.isNotEmpty(),
                     android.os.SystemClock.elapsedRealtime(), hearingFrom.get(),
                     WakePause.paused())
+                // Kept for the first syllable of a command said straight after
+                // the wake word (PreRoll). Only what the detector hears anyway,
+                // and never while deaf: playback and alarms are not the room.
+                if (deaf) preRoll.clear() else preRoll.add(frame, read, peak)
 
                 // SILENCE, NOT NOTHING. This used to skip the detector entirely
                 // while deaf and then reset() it on the way back — and reset
@@ -358,6 +365,21 @@ class VoiceService : Service() {
 
                     CaptureMachine.Step.STARTED -> {
                         buffer.reset()
+                        // THE FIRST SYLLABLE (0.49.0): what was already said
+                        // after "Jarvis", before the detector fired, goes in
+                        // front of the recording. The wake word only; a button
+                        // press comes before anybody speaks.
+                        if (machine.startedByWakeWord && VoiceState.preRoll) {
+                            val keep = PreRoll.framesToKeep(preRoll.peaks(), machine.speechThreshold)
+                            preRoll.writeNewest(keep, buffer)
+                            val peaks = preRoll.peaks()
+                            if (keep > 0 && peaks.takeLast(keep).any { it > machine.speechThreshold }) {
+                                machine.speechAlreadyStarted()
+                            }
+                            VoiceState.lastPreRollMs = keep * recorder.frameSamples * 1000 / Recorder.SAMPLE_RATE
+                            Log.i(TAG, "pre-roll frames=$keep ms=${VoiceState.lastPreRollMs}")
+                        }
+                        preRoll.clear()
                         // Music or a video playing: quiet it for the question
                         // (and the answer); turnEnded lets it carry on.
                         WakePause.turnStarted()

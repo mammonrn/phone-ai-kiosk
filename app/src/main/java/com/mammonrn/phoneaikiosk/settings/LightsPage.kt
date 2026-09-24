@@ -42,9 +42,16 @@ internal class LightsPage(private val a: SettingsActivity) {
     /** Bumped on every request, so an answer that arrives after a newer one is dropped. */
     private var generation = 0
 
+    /**
+     * The list's scroller, so a redraw after a change keeps the place: on the
+     * A07 every tick box and icon sent the page back to the top (0.48.0).
+     */
+    private var scroller: ScrollView? = null
+
     fun open() {
         note = null
         page = null
+        scroller = null
         showList()
         load()
     }
@@ -133,7 +140,11 @@ internal class LightsPage(private val a: SettingsActivity) {
                 showList()
             }, LinearLayout.LayoutParams(MATCH, a.dp(48)).apply { topMargin = a.dp(12) })
         }
-        a.setPage(ScrollView(a).apply { addView(list) })
+        val keep = scroller?.scrollY ?: 0
+        val view = ScrollView(a).apply { addView(list) }
+        scroller = view
+        a.setPage(view)
+        if (keep > 0) view.post { view.scrollTo(0, keep) }
     }
 
     private fun deviceBox(device: HomeSettings.Device): View {

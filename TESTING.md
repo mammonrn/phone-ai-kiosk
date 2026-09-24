@@ -1789,3 +1789,30 @@ log ของหน้า "ไฟในบ้าน": `adb logcat -s KioskHome:I
 2. แตะไอคอนแบน (ออฟไลน์ / ไม่อนุญาต) → ไม่สั่ง และหน้าต่างจาร์วิสบอกเหตุผล
 3. แผงควบคุม › ไฟในบ้าน → เลือกพัดลมให้ดวงหนึ่ง → การ์ดหน้าหลักเปลี่ยนภายในรอบถัดไป (ไม่เกิน 1 นาที)
 4. log: `adb logcat -s KioskDashboard:I` → `home tap on=true ok=true online=true` (ไม่มีชื่อ ไม่มี key)
+
+## v0.49.0 — พยางค์แรกของคำสั่ง (เก็บเสียงก่อนคำปลุกจบ)
+
+**วัดก่อนและหลังด้วยเสียงจริงของ Poom** (APK เดียวกัน สลับด้วย adb ส่วนเสียงเก็บไว้เทียบ 14 วัน):
+
+```
+# บน VPS: เก็บข้อความและเสียงไว้เทียบ
+$B analysis on --audio
+# บนคอม: ปิดการเก็บเสียงล่วงหน้า (= แบบเดิม)
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_PREROLL --es value off -p com.mammonrn.phoneaikiosk.debug
+```
+Poom พูดชุดนี้ **ต่อจาก "Hey Jarvis" ทันที ไม่เว้น** ประโยคละ 2 ครั้ง (ไม่สั่งไฟจริง เพราะเป็นคำถาม):
+1. "Hey Jarvis เปิดไฟหน้าบ้านอยู่ไหม"
+2. "Hey Jarvis ปิดไฟหน้าบ้านอยู่ไหม"
+3. "Hey Jarvis กล้องหน้าบ้านเปิดอยู่ไหม"
+4. "Hey Jarvis ปลุกพรุ่งนี้กี่โมง"
+5. "Hey Jarvis นัดพรุ่งนี้มีอะไรบ้าง"
+```
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_PREROLL --es value on -p com.mammonrn.phoneaikiosk.debug
+```
+แล้วพูดชุดเดิมอีกรอบ จากนั้น `$B analysis summary` ดูคำแรกของแต่ละแถว (เปิด/ปิด, กล้อง, ปลุก, นัด)
+เสร็จแล้ว `$B analysis off` และ `$B analysis purge`
+
+**ทดสอบเร็ว:** `adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService | grep pre-roll`
+→ `pre-roll : on last=250 ms` หลังพูดต่อกันทันที
+
+**การปลุกที่ไม่มีอยู่:** พิมพ์ด้วย `TEST_ASK --es text "'เปิดปลุก ทดสอบไม่มี'"` ตอนไม่มีการปลุกชื่อนี้ → จอต้องขึ้น "ไม่พบการปลุกนั้นครับ" ไม่ใช่ "เปิดปลุก…แล้วครับ"

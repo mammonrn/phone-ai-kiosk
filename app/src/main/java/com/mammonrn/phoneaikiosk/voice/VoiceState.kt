@@ -34,6 +34,16 @@ object VoiceState : VoiceSink {
      */
     @Volatile var wakeOnly: Boolean = false
 
+    /**
+     * Put what was said after "Jarvis", before the detector fired, in front of
+     * the recording (PreRoll, 0.49.0). On by default; the debug build's
+     * TEST_PREROLL switches it off and on for a before/after comparison.
+     */
+    @Volatile var preRoll: Boolean = true
+
+    /** How much the last wake-word capture took from before the detector fired. */
+    @Volatile var lastPreRollMs: Int = 0
+
     /** Why the last capture was thrown away, if it was. */
     @Volatile var lastCancel: String = ""
 
@@ -232,6 +242,7 @@ object VoiceState : VoiceSink {
         appendLine("  score      : %.4f  (threshold %.2f)".format(wakeScore, threshold))
         appendLine("  detections : $detections")
         appendLine("  wake-only  : ${if (wakeOnly) "ON — no STT, chat or TTS" else "off"}")
+        appendLine("  pre-roll   : ${if (preRoll) "on" else "OFF (TEST_PREROLL)"} last=${lastPreRollMs} ms")
         if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
         appendLine("  last-action: $lastAction")
         appendLine("  maps       : $mapsState")

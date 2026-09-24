@@ -132,6 +132,22 @@ def parse_wake(header: str | None) -> tuple[str, float | None]:
     return ("wake", score) if 0.0 <= score <= 1.0 else ("unknown", None)
 
 
+#: The wake word, when the phone's pre-roll (PreRoll.kt, 0.49.0) brought the
+#: end of it along: "จาร์วิส เปิดไฟ…", "…วิส เปิดไฟ…", "Hey Jarvis …". Only at
+#: the very start, and "วิส" only as its own word, so "วิสกี้" is left alone.
+_WAKE_AT_START = re.compile(
+    r"^\s*(?:(?:เฮ|เฮย์|เฮ้|hey|hi)\s*,?\s*)?"
+    r"(?:จ๋?า[ร]?์?วิ[ส๊ซ]|จาวิส|จาร์วิด|เจอร์วิส|jarvis|jervis)[\s,.!ๆ]*"
+    r"|^\s*วิส[\s,.!]+",
+    re.IGNORECASE)
+
+
+def strip_wake(text: str) -> tuple[str, bool]:
+    """(the transcript without a leading wake word, whether one was cut)."""
+    cut = _WAKE_AT_START.sub("", text or "", count=1)
+    return (cut, cut != (text or "")) if cut.strip() else (text or "", False)
+
+
 #: An answer to Jarvis's own question is short: "ใช่ครับ", "ไม่ใช่", a name.
 MAX_ANSWER_CHARS = 24
 

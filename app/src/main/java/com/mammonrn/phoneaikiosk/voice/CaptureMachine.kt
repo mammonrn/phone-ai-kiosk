@@ -342,6 +342,19 @@ class CaptureMachine(
         return Step.FINISHED
     }
 
+    /**
+     * The pre-roll (PreRoll, 0.49.0) already holds the start of the command:
+     * speech has begun, before the beep's guard lets this machine hear it.
+     * Without this a short "กี่โมง" said straight after the wake word could be
+     * half in the pre-roll and half under the guard, and the capture would be
+     * cancelled as "no-speech-after-wake" with the question in its hands.
+     */
+    fun speechAlreadyStarted() {
+        if (mode != Mode.CAPTURING) return
+        heardSpeech = true
+        quiet = 0
+    }
+
     private fun cancel(reason: String): Step {
         lastStopReason = reason
         // Straight back to listening: there is no turn to wait for.

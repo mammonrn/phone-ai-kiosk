@@ -7,6 +7,8 @@ can be tested without a listener and without the network.
 
 from __future__ import annotations
 
+import dataclasses
+
 import json
 import logging
 import re
@@ -917,6 +919,13 @@ def handle_stt(
     # and shows nothing but "ไม่ได้ยินคำถาม"; even a phone older than the gate
     # does the same with an empty transcript.
     source, wake_score = speech_gate.parse_wake(wake)
+    # The phone puts what was said just after "Jarvis" in front of the
+    # recording (PreRoll, 0.49.0); the end of the wake word can come with it.
+    wake_cut = False
+    if source == "wake":
+        text, wake_cut = speech_gate.strip_wake(transcript.text)
+        if wake_cut:
+            transcript = dataclasses.replace(transcript, text=text)
     from . import lights  # noqa: PLC0415
     verdict = speech_gate.judge(
         transcript.text, no_speech_prob=getattr(transcript, "no_speech_prob", None),
@@ -931,12 +940,12 @@ def handle_stt(
     # keep in a log file. The words themselves go only to the analysis table,
     # and only while Poom has analysis mode switched on — see analysis.py.
     log.info("stt %s device=%s provider=%s bytes=%d seconds=%.1f chars_out=%d cost=%.6f ms=%d"
-             " gate=%s doubts=%s no_speech=%s logprob=%s wake=%s",
+             " gate=%s doubts=%s no_speech=%s logprob=%s wake=%s wake_cut=%s",
              "ok" if verdict.passed else "gated", label, chosen, len(body), transcript.seconds,
              len(transcript.text), cost, elapsed_ms, verdict.reason,
              ",".join(verdict.doubts) or "-", _num(getattr(transcript, "no_speech_prob", None)),
              _num(getattr(transcript, "avg_logprob", None)),
-             source if wake_score is None else f"{wake_score:.3f}")
+             source if wake_score is None else f"{wake_score:.3f}", "yes" if wake_cut else "no")
     analysis.record_stt(conn, cfg.home, device=label, provider=chosen, text=transcript.text,
                         audio_seconds=transcript.seconds, audio=body, stt_ms=elapsed_ms,
                         cost_usd=cost, intent=(actions.camera_match(transcript.text)[1]

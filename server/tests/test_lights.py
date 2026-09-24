@@ -507,3 +507,21 @@ def test_the_chosen_icon_is_kept_on_the_vps_and_used_on_the_card(house):
     assert home_settings.set_icon(ctx, switch["key"], None, "fan", now=NOW + 63)[0] == 400   # a channel is needed
     home_settings.set_icon(ctx, switch["key"], 1, "", now=NOW + 64)                         # back to the default
     assert home_control.icons(ctx.home_dir) == {}
+
+
+# ------------------------------------------ the first syllable (0.49.0)
+
+@pytest.mark.parametrize("heard,left", [
+    ("จาร์วิส เปิดไฟหน้าบ้าน", "เปิดไฟหน้าบ้าน"), ("เฮย์ จาร์วิส ปิดไฟ", "ปิดไฟ"),
+    ("Hey Jarvis, ตั้งปลุก 11 โมงเช้า", "ตั้งปลุก 11 โมงเช้า"), ("วิส เปิดไฟหน้าบ้าน", "เปิดไฟหน้าบ้าน"),
+    ("จาวิสขอดูกล้องหน่อยครับ", "ขอดูกล้องหน่อยครับ"),
+])
+def test_the_wake_word_that_came_with_the_pre_roll_is_cut(heard, left):
+    from kiosk_broker import speech_gate
+    assert speech_gate.strip_wake(heard) == (left, True)
+
+
+@pytest.mark.parametrize("heard", ["วิสกี้ราคาเท่าไร", "เปิดไฟหน้าบ้าน", "จาร์วิส", "ขอบคุณจาร์วิส"])
+def test_anything_else_is_left_as_it_was(heard):
+    from kiosk_broker import speech_gate
+    assert speech_gate.strip_wake(heard) == (heard, False)

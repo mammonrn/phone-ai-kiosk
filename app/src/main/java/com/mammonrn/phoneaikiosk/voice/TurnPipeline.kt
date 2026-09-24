@@ -83,7 +83,7 @@ class TurnPipeline(
             return Outcome.NO_QUESTION to conversationId
         }
 
-        val reply: String
+        var reply: String
         var action: KioskAction? = null
         var nextConversation = conversationId
         try {
@@ -105,6 +105,25 @@ class TurnPipeline(
             log("chat failed: ${describe(e)}")
             speakError(e)
             return Outcome.FAILED to nextConversation
+        }
+
+        // THE ALARMS ARE DONE FIRST, THEN SAID (0.49.0). They live on this
+        // phone, so only the phone knows whether "เปิดปลุก…" found an alarm —
+        // and on the A07 a garbled "…ปลุก…" was answered "เปิดปลุก …แล้วครับ"
+        // with no alarm at all. So the book is changed before a word is said,
+        // and when it could not be, the reply IS the reason ("ไม่พบการปลุก
+        // นั้นครับ"), never the broker's claim. Maps and the camera stay after
+        // the words: they open another app over the screen.
+        val first = action
+        if (first != null && first.type in DONE_BEFORE_SPEAKING) {
+            val failure = perform(first)
+            action = null
+            if (failure != null) {
+                log("action ${first.type} failed before speaking")
+                state.lastError = "action-failed"
+                reply = failure
+                state.reply = failure
+            }
         }
 
         state.tts = "synthesising"
@@ -207,6 +226,9 @@ class TurnPipeline(
  * is added this class should fail to compile rather than quietly do the wrong
  * thing with it.
  */
+/** Actions on the phone's own state: done before the reply is said (TurnPipeline). */
+val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE)
+
 class KioskAction(
     val type: String,
     val destination: String,
