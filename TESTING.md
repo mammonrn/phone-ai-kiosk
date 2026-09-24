@@ -1946,3 +1946,39 @@ id ถูกตัดเหลือ 4 ตัวท้าย ไม่พิม�
   หลัง reset บันไดลงทีละขั้น ขั้นละ 60 วินาที
 - **จาร์วิสพักระหว่างเล่นวิดีโอ:** `dumpsys … VoiceService | grep wake-pause` ต้องได้ `ON — video lease …` และการ์ดจาร์วิสต้องบอก "พักระหว่างเล่นวิดีโอ"
 - **เล่นทีละเสียง:** เล่นเพลงแล้วเปิดวิดีโอ เพลงต้องหยุดพัก ทำกลับกันก็ต้องได้ผลเดียวกัน
+
+## v0.57.0 — วิดีโอแนวนอน, คำสั่งเสียงวิดีโอ, อีควอไลเซอร์ที่วัดด้วยโทนเสียง
+
+- **หมุนจอ (debug):** เปิดเต็มจอในเครื่องเล่นก่อน แล้วสั่ง
+  ```
+  adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_VIDEO_ROTATE -p com.mammonrn.phoneaikiosk.debug --es to landscape
+  adb shell dumpsys window | grep -o "mCurrentRotation=[^ ]*"
+  ```
+  - คำสั่งนี้จำลองสิ่งที่เซนเซอร์บอก ใช้ได้เมื่อเต็มจอและยังไม่ล็อก ถ้าล็อกอยู่ log จะบอก "test turn ignored"
+  - การหมุนเครื่องด้วยมือจริงยังต้องทดสอบบนเครื่อง
+- **แผงลอยซ่อนเองและการแตะภาพคือสลับแผง:** แตะโดยไม่รู้ว่าแผงแสดงอยู่หรือไม่จะพลาดง่าย ให้ตรวจพิกเซลของแผงจากภาพหน้าจอก่อนกด
+- **คำสั่งเสียงผ่านโค้ดจริงของเครื่อง (debug) ไม่ต้องใช้ broker:**
+  ```
+  adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_PERFORM -p com.mammonrn.phoneaikiosk.debug --es type video --es command play --es query 'v5 h264'"
+  adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_PERFORM -p com.mammonrn.phoneaikiosk.debug --es type video --es command pause --ez as_turn true"
+  ```
+  - `as_turn true` จำลองคำถามที่เริ่มจากปุ่มจาร์วิส: สื่อถูกทำให้เงียบ คำสั่งทำงาน แล้วคำถามจบ
+  - หลัง pause ต้องได้ `wake pause off` และต้องไม่มีบรรทัด "resumed"
+  - คำถามอื่น เช่น `quieter` ต้องได้ "resumed 1 player(s)"
+- **Hey Jarvis จริงทางอากาศ:** ลำโพงคอมพิวเตอร์พูดผ่าน System.Speech (เสียง David) แล้วเครื่องจับได้ที่คะแนน 0.9 ขึ้นไป
+  ```
+  powershell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hey Jarvis')"
+  adb logcat -d | grep "wake word detected"
+  ```
+- **tray ตอน 10–12 นาฬิกา (debug):** `adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_CLOCK -p com.mammonrn.phoneaikiosk.debug --es text '12:59 PM'"` เวลานี้แสดงค้าง 60 วินาที
+  - ต้องใส่ `'…'` ไว้ในเครื่องหมายคำพูดของ adb shell ไม่งั้นช่องว่างทำให้ "PM" หายไป เคยพลาดมาแล้วครั้งหนึ่ง
+- **อีควอไลเซอร์วัดด้วยโทน (debug):** เล่นไฟล์ `eq_tones.flac` (ไซน์ที่ 60, 170, 310, 600, 1000, 3000, 6000 Hz ความดังอย่างละ 0.04 สร้างด้วย ffmpeg `aevalsrc`) แล้วสั่ง
+  ```
+  adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_FX -p com.mammonrn.phoneaikiosk.debug --es preset 'เบสหนัก' --es tones '60,170,310,600,1000,3000,6000'"
+  ```
+  - ใช้ Goertzel กับ 8192 ตัวอย่าง (หน้าต่าง Hann) ผลตรงกับทฤษฎีภายใน 0.1 dB
+  - pink noise กับแท่ง FFT ใช้วัดย่านต่ำไม่ได้ เพราะแท่ง 50–92 Hz มีแค่ช่องความถี่เดียวกว้าง 43 Hz
+- **ความร้อนขั้น 3 และขั้น 4:**
+  - `override-status 4` → หยุดพัก ภาพค้าง กดเล่นไม่ได้ และคำปลุกกลับมา
+  - `override-status 6` → หยุดเล่น ภาพดำ เวลาเป็น 0:00:00 และ service หยุด
+  - ต้อง `cmd thermalservice reset` ทุกครั้งหลังทดสอบ
