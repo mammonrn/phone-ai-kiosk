@@ -137,7 +137,10 @@ def view(ctx: home_control.Context, *, now: float | None = None) -> tuple[int, d
             "ewelink_name": e["ewelink_name"], "room": e["room"], "kind": e["kind"],
             "online": e["online"], "on": e["on"], "allowed": e["allowed"],
             "clash": clash_with((e["id"], None)),
-            "channels": [{**{k: v for k, v in c.items()}, "clash": clash_with((e["id"], c["channel"]))}
+            # A name voice cannot use ("ไฟ" alone): shown as a warning.
+            "voice": bool(lights._keys(e["name"])),
+            "channels": [{**{k: v for k, v in c.items()}, "clash": clash_with((e["id"], c["channel"])),
+                          "voice": bool(lights._keys(c["name"]))}
                          for c in e["channels"]],
         })
     return 200, {"ok": not error, "age_seconds": age, "control": not home_control.stopped(ctx.home_dir),
@@ -188,6 +191,9 @@ def rename(ctx: home_control.Context, key: str, channel, name: str, *,
     new = clean(name)
     if len(new) > MAX_NAME:
         return 400, _refusal("too-long", f"ชื่อยาวได้ไม่เกิน {MAX_NAME} ตัวอักษรครับ")
+    if new and lights.normalize(new) in lights.GENERIC:
+        return 400, _refusal("too-generic", f"ชื่อ \"{new}\" กว้างเกินไปครับ จาร์วิสจะสั่งผิดดวงเวลาพูดว่าเปิดไฟ "
+                                             "กรุณาตั้งชื่อที่บอกว่าดวงไหน เช่น ไฟหน้าบ้าน")
     if new and not lights._keys(new):
         return 400, _refusal("too-short", "ชื่อสั้นเกินไปครับ จาร์วิสจะฟังไม่ออก กรุณาตั้งชื่ออย่างน้อย 2 ตัวอักษร")
 

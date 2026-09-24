@@ -231,3 +231,13 @@ def test_an_unknown_channel_count_means_an_unnamed_channel_is_not_in_use(house):
         [False, True, False, False]
     assert say(ctx, "เปิดไฟระเบียง", now=NOW + 63).reply == "เปิดไฟระเบียงแล้วครับ"
     assert cloud.commands()[-1]["params"] == {"switches": [{"switch": "on", "outlet": 1}]}
+
+
+def test_a_generic_name_is_refused_and_an_existing_one_is_flagged(house):
+    ctx, _ = house
+    light1 = device(page(ctx), "Light1")
+    status, body = home_settings.rename(ctx, light1["key"], None, "ไฟ", now=NOW + 61)
+    assert status == 400 and body["error"]["code"] == "too-generic"
+    home_control.save_names(ctx.home_dir, {"10001aaa01": {"name": "ไฟ"}})
+    assert device(page(ctx, now=NOW + 62), "ไฟ")["voice"] is False
+    assert device(page(ctx, now=NOW + 62), "Switch1")["voice"] is True

@@ -132,9 +132,14 @@ def parse_wake(header: str | None) -> tuple[str, float | None]:
     return ("wake", score) if 0.0 <= score <= 1.0 else ("unknown", None)
 
 
+#: An answer to Jarvis's own question is short: "ใช่ครับ", "ไม่ใช่", a name.
+MAX_ANSWER_CHARS = 24
+
+
 def judge(text: str, *, no_speech_prob: float | None = None,
           avg_logprob: float | None = None, source: str = "unknown",
-          wake_score: float | None = None, seconds: float | None = None) -> Verdict:
+          wake_score: float | None = None, seconds: float | None = None,
+          awaiting_answer: bool = False) -> Verdict:
     squashed = "".join((text or "").split()).lower()
 
     if any(phrase in squashed for phrase in _HALLUCINATIONS):
@@ -148,6 +153,11 @@ def judge(text: str, *, no_speech_prob: float | None = None,
         return Verdict(True, "command")
     if source == "button":
         return Verdict(True, "button")
+    # Jarvis has just asked "…ใช่ไหมครับ" or "ดวงไหน" (lights.awaiting): a short
+    # answer is expected, and Groq is often unsure of two syllables — on the
+    # A07 "ใช่ครับ" scored very-unsure and was thrown away (2026-09-24).
+    if awaiting_answer and len(squashed) <= MAX_ANSWER_CHARS:
+        return Verdict(True, "answer")
 
     doubts: list[str] = []
     score = 0

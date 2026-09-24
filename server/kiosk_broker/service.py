@@ -901,10 +901,12 @@ def handle_stt(
     # and shows nothing but "ไม่ได้ยินคำถาม"; even a phone older than the gate
     # does the same with an empty transcript.
     source, wake_score = speech_gate.parse_wake(wake)
+    from . import lights  # noqa: PLC0415
     verdict = speech_gate.judge(
         transcript.text, no_speech_prob=getattr(transcript, "no_speech_prob", None),
         avg_logprob=getattr(transcript, "avg_logprob", None), source=source,
-        wake_score=wake_score, seconds=transcript.seconds)
+        wake_score=wake_score, seconds=transcript.seconds,
+        awaiting_answer=lights.awaiting(label))
     store.record_request(conn, device_id=device_id, day=day,
                          outcome="ok" if verdict.passed else "gated",
                          text_len=len(transcript.text), endpoint="stt")

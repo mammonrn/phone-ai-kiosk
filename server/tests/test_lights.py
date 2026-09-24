@@ -419,3 +419,43 @@ def test_the_state_is_read_fresh_before_deciding_already(house):
     cloud.things["thingList"][2]["itemData"]["params"]["switches"][0]["switch"] = "on"
     got = say(ctx, "ปิดไฟหน้าบ้าน", now=NOW + lights.FRESH_SECONDS + 1)
     assert got.reply == "ปิดไฟหน้าบ้านแล้วครับ"                    # it WAS on: a real change
+
+
+# ------------------------------- found on the real path, A07, 2026-09-24
+
+def test_a_light_named_just_ไฟ_is_not_switched_by_every_เปิดไฟ(house):
+    """ "เปิดไฟ แบนยุมไฟ" (garbled) switched on the light Poom had named "ไฟ"."""
+    ctx, cloud = house
+    home_control.save_names(ctx.home_dir, {"10001aaa01": {"name": "ไฟ"}})
+    got = say(ctx, "เปิดไฟ แบนยุมไฟ")
+    assert not got.changed and not cloud.commands()            # asked which, never guessed
+    assert "ดวงไหน" in got.reply
+    assert lights._keys("ไฟ") == set() and lights._keys("โคมไฟ") == {"โคมไฟ"}
+
+
+def test_the_transcriber_repeating_a_verb_is_unclear_not_a_command(house):
+    ctx, cloud = house
+    got = say(ctx, "เปิดไฟ เปิดไฟ เปิดไฟ เปิดไฟ")                # what "ปิดไฟ" came back as
+    assert got.reply == lights.UNCLEAR_REPLY and not cloud.commands()
+    assert lights.parse("เปิดไฟเปิดไฟ").on is True                # twice is still a person
+
+
+def test_a_short_answer_passes_the_speech_gate_only_while_jarvis_waits_for_one(house):
+    from kiosk_broker import speech_gate
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    unsure = dict(avg_logprob=-1.3, source="wake", wake_score=0.8)   # how "ใช่ครับ" scored
+    assert not speech_gate.judge("ใช่ครับ", **unsure).passed
+    say(ctx, "ปิดไฟหน้าบ้าน")                                   # asked back
+    assert lights.awaiting("kiosk-a07", now=NOW + 65)
+    assert speech_gate.judge("ใช่ครับ", **unsure, awaiting_answer=True).passed
+    assert not speech_gate.judge("x" * 40, **unsure, awaiting_answer=True).passed   # an answer is short
+    assert not lights.awaiting("kiosk-a07", now=NOW + 60 + lights.PENDING_SECONDS + 1)
+
+
+def test_undo_has_a_minute(house):
+    ctx, cloud = house
+    _state(cloud, porch=True)
+    assert say(ctx, "ปิดไฟหน้าบ้าน").changed
+    cloud.things["thingList"][2]["itemData"]["params"]["switches"][0]["switch"] = "off"   # as eWeLink now reads
+    assert say(ctx, "ไม่ใช่", now=NOW + 60 + 45).reply == "ขอโทษครับ เปิดไฟหน้าบ้านแล้วครับ"

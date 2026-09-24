@@ -64,6 +64,11 @@ NO = re.compile(r"^(ไม่|ผิด)")
 #: purpose — a whole sentence that happens to hold "ไม่ใช่" is not an undo.
 UNDO = re.compile(r"^(ไม่ใช่|ผิด|ผิดแล้ว|สั่งผิด|ย้อนกลับ|กลับคืน|เอาคืน)(ครับ|ค่ะ|คะ|นะ)?$")
 LIGHT = "ไฟ"
+#: Words that say "a light", not which one — never a name's key.
+GENERIC = frozenset({"ไฟ", "light", "หลอด", "หลอดไฟ", "โคม"})
+#: The same verb three times: the transcriber echoing its hints, not a
+#: person ("ปิดไฟ" came back as "เปิดไฟ เปิดไฟ เปิดไฟ เปิดไฟ", 2026-09-24).
+REPEATED = re.compile(r"((?:เปิด|ปิด|ดับ)ไฟ)(?:.{0,2}\1){2,}")
 
 
 def normalize(text: str) -> str:
@@ -95,6 +100,8 @@ def parse(text: str) -> Intent | None:
         return None
     # "เปิดไป" after a verb is how "เปิดไฟ" is often written by the transcriber.
     t = re.sub(r"(เปิด|ปิด|ดับ)ไป", r"\1ไฟ", t)
+    if REPEATED.search(t):
+        return Intent(None, False, "unclear:" + t)
     verbs = VERB.findall(t)
     if QUESTION.search(t) and (LIGHT in t or verbs):
         return Intent(None, bool(ALL.search(t)), t)
@@ -115,11 +122,14 @@ def mentions_light(text: str) -> bool:
 # -------------------------------------------------------- finding targets
 
 def _keys(name: str) -> set[str]:
+    """What voice may say for [name]. Never the bare word "ไฟ": a light
+    NAMED "ไฟ" made every "เปิดไฟ…" — even a garbled one — switch it
+    (A07 on production, 2026-09-24: "เปิดไฟ แบนยุมไฟ" switched it on)."""
     n = normalize(name)
     keys = {n, translit(n)}
     if n.startswith(LIGHT) and len(n) > len(LIGHT) + 2:
         keys.add(n[len(LIGHT):])
-    return {k for k in keys if len(k) >= 2}
+    return {k for k in keys if len(k) >= 2 and k not in GENERIC}
 
 
 def _room_keys(room: str) -> set[str]:
@@ -260,6 +270,17 @@ def already_reply(same: list[Target], on: bool) -> str:
 
 
 UNDONE_PREFIX = "ขอโทษครับ "
+UNCLEAR_REPLY = "ผมได้ยินไม่ชัดครับ ยังไม่ได้สั่งไฟ กรุณาพูดใหม่อีกครั้ง"
+
+
+def awaiting(who: str, now: float | None = None) -> bool:
+    """Whether Jarvis has just asked this device something about the lights
+    ("ดวงไหน", "…ใช่ไหมครับ") or just switched one ("ไม่ใช่" may follow):
+    the speech gate lets a short answer through then (speech_gate.judge)."""
+    now = time.time() if now is None else now
+    with _pending_lock:
+        pending = _pending.get(who)
+        return bool(pending and pending.expires >= now)
 
 NOT_CONNECTED_REPLY = "ยังไม่ได้เชื่อมต่อระบบไฟบ้านครับ"
 NOT_FOUND_REPLY = "ไม่พบไฟชื่อนั้นครับ กรุณาพูดชื่อไฟหรือชื่อห้องอีกครั้ง"
@@ -292,8 +313,9 @@ class Pending:
 
 
 PENDING_SECONDS = 90
-#: "ไม่ใช่" undoes a switch only this soon after it.
-UNDO_SECONDS = 30
+#: "ไม่ใช่" undoes a switch only this soon after it. 30 s was too short on
+#: the A07: the reply alone takes seconds, then the wake word, then the words.
+UNDO_SECONDS = 60
 #: How old the house may be when a voice command decides "already on/off".
 #: A wall switch or the eWeLink app may have changed it since the card read.
 FRESH_SECONDS = 20
@@ -373,6 +395,8 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
         _pending.pop(who, None)
     if intent.text.startswith("both:"):
         return Handled(BOTH_REPLY, False, "lights:both-verbs")
+    if intent.text.startswith("unclear:"):
+        return Handled(UNCLEAR_REPLY, False, "lights:unclear")
     found, _, error = home_control.targets(ctx, now=now)
     if not found:
         return Handled(NOT_CONNECTED_REPLY if error in ("not-connected", "") else
