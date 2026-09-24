@@ -168,7 +168,7 @@ internal class LightsPage(private val a: SettingsActivity) {
         // A multi-way switch: its own name (which switches every channel by
         // voice) with its rename on the same row, then one block per channel.
         box.addView(nameRow(device.name, bold = true,
-                            meta = HomeSettings.source(device.ownName, device.ewelinkName) + " · " +
+                            meta = HomeSettings.source(device.ownName, device.ewelinkName) + "\n" +
                                    a.getString(R.string.lights_switch_name_hint)) {
             addView(a.button(a.getString(R.string.lights_rename_switch)) {
                 showName(device, null, device.name, device.ownName, device.ewelinkName)
@@ -195,16 +195,20 @@ internal class LightsPage(private val a: SettingsActivity) {
         // 0.54.1 (Poom): the name, "อนุญาตให้สั่ง" and "ตั้งชื่อ" on one row; the
         // channel, the state and where the name came from on the line under
         // the name. Offline is said once, on the device's line above.
+        // Two short lines rather than one that Thai wrapping breaks mid-word
+        // (seen on the A07: "ชื่อที่ตั้ง / เอง"): channel and state, then the source.
         val meta = android.text.SpannableStringBuilder()
-        if (channel != null) meta.append(a.getString(R.string.lights_channel, channel + 1)).append(" · ")
+        if (channel != null) meta.append(a.getString(R.string.lights_channel, channel + 1))
         if (active && online) {
+            if (meta.isNotEmpty()) meta.append(" · ")
             val start = meta.length
-            meta.append(HomeSettings.state(online, on)).append(" · ")
+            meta.append(HomeSettings.state(online, on))
             if (on == true) {
-                meta.setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, meta.length - 3, 0)
-                meta.setSpan(android.text.style.ForegroundColorSpan(a.color(R.color.retro_text)), start, meta.length - 3, 0)
+                meta.setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, meta.length, 0)
+                meta.setSpan(android.text.style.ForegroundColorSpan(a.color(R.color.retro_text)), start, meta.length, 0)
             }
         }
+        if (meta.isNotEmpty()) meta.append("\n")
         meta.append(if (active) HomeSettings.source(ownName, ewelinkName) else a.getString(R.string.lights_inactive))
         block.addView(nameRow(name, bold = channel == null, meta = meta, metaBad = !active) {
             addView(allowBox(device, channel, allowed, enabled = active),
