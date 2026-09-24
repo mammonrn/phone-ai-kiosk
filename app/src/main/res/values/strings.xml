@@ -500,7 +500,7 @@
     <string name="music_list_remove">ลบ</string>
     <string name="music_list_select">เลือก</string>
     <string name="music_list_search_button">ค้นหา</string>
-    <string name="music_list_search_close">ปิดค้นหา</string>
+    <string name="music_list_search_close">ยกเลิก</string>
     <string name="music_list_sort">เรียง</string>
     <string name="music_list_clear">ล้าง</string>
     <string name="music_list_select_all">เลือกทั้งหมด</string>

@@ -1920,3 +1920,29 @@ id ถูกตัดเหลือ 4 ตัวท้าย ไม่พิม�
   - แถวเพลงและแถวไฟล์สูง 56
 - **หน้าหลักต้องไม่เปลี่ยน:** ขอบเขตของ `card_jarvis` และ `exit_corner` ใน dump ต้องเท่าเดิม (0.54.0: `[13,1103][707,1502]` และ `[585,1465][720,1600]`)
 - **ระวังระหว่างทดสอบ:** ถ้าได้ยิน Hey Jarvis (รวมถึงเสียงในห้องที่ถูกจับเป็นคำปลุกผิด) จาร์วิสจะปิดทุกหน้าจอตามข้อ 11 ถ้าหน้าจอหายกลางการทดสอบ ให้ดู `KioskScreens: closed` ใน logcat ก่อนสงสัยว่าแอปล่ม
+
+## v0.55.0–0.56.0 — เครื่องเล่นเพลงแบบ Winamp และเครื่องเล่นวิดีโอแบบ PowerDVD
+
+- **หน้าเพลงวาดใหม่ตลอดเวลา (กราฟแท่ง):** `uiautomator dump` ตอบ "could not get idle state" บนหน้า "กำลังเล่น" จึงตรวจด้วย `adb exec-out screencap` และพิกัดแทน หน้าคลังเพลง หน้ารายการวิดีโอ และแผงควบคุมยัง dump ได้ตามปกติ
+- **อีควอไลเซอร์เป็นตัวเลข (debug):**
+  ```
+  adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_FX -p com.mammonrn.phoneaikiosk.debug --es preset 'เบสหนัก'"
+  adb logcat -d | grep "fx bars"
+  ```
+  - บรรทัด log ให้ค่าเฉลี่ย 19 แท่งตลอด 3 วินาที พร้อม kbps, kHz และจำนวนช่องเสียงของไฟล์
+  - เปลี่ยน preset แล้วค่าแท่งต้องเปลี่ยนตามทิศของ preset เช่น เปิดโทน 440 Hz แล้วสลับ Flat กับ "เบสหนัก" แท่งที่ 7 ต้องขึ้นจาก 0.70 เป็น 0.75 (ประมาณ +3 dB)
+  - broadcast นี้ยอมรอได้แค่ 5 วินาที เคยรอเพลงที่ถอดรหัสไม่ได้นานเกินจนเกิด ANR (เฉพาะ debug build)
+- **ALAC ถอดรหัสบน A07 ไม่ได้** เพราะเครื่องไม่มี decoder ต้องเห็นข้อความ "…ไม่มีตัวถอดรหัส ALAC จึงข้ามไปเพลงถัดไป" และ log `no decoder for audio/alac` ถ้าเวลาเดินแต่ไม่มีเสียงแปลว่าถอยกลับไปเป็นบั๊กเดิม
+- **ไฟล์วิดีโอทดสอบ** สร้างด้วย ffmpeg แล้ววางที่ `/sdcard/Movies/KioskTest/` จากนั้นสั่ง `am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Movies/KioskTest/<ไฟล์>`
+  - ไฟล์ที่ต้องเล่นได้: MP4 H.264 720p, MKV ที่มีเสียง 2 แทร็ก (ไทย/อังกฤษ) และคำบรรยาย SRT, WebM VP9, 3GP H.263, MOV, MP4 HEVC 720p
+  - ไฟล์ที่ต้องถูกปฏิเสธพร้อมเหตุผล: MP4 1080p และ MP4 AV1
+- **บันไดความร้อน** (คืนค่าทุกครั้งหลังทดสอบ):
+  ```
+  adb shell cmd thermalservice override-status 2   # จอหรี่ 70% และมีข้อความบนภาพ
+  adb shell cmd thermalservice override-status 4   # หยุดพัก และกดเล่นไม่ได้
+  adb shell cmd thermalservice reset
+  adb logcat -s KioskVideo:I                        # "heat status=… step=…"
+  ```
+  หลัง reset บันไดลงทีละขั้น ขั้นละ 60 วินาที
+- **จาร์วิสพักระหว่างเล่นวิดีโอ:** `dumpsys … VoiceService | grep wake-pause` ต้องได้ `ON — video lease …` และการ์ดจาร์วิสต้องบอก "พักระหว่างเล่นวิดีโอ"
+- **เล่นทีละเสียง:** เล่นเพลงแล้วเปิดวิดีโอ เพลงต้องหยุดพัก ทำกลับกันก็ต้องได้ผลเดียวกัน
