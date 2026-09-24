@@ -58,10 +58,10 @@ object VideoVoice {
 
     fun notFound(query: String): String {
         val name = if (query.length > 24) query.take(23).trimEnd() + "…" else query
-        return "ไม่พบวิดีโอ \"$name\" ในเครื่องครับ"
+        return "ไม่พบวิดีโอ \"$name\" ใน playlist ครับ"
     }
 
-    const val NO_VIDEOS = "ยังไม่มีวิดีโอในเครื่องครับ"
+    const val NO_VIDEOS = "ยังไม่มีวิดีโอใน playlist ครับ"
     const val ALREADY_STOPPED = "วิดีโอหยุดอยู่แล้วครับ"
     const val NOTHING_LEFT = "ไม่มีวิดีโอที่ค้างไว้ครับ บอกชื่อวิดีโอที่จะดูได้เลยครับ"
     const val WHICH_ONE = "จะดูวิดีโอเรื่องไหนครับ บอกชื่อได้เลยครับ"

@@ -12,10 +12,8 @@ object VideoRules {
     const val MAX_W = 1280
     const val MAX_H = 720
 
-    /** Files played: what Android decodes on this phone without a library of ours. */
-    val PLAYABLE = setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov")
-
-    fun playable(name: String): Boolean = MusicLibrary.extension(name) in PLAYABLE
+    /** Played by the phone now (0.59.0: decided in [PlayerChoice], the one place). */
+    fun playable(name: String): Boolean = PlayerChoice.playsVideo(name)
 
     /**
      * Why a video is not played, in words, or null when it may be. [width] ×

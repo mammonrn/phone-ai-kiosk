@@ -15,10 +15,14 @@ data class Session(
     val positionMs: Long,
     val shuffle: Boolean,
     val repeat: PlayQueue.Repeat,
+    /** 0.59.0: the playlist this list is, or null (a list made by voice). Absent in 0.55–0.58's files. */
+    val playlistId: String? = null,
 ) {
     fun encode(): String = buildString {
         append(VERSION).append('\t').append(index).append('\t').append(positionMs).append('\t')
-            .append(if (shuffle) 1 else 0).append('\t').append(repeat.name).append('\n')
+            .append(if (shuffle) 1 else 0).append('\t').append(repeat.name)
+        if (playlistId != null) append('\t').append(esc(playlistId))
+        append('\n')
         for (t in tracks) {
             append(listOf(t.id, t.title, t.artist, t.album, t.durationMs.toString()).joinToString("\t") { esc(it) })
             append('\n')
@@ -38,7 +42,7 @@ data class Session(
                 Track(f[0], f[1], f[2], f[3], f[4].toLong())
             }
             Session(tracks, head[1].toInt().coerceIn(-1, tracks.size - 1), head[2].toLong().coerceAtLeast(0),
-                    head[3] == "1", PlayQueue.Repeat.valueOf(head[4]))
+                    head[3] == "1", PlayQueue.Repeat.valueOf(head[4]), head.getOrNull(5)?.let(::unesc)?.ifEmpty { null })
         }.getOrNull()
 
         private fun esc(s: String) = s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")

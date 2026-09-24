@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.59.0): a blank page with a folded corner and no lines, for a file the
+     kiosk does not know. A document (ic_pixel_file) has lines. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFF" android:pathData="M4,2h5v12h-5z M9,5h3v9h-3z M10,3h1v1h-1z" />
+    <path android:fillColor="#000000" android:pathData="M3,1h7v1h-7z M3,2h1v13h-1z M4,14h9v1h-9z M12,4h1v10h-1z M10,2h1v1h-1z M11,3h1v1h-1z M9,2h1v3h-1z M10,4h2v1h-2z" />
+</vector>

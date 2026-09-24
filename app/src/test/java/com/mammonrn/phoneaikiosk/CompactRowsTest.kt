@@ -39,11 +39,18 @@ class CompactRowsTest {
     }
 
     @Test
-    fun `the music source is a flat option row under the tabs, not tabs again`() {
-        val library = music.substringAfter("private fun showLibrary()").substringBefore("\n    }\n")
-        assertFalse("choice(" in library)
-        assertTrue("option(getString(R.string.music_local)" in library && "option(getString(R.string.music_nas)" in library)
-        val option = music.substringAfter("private fun option(").substringBefore("\n    }\n")
+    fun `where the songs come from is a flat option row, not tabs again`() {
+        // 0.59.0: the source choice moved into the shared "add" page (media/PlaylistPages.kt).
+        val pages = listOf(File("src/main/java/com/mammonrn/phoneaikiosk/media/PlaylistPages.kt"),
+                           File("app/src/main/java/com/mammonrn/phoneaikiosk/media/PlaylistPages.kt"))
+            .first { it.exists() }.readText().replace("\r\n", "\n")
+        val sources = pages.substringAfter("private fun drawSources()").substringBefore("\n    }\n")
+        assertFalse("choice(" in sources)
+        assertTrue("r.option(" in sources)
+        val retro = listOf(File("src/main/java/com/mammonrn/phoneaikiosk/ui/Retro.kt"),
+                           File("app/src/main/java/com/mammonrn/phoneaikiosk/ui/Retro.kt"))
+            .first { it.exists() }.readText().replace("\r\n", "\n")
+        val option = retro.substringAfter("fun option(").substringBefore("\n    }\n")
         assertFalse("retro_title" in option || "setBackground" in option)
         assertTrue("minWidth = dp(UiScale.TOUCH)" in option)
     }

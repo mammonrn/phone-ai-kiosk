@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.59.0): one note, a navy head and stem with its flag, for a music file
+     in the folder browser. The shape says "sound" without the colour. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000080" android:pathData="M9,2h2v9h-2z M11,2h2v1h-2z M12,3h2v1h-2z M13,4h1v2h-1z M5,10h4v4h-4z M4,11h1v2h-1z" />
+    <path android:fillColor="#000000" android:pathData="M5,14h4v1h-4z M9,11h2v2h-2z" />
+</vector>

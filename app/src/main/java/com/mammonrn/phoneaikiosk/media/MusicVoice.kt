@@ -80,13 +80,16 @@ object MusicVoice {
         return null
     }
 
-    /** "ไม่พบเพลง "…" ในเครื่องครับ", the name cut to keep the line under 70 characters. */
+    /**
+     * "ไม่พบเพลง "…" ใน playlist ครับ", the name cut to keep the line under 70
+     * characters. 0.59.0: only the playlists are searched, so that is where it was not found.
+     */
     fun notFound(query: String): String {
         val name = if (query.length > 24) query.take(23).trimEnd() + "…" else query
-        return "ไม่พบเพลง \"$name\" ในเครื่องครับ"
+        return "ไม่พบเพลง \"$name\" ใน playlist ครับ"
     }
 
-    const val NO_MUSIC = "ยังไม่มีเพลงในเครื่องครับ"
+    const val NO_MUSIC = "ยังไม่มีเพลงใน playlist ครับ"
     const val NOTHING_PLAYING = "ตอนนี้ไม่มีเพลงเล่นอยู่ครับ"
     const val NO_QUEUE = "ยังไม่มีเพลงในรายการครับ"
     const val LOUDEST = "เสียงเพลงดังสุดแล้วครับ"

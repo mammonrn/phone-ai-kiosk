@@ -17,7 +17,8 @@ class VideoRulesTest {
         assertNull(VideoRules.refusal(720, 1280, "video/hevc"))       // a phone video stands up
         assertEquals("1920×1080", VideoRules.refusal(1920, 1080, "video/avc"))
         assertEquals("AV1", VideoRules.refusal(640, 360, "video/av01"))
-        assertTrue(VideoRules.playable("a.MKV") && !VideoRules.playable("a.avi"))
+        // 0.59.0: AVI plays through Media3 (codecprobe, A07); a VCD's .DAT is not yet.
+        assertTrue(VideoRules.playable("a.MKV") && VideoRules.playable("a.avi") && !VideoRules.playable("คู่โจร1.DAT"))
     }
 
     @Test

@@ -6,6 +6,7 @@ import java.nio.charset.Charset
 import java.util.Locale
 import java.util.zip.ZipException
 import java.util.zip.ZipFile
+import com.mammonrn.phoneaikiosk.media.MediaKinds
 
 /**
  * What the file manager does to files on the phone (0.44.0, Poom).
@@ -449,14 +450,20 @@ object FileOps {
 
     fun kind(file: File): Kind = if (file.isDirectory) Kind.FOLDER else kindOfName(file.name)
 
-    fun kindOfName(name: String): Kind = when (name.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
-        "zip" -> Kind.ZIP
-        "rar", "7z", "tar", "gz", "tgz", "bz2", "xz" -> Kind.OTHER_ARCHIVE
-        "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp" -> Kind.IMAGE
-        "mp3", "m4a", "aac", "ogg", "opus", "flac", "wav" -> Kind.AUDIO
-        "mp4", "mkv", "webm", "mov", "3gp", "avi" -> Kind.VIDEO
-        "pdf", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv" -> Kind.DOCUMENT
-        else -> Kind.OTHER
+    /** Pictures, music and video from media/MediaKinds (0.59.0): one list for the file manager and the players. */
+    fun kindOfName(name: String): Kind {
+        when (MediaKinds.kindOf(name)) {
+            MediaKinds.Kind.IMAGE -> return Kind.IMAGE
+            MediaKinds.Kind.AUDIO -> return Kind.AUDIO
+            MediaKinds.Kind.VIDEO -> return Kind.VIDEO
+            MediaKinds.Kind.OTHER -> Unit
+        }
+        return when (MediaKinds.extension(name)) {
+            "zip" -> Kind.ZIP
+            "rar", "7z", "tar", "gz", "tgz", "bz2", "xz" -> Kind.OTHER_ARCHIVE
+            "pdf", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv" -> Kind.DOCUMENT
+            else -> Kind.OTHER
+        }
     }
 
     /** "12 B", "340 KB", "1.2 MB", "3.45 GB": decimal units, as Android's own storage page counts. */

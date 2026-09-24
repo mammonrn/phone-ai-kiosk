@@ -432,7 +432,8 @@ class FileManagerTest {
 
     @Test
     fun `nothing about the NAS or a file's name goes into a log line`() {
-        for (path in listOf("files/FilesActivity.kt", "files/Nas.kt")) {
+        for (path in listOf("files/FilesActivity.kt", "files/Nas.kt", "files/FolderBrowser.kt", "files/NasSource.kt",
+                            "files/ImageViewerActivity.kt")) {
             val code = source(path)
             // An enum's name and an exception's class name are words we chose, not data.
             for (line in Regex("""Log\.[diwe]\([^\n]*""").findAll(code).map { it.value }
@@ -448,8 +449,11 @@ class FileManagerTest {
     fun `the file manager starts nothing but the kiosk's own screen`() {
         val screen = source("files/FilesActivity.kt")
         val starts = Regex("""startActivity\(([^\n]*)""").findAll(screen).map { it.groupValues[1] }.toList()
-        assertEquals(1, starts.size)
-        assertTrue(starts.single().contains("MainActivity::class.java"))
+        // 0.59.0: a song, a video or a picture opens in the kiosk's own player or viewer — still nothing outside.
+        val ours = listOf("MainActivity::class.java", "MusicActivity::class.java", "VideoActivity::class.java",
+                          "ImageViewerActivity::class.java")
+        assertTrue(starts.isNotEmpty())
+        for (start in starts) assertTrue(start, ours.any { it in start })
         for (outside in listOf("ACTION_VIEW", "ACTION_SEND", "createChooser", "ACTION_OPEN_DOCUMENT",
                                "ACTION_MANAGE_APP_ALL_FILES", "Settings.ACTION")) {
             assertFalse("FilesActivity must not use $outside", outside in screen)
@@ -459,7 +463,7 @@ class FileManagerTest {
     @Test
     fun `the Control Panel opens it and the manifest keeps it inside the app`() {
         val panel = source("settings/SettingsActivity.kt")
-        assertTrue("ic_pixel_files" in panel && "FilesActivity::class.java" in panel)
+        assertTrue("ic_pixel_folder" in panel && "FilesActivity::class.java" in panel)
         val manifest = file("src/main/AndroidManifest.xml")
         val activity = manifest.substringAfter("android:name=\".files.FilesActivity\"").substringBefore("/>")
         assertTrue("android:exported=\"false\"" in activity)
@@ -472,7 +476,9 @@ class FileManagerTest {
 
     @Test
     fun `the new icons are 16x16 squares with at most four colours`() {
-        for (name in listOf("files", "folder", "file", "lock", "nas", "phone")) {
+        for (name in listOf("zip", "folder", "file", "lock", "nas", "phone",
+                            // 0.59.0: a file's kind by its shape, not only its colour
+                            "type_audio", "type_video", "type_image", "type_other")) {
             val xml = file("src/main/res/drawable/ic_pixel_$name.xml")
             assertTrue(name, "android:viewportWidth=\"16\"" in xml && "android:viewportHeight=\"16\"" in xml)
             val colours = Regex("""fillColor="(#[0-9A-Fa-f]{6})"""").findAll(xml).map { it.groupValues[1].uppercase() }.toSet()

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.59.0): a strip of film, black with white sprocket holes and two teal
+     frames, for a video file in the folder browser. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M2,1h12v14h-12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M3,2h1v1h-1z M3,4h1v1h-1z M3,6h1v1h-1z M3,8h1v1h-1z M3,10h1v1h-1z M3,12h1v1h-1z M12,2h1v1h-1z M12,4h1v1h-1z M12,6h1v1h-1z M12,8h1v1h-1z M12,10h1v1h-1z M12,12h1v1h-1z" />
+    <path android:fillColor="#008080" android:pathData="M5,2h6v5h-6z M5,9h6v5h-6z" />
+</vector>

@@ -42,7 +42,7 @@ class MusicVoiceTest {
     fun `a song that is not there is said so, and nothing starts`() {
         val deck = FakeDeck()
         val reply = MusicVoice.perform("play", "ลาวดวงเดือน", { library }, deck)
-        assertEquals("ไม่พบเพลง \"ลาวดวงเดือน\" ในเครื่องครับ", reply)
+        assertEquals("ไม่พบเพลง \"ลาวดวงเดือน\" ใน playlist ครับ", reply)
         assertTrue(deck.did.isEmpty())
         assertEquals(MusicVoice.NO_MUSIC, MusicVoice.perform("play", "คิดถึง", { emptyList() }, deck))
         assertTrue(MusicVoice.notFound("ก".repeat(60)).length <= 70)

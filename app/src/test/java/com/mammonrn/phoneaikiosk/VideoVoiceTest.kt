@@ -35,7 +35,7 @@ class VideoVoiceTest {
     @Test
     fun `not found is said as not found, and nothing plays`() {
         val deck = FakeDeck()
-        assertEquals("ไม่พบวิดีโอ \"งานแต่ง\" ในเครื่องครับ", VideoVoice.perform("play", "งานแต่ง", { library }, deck))
+        assertEquals("ไม่พบวิดีโอ \"งานแต่ง\" ใน playlist ครับ", VideoVoice.perform("play", "งานแต่ง", { library }, deck))
         assertTrue(deck.did.isEmpty())
         assertEquals(VideoVoice.NO_VIDEOS, VideoVoice.perform("play", "อะไร", { emptyList() }, FakeDeck()))
     }

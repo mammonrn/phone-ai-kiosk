@@ -23,7 +23,10 @@ class UiScaleTest {
         file("$src/settings").listFiles()!!.filter { it.name.endsWith(".kt") } +
             listOf("files/FilesActivity.kt", "calc/CalculatorActivity.kt", "calc/ElectricalPages.kt",
                    "media/MusicActivity.kt", "media/AmpViews.kt", "media/VideoActivity.kt", "media/DvdViews.kt",
-                   "auth/VerifyActivity.kt").map { file("$src/$it") }
+                   "auth/VerifyActivity.kt",
+                   // 0.59.0: the shared folder browser, its parts, the playlists and the picture viewer
+                   "files/FolderBrowser.kt", "files/ImageViewerActivity.kt", "ui/Retro.kt",
+                   "media/PlaylistPages.kt").map { file("$src/$it") }
     }
 
     @Test
@@ -44,7 +47,8 @@ class UiScaleTest {
 
     @Test
     fun `a height given to a view is a control's, an icon's or a fixed part's - never a gap`() {
-        val height = Regex("""LayoutParams\([^,()]+(?:\([^()]*\))?,\s*(?:a\.)?dp\(UiScale\.(\w+)\)""")
+        // "r.dp(" too: the shared parts (0.59.0) reach dp through their Retro.
+        val height = Regex("""LayoutParams\([^,()]+(?:\([^()]*\))?,\s*(?:\w+\.)?dp\(UiScale\.(\w+)\)""")
         val allowed = setOf("TOUCH", "PRIMARY", "ICON_BUTTON", "ROW", "ICON_S", "ICON_M", "ICON_L", "ICON_XL",
                             "CAMERA_H", "PATTERN_PAD", "PROGRESS", "DISPLAY_LINE",
                             // the music player's read-outs (0.55.0): read, never tapped
@@ -84,7 +88,7 @@ class UiScaleTest {
     @Test
     fun `every word button is at least a finger wide`() {
         for (name in listOf("settings/SettingsActivity.kt", "files/FilesActivity.kt",
-                            "calc/CalculatorActivity.kt", "media/MusicActivity.kt")) {
+                            "calc/CalculatorActivity.kt", "media/MusicActivity.kt", "ui/Retro.kt")) {
             val body = file("$src/$name").readText().substringAfter("fun button(").substringBefore("\n    }")
             assertTrue(name, "minWidth = dp(UiScale.TOUCH)" in body)
         }

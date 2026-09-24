@@ -51,6 +51,21 @@ object StorageAreas {
         return listOf(rootName) + if (rel.isEmpty()) emptyList() else rel.split('/')
     }
 
+    /**
+     * The breadcrumb (0.59.0): each folder from the root down to [dir] with
+     * the folder a tap on it goes back to — "เครื่อง › Music › 2024".
+     */
+    fun crumbs(dir: File, root: File, rootName: String): List<Pair<String, File>> {
+        val rel = slashed(dir).removePrefix(slashed(root)).trim('/')
+        val out = arrayListOf(rootName to root)
+        var at = root
+        if (rel.isNotEmpty()) for (part in rel.split('/')) {
+            at = File(at, part)
+            out += part to at
+        }
+        return out
+    }
+
     /** Forward slashes, no trailing one: the same on the phone and in a test on Windows. */
     private fun slashed(file: File): String = file.absolutePath.replace(File.separatorChar, '/').trimEnd('/')
 }

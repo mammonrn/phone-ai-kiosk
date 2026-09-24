@@ -87,11 +87,31 @@ object MusicPlayer {
         if (service === s) service = null
     }
 
-    fun play(context: Context, tracks: List<Track>, start: Int = 0) = run(context) {
+    /**
+     * The playlist the list is (0.59.0), or null for a list made by voice: the
+     * list's edits are kept in it (add, remove, sort, clear).
+     */
+    var playlistId: String? = null
+        private set
+
+    /** The playlist was deleted: the list plays on, as a list of its own. */
+    fun forgetPlaylist() { playlistId = null; changed() }
+
+    /** Plays [tracks] from [start]; [playlist] when they are a playlist's, whose edits are then kept. */
+    fun play(context: Context, tracks: List<Track>, start: Int = 0, playlist: String? = null) = run(context) {
         VideoPlayer.quietForMusic(context)
+        // Something else asked for: a file playing on its own is let go of, not put back.
+        before = null
+        playlistId = playlist
         queue.set(tracks, start)
         resumeAtMs = 0
         it.load(queue.current, play = true)
+    }
+
+    /** A playlist, from [start]; it becomes the one the player shows. */
+    fun playPlaylist(context: Context, list: Playlist, start: Int = 0) {
+        PlaylistStore.edit(context) { it.setCurrent(Playlist.Kind.MUSIC, list.id) }
+        play(context, list.items, start, list.id)
     }
 
     fun jumpTo(context: Context, index: Int) = run(context) { s -> resumeAtMs = 0; queue.jumpTo(index)?.let { s.load(it, true) } }
@@ -200,26 +220,87 @@ object MusicPlayer {
         val wasEmpty = queue.isEmpty
         queue.add(tracks)
         if (wasEmpty) run(context) { it.load(queue.current, play = false) }
-        saved(context); changed()
+        kept(context); saved(context); changed()
     }
 
     fun remove(context: Context, indices: Set<Int>) {
         val playing = state == State.PLAYING
         val removedCurrent = queue.remove(indices)
-        if (queue.isEmpty) stop(context)
+        // An empty list has nothing to be wrong with (0.59.0: the old message stayed on screen).
+        if (queue.isEmpty) { error = null; stop(context) }
         else if (removedCurrent) run(context) { it.load(queue.current, play = playing) }
-        saved(context); changed()
+        kept(context); saved(context); changed()
     }
 
     fun clear(context: Context) {
         queue.clear()
+        error = null
         stop(context)
-        saved(context); changed()
+        kept(context); saved(context); changed()
     }
 
     fun sort(context: Context, by: Comparator<Track>) {
         queue.sort(by)
-        saved(context); changed()
+        kept(context); saved(context); changed()
+    }
+
+    /** The list's edits, kept in its playlist (not while a file plays on its own). */
+    private fun kept(context: Context) {
+        val id = playlistId ?: return
+        if (before != null) return
+        val items = queue.tracks
+        PlaylistStore.edit(context) { it.setItems(id, items) }
+    }
+
+    // ------------------------------------------------------------ 0.59.0: one file on its own
+
+    /** Everything the list was before a file from the file manager played on its own. */
+    private class Before(val queue: PlayQueue.Snapshot, val positionMs: Long, val playlistId: String?, val loaded: Boolean)
+    private var before: Before? = null
+
+    /** A file from the file manager is playing on its own; the list waits to come back. */
+    val single: Boolean get() = before != null
+
+    /**
+     * Plays [track] alone (0.59.0, Poom: "เล่นเฉพาะไฟล์นั้น ห้ามเพิ่มเข้า playlist").
+     * The list, the song in it, where in that song, shuffle and repeat are
+     * kept as they are and come back when this ends ([endSingle]).
+     */
+    fun playSingle(context: Context, track: Track) = run(context) { s ->
+        VideoPlayer.quietForMusic(context)
+        if (before == null) {
+            before = Before(queue.snapshot(), if (s.loaded) s.player.currentPosition else resumeAtMs, playlistId, s.loaded)
+        }
+        playlistId = null
+        queue.setShuffle(false)
+        queue.set(listOf(track), 0)
+        queue.repeat = PlayQueue.Repeat.OFF
+        resumeAtMs = 0
+        error = null
+        s.load(track, play = true)
+        Log.i(MusicService.TAG, "one file playing on its own")
+    }
+
+    /** The list back as it was: the same song, paused at the same place, the same repeat. */
+    fun endSingle(context: Context, keepError: Boolean = false) = run(context) { s -> s.endSingleNow(keepError) }
+
+    internal fun restoreBefore(s: MusicService, keepError: Boolean) {
+        val b = before ?: return
+        before = null
+        queue.restore(b.queue)
+        playlistId = b.playlistId
+        if (!keepError) error = null
+        val track = queue.current
+        if (b.loaded && track != null) {
+            resumeAtMs = b.positionMs
+            s.load(track, play = false, keepError = keepError)
+        } else {
+            s.stopAll()
+            resumeAtMs = b.positionMs
+        }
+        saved(s)
+        changed()
+        Log.i(MusicService.TAG, "list back after one file")
     }
 
     // ------------------------------------------------------------ 0.55.0: back where it was
@@ -239,14 +320,22 @@ object MusicPlayer {
         val s = runCatching { Session.decode(sessionFile(context).readText()) }.getOrNull() ?: return
         queue.restore(s.tracks, s.index, s.shuffle, s.repeat)
         resumeAtMs = s.positionMs
+        // 0.58 kept no playlist: the list is "รายการเดิม", which the first read of the playlists makes from it.
+        playlistId = s.playlistId ?: PlaylistStore.read(context) { book ->
+            book.of(Playlist.Kind.MUSIC).firstOrNull { it.items == s.tracks }?.id
+        }
         changed()
     }
 
     /** Saves the list and the place in it (off the main thread; the song's name never goes to a log). */
     internal fun saved(context: Context) {
         val app = context.applicationContext
-        val s = Session(queue.tracks, queue.currentIndex, if (hasMedia) positionMs else resumeAtMs,
-                        queue.shuffle, queue.repeat)
+        // While a file plays on its own, what is kept is the list it will go back to.
+        val b = before
+        val s = if (b != null) Session(b.queue.tracks, b.queue.currentIndex,
+                                       b.positionMs, b.queue.shuffle, b.queue.repeat, b.playlistId)
+                else Session(queue.tracks, queue.currentIndex, if (hasMedia) positionMs else resumeAtMs,
+                             queue.shuffle, queue.repeat, playlistId)
         writer.execute {
             runCatching {
                 val file = sessionFile(app)
@@ -353,10 +442,7 @@ class MusicService : Service(), WakePause.Media {
                 val mime = audio.first().getTrackFormat(0).sampleMimeType.orEmpty()
                 val kind = mime.substringAfter('/').uppercase().ifEmpty { "?" }
                 Log.w(TAG, "no decoder for $mime")
-                MusicPlayer.error = getString(R.string.music_no_decoder, MusicPlayer.queue.current?.title.orEmpty(), kind)
-                failures += 1
-                val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
-                handler.post { if (next != null) load(next, true, keepError = true) else stopAll() }
+                handler.post { skip(getString(R.string.music_no_decoder, MusicPlayer.queue.current?.title.orEmpty(), kind)) }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -366,16 +452,23 @@ class MusicService : Service(), WakePause.Media {
                 }
                 if (state == Player.STATE_ENDED) {
                     val next = MusicPlayer.queue.next(auto = true)
-                    if (next != null) load(next, true) else stopAll()
+                    // A file played on its own that ends: the list comes back (0.59.0).
+                    if (next != null) load(next, true) else if (MusicPlayer.single) endSingleNow(false) else stopAll()
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "track failed: ${error.errorCodeName}")
-                MusicPlayer.error = getString(R.string.music_error_track, MusicPlayer.queue.current?.title.orEmpty())
-                failures += 1
-                val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
-                if (next != null) load(next, true, keepError = true) else stopAll()
+                val track = MusicPlayer.queue.current
+                val title = track?.title.orEmpty()
+                // 0.59.0: said as it is — gone, or a kind not played yet — not "the file may be damaged".
+                skip(when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> getString(R.string.music_file_missing, title)
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
+                        getString(R.string.music_not_yet, title, PlayerChoice.typeWord(track?.path.orEmpty()))
+                    else -> getString(R.string.music_error_track, title)
+                })
             }
         })
         HeatWatch.start(this)
@@ -412,6 +505,21 @@ class MusicService : Service(), WakePause.Media {
         if (track == null) return stopAll()
         // A song skipped because it failed keeps its reason on screen while the next plays.
         if (!keepError) MusicPlayer.error = null
+        // 0.59.0: a song no longer on the phone, or of a kind no player here plays yet —
+        // said at once, and the next one plays; never a silent clock, never a hang.
+        val problem = when {
+            !track.onNas && !java.io.File(track.path).exists() -> getString(R.string.music_file_missing, track.title)
+            PlayerChoice.forName(track.path) == PlayerChoice.Engine.NOT_YET ->
+                getString(R.string.music_not_yet, track.title, PlayerChoice.typeWord(track.path))
+            else -> null
+        }
+        if (problem != null) {
+            Log.i(TAG, "not played: " + if (PlayerChoice.forName(track.path) == PlayerChoice.Engine.NOT_YET) "kind not yet" else "file gone")
+            player.stop()
+            player.clearMediaItems()
+            handler.post { skip(problem) }
+            return
+        }
         // Back where it was left (0.55.0): the saved place, once, for the saved song.
         val at = MusicPlayer.resumeAtMs
         MusicPlayer.resumeAtMs = 0
@@ -420,6 +528,27 @@ class MusicService : Service(), WakePause.Media {
         player.playWhenReady = play
         startInForeground()
         update()
+    }
+
+    /**
+     * [why] is said on screen and the next song plays; after a whole list of
+     * failures it stops. A file on its own goes back to the list, the reason kept.
+     */
+    private fun skip(why: String) {
+        MusicPlayer.error = why
+        failures += 1
+        val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
+        when {
+            next != null -> load(next, true, keepError = true)
+            MusicPlayer.single -> endSingleNow(true)
+            else -> stopAll()
+        }
+    }
+
+    /** A file that played on its own is done: the list comes back as it was (MusicPlayer.restoreBefore). */
+    fun endSingleNow(keepError: Boolean) {
+        failures = 0
+        MusicPlayer.restoreBefore(this, keepError)
     }
 
     /** Stop, forget the loaded track (the queue stays), and let the wake word back. */

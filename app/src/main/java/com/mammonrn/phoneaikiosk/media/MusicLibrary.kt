@@ -40,15 +40,14 @@ data class Track(
  */
 object MusicLibrary {
 
-    /** Extensions played, lower case. m4a is AAC or ALAC; ogg/opus is Opus. */
-    val PLAYABLE = setOf("flac", "wav", "mp3", "m4a", "aac", "opus", "ogg", "alac")
 
     /** Known music formats that are not played, and why (Poom's decision). */
     private val REFUSED = mapOf("dsf" to "DSD", "dff" to "DSD", "ape" to "APE", "wv" to "WavPack")
 
-    fun extension(name: String): String = name.substringAfterLast('.', "").lowercase()
+    fun extension(name: String): String = MediaKinds.extension(name)
 
-    fun playable(name: String): Boolean = extension(name) in PLAYABLE
+    /** Played by the phone now (0.59.0: decided in [PlayerChoice], the one place). */
+    fun playable(name: String): Boolean = PlayerChoice.playsAudio(name)
 
     /** "DSD" / "APE" / "WavPack" for a format left out on purpose, else null. */
     fun unsupportedReason(name: String): String? = REFUSED[extension(name)]

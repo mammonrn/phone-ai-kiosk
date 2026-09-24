@@ -690,7 +690,9 @@ class VoiceService : Service() {
         val command = action.params["command"].orEmpty()
         val failure = com.mammonrn.phoneaikiosk.media.MusicVoice.perform(
             command, action.params["query"].orEmpty(),
-            { com.mammonrn.phoneaikiosk.media.MusicShelf.all(context) }, deck)
+            // 0.59.0: only the playlists are searched (Poom: "ค้นเฉพาะใน playlist ที่มีอยู่").
+            { com.mammonrn.phoneaikiosk.media.PlaylistStore.read(context) {
+                it.searchable(com.mammonrn.phoneaikiosk.media.Playlist.Kind.MUSIC) } }, deck)
         VoiceState.lastAction = "music:$command:${if (failure == null) "ok" else "not-done"}"
         Log.i(TAG, "action music command=$command done=${failure == null}")
         return failure
@@ -724,7 +726,12 @@ class VoiceService : Service() {
         }
         val command = action.params["command"].orEmpty()
         val failure = com.mammonrn.phoneaikiosk.media.VideoVoice.perform(
-            command, action.params["query"].orEmpty(), { player.local(context) }, deck)
+            command, action.params["query"].orEmpty(), {
+                // 0.59.0: only the playlists are searched.
+                com.mammonrn.phoneaikiosk.media.PlaylistStore.read(context) {
+                    it.searchable(com.mammonrn.phoneaikiosk.media.Playlist.Kind.VIDEO)
+                }.map { com.mammonrn.phoneaikiosk.media.Video(it) }
+            }, deck)
         VoiceState.lastAction = "video:$command:${if (failure == null) "ok" else "not-done"}"
         Log.i(TAG, "action video command=$command done=${failure == null}")
         return failure

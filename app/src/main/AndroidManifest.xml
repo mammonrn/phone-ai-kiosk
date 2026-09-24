@@ -234,6 +234,13 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- The picture viewer (0.59.0), opened from the file manager: one picture,
+             zoomed with two fingers. Our own activity, so lock task mode allows it. -->
+        <activity
+            android:name=".files.ImageViewerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- The engineering calculator (0.52.0), opened from the Control Panel.
              Our own activity, so lock task mode allows it; not exported. -->
         <activity

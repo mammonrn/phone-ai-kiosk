@@ -42,6 +42,9 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.Executors
 import com.mammonrn.phoneaikiosk.ui.UiScale
+import com.mammonrn.phoneaikiosk.ui.Retro
+import com.mammonrn.phoneaikiosk.media.MusicActivity
+import com.mammonrn.phoneaikiosk.media.VideoActivity
 
 /**
  * The file manager (0.44.0, Poom): the phone's files, and the NAS read only.
@@ -69,6 +72,9 @@ class FilesActivity : Activity() {
     private lateinit var thai: Typeface
     private lateinit var titleText: TextView
     private lateinit var content: FrameLayout
+    /** 0.59.0: every folder, the phone's and the NAS's, is this one shared part (FolderBrowser). */
+    private lateinit var browser: FolderBrowser
+    private val localSources = HashMap<String, LocalSource>()
 
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-files") }
@@ -113,6 +119,7 @@ class FilesActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         thai = ResourcesCompat.getFont(this, R.font.plex_thai) ?: Typeface.DEFAULT
+        browser = FolderBrowser(Retro(this, thai), worker, browserHost).apply { leavesTop = true }
         setContentView(buildWindow())
         hideSystemBars()
         show(Page.Roots)
@@ -147,12 +154,12 @@ class FilesActivity : Activity() {
             is Page.Working -> work?.cancelled = true
             is Page.Roots -> if (pick != null) { pick = null; show(Page.Roots) } else finish()
             is Page.Permission, is Page.NasSetup -> show(Page.Roots)
-            is Page.Folder -> show(folderAbove(p.dir))
+            is Page.Folder -> browser.up()
             is Page.Details -> show(Page.Folder(p.file.parentFile ?: return show(Page.Roots)))
             is Page.Rename -> show(Page.Details(p.file))
             is Page.Search -> show(Page.Folder(p.dir))
             is Page.Blocked -> show(folderAbove(p.dir))
-            is Page.NasFolder -> show(if (p.path.isEmpty()) Page.Roots else Page.NasFolder(p.path.substringBeforeLast('\\', "")))
+            is Page.NasFolder -> browser.up()
             is Page.NasDetails -> show(Page.NasFolder(p.entry.path.substringBeforeLast('\\', "")))
         }
     }
@@ -196,7 +203,7 @@ class FilesActivity : Activity() {
             setBackgroundResource(R.drawable.retro_titlebar)
             setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
         }
-        bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_files) },
+        bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_folder) },
                     LinearLayout.LayoutParams(dp(UiScale.ICON_S), dp(UiScale.ICON_S)))
         titleText = TextView(this).apply {
             setTextColor(color(R.color.retro_title_text))
@@ -324,51 +331,103 @@ class FilesActivity : Activity() {
     // ------------------------------------------------------------ a folder
 
     private fun showFolder(dir: File) {
-        titleText.text = dir.name.ifEmpty { getString(R.string.window_files) }
-        if (roots().any { it.absolutePath == dir.absolutePath }) titleText.text = rootName(dir)
-        if (StorageAreas.appPrivate(dir, roots())) return show(Page.Blocked(dir, true))
-        val box = column(fill = true)
-        addNoticeAndPick(box, dir)
-        box.addView(toolbar(trail(dir), up = { show(folderAbove(dir)) },
-                            search = if (pick == null) ({ show(Page.Search(dir)) }) else null))
-        val status = text(getString(R.string.files_loading), UiScale.TEXT_BASE, dim = true).apply {
-            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_M), dp(UiScale.SPACE_S), dp(UiScale.SPACE_M))
-        }
-        val frame = FrameLayout(this).apply { setBackgroundResource(R.drawable.retro_field) }
-        frame.addView(status, FrameLayout.LayoutParams(MATCH, WRAP))
-        box.addView(frame, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
-        setPage(box)
-
-        val asked = generation
         val roots = roots()
-        worker.execute {
-            val children = FileOps.list(dir)
-            runOnUiThread {
-                if (asked != generation) return@runOnUiThread
-                if (children == null) return@runOnUiThread show(Page.Blocked(dir, false))
-                // While choosing a destination, only folders can be opened.
-                val shown = if (pick != null) children.filter { it.isDirectory } else children
-                if (shown.isEmpty()) {
-                    status.text = getString(if (pick != null) R.string.files_empty_pick else R.string.files_empty)
-                    return@runOnUiThread
+        if (StorageAreas.appPrivate(dir, roots)) return show(Page.Blocked(dir, true))
+        val root = StorageAreas.rootOf(dir, roots) ?: return show(Page.Roots)
+        titleText.text = if (roots.any { it.absolutePath == dir.absolutePath }) rootName(dir)
+                         else dir.name.ifEmpty { getString(R.string.window_files) }
+        val box = column(fill = true)
+        addNoticeAndPick(box) { (page as? Page.Folder)?.dir }
+        // While choosing a destination, only folders show.
+        browser.showFile = if (pick != null) { _ -> false } else { _ -> true }
+        browser.emptyWords = getString(if (pick != null) R.string.files_empty_pick else R.string.files_empty)
+        browser.setExtras(if (pick == null) listOf(button(getString(R.string.files_search)) {
+            (page as? Page.Folder)?.let { show(Page.Search(it.dir)) }
+        }) else emptyList())
+        addBrowser(box)
+        if (pick == null) box.addView(text(getString(R.string.folder_hold_hint), UiScale.TEXT_NOTE, dim = true),
+                                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
+        setPage(box)
+        val source = localSources.getOrPut(root.absolutePath) {
+            LocalSource(root, crumbName(root), roots)
+        }
+        if (browser.source !== source || browser.path != dir.absolutePath || browser.rows.isEmpty()) browser.open(source, dir.absolutePath)
+        else browser.reload()
+    }
+
+    /** The browser's place on [box]: taken off the page it was on before. */
+    private fun addBrowser(box: LinearLayout) {
+        (browser.view.parent as? ViewGroup)?.removeView(browser.view)
+        box.addView(browser.view, LinearLayout.LayoutParams(MATCH, 0, 1f))
+    }
+
+    /** "เครื่อง" / "การ์ด SD": the first word of the breadcrumb. */
+    private fun crumbName(root: File): String =
+        if (root.absolutePath == Environment.getExternalStorageDirectory().absolutePath)
+            getString(R.string.folder_crumb_phone) else getString(R.string.folder_crumb_sd)
+
+    /**
+     * What the shared browser asks of this screen: a file tapped opens where it
+     * belongs — music and video on their own in the kiosk's players (0.59.0,
+     * never added to a playlist), a picture in the viewer, anything else its
+     * details; a row held shows its details; up from the top is the storage list.
+     */
+    private val browserHost = object : FolderBrowser.Host {
+        override fun onFile(source: FolderSource, entry: FolderEntry) {
+            val id = source.trackId(entry)
+            when (FileOps.kindOfName(entry.name)) {
+                FileOps.Kind.AUDIO -> {
+                    Log.i(TAG, "open one file: audio")
+                    startActivity(Intent(this@FilesActivity, MusicActivity::class.java).putExtra(SINGLE, id))
                 }
-                frame.removeAllViews()
-                frame.addView(fileList(shown.map { rowFor(it, roots) }), FrameLayout.LayoutParams(MATCH, MATCH))
+                FileOps.Kind.VIDEO -> {
+                    Log.i(TAG, "open one file: video")
+                    startActivity(Intent(this@FilesActivity, VideoActivity::class.java).putExtra(SINGLE, id))
+                }
+                FileOps.Kind.IMAGE -> if (source is LocalSource) {
+                    Log.i(TAG, "open one file: picture")
+                    startActivity(Intent(this@FilesActivity, ImageViewerActivity::class.java).putExtra(SINGLE, entry.path))
+                } else show(Page.NasDetails(nasEntry(entry)))
+                else -> onHold(source, entry)
             }
+        }
+
+        override fun onHold(source: FolderSource, entry: FolderEntry) {
+            if (source is NasSource) { if (!entry.folder) show(Page.NasDetails(nasEntry(entry))) }
+            else if (!entry.blocked) show(Page.Details(File(entry.path)))
+        }
+
+        override fun onAboveTop() = show(Page.Roots)
+
+        /** The browser moved: this screen's page follows, so Back and the title are right. */
+        override fun onChanged() {
+            val s = browser.source ?: return
+            val at = browser.path
+            if (page !is Page.Folder && page !is Page.NasFolder) return
+            if (s is NasSource) {
+                page = Page.NasFolder(at)
+                titleText.text = if (at.isEmpty()) getString(R.string.files_nas) else at.substringAfterLast('\\')
+            } else {
+                page = Page.Folder(File(at))
+                titleText.text = if (roots().any { it.absolutePath == at }) rootName(File(at)) else File(at).name
+            }
+        }
+
+        override fun failureWords(error: Throwable): String {
+            val problem = if (!isOnline()) NasProblem.NO_NETWORK else NasProblem.of(error)
+            // The problem's name only: never the address, the user or the message.
+            Log.i(TAG, "nas list failed problem=$problem")
+            return nasWords(problem)
         }
     }
 
-    /** One row of a local folder: its icon, name, and what it is. */
+    private fun nasEntry(e: FolderEntry) = NasEntry(e.name, e.path, e.folder, e.size, e.modifiedMs)
+
+    /** One row of a search result: its icon, name, and what it is. */
     private fun rowFor(file: File, roots: List<File>): Row {
         val blocked = file.isDirectory && StorageAreas.appPrivate(file, roots)
-        val kind = FileOps.kind(file)
         return Row(
-            icon = when {
-                blocked -> R.drawable.ic_pixel_lock
-                kind == FileOps.Kind.FOLDER -> R.drawable.ic_pixel_folder
-                kind == FileOps.Kind.ZIP -> R.drawable.ic_pixel_files
-                else -> R.drawable.ic_pixel_file
-            },
+            icon = FolderBrowser.iconOf(FolderEntry(file.name, file.path, file.isDirectory, blocked = blocked)),
             name = file.name,
             // Read when the row is drawn, so a folder of thousands opens at once.
             sub = {
@@ -385,7 +444,7 @@ class FilesActivity : Activity() {
                     else -> show(Page.Details(file))
                 }
             },
-            manage = if (file.isDirectory && !blocked && pick == null) ({ show(Page.Details(file)) }) else null,
+            manage = null,
         )
     }
 
@@ -479,11 +538,7 @@ class FilesActivity : Activity() {
         }
     }
 
-    private fun iconFor(file: File): Int = when (FileOps.kind(file)) {
-        FileOps.Kind.FOLDER -> R.drawable.ic_pixel_folder
-        FileOps.Kind.ZIP -> R.drawable.ic_pixel_files
-        else -> R.drawable.ic_pixel_file
-    }
+    private fun iconFor(file: File): Int = FolderBrowser.iconOf(FolderEntry(file.name, file.path, file.isDirectory))
 
     private fun showRename(file: File) {
         titleText.text = getString(R.string.files_rename)
@@ -800,56 +855,21 @@ class FilesActivity : Activity() {
         return NasSession.open(config).use(block)
     }
 
+    private var nasSource: NasSource? = null
+
+    /** The NAS, read only, in the same browser as the phone's folders (0.59.0). */
     private fun showNasFolder(path: String) {
         titleText.text = if (path.isEmpty()) getString(R.string.files_nas) else path.substringAfterLast('\\')
         val box = column(fill = true)
         addNoticeAndPick(box)
-        box.addView(toolbar(nasTrail(path), up = { goBack() }, search = null))
-        val frame = FrameLayout(this).apply { setBackgroundResource(R.drawable.retro_field) }
-        val status = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_M), dp(UiScale.SPACE_S), dp(UiScale.SPACE_M))
-        }
-        status.addView(text(getString(R.string.nas_connecting), UiScale.TEXT_BASE, dim = true))
-        frame.addView(status, FrameLayout.LayoutParams(MATCH, WRAP))
-        box.addView(frame, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
+        browser.showFile = { true }
+        browser.emptyWords = getString(R.string.files_empty)
+        browser.setExtras(listOf(button(getString(R.string.nas_retry)) { browser.reload() },
+                                 button(getString(R.string.nas_edit)) { show(Page.NasSetup) }))
+        addBrowser(box)
         setPage(box)
-
-        val asked = generation
-        val online = isOnline()
-        worker.execute {
-            val result = if (!online) Result.failure(NoNetwork()) else runCatching { withNas { it.list(path) } }
-            runOnUiThread {
-                if (asked != generation) return@runOnUiThread
-                result.onSuccess { entries ->
-                    Log.i(TAG, "nas list ok entries=${entries.size}")
-                    if (entries.isEmpty()) {
-                        (status.getChildAt(0) as TextView).text = getString(R.string.files_empty)
-                        return@onSuccess
-                    }
-                    frame.removeAllViews()
-                    frame.addView(fileList(entries.map { entry ->
-                        Row(if (entry.folder) R.drawable.ic_pixel_folder
-                            else if (FileOps.kindOfName(entry.name) == FileOps.Kind.ZIP) R.drawable.ic_pixel_files
-                            else R.drawable.ic_pixel_file,
-                            entry.name,
-                            { if (entry.folder) getString(R.string.files_folder)
-                              else FileOps.formatSize(entry.size) + " · " + when_(entry.modifiedMs) },
-                            { show(if (entry.folder) Page.NasFolder(entry.path) else Page.NasDetails(entry)) },
-                            null)
-                    }), FrameLayout.LayoutParams(MATCH, MATCH))
-                }.onFailure { e ->
-                    val problem = if (e is NoNetwork) NasProblem.NO_NETWORK else NasProblem.of(e)
-                    // The problem's name only: never the address, the user or the message.
-                    Log.i(TAG, "nas list failed problem=$problem")
-                    status.removeAllViews()
-                    status.addView(text(nasWords(problem), UiScale.TEXT_BASE).apply { setTextColor(color(R.color.retro_bad)) })
-                    status.addView(pair(getString(R.string.nas_retry), { show(Page.NasFolder(path)) },
-                                        getString(R.string.nas_edit), { show(Page.NasSetup) }),
-                                   LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
-                }
-            }
-        }
+        val source = nasSource ?: NasSource(this).also { nasSource = it }
+        browser.open(source, path)
     }
 
     private class NoNetwork : Exception()
@@ -864,7 +884,7 @@ class FilesActivity : Activity() {
         val list = column()
         addNoticeAndPick(list)
         list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
-        list.addView(heading(R.drawable.ic_pixel_file, entry.name))
+        list.addView(heading(FolderBrowser.iconOf(FolderEntry(entry.name, entry.path, false)), entry.name))
         val kinds = resources.getStringArray(R.array.files_kinds)
         list.addView(fact(getString(R.string.files_type), kinds[FileOps.kindOfName(entry.name).ordinal]))
         list.addView(fact(getString(R.string.files_size), FileOps.formatSize(entry.size)))
@@ -932,7 +952,7 @@ class FilesActivity : Activity() {
     // ------------------------------------------------------------ the parts
 
     /** The notice from the last action, and the destination banner while choosing one. */
-    private fun addNoticeAndPick(box: LinearLayout, here: File? = null) {
+    private fun addNoticeAndPick(box: LinearLayout, here: (() -> File?)? = null) {
         notice?.let { message ->
             box.addView(text(message, UiScale.TEXT_BASE).apply {
                 setBackgroundResource(R.drawable.retro_sunken)
@@ -961,7 +981,7 @@ class FilesActivity : Activity() {
         })
         banner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(button(getString(R.string.files_paste_here), enabled = here != null) { here?.let(::paste) },
+            addView(button(getString(R.string.files_paste_here), enabled = here != null) { here?.invoke()?.let(::paste) },
                     LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
             addView(button(getString(R.string.cancel)) {
                 pick = null
@@ -970,25 +990,6 @@ class FilesActivity : Activity() {
         }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         box.addView(banner, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
     }
-
-    /** ◄ up, where we are, and search — the 1995 explorer's address row. */
-    private fun toolbar(where: String, up: () -> Unit, search: (() -> Unit)?): View =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(button("◄") { up() }.apply { contentDescription = getString(R.string.files_up) },
-                    LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
-            addView(text(where, UiScale.TEXT_NOTE).apply {
-                setBackgroundResource(R.drawable.retro_field)
-                setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
-                gravity = Gravity.CENTER_VERTICAL
-                maxLines = 1
-                // The end of the path is where you are: the start gives way.
-                ellipsize = TextUtils.TruncateAt.START
-            }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
-            if (search != null) addView(button(getString(R.string.files_search)) { search() },
-                                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_XS) })
-        }
 
     private class Row(val icon: Int, val name: String, val sub: () -> String, val open: () -> Unit,
                       val manage: (() -> Unit)?)
@@ -1173,6 +1174,8 @@ class FilesActivity : Activity() {
     companion object {
         /** `logcat -s KioskFiles:I`: kinds and outcomes, never names, paths, addresses or passwords. */
         const val TAG = "KioskFiles"
+        /** 0.59.0: the one file to play or show on its own (a Track id: "local:/…" or "nas:…"; a path for a picture). */
+        const val SINGLE = "com.mammonrn.phoneaikiosk.SINGLE"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     }

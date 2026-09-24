@@ -136,8 +136,34 @@ object VideoPlayer {
     /** Plays [videos][start], from where it was left last time. Music stops: one sound at a time. */
     fun play(context: Context, videos: List<Video>, start: Int) = run(context) {
         MusicPlayer.quietForVideo(context)
+        before = null
         list = videos; index = start.coerceIn(0, videos.lastIndex)
         it.load(current!!, play = true)
+    }
+
+    // ------------------------------------------------------------ 0.59.0: one file on its own
+
+    private var before: Pair<List<Video>, Int>? = null
+
+    /** A video from the file manager is playing on its own; the playlist waits to come back. */
+    val single: Boolean get() = before != null
+
+    /** Plays [video] alone, never added to a playlist; the list and its place come back after ([endSingle]). */
+    fun playSingle(context: Context, video: Video) = run(context) {
+        MusicPlayer.quietForVideo(context)
+        if (before == null) before = list to index
+        list = listOf(video); index = 0
+        it.load(video, play = true)
+        Log.i(VideoService.TAG, "one file playing on its own")
+    }
+
+    /** The playlist and the video in it back as they were (the place in each video is kept by the video). */
+    fun endSingle() {
+        val b = before ?: return
+        before = null
+        list = b.first; index = b.second
+        changed()
+        Log.i(VideoService.TAG, "list back after one file")
     }
 
     fun resume(context: Context) = run(context) { s ->
@@ -218,29 +244,6 @@ object VideoPlayer {
             if (keep == 0L) remove(key(v)) else putLong(key(v), keep)
         }.apply()
     }
-
-    // ------------------------------------------------------------ the phone's videos
-
-    fun local(context: Context): List<Video> {
-        val out = ArrayList<Video>()
-        val columns = arrayOf(MediaStore.Video.Media.DATA, MediaStore.Video.Media.TITLE, MediaStore.Video.Media.DURATION,
-                              MediaStore.Video.Media.WIDTH, MediaStore.Video.Media.HEIGHT, MediaStore.Video.Media.MIME_TYPE,
-                              MediaStore.Video.Media.DISPLAY_NAME)
-        try {
-            context.contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, columns, null, null, null)?.use { c ->
-                while (c.moveToNext()) {
-                    val path = c.getString(0) ?: continue
-                    val name = c.getString(6) ?: File(path).name
-                    if (!VideoRules.playable(name)) continue
-                    val title = c.getString(1)?.takeIf { it.isNotBlank() } ?: MusicLibrary.titleFromFile(name)
-                    out.add(Video(Track(Track.LOCAL + path, title, "", "", c.getLong(2)), c.getInt(3), c.getInt(4), c.getString(5)))
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(VideoService.TAG, "phone videos unreadable: ${e.javaClass.simpleName}")
-        }
-        return out.sortedBy { it.track.title.lowercase() }
-    }
 }
 
 /**
@@ -313,7 +316,16 @@ class VideoService : Service(), WakePause.Media {
             }
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "video failed: ${error.errorCodeName}")
-                VideoPlayer.error = getString(R.string.video_error, VideoPlayer.current?.track?.title.orEmpty())
+                val track = VideoPlayer.current?.track
+                val title = track?.title.orEmpty()
+                // 0.59.0: said as it is — gone, or a kind not played yet.
+                VideoPlayer.error = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> getString(R.string.video_file_missing, title)
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
+                        getString(R.string.video_not_yet, title, PlayerChoice.typeWord(track?.path.orEmpty()))
+                    else -> getString(R.string.video_error, title)
+                }
                 stopAll()
             }
         })
@@ -348,6 +360,21 @@ class VideoService : Service(), WakePause.Media {
     fun load(video: Video, play: Boolean) {
         VideoPlayer.error = null
         VideoPlayer.cue = ""
+        // 0.59.0: a video no longer on the phone, or of a kind no player here plays yet
+        // (a VCD's .DAT, .mpg, .wmv): said at once, nothing opened, nothing hangs.
+        val t = video.track
+        val problem = when {
+            !t.onNas && !File(t.path).exists() -> getString(R.string.video_file_missing, t.title)
+            PlayerChoice.forName(t.path) == PlayerChoice.Engine.NOT_YET ->
+                getString(R.string.video_not_yet, t.title, PlayerChoice.typeWord(t.path))
+            else -> null
+        }
+        if (problem != null) {
+            Log.i(TAG, "not played: " + if (PlayerChoice.forName(t.path) == PlayerChoice.Engine.NOT_YET) "kind not yet" else "file gone")
+            VideoPlayer.error = problem
+            stopAll()
+            return
+        }
         // Known too big from the phone's index: said, not played.
         VideoRules.refusal(video.width, video.height, video.mime)?.let { refuse(it); return }
         savePlace()
@@ -362,8 +389,22 @@ class VideoService : Service(), WakePause.Media {
         update()
     }
 
-    /** A NAS file's size is known only once it opens: checked here, and refused the same way. */
+    /**
+     * A NAS file's size is known only once it opens: checked here, and refused the same way.
+     * 0.59.0: a file with no picture this phone can show — MPEG-2 in a .ts, or a VCD
+     * read as sound only (codecprobe, A07) — is not supported yet, and said so.
+     */
     private fun checkLimits(tracks: Tracks) {
+        if (tracks.groups.isNotEmpty() && loadedVideo != null) {
+            val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+            if (video.none { g -> (0 until g.length).any { g.isTrackSupported(it) } }) {
+                val t = loadedVideo!!.track
+                Log.i(TAG, "not played: no picture it can show")
+                VideoPlayer.error = getString(R.string.video_not_yet, t.title, PlayerChoice.typeWord(t.path))
+                stopAll()
+                return
+            }
+        }
         for (g in tracks.groups) {
             if (g.type != C.TRACK_TYPE_VIDEO) continue
             val all = (0 until g.length).map { g.getTrackFormat(it) }

@@ -35,9 +35,8 @@ import androidx.media3.common.C
 import com.mammonrn.phoneaikiosk.KioskScreens
 import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
-import com.mammonrn.phoneaikiosk.files.NasEntry
-import com.mammonrn.phoneaikiosk.files.NasSession
-import com.mammonrn.phoneaikiosk.files.NasStore
+import com.mammonrn.phoneaikiosk.files.FilesActivity
+import com.mammonrn.phoneaikiosk.ui.Retro
 import com.mammonrn.phoneaikiosk.ui.UiScale
 import java.util.concurrent.Executors
 
@@ -45,8 +44,10 @@ import java.util.concurrent.Executors
  * The video player's screen (0.56.0, Poom: "หน้าตาใกล้ PowerDVD"), from the
  * Control Panel. Two pages:
  *
- *  * THE LIST: the phone's videos, or the NAS's, in the Control Panel's
- *    window, each with its length and where it was left.
+ *  * THE LIST: the videos of the playlist chosen (0.59.0 — no longer every
+ *    video on the phone), in the Control Panel's window, each with its length
+ *    and where it was left; "Playlist" to choose, make and edit the lists, and
+ *    "เพิ่มวิดีโอ" to add through the shared folder browser.
  *  * THE PLAYER: the picture on black, a bar at the top (back to the list,
  *    the name, close) and the floating silver panel at the bottom — volume
  *    at the left, the teal read-out, the ring with play in its middle, open
@@ -54,8 +55,11 @@ import java.util.concurrent.Executors
  *    fill-the-screen. Both float over the picture and hide 4 s after the
  *    last touch while it plays; a tap on the picture brings them back.
  *
- * The playing is in [VideoService]: closing this screen — Back, the X, Hey
- * Jarvis — leaves the sound playing (DESIGN.md 12).
+ * The playing is in [VideoService]; since 0.58.0 leaving the player stops it.
+ *
+ * ONE FILE ON ITS OWN (0.59.0): opened from the file manager with
+ * FilesActivity.SINGLE, the video plays alone, never added to a playlist;
+ * leaving it goes back to the file manager and the playlist's place comes back.
  */
 class VideoActivity : Activity() {
 
@@ -66,10 +70,11 @@ class VideoActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-video") }
     private var generation = 0
 
-    private enum class Page { LIST, PLAYER }
+    private enum class Page { LIST, LISTS, PICKER, PLAYER }
     private var page = Page.LIST
-    private var onNas = false
-    private var nasPath = ""
+    private lateinit var retro: Retro
+    /** A video from the file manager is playing on its own. */
+    private var singleMode = false
     /**
      * FULL SCREEN (0.57.0, Poom approved): the one place in the kiosk that may
      * turn sideways. On: the phone's turning decides portrait or landscape,
@@ -121,7 +126,14 @@ class VideoActivity : Activity() {
                 android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { goBack() }
         }
         hideSystemBars()
-        if (VideoPlayer.hasMedia) showPlayer() else showList()
+        retro = Retro(this, thai)
+        val single = intent.getStringExtra(FilesActivity.SINGLE)
+        if (single != null) {
+            singleMode = true
+            val name = single.substringAfter(':').substringAfterLast('/').substringAfterLast('\\')
+            VideoPlayer.playSingle(this, Video(Track(single, MusicLibrary.titleFromFile(name))))
+            showPlayer()
+        } else if (VideoPlayer.hasMedia) showPlayer() else showList()
     }
 
     override fun onResume() {
@@ -143,6 +155,8 @@ class VideoActivity : Activity() {
         if (isFinishing) {
             stopForLeaving("closed")
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            // 0.59.0: the playlist and its place come back after a video played on its own.
+            if (singleMode) VideoPlayer.endSingle()
         }
         VideoPlayer.listeners.remove(listener)
         HeatWatch.listeners.remove(heat)
@@ -231,11 +245,11 @@ class VideoActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() = goBack()
 
-    /** Back: the player to the list (the video plays on), up a NAS folder, then out. */
+    /** Back: the player to the list (a file on its own: out), the playlists or choosing to the list, then out. */
     private fun goBack() {
         when {
-            page == Page.PLAYER -> showList()
-            onNas && nasPath.isNotEmpty() -> { nasPath = nasPath.substringBeforeLast('\\', ""); showList() }
+            page == Page.PLAYER && singleMode -> finish()
+            page != Page.LIST -> showList()
             else -> finish()
         }
     }
@@ -251,15 +265,62 @@ class VideoActivity : Activity() {
     // ------------------------------------------------------------ the list
 
     private fun showList() {
+        // A video on its own has no list here: leaving it goes back to the file manager.
+        if (singleMode) { finish(); return }
         // Back to the list stops the video: nothing plays where it cannot be seen (0.58.0).
         stopForLeaving("list")
         page = Page.LIST
         generation += 1
         applyOrientation()
+        val body = listWindow()
+
+        VideoPlayer.error?.let {
+            body.addView(text(it, UiScale.TEXT_BASE).apply { setTextColor(color(R.color.retro_bad)) },
+                         LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
+        }
+        listNote?.let {
+            body.addView(text(it, UiScale.TEXT_BASE).apply {
+                setBackgroundResource(R.drawable.retro_sunken)
+                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
+            listNote = null
+        }
+        // 0.59.0: the playlist chosen, and the way to the others.
+        val current = PlaylistStore.read(this) { it.current(Playlist.Kind.VIDEO) }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(label(getString(R.string.video_playlist)))
+        head.addView(text(current?.name ?: getString(R.string.video_no_playlist), UiScale.TEXT_ITEM).apply {
+            typeface = Typeface.create(thai, Typeface.BOLD); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        head.addView(button(getString(R.string.video_playlists)) { showLists() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
+        body.addView(head, LinearLayout.LayoutParams(MATCH, WRAP))
+        val videos = current?.items.orEmpty().map { Video(it) }
+        body.addView(text(when {
+            current == null -> getString(R.string.video_make_first)
+            videos.isEmpty() -> getString(R.string.video_playlist_empty)
+            else -> getString(R.string.video_count, videos.size)
+        }, UiScale.TEXT_BASE, dim = true), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
+        val adapter = VideoAdapter()
+        adapter.set(videos.map { Row(it) })
+        body.addView(ListView(this).apply {
+            this.adapter = adapter
+            setBackgroundResource(R.drawable.retro_field)
+            divider = null
+            setOnItemClickListener { _, _, position, _ -> play(adapter.rows, position) }
+        }, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
+        body.addView(button(getString(if (current == null) R.string.playlist_create else R.string.video_add), big = true) {
+            if (current == null) showLists() else startPicker(current)
+        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.SPACE_XS) })
+    }
+
+    /** The list's window in the Control Panel's style; returns its body to fill. */
+    private fun listWindow(): LinearLayout {
         surface?.let { VideoPlayer.detachSurface(it) }
         surface = null
         attachedTo = null
         root.removeAllViews()
+        root.setOnTouchListener(null)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -275,83 +336,63 @@ class VideoActivity : Activity() {
         window.addView(titleBar(), LinearLayout.LayoutParams(MATCH, WRAP))
         val body = column()
         window.addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.WINDOW_INSET) })
-
-        VideoPlayer.error?.let {
-            body.addView(text(it, UiScale.TEXT_BASE).apply { setTextColor(color(R.color.retro_bad)) },
-                         LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
-        }
-        val sources = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        sources.addView(label(getString(R.string.video_source)))
-        sources.addView(option(getString(R.string.music_local), !onNas) { onNas = false; showList() },
-                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
-        sources.addView(option(getString(R.string.music_nas), onNas) { onNas = true; showList() },
-                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
-        body.addView(sources, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)))
-        val status = text(getString(R.string.video_loading), UiScale.TEXT_BASE, dim = true)
-        body.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
-        val adapter = VideoAdapter()
-        val list = ListView(this).apply {
-            this.adapter = adapter
-            setBackgroundResource(R.drawable.retro_field)
-            divider = null
-        }
-        if (onNas) nasList(body, status, adapter, list) else localList(status, adapter, list)
-        body.addView(list, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
-
         shell.addView(button(getString(R.string.settings_home), big = true) { goHome() },
                       LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.FRAME) })
         root.addView(shell, FrameLayout.LayoutParams(MATCH, MATCH))
+        return body
     }
 
-    private fun localList(status: TextView, adapter: VideoAdapter, list: ListView) {
-        list.setOnItemClickListener { _, _, position, _ -> play(adapter.rows, position) }
-        val mine = generation
-        worker.execute {
-            val videos = VideoPlayer.local(this)
-            handler.post {
-                if (mine != generation) return@post
-                adapter.set(videos.map { Row(it, null) })
-                status.text = if (videos.isEmpty()) getString(R.string.video_local_empty) else getString(R.string.video_count, videos.size)
+    // ------------------------------------------------------------ playlists (0.59.0)
+
+    /** What the last "add" did, said once at the top of the list. */
+    private var listNote: String? = null
+
+    private val playlists by lazy {
+        PlaylistsPage(retro, Playlist.Kind.VIDEO, object : PlaylistsPage.Host {
+            override fun play(list: Playlist) {
+                PlaylistStore.edit(this@VideoActivity) { it.setCurrent(Playlist.Kind.VIDEO, list.id) }
+                if (list.items.isEmpty()) startPicker(list) else showList()
             }
-        }
+            override fun addTo(list: Playlist) = startPicker(list)
+        })
     }
 
-    private fun nasList(body: LinearLayout, status: TextView, adapter: VideoAdapter, list: ListView) {
-        if (NasStore.load(this) == null) { status.text = getString(R.string.music_nas_not_set); return }
-        body.addView(text(("NAS › " + nasPath.replace("\\", " › ")).trimEnd(' ', '›'), UiScale.TEXT_BASE).apply {
-            setBackgroundResource(R.drawable.retro_field); gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.START
-        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
-        list.setOnItemClickListener { _, _, position, _ ->
-            val row = adapter.rows[position]
-            val folder = row.folder
-            if (folder != null) { nasPath = folder.path; showList() } else play(adapter.rows, position)
-        }
-        val mine = generation
-        val path = nasPath
-        worker.execute {
-            val result = runCatching { NasSession.open(NasStore.load(this)!!).use { it.list(path) } }
-            handler.post {
-                if (mine != generation) return@post
-                result.onSuccess { entries ->
-                    val rows = entries.filter { it.folder }.map { Row(null, it) } +
-                        entries.filter { !it.folder && VideoRules.playable(it.name) }
-                            .map { Row(Video(Track(Track.NAS + it.path, MusicLibrary.titleFromFile(it.name))), null) }
-                    adapter.set(rows)
-                    status.text = getString(R.string.video_count, rows.count { it.video != null })
-                }.onFailure { status.text = getString(R.string.music_nas_failed) }
-            }
-        }
+    private val picker by lazy {
+        MediaPicker(retro, worker, Playlist.Kind.VIDEO, object : MediaPicker.Host {
+            override fun added(count: Int, words: String) { listNote = words; showList() }
+            override fun cancelled() = showList()
+        })
+    }
+
+    private fun showLists() {
+        page = Page.LISTS
+        generation += 1
+        val body = listWindow()
+        playlists.draw()
+        body.addView(detached(playlists.view), LinearLayout.LayoutParams(MATCH, 0, 1f))
+    }
+
+    private fun startPicker(list: Playlist) {
+        PlaylistStore.edit(this) { it.setCurrent(Playlist.Kind.VIDEO, list.id) }
+        page = Page.PICKER
+        generation += 1
+        val body = listWindow()
+        picker.start(list)
+        body.addView(detached(picker.view), LinearLayout.LayoutParams(MATCH, 0, 1f))
+    }
+
+    private fun detached(view: View): View {
+        (view.parent as? ViewGroup)?.removeView(view)
+        return view
     }
 
     private fun play(rows: List<Row>, position: Int) {
-        val videos = rows.mapNotNull { it.video }
-        val v = rows[position].video ?: return
-        VideoPlayer.play(this, videos, videos.indexOf(v))
+        val videos = rows.map { it.video }
+        VideoPlayer.play(this, videos, position)
         showPlayer()
     }
 
-    private class Row(val video: Video?, val folder: NasEntry?)
+    private class Row(val video: Video)
 
     /** A video: its name, then its length, its size and where it was left. */
     private inner class VideoAdapter : BaseAdapter() {
@@ -373,7 +414,6 @@ class VideoActivity : Activity() {
             val title = row.getChildAt(0) as TextView
             val sub = row.getChildAt(1) as TextView
             val v = r.video
-            if (v == null) { title.text = r.folder?.name; sub.text = getString(R.string.music_folder); return row }
             title.text = v.track.title
             val parts = ArrayList<String>()
             if (v.track.durationMs > 0) parts += clock(v.track.durationMs)
@@ -423,7 +463,8 @@ class VideoActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(color(R.color.video_scrim))
             setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
-            addView(dvdButton(getString(R.string.video_to_list)) { showList() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
+            addView(dvdButton(getString(if (singleMode) R.string.video_to_files else R.string.video_to_list)) { showList() },
+                    LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
             titleView = TextView(context).apply {
                 typeface = Typeface.create(thai, Typeface.BOLD); textSize = UiScale.TEXT_BASE; setTextColor(color(R.color.retro_light))
                 maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
@@ -497,7 +538,7 @@ class VideoActivity : Activity() {
         val right = column().apply { gravity = Gravity.CENTER_HORIZONTAL }
         right.addView(iconButton(R.drawable.ic_pixel_eject, R.string.video_open) { showList() },
                       LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.ICON_BUTTON)))
-        right.addView(iconButton(R.drawable.ic_pixel_stop, R.string.music_stop) { VideoPlayer.stop(this); showList() },
+        right.addView(iconButton(R.drawable.ic_pixel_stop, R.string.music_stop) { VideoPlayer.stop(this); if (!singleMode) showList() },
                       LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.ICON_BUTTON)).apply { topMargin = dp(UiScale.SPACE_XS) })
         top.addView(right, LinearLayout.LayoutParams(dp(UiScale.TOUCH), WRAP).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(top, LinearLayout.LayoutParams(MATCH, WRAP))

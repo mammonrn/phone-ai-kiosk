@@ -160,6 +160,28 @@ class PlayQueue(private val random: Random = Random.Default) {
         if (shuffleOn) setShuffle(true)
     }
 
+    // ------------------------------------------------------------ one file on its own (0.59.0)
+
+    /** Everything the list is: its tracks, the play order, the place in it, shuffle and repeat. */
+    class Snapshot internal constructor(
+        val tracks: List<Track>,
+        internal val order: IntArray,
+        internal val pos: Int,
+        val shuffle: Boolean,
+        val repeat: Repeat,
+    ) {
+        val current: Track? get() = if (pos in order.indices) tracks[order[pos]] else null
+        /** Where [current] is in [tracks]: right even when a song is in the list twice. */
+        val currentIndex: Int get() = if (pos in order.indices) order[pos] else -1
+    }
+
+    fun snapshot() = Snapshot(tracks, order.copyOf(), pos, shuffle, repeat)
+
+    /** Exactly as [s] was — the same shuffled order too, not a new one. */
+    fun restore(s: Snapshot) {
+        tracks = s.tracks; order = s.order.copyOf(); pos = s.pos; shuffle = s.shuffle; repeat = s.repeat
+    }
+
     /** The play order from the current track on, for the list on screen. */
     fun upcoming(): List<Track> = if (pos < 0) emptyList() else order.drop(pos).map { tracks[it] }
 

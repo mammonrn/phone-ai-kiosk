@@ -116,6 +116,14 @@ object UiScale {
     const val THUMB_W = 18
     const val THUMB_H = 30
 
+    // ------------------------------------------------ the folder browser's columns (0.59.0)
+
+    /** "ประเภท": "โฟลเดอร์", "วิดีโอ" at [TEXT_NOTE]. The name column takes what is left. */
+    const val COL_TYPE = 64
+
+    /** "ขนาด": "123 MB", "1.23 GB" at [TEXT_NOTE], right-aligned. */
+    const val COL_SIZE = 64
+
     // ------------------------------------------------ text, by importance (sp)
 
     /** 1. The one big value of a page: the alarm's time while setting it. */

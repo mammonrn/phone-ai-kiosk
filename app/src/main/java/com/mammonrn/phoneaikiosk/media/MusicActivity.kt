@@ -34,9 +34,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.mammonrn.phoneaikiosk.KioskScreens
 import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
-import com.mammonrn.phoneaikiosk.files.NasEntry
-import com.mammonrn.phoneaikiosk.files.NasSession
-import com.mammonrn.phoneaikiosk.files.NasStore
+import com.mammonrn.phoneaikiosk.files.FilesActivity
+import com.mammonrn.phoneaikiosk.ui.Retro
 import java.util.concurrent.Executors
 import com.mammonrn.phoneaikiosk.ui.UiScale
 import com.mammonrn.phoneaikiosk.media.fx.Eq
@@ -48,9 +47,15 @@ import com.mammonrn.phoneaikiosk.media.fx.Eq
  *
  * "กำลังเล่น": a green-on-black read-out (time, title, artist), the buttons
  * with their words under the pictures, shuffle and repeat in words, the
- * player's volume, and the list. "คลังเพลง": the phone's songs with a search
- * box, and the NAS read only — play a folder, or add it to the library that
- * voice commands search. Every list is a recycling ListView.
+ * player's volume, and the list. "Playlist" (0.59.0, was "คลังเพลง"): the
+ * lists a person made, and adding to them through the shared folder browser —
+ * nothing is pulled from the whole phone any more. Every list is a recycling
+ * ListView.
+ *
+ * ONE FILE ON ITS OWN (0.59.0): opened from the file manager with
+ * FilesActivity.SINGLE, the file plays alone — no tabs, no list, never added
+ * to a playlist — and when this screen closes or the file ends, the playlist,
+ * its song, the place in it and repeat come back as they were (MusicPlayer.playSingle).
  */
 class MusicActivity : Activity() {
 
@@ -61,11 +66,14 @@ class MusicActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-music") }
 
-    private enum class Tab { NOW, LIBRARY }
+    private enum class Tab { NOW, LISTS }
     private var tab = Tab.NOW
-    private var onNas = false
-    private var nasPath = ""
     private var generation = 0
+    private lateinit var retro: Retro
+    private lateinit var tabRow: LinearLayout
+    /** A file from the file manager is playing on its own on this screen. */
+    private var singleMode = false
+    private var singleSeen = false
 
     // The "กำลังเล่น" views, while that tab is shown.
     private var timeView: TextView? = null
@@ -73,8 +81,6 @@ class MusicActivity : Activity() {
     private var shuffleView: TextView? = null
     private var repeatView: TextView? = null
     private var errorView: TextView? = null
-    /** The library adds to the list instead of replacing it (the list's "เพิ่ม" and the open button). */
-    private var addMode = false
     private var seeking = false
     /** The list the "กำลังเล่น" page was drawn for: a new one draws the page again. */
     private var drawnFor: List<Track>? = null
@@ -92,16 +98,26 @@ class MusicActivity : Activity() {
         super.onCreate(savedInstanceState)
         thai = ResourcesCompat.getFont(this, R.font.plex_thai) ?: Typeface.DEFAULT
         pixel = ResourcesCompat.getFont(this, R.font.press_start_2p) ?: Typeface.MONOSPACE
+        retro = Retro(this, thai)
         setContentView(buildWindow())
         hideSystemBars()
         MusicPlayer.restore(this)
-        show(if (MusicPlayer.queue.isEmpty) Tab.LIBRARY else Tab.NOW)
+        val single = intent.getStringExtra(FilesActivity.SINGLE)
+        if (single != null) {
+            // 0.59.0: one file from the file manager, on its own; the list waits.
+            singleMode = true
+            showEq = false
+            val name = single.substringAfter(':').substringAfterLast('/').substringAfterLast('\\')
+            MusicPlayer.playSingle(this, Track(single, MusicLibrary.titleFromFile(name)))
+            show(Tab.NOW)
+        } else show(if (MusicPlayer.queue.isEmpty) Tab.LISTS else Tab.NOW)
     }
 
     override fun onResume() {
         super.onResume()
         hideSystemBars()
         MusicPlayer.listeners.add(listener)
+        PlaylistStore.listeners.add(listsListener)
         handler.post(tick)
         if (tab == Tab.NOW) refreshNow()
     }
@@ -109,7 +125,10 @@ class MusicActivity : Activity() {
     override fun onPause() {
         super.onPause()
         MusicPlayer.listeners.remove(listener)
+        PlaylistStore.listeners.remove(listsListener)
         handler.removeCallbacks(tick)
+        // Closed — Back, the X, Hey Jarvis: a file that played on its own gives the list back.
+        if (isFinishing && singleMode) MusicPlayer.endSingle(this)
     }
 
     override fun onDestroy() {
@@ -121,13 +140,9 @@ class MusicActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() = goBack()
 
-    /** Back: up one NAS folder, then out to the Control Panel. The music plays on. */
+    /** Back: out of choosing, else out to the Control Panel. The music plays on. */
     private fun goBack() {
-        if (tab == Tab.LIBRARY && onNas && nasPath.isNotEmpty()) {
-            nasPath = nasPath.substringBeforeLast('\\', "")
-            showLibrary()
-            return
-        }
+        if (tab == Tab.LISTS && picking) { picking = false; show(if (pickFromNow) Tab.NOW else Tab.LISTS); return }
         finish()
     }
 
@@ -182,14 +197,14 @@ class MusicActivity : Activity() {
         }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
 
-        val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         for ((i, t) in Tab.entries.withIndex()) {
             val view = TextView(this).apply {
-                text = getString(if (t == Tab.NOW) R.string.music_tab_now else R.string.music_tab_library)
+                text = getString(if (t == Tab.NOW) R.string.music_tab_now else R.string.music_tab_lists)
                 textSize = UiScale.TEXT_BASE
                 gravity = Gravity.CENTER
                 isClickable = true
-                setOnClickListener { addMode = false; show(t) }
+                setOnClickListener { picking = false; show(t) }
             }
             tabs.add(view)
             tabRow.addView(view, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { if (i > 0) marginStart = dp(UiScale.SPACE_S) })
@@ -205,8 +220,9 @@ class MusicActivity : Activity() {
     private fun show(next: Tab) {
         tab = next
         generation += 1
+        tabRow.visibility = if (singleMode) View.GONE else View.VISIBLE
         for ((i, view) in tabs.withIndex()) styleChoice(view, Tab.entries[i] == next)
-        if (next == Tab.NOW) showNow() else showLibrary()
+        if (next == Tab.NOW) showNow() else showLists()
     }
 
     private fun setPage(view: View) {
@@ -261,7 +277,8 @@ class MusicActivity : Activity() {
         val page = column()
         page.addView(playerWindow(), LinearLayout.LayoutParams(MATCH, WRAP))
         if (showEq) page.addView(eqWindow(), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
-        if (showList) page.addView(listWindow(), LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
+        if (singleMode) page.addView(singleWindow(), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
+        else if (showList) page.addView(listWindow(), LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         setPage(page)
         refreshNow()
     }
@@ -345,6 +362,7 @@ class MusicActivity : Activity() {
         // time: both at once left the list a title bar high on this screen.
         eqToggle = led(getString(R.string.music_eq_button), showEq) { showEq = !showEq; if (showEq) showList = false; showNow() }
         plToggle = led(getString(R.string.music_pl_button), showList) { showList = !showList; if (showList) showEq = false; showNow() }
+        if (singleMode) plToggle?.visibility = View.GONE
         sliders.addView(eqToggle, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_XS) })
         sliders.addView(plToggle, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(sliders, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
@@ -372,7 +390,10 @@ class MusicActivity : Activity() {
         controls.addView(control(R.drawable.ic_pixel_pause, R.string.music_pause_short) { MusicPlayer.pause(this) }, tight(1))
         controls.addView(control(R.drawable.ic_pixel_stop, R.string.music_stop) { MusicPlayer.stop(this) }, tight(1))
         controls.addView(control(R.drawable.ic_pixel_next, R.string.music_next) { MusicPlayer.next(this) }, tight(1))
-        controls.addView(control(R.drawable.ic_pixel_eject, R.string.music_open) { addMode = true; show(Tab.LIBRARY) }, tight(1))
+        // "เปิดไฟล์": the folder browser, to add to the list that is playing (0.59.0).
+        controls.addView(control(R.drawable.ic_pixel_eject, R.string.music_open) {
+            if (!singleMode) startPicker(PlaylistStore.read(this) { it.get(MusicPlayer.playlistId) }, fromNow = true)
+        }, tight(1))
         body.addView(controls, LinearLayout.LayoutParams(MATCH, dp(UiScale.ICON_BUTTON)).apply { topMargin = dp(UiScale.SPACE_XS) })
 
         // Row 5: shuffle and repeat, lit when on.
@@ -446,7 +467,7 @@ class MusicActivity : Activity() {
         body.addView(listTitle)
         if (MusicPlayer.queue.isEmpty) {
             body.addView(ampText(getString(R.string.music_queue_empty)).apply { setPadding(0, dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_S)) })
-            body.addView(ampButton(getString(R.string.music_go_library)) { addMode = true; show(Tab.LIBRARY) },
+            body.addView(ampButton(getString(R.string.music_go_library)) { show(Tab.LISTS) },
                          LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)))
             return body
         }
@@ -474,7 +495,7 @@ class MusicActivity : Activity() {
             divider = null
             setOnItemClickListener { _, _, position, _ ->
                 val index = adapter.shown[position]
-                if (selecting) { if (!selected.add(index)) selected.remove(index); refreshTools(); adapter.notifyDataSetChanged() }
+                if (selecting) { if (!selected.add(index)) selected.remove(index); refreshTools(); adapter.notifyDataSetChanged(); refreshNow() }
                 else MusicPlayer.jumpTo(this@MusicActivity, index)
             }
         }, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
@@ -506,20 +527,22 @@ class MusicActivity : Activity() {
             }
             selecting -> {
                 add(getString(R.string.music_list_select_all)) {
-                    selected.addAll(MusicPlayer.queue.tracks.indices); listAdapter?.notifyDataSetChanged(); refreshTools()
+                    selected.addAll(MusicPlayer.queue.tracks.indices); listAdapter?.notifyDataSetChanged(); refreshTools(); refreshNow()
                 }
-                add(getString(R.string.music_list_select_none)) { selected.clear(); listAdapter?.notifyDataSetChanged(); refreshTools() }
+                add(getString(R.string.music_list_select_none)) { selected.clear(); listAdapter?.notifyDataSetChanged(); refreshTools(); refreshNow() }
                 add(getString(R.string.music_list_remove_selected, selected.size)) {
                     if (selected.isEmpty()) { titleLine?.text = getString(R.string.music_list_pick_first) }
                     else { MusicPlayer.remove(this, selected.toSet()); selected.clear(); selecting = false; showNow() }
                 }
                 add(getString(R.string.music_list_done)) {
-                    selecting = false; selected.clear(); listAdapter?.notifyDataSetChanged(); refreshTools()
+                    selecting = false; selected.clear(); listAdapter?.notifyDataSetChanged(); refreshTools(); refreshNow()
                 }
             }
             else -> {
-                add(getString(R.string.music_list_add)) { addMode = true; show(Tab.LIBRARY) }
-                add(getString(R.string.music_list_remove)) { selecting = true; refreshTools(); listAdapter?.notifyDataSetChanged() }
+                add(getString(R.string.music_list_add)) {
+                    startPicker(PlaylistStore.read(this) { it.get(MusicPlayer.playlistId) }, fromNow = true)
+                }
+                add(getString(R.string.music_list_remove)) { selecting = true; refreshTools(); listAdapter?.notifyDataSetChanged(); refreshNow() }
                 add(getString(if (searching || listFilter.isNotEmpty()) R.string.music_list_search_close else R.string.music_list_search_button)) {
                     if (searching || listFilter.isNotEmpty()) { searching = false; listFilter = "" } else searching = true
                     showNow()
@@ -538,6 +561,14 @@ class MusicActivity : Activity() {
     }
 
     private fun refreshNow() {
+        // The file that played on its own ended by itself: the list is back, and so is its page.
+        // (Only once it was seen playing: it starts a moment after this page is drawn.)
+        if (singleMode && MusicPlayer.single) singleSeen = true
+        if (singleMode && singleSeen && !MusicPlayer.single) {
+            singleMode = false
+            show(Tab.NOW)
+            return
+        }
         val q = MusicPlayer.queue
         // A song chosen in the library sets the list a moment after this page
         // was drawn (the command runs on the main thread's next turn).
@@ -581,7 +612,12 @@ class MusicActivity : Activity() {
             text = MusicPlayer.error.orEmpty()
             visibility = if (MusicPlayer.error == null) View.GONE else View.VISIBLE
         }
-        listTitle?.text = getString(R.string.music_list_title, q.tracks.size)
+        // The list's name, or while choosing, how many are chosen — the real number.
+        listTitle?.text = if (selecting) getString(R.string.music_list_ticked, selected.size) else {
+            val name = PlaylistStore.read(this) { it.get(MusicPlayer.playlistId)?.name }
+            if (name != null) getString(R.string.music_list_title_named, name, q.tracks.size)
+            else getString(R.string.music_list_title, q.tracks.size)
+        }
         listAdapter?.refilter()
         refreshTime()
     }
@@ -636,6 +672,8 @@ class MusicActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = dp(UiScale.TOUCH)
                 setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
+                // 0.59.0: a box, and a box with a tick in it — they differ by shape, not by colour.
+                addView(ImageView(context), LinearLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M)).apply { marginEnd = dp(UiScale.SPACE_S) })
                 addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_BASE; maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
                         LinearLayout.LayoutParams(0, WRAP, 1f))
                 addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_BASE; setPadding(dp(UiScale.SPACE_S), 0, 0, 0) })
@@ -644,13 +682,17 @@ class MusicActivity : Activity() {
             val index = shown[position]
             val t = MusicPlayer.queue.tracks[index]
             val now = index == MusicPlayer.queue.currentIndex
-            val mark = when { selecting && index in selected -> "■ "; selecting -> "□ "; now -> "► "; else -> "" }
-            (row.getChildAt(0) as TextView).apply {
+            val mark = if (!selecting && now) "► " else ""
+            (row.getChildAt(0) as ImageView).apply {
+                visibility = if (selecting) View.VISIBLE else View.GONE
+                setImageResource(if (index in selected) R.drawable.ic_pixel_check_on else R.drawable.ic_pixel_check_off)
+            }
+            (row.getChildAt(1) as TextView).apply {
                 text = mark + "${index + 1}. " + listOf(t.artist, t.title).filter { it.isNotEmpty() }.joinToString(" - ")
                 setTextColor(color(if (now) R.color.amp_text else R.color.retro_lcd))
                 typeface = Typeface.create(thai, if (now) Typeface.BOLD else Typeface.NORMAL)
             }
-            (row.getChildAt(1) as TextView).apply {
+            (row.getChildAt(2) as TextView).apply {
                 text = if (t.durationMs > 0) clock(t.durationMs) else ""
                 setTextColor(color(if (now) R.color.amp_text else R.color.retro_lcd))
             }
@@ -723,228 +765,85 @@ class MusicActivity : Activity() {
     private fun tight(index: Int) =
         LinearLayout.LayoutParams(0, MATCH, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_XS) }
 
-    // ------------------------------------------------------------ "คลังเพลง"
+    // ------------------------------------------------------------ "Playlist" (0.59.0)
 
-    private fun showLibrary() {
+    /** The lists changed (made, renamed, added to): the page showing them redraws. */
+    private val listsListener: () -> Unit = { if (tab == Tab.LISTS && !picking) showLists() else if (tab == Tab.NOW) refreshNow() }
+
+    private var picking = false
+    private var pickFromNow = false
+    /** What the last "add" did, said once at the top of the next page. */
+    private var listNote: String? = null
+
+    private val playlists by lazy {
+        PlaylistsPage(retro, Playlist.Kind.MUSIC, object : PlaylistsPage.Host {
+            override fun play(list: Playlist) {
+                if (list.items.isEmpty()) return startPicker(list)
+                MusicPlayer.playPlaylist(this@MusicActivity, list)
+                show(Tab.NOW)
+            }
+            override fun addTo(list: Playlist) = startPicker(list)
+        })
+    }
+
+    private val picker by lazy {
+        MediaPicker(retro, worker, Playlist.Kind.MUSIC, object : MediaPicker.Host {
+            override fun added(count: Int, words: String) {
+                picking = false
+                listNote = words
+                show(if (pickFromNow) Tab.NOW else Tab.LISTS)
+            }
+            override fun cancelled() {
+                picking = false
+                show(if (pickFromNow) Tab.NOW else Tab.LISTS)
+            }
+        })
+    }
+
+    /** Choosing songs for [list] (null: the list made by voice) through the shared folder browser. */
+    private fun startPicker(list: Playlist?, fromNow: Boolean = false) {
+        pickFromNow = fromNow
+        picking = true
+        tab = Tab.LISTS
+        for ((i, view) in tabs.withIndex()) styleChoice(view, Tab.entries[i] == Tab.LISTS)
+        picker.start(list)
+        setPage(detached(picker.view))
+    }
+
+    private fun showLists() {
+        if (picking) { setPage(detached(picker.view)); return }
         val page = column()
-        // 0.54.1 (Poom): where the songs come from is an option row, sized to
-        // its words and flat — not a second row of navy tabs under the tabs.
-        val sources = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        listNote?.let {
+            page.addView(text(it, UiScale.TEXT_BASE).apply {
+                setBackgroundResource(R.drawable.retro_sunken)
+                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
+            listNote = null
         }
-        sources.addView(label(getString(R.string.music_source)))
-        sources.addView(option(getString(R.string.music_local), !onNas) { onNas = false; showLibrary() },
-                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
-        sources.addView(option(getString(R.string.music_nas), onNas) { onNas = true; showLibrary() },
-                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
-        page.addView(sources, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)))
-        if (addMode) {
-            // Adding to the list: said at the top, with the way back.
-            page.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                addView(label(getString(R.string.music_add_mode)), LinearLayout.LayoutParams(0, WRAP, 1f))
-                addView(button(getString(R.string.music_list_done)) { addMode = false; show(Tab.NOW) },
-                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
-            }, LinearLayout.LayoutParams(MATCH, WRAP))
-        }
-        if (onNas) nasPage(page) else localPage(page)
+        playlists.draw()
+        page.addView(detached(playlists.view), LinearLayout.LayoutParams(MATCH, 0, 1f))
         setPage(page)
     }
 
-    private fun localPage(page: LinearLayout) {
-        val search = EditText(this).apply {
-            typeface = thai; textSize = UiScale.TEXT_HEADING; setSingleLine(); hint = getString(R.string.music_search_hint)
-            imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setBackgroundResource(R.drawable.retro_field); setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
-            setTextColor(color(R.color.retro_text)); setHintTextColor(color(R.color.retro_dim))
-        }
-        page.addView(search, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
-        val status = text(getString(R.string.music_loading), UiScale.TEXT_BASE, dim = true)
-        page.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
-        val all = ArrayList<Track>()
-        var shown: List<Track> = emptyList()
-        val adapter = TrackAdapter(emptyList()) { -1 }
-        val playAll = button(getString(if (addMode) R.string.music_add_all_shown else R.string.music_play_all)) {
-            if (shown.isEmpty()) return@button
-            if (addMode) { MusicPlayer.add(this, shown); addMode = false; show(Tab.NOW) }
-            else { MusicPlayer.play(this, shown); show(Tab.NOW) }
-        }
-        page.addView(playAll, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
-        page.addView(list(adapter) { index ->
-            if (addMode) { MusicPlayer.add(this, listOf(shown[index])); status.text = getString(R.string.music_added, 1) }
-            else { MusicPlayer.play(this, shown, index); show(Tab.NOW) }
-        }, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
-        fun filter() {
-            val q = MusicLibrary.key(search.text.toString())
-            shown = if (q.isEmpty()) all else all.filter {
-                MusicLibrary.key(it.title + it.artist + it.album).contains(q)
-            }
-            adapter.set(shown)
-            status.text = when {
-                all.isEmpty() -> getString(R.string.music_local_empty)
-                shown.isEmpty() -> getString(R.string.music_search_none)
-                else -> "${shown.size} เพลง"
-            }
-            playAll.visibility = if (shown.isEmpty()) View.GONE else View.VISIBLE
-        }
-        search.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun afterTextChanged(s: Editable?) = filter()
-        })
-        val mine = generation
-        worker.execute {
-            val tracks = MusicShelf.local(this)
-            handler.post {
-                if (mine != generation) return@post
-                all.addAll(tracks)
-                filter()
-            }
-        }
+    /** A shared page's view, taken off the page it was on. */
+    private fun detached(view: View): View {
+        (view.parent as? ViewGroup)?.removeView(view)
+        return view
     }
 
-    private fun nasPage(page: LinearLayout) {
-        if (NasStore.load(this) == null) {
-            page.addView(text(getString(R.string.music_nas_not_set), UiScale.TEXT_ITEM).apply { setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0) })
-            return
+    /** In place of the list while a file plays on its own: what is happening, and the way back. */
+    private fun singleWindow(): View {
+        val body = column().apply {
+            background = AmpSkin.body(this@MusicActivity)
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
-        val pathRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        pathRow.addView(button("◄") { if (nasPath.isNotEmpty()) { nasPath = nasPath.substringBeforeLast('\\', ""); showLibrary() } },
-                        LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
-        pathRow.addView(text(("NAS › " + nasPath.replace("\\", " › ")).trimEnd(' ', '›'), UiScale.TEXT_BASE).apply {
-            setBackgroundResource(R.drawable.retro_field); gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.START
-        }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
-        page.addView(pathRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
-        val status = text(getString(R.string.music_loading), UiScale.TEXT_BASE, dim = true)
-        page.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
-        val entries = ArrayList<NasEntry>()
-        val adapter = EntryAdapter()
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE }
-        actions.addView(button(getString(R.string.music_nas_play_folder)) {
-            val songs = entries.filter { !it.folder && MusicLibrary.playable(it.name) }.map(::nasTrack)
-            if (songs.isNotEmpty()) { MusicPlayer.play(this, songs); show(Tab.NOW) }
-        }, weight(0, dp(UiScale.TOUCH)))
-        actions.addView(button(getString(R.string.music_nas_add)) {
-            status.text = getString(R.string.music_nas_adding)
-            val path = nasPath
-            val mine = generation
-            worker.execute {
-                val text = try { getString(R.string.music_nas_added, MusicShelf.addNasFolder(this, path)) }
-                           catch (e: Exception) { getString(R.string.music_nas_failed) }
-                handler.post { if (mine == generation) status.text = text + "  ·  " + libraryLine() }
-            }
-        }, weight(1, dp(UiScale.TOUCH)))
-        page.addView(actions, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
-        page.addView(list(adapter) { index ->
-            val entry = entries[index]
-            when {
-                entry.folder -> { nasPath = entry.path; showLibrary() }
-                MusicLibrary.playable(entry.name) && addMode -> {
-                    MusicPlayer.add(this, listOf(nasTrack(entry))); status.text = getString(R.string.music_added, 1)
-                }
-                MusicLibrary.playable(entry.name) -> {
-                    val songs = entries.filter { !it.folder && MusicLibrary.playable(it.name) }
-                    MusicPlayer.play(this, songs.map(::nasTrack), songs.indexOf(entry).coerceAtLeast(0))
-                    show(Tab.NOW)
-                }
-            }
-        }, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
-        adapter.entries = entries
-        val mine = generation
-        val path = nasPath
-        worker.execute {
-            val result = runCatching { NasSession.open(NasStore.load(this)!!).use { it.list(path) } }
-            handler.post {
-                if (mine != generation) return@post
-                result.onSuccess { list ->
-                    entries.addAll(list.filter { it.folder || MusicLibrary.playable(it.name) || MusicLibrary.unsupportedReason(it.name) != null })
-                    adapter.notifyDataSetChanged()
-                    val songs = entries.count { !it.folder && MusicLibrary.playable(it.name) }
-                    status.text = (if (songs == 0) getString(R.string.music_nas_no_music) else "$songs เพลง") + "  ·  " + libraryLine()
-                    actions.visibility = View.VISIBLE
-                }.onFailure { status.text = getString(R.string.music_nas_failed) }
-            }
-        }
-    }
-
-    private fun libraryLine(): String {
-        val folders = MusicShelf.nasFolders(this)
-        return getString(R.string.music_nas_library, folders.size, folders.sumOf { it.tracks.size })
-    }
-
-    private fun nasTrack(entry: NasEntry) =
-        Track(Track.NAS + entry.path, MusicLibrary.titleFromFile(entry.name), nasPath.substringAfterLast('\\'), "")
-
-    // ------------------------------------------------------------ lists
-
-    private fun list(adapter: BaseAdapter, onTap: (Int) -> Unit) = ListView(this).apply {
-        this.adapter = adapter
-        setBackgroundResource(R.drawable.retro_field)
-        divider = null
-        setOnItemClickListener { _, _, position, _ -> onTap(position) }
-    }
-
-    /** Songs: the title, then the artist dimmer; the one playing in navy, and says so. */
-    private inner class TrackAdapter(private var tracks: List<Track>, private val playing: () -> Int) : BaseAdapter() {
-        fun set(list: List<Track>) { tracks = list; notifyDataSetChanged() }
-        override fun getCount() = tracks.size
-        override fun getItem(position: Int) = tracks[position]
-        override fun getItemId(position: Int) = position.toLong()
-        override fun getView(position: Int, convert: View?, parent: ViewGroup?): View {
-            val row = (convert as? LinearLayout) ?: rowView()
-            val t = tracks[position]
-            val now = position == playing()
-            val title = row.getChildAt(0) as TextView
-            val sub = row.getChildAt(1) as TextView
-            title.text = (if (now) "▶ " else "") + t.title
-            sub.text = listOf(t.artist, t.album).filter { it.isNotEmpty() }.joinToString(" · ")
-            sub.visibility = if (sub.text.isEmpty()) View.GONE else View.VISIBLE
-            row.setBackgroundColor(if (now) color(R.color.retro_title) else 0)
-            title.setTextColor(color(if (now) R.color.retro_title_text else R.color.retro_text))
-            sub.setTextColor(color(if (now) R.color.retro_title_text else R.color.retro_dim))
-            row.contentDescription = t.title + if (now) " (กำลังเล่น)" else ""
-            return row
-        }
-    }
-
-    /** NAS entries: folders first (the share's order), songs, and formats not played, dimmed with why. */
-    private inner class EntryAdapter : BaseAdapter() {
-        var entries: List<NasEntry> = emptyList()
-        override fun getCount() = entries.size
-        override fun getItem(position: Int) = entries[position]
-        override fun getItemId(position: Int) = position.toLong()
-        override fun isEnabled(position: Int) = entries[position].let { it.folder || MusicLibrary.playable(it.name) }
-        override fun getView(position: Int, convert: View?, parent: ViewGroup?): View {
-            val row = (convert as? LinearLayout) ?: rowView()
-            val e = entries[position]
-            val title = row.getChildAt(0) as TextView
-            val sub = row.getChildAt(1) as TextView
-            title.text = e.name
-            val refused = MusicLibrary.unsupportedReason(e.name)
-            sub.text = when {
-                e.folder -> getString(R.string.music_folder)
-                refused != null -> getString(R.string.music_unsupported, refused)
-                else -> ""
-            }
-            sub.visibility = if (sub.text.isEmpty()) View.GONE else View.VISIBLE
-            title.setTextColor(color(if (refused != null) R.color.retro_dim else R.color.retro_text))
-            sub.setTextColor(color(R.color.retro_dim))
-            row.setBackgroundColor(0)
-            return row
-        }
-    }
-
-    private fun rowView() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(UiScale.ROW)
-        // Two lines and 4dp above and below: 56dp, the ROW, more songs to a screen.
-        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS))
-        addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_ITEM; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
-        addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_NOTE; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
-        layoutParams = ViewGroup.LayoutParams(MATCH, WRAP)
+        body.addView(ampText(getString(R.string.music_single_note)))
+        body.addView(ampButton(getString(R.string.music_single_back)) {
+            MusicPlayer.endSingle(this)
+            singleMode = false
+            show(Tab.NOW)
+        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
+        return body
     }
 
     // ------------------------------------------------------------ parts
@@ -965,20 +864,6 @@ class MusicActivity : Activity() {
             text = getString(word); typeface = thai; textSize = UiScale.TEXT_NOTE; setTextColor(color(R.color.amp_text))
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         })
-    }
-
-    /** A 1995 option button: ● chosen, ○ not, the word beside it; a 48dp target, no fill. */
-    private fun option(value: String, on: Boolean, onClick: () -> Unit) = TextView(this).apply {
-        text = (if (on) "● " else "○ ") + value
-        textSize = UiScale.TEXT_BASE
-        typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)
-        setTextColor(color(R.color.retro_text))
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
-        minWidth = dp(UiScale.TOUCH)
-        contentDescription = value + if (on) " (เลือกอยู่)" else ""
-        isClickable = true
-        setOnClickListener { if (!on) onClick() }
     }
 
     private fun styleChoice(view: TextView, on: Boolean, value: String = view.text.toString()) = view.apply {
@@ -1011,12 +896,7 @@ class MusicActivity : Activity() {
         setTextColor(color(if (dim) R.color.retro_dim else R.color.retro_text))
     }
 
-    private fun label(value: String) = text(value, UiScale.TEXT_NOTE).apply { typeface = Typeface.create(thai, Typeface.BOLD) }
-
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-
-    private fun weight(index: Int, height: Int = MATCH) =
-        LinearLayout.LayoutParams(0, height, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) }
 
     private fun clock(ms: Long): String {
         val s = (ms / 1000).coerceAtLeast(0)
