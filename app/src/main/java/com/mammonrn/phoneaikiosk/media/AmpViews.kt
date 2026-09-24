@@ -96,7 +96,8 @@ class SpectrumView(context: Context) : View(context) {
     override fun onDetachedFromWindow() { running = false; removeCallbacks(frame); super.onDetachedFromWindow() }
 
     private fun step() {
-        val playing = MusicPlayer.state == MusicPlayer.State.PLAYING
+        // Heat, step 1 and up: the bars stop (HeatLadder) — the one cost here that is only looks.
+        val playing = MusicPlayer.state == MusicPlayer.State.PLAYING && !HeatWatch.step.barsOff
         val fx = MusicPlayer.fx
         val samples = if (playing) fx.tap.at(MusicPlayer.positionMs * 1000) else null
         val next = if (samples != null) Spectrum.bars(samples, fx.tap.sampleRate) else FloatArray(Spectrum.BARS)

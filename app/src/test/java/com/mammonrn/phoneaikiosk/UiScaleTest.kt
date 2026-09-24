@@ -22,7 +22,8 @@ class UiScaleTest {
     private val screens: List<File> by lazy {
         file("$src/settings").listFiles()!!.filter { it.name.endsWith(".kt") } +
             listOf("files/FilesActivity.kt", "calc/CalculatorActivity.kt", "calc/ElectricalPages.kt",
-                   "media/MusicActivity.kt", "media/AmpViews.kt", "auth/VerifyActivity.kt").map { file("$src/$it") }
+                   "media/MusicActivity.kt", "media/AmpViews.kt", "media/VideoActivity.kt", "media/DvdViews.kt",
+                   "auth/VerifyActivity.kt").map { file("$src/$it") }
     }
 
     @Test
@@ -47,7 +48,9 @@ class UiScaleTest {
         val allowed = setOf("TOUCH", "PRIMARY", "ICON_BUTTON", "ROW", "ICON_S", "ICON_M", "ICON_L", "ICON_XL",
                             "CAMERA_H", "PATTERN_PAD", "PROGRESS", "DISPLAY_LINE",
                             // the music player's read-outs (0.55.0): read, never tapped
-                            "SPECTRUM_H", "AMP_LINE", "EQ_H")
+                            "SPECTRUM_H", "AMP_LINE", "EQ_H",
+                            // the video player's ring (0.56.0): a control bigger than a finger
+                            "VIDEO_RING")
         val bad = screens.flatMap { screen ->
             height.findAll(screen.readText()).map { it.groupValues[1] }.filter { it !in allowed }.map { "${screen.name}: $it" }
         }
@@ -60,6 +63,8 @@ class UiScaleTest {
         assertTrue(UiScale.TOUCH >= 48)
         assertTrue(UiScale.PRIMARY > UiScale.TOUCH && UiScale.ICON_BUTTON > UiScale.PRIMARY)
         assertTrue(UiScale.ROW >= UiScale.TOUCH && UiScale.SYMBOL_W >= UiScale.TOUCH)
+        // The ring's play button (45% of the ring) is a finger wide.
+        assertTrue(UiScale.VIDEO_RING * 0.45 >= UiScale.TOUCH)
         // Spacing on a 4dp grid, each step larger than the last.
         val spaces = listOf(UiScale.SPACE_XS, UiScale.SPACE_S, UiScale.SPACE_M, UiScale.SPACE_L)
         assertTrue(spaces.all { it % 4 == 0 } && spaces.zipWithNext().all { (a, b) -> b > a })

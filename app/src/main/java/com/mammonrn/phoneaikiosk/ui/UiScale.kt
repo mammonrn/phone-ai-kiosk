@@ -95,6 +95,17 @@ object UiScale {
     /** The equalizer's eleven sliders with their names under them. */
     const val EQ_H = 176
 
+    // ------------------------------------------------ the video player's panel (0.56.0)
+
+    /** The ring: play in its middle (45% of it, 58dp), the skips and the drag round it. */
+    const val VIDEO_RING = 128
+
+    /** Subtitles sit above the floating panel. */
+    const val VIDEO_CUE_BOTTOM = 232
+
+    /** A note over the picture sits under the top bar. */
+    const val VIDEO_NOTE_TOP = 64
+
     /** A progress bar that is read, not dragged. */
     const val PROGRESS = 24
 

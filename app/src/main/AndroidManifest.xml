@@ -183,6 +183,19 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- The video player (0.56.0): the playing in a service, so the sound plays
+             on when its screen closes, as the music does (DESIGN.md 12). -->
+        <service
+            android:name=".media.VideoService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Portrait like every screen here (DESIGN.md 1); landscape waits for Poom. -->
+        <activity
+            android:name=".media.VideoActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- The music player's screen (0.53.0), from the Control Panel. -->
         <activity
             android:name=".media.MusicActivity"

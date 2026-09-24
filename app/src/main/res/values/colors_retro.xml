@@ -45,4 +45,6 @@
     <color name="dvd_silver_dark">#FF7C828E</color>
     <color name="dvd_lcd_bg">#FF0E6E86</color>
     <color name="dvd_lcd_text">#FFB8F4FF</color>
+    <!-- Behind words laid over a picture: black at 70%. -->
+    <color name="video_scrim">#B3000000</color>
 </resources>

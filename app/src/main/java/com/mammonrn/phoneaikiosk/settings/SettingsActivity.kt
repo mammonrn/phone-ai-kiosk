@@ -896,6 +896,10 @@ class SettingsActivity : Activity() {
             Category(R.drawable.ic_pixel_music, { it.getString(R.string.window_music) }) {
                 it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
             },
+            // 0.56.0: the video player (media/VideoActivity); the sound plays on when it closes.
+            Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
+                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java))
+            },
         )
     }
 }

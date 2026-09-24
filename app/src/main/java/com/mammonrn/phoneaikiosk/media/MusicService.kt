@@ -88,6 +88,7 @@ object MusicPlayer {
     }
 
     fun play(context: Context, tracks: List<Track>, start: Int = 0) = run(context) {
+        VideoPlayer.quietForMusic(context)
         queue.set(tracks, start)
         resumeAtMs = 0
         it.load(queue.current, play = true)
@@ -96,7 +97,13 @@ object MusicPlayer {
     fun jumpTo(context: Context, index: Int) = run(context) { s -> resumeAtMs = 0; queue.jumpTo(index)?.let { s.load(it, true) } }
 
     /** Plays on from where it is, or starts the queue again after a stop. */
-    fun resume(context: Context) = run(context) { s -> if (s.loaded) s.player.play() else s.load(queue.current, true) }
+    fun resume(context: Context) = run(context) { s ->
+        VideoPlayer.quietForMusic(context)
+        if (s.loaded) s.player.play() else s.load(queue.current, true)
+    }
+
+    /** A video starting: playing music pauses (one sound at a time); stopped music is not woken. */
+    fun quietForVideo(context: Context) { if (state == State.PLAYING) pause(context) }
 
     fun pause(context: Context) = run(context) { it.player.pause() }
 
@@ -288,6 +295,12 @@ class MusicService : Service(), WakePause.Media {
         }
     }
 
+    /** The heat ladder's top steps, for the music: pause, then stop (the bars stop by themselves). */
+    private val heat: (HeatLadder.Step) -> Unit = { step ->
+        if (step.stop) stopAll()
+        else if (step.pause && player.playWhenReady) { player.pause(); MusicPlayer.error = getString(R.string.video_heat_pause) }
+    }
+
     /** A NAS song's length is known once it plays: the list shows it from then on. */
     private fun learnDuration() {
         val ms = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
@@ -348,6 +361,8 @@ class MusicService : Service(), WakePause.Media {
                 if (next != null) load(next, true) else stopAll()
             }
         })
+        HeatWatch.start(this)
+        HeatWatch.listeners.add(heat)
         startInForeground()
         handler.postDelayed(saver, SAVE_MS)
         MusicPlayer.attach(this)
@@ -362,6 +377,7 @@ class MusicService : Service(), WakePause.Media {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        HeatWatch.listeners.remove(heat)
         MusicPlayer.saved(this)
         releaseHold()
         handler.removeCallbacksAndMessages(null)

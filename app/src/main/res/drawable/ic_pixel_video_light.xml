@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.56.0): the film strip in white with a teal frame, for
+     navy title bars and the notification (DESIGN.md 6: light on navy). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFF" android:pathData="M1,2h14v2h-14z M1,12h14v2h-14z M1,4h2v8h-2z M13,4h2v8h-2z" />
+    <path android:fillColor="#B8F4FF" android:pathData="M4,5h8v6h-8z" />
+</vector>

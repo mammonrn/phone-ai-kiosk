@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.56.0): a strip of film — black with holes — and a teal
+     frame in it, for the Control Panel's grey. 16x16, three colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M1,2h14v12h-14z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M2,3h1v1h-1z M5,3h1v1h-1z M8,3h1v1h-1z M11,3h1v1h-1z M13,3h1v1h-1z
+        M2,12h1v1h-1z M5,12h1v1h-1z M8,12h1v1h-1z M11,12h1v1h-1z M13,12h1v1h-1z" />
+    <path android:fillColor="#0E6E86" android:pathData="M3,5h10v6h-10z" />
+</vector>
