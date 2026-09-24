@@ -137,6 +137,7 @@ class VlcDeck(context: Context, private val events: Events) {
         lengthMs = 0
         startAtMs = startMs
         seekTries = 0
+        shownSize = null
         val m = if (track.onNas) nasMedia(track) else Media(lib(app), Uri.fromFile(java.io.File(track.path)))
         // Kept (and released at stop): the player's getMedia() would take a reference each time it is asked.
         media = m
@@ -224,7 +225,15 @@ class VlcDeck(context: Context, private val events: Events) {
             val h = if (surface.height > 0) surface.height else m.widthPixels * 9 / 16
             vout.setWindowSize(w, h)
             Log.i(TAG, "vlc: window ${w}x$h at attach")
-            vout.attachViews()
+            // VLC says the picture's size here; the track list of a VCD has none (0.60.0: the
+            // screen stayed 16:9 and the 4:3 picture was drawn small inside it).
+            vout.attachViews { _, _, _, visibleW, visibleH, sarNum, sarDen ->
+                if (visibleW > 0 && visibleH > 0) {
+                    val sar = if (sarNum > 0 && sarDen > 0) sarNum.toDouble() / sarDen else 1.0
+                    shownSize = (visibleW * sar).toInt() to visibleH
+                    events.onVideo(shownSize!!.first, visibleH)
+                }
+            }
             viewAttached = true
         }
     }
@@ -243,8 +252,12 @@ class VlcDeck(context: Context, private val events: Events) {
         if (viewAttached && width > 0) player.vlcVout.setWindowSize(width, height)
     }
 
+    /** The picture's size as VLC laid it out (sample aspect applied); null before it is known. */
+    private var shownSize: Pair<Int, Int>? = null
+
     /** The picture as it is shown (its sample aspect applied), or null before it is known. */
     fun videoSize(): Pair<Int, Int>? {
+        shownSize?.let { return it }
         val t = player.currentVideoTrack ?: return null
         if (t.width <= 0 || t.height <= 0) return null
         val sar = if (t.sarNum > 0 && t.sarDen > 0) t.sarNum.toDouble() / t.sarDen else 1.0
