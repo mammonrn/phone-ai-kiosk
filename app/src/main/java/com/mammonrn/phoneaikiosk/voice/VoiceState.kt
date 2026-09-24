@@ -113,6 +113,9 @@ object VoiceState : VoiceSink {
     /** Why the broker's gate stopped the last transcript, or "" if it did not. */
     @Volatile var lastGate: String = ""
 
+    /** Bumped when the broker says it switched a light (home_updated): redraw the card now. */
+    @Volatile var homeVersion: Int = 0
+
     /** Bumped whenever the alarms change or one starts or stops ringing. */
     @Volatile var alarmsVersion: Int = 0
 

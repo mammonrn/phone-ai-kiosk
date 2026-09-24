@@ -286,8 +286,16 @@ def claims_maps(reply: str) -> bool:
 def truthful(reply: str, action: dict | None) -> tuple[str, bool]:
     """(the reply to speak, whether it was replaced). A reply that says the map
     is opening goes out only with an open_maps action beside it; without one
-    it becomes MAPS_FAILED_REPLY. The words and the action always agree."""
+    it becomes MAPS_FAILED_REPLY. The words and the action always agree.
+
+    The lights (0.46.0): only lights.handle switches a light, in code, and it
+    never goes through here — so a MODEL reply that says a light was switched
+    is always untrue, and becomes lights.NOT_DONE_REPLY."""
+    from . import lights  # noqa: PLC0415
+
     opening = action is not None and action.get("type") == "open_maps"
     if not opening and claims_maps(reply):
         return MAPS_FAILED_REPLY, True
+    if lights.claims_lights(reply):
+        return lights.NOT_DONE_REPLY, True
     return reply, False

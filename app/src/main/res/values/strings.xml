@@ -27,6 +27,8 @@
     <!-- 0.45.0, the "อุปกรณ์ในบ้าน" card's dim last line (home/HomeCard). -->
     <string name="home_more">และอีก %1$d รายการ</string>
     <string name="home_source">จาก %1$s · อ่านอย่างเดียว</string>
+    <string name="home_source_switch">จาก %1$s · กดปุ่มเพื่อสั่งเปิดหรือปิด</string>
+    <string name="home_switching">กำลังสั่ง…</string>
     <string name="home_stale">ข้อมูลเมื่อ %1$d นาทีก่อน</string>
     <!-- Title bar of the gold window when the broker sends the purity. The
          WORD is there on purpose: the body carries a price move that is also a

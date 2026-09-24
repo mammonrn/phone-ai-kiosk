@@ -125,6 +125,9 @@ class MainActivity : Activity() {
     private lateinit var alarmsBody: TextView
     private lateinit var alarmStop: TextView
     private var shownAlarmsVersion = -1
+
+    /** VoiceState.homeVersion when the card last asked; a spoken switch bumps it. */
+    private var shownHomeVersion = 0
     private var alarmsVisible = false
     private lateinit var sunriseText: TextView
     private lateinit var sunsetText: TextView
@@ -187,9 +190,19 @@ class MainActivity : Activity() {
     /** The last turn on screen, for a minute. */
     private val recentTurn = FadingLine()
 
-    /** What the Google Home button does. Not connected this phase. */
     /** What the "อุปกรณ์ในบ้าน" card shows; null keeps it hidden. */
     private var homeCard: HomeCard.Card? = null
+
+    /** The row being switched (its key) while the broker answers; one at a time. */
+    private var homePending: String? = null
+
+    /** What the broker said about the last tap, shown under the rows for a minute. */
+    private var homeMessage: String? = null
+
+    private val clearHomeMessage = Runnable {
+        homeMessage = null
+        showHome(homeCard)
+    }
 
     /**
      * 12-hour with AM/PM, as Poom asked, and in Locale.US on purpose: under the
@@ -241,6 +254,12 @@ class MainActivity : Activity() {
                 }
             if (line != shownTranscript) showTranscript(line)
             if (VoiceState.alarmsVersion != shownAlarmsVersion) showAlarms(nowMs)
+            if (VoiceState.homeVersion != shownHomeVersion) {
+                // Jarvis just switched a light: ask for the card now, not in a minute.
+                shownHomeVersion = VoiceState.homeVersion
+                handler.removeCallbacks(refreshDashboard)
+                handler.post(refreshDashboard)
+            }
             renderCards(nowMs)
             jarvisState.text = DashboardState.jarvisState(
                 VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
@@ -630,11 +649,18 @@ class MainActivity : Activity() {
     }
 
     /**
-     * The "อุปกรณ์ในบ้าน" card (0.45.0): one row per light or light switch —
-     * name and room on the left, the state in words on the right ("เปิด",
-     * "ปิด", "เปิด 1 จาก 3", "ออฟไลน์"), never a colour alone. At most
-     * HomeCard.MAX_ROWS rows; the rest is counted. A dim line under them says
-     * where it came from, that it is read only, and how old it is when stale.
+     * The "อุปกรณ์ในบ้าน" card (0.45.0): one row per light (one per channel of
+     * a multi-way switch) — name and room on the left, the state in words on
+     * the right ("เปิด", "ปิด", "ออฟไลน์"), never a colour alone. At most
+     * HomeCard.MAX_ROWS rows; the rest is counted.
+     *
+     * 0.46.0: a row the broker lets this screen switch ends in a raised button
+     * that says what a tap does ("สั่งเปิด" / "สั่งปิด", 48dp high). Offline,
+     * not allowed, or switching stopped: no button, the state word only.
+     * While the broker answers the button reads "กำลังสั่ง…" and every
+     * button waits; then the line under the rows says what eWeLink really did
+     * (DESIGN 5ง). A dim line says where it came from, and how old it is
+     * when stale.
      */
     private fun showHome(card: HomeCard.Card?) {
         homeCard = card
@@ -642,11 +668,16 @@ class MainActivity : Activity() {
         val system = card?.systems?.firstOrNull() ?: return
         val plex = ResourcesCompat.getFont(this, R.font.plex_thai)
         val (rows, more) = HomeCard.rows(system)
+        val switchable = system.devices.any { HomeCard.canSwitch(card, it) }
         for ((index, device) in rows.withIndex()) {
+            val canSwitch = HomeCard.canSwitch(card, device)
             homePage.addView(android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.HORIZONTAL
-                isBaselineAligned = true
-                if (index > 0) setPadding(0, dp(3), 0, 0)
+                // A row with a button centres on it; a word-only row keeps the
+                // text baselines of 0.45.0.
+                isBaselineAligned = !switchable
+                if (switchable) gravity = android.view.Gravity.CENTER_VERTICAL
+                if (index > 0) setPadding(0, dp(if (switchable) 4 else 3), 0, 0)
                 addView(TextView(this@MainActivity).apply {
                     text = HomeCard.label(device)
                     textSize = sp(R.dimen.type_secondary)
@@ -667,13 +698,58 @@ class MainActivity : Activity() {
                     includeFontPadding = false
                     setPadding(dp(8), 0, 0, 0)
                 })
+                if (switchable) {
+                    // Every row keeps the button's width, with or without one,
+                    // so the state words stay in one column.
+                    val pending = homePending != null
+                    val mine = pending && homePending == device.target
+                    addView(TextView(this@MainActivity).apply {
+                        text = when {
+                            mine -> getString(R.string.home_switching)
+                            canSwitch -> HomeCard.buttonWord(device)
+                            else -> ""
+                        }
+                        textSize = sp(R.dimen.type_secondary)
+                        typeface = android.graphics.Typeface.create(plex, android.graphics.Typeface.BOLD)
+                        gravity = android.view.Gravity.CENTER
+                        maxLines = 1
+                        includeFontPadding = false
+                        if (canSwitch) {
+                            setBackgroundResource(R.drawable.retro_button)
+                            setTextColor(ContextCompat.getColor(this@MainActivity,
+                                if (pending) R.color.retro_dim else R.color.retro_text))
+                            contentDescription = "${HomeCard.buttonWord(device)} ${device.name}"
+                            isEnabled = !pending
+                            isClickable = !pending
+                            if (!pending) setOnClickListener { switchHome(device) }
+                        } else {
+                            visibility = android.view.View.INVISIBLE
+                        }
+                    }, android.widget.LinearLayout.LayoutParams(dp(84), dp(48)).apply { leftMargin = dp(8) })
+                }
             })
         }
+        val message = homeMessage
         val foot = buildList {
             if (more > 0) add(getString(R.string.home_more, more))
-            add(getString(R.string.home_source, system.name))
+            add(if (switchable) getString(R.string.home_source_switch, system.name)
+                else getString(R.string.home_source, system.name))
             if (card.stale && card.ageSeconds >= 60) add(getString(R.string.home_stale, card.ageSeconds / 60))
         }.joinToString(" · ")
+        if (message != null) {
+            // What eWeLink really did, in the broker's words, where the eye
+            // already is: under the row that was tapped. Not dim — it is news.
+            homePage.addView(TextView(this).apply {
+                text = message
+                textSize = sp(R.dimen.type_secondary)
+                typeface = plex
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_text))
+                setPadding(0, dp(5), 0, 0)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
+            })
+        }
         homePage.addView(TextView(this).apply {
             text = RetroType.pixelify(foot, pixelFace)
             textSize = sp(R.dimen.type_label)
@@ -684,6 +760,38 @@ class MainActivity : Activity() {
             ellipsize = android.text.TextUtils.TruncateAt.END
         })
         homePages.news("ewelink", HomeCard.signature(card), SystemClock.elapsedRealtime())
+    }
+
+    /**
+     * A tap on a row's button (0.46.0). The phone sends the row's opaque key
+     * and the state the button promised; the broker checks everything again
+     * and answers what eWeLink really did. Only that answer changes the row —
+     * never the tap itself — so the card cannot say "เปิด" for a light that
+     * stayed off. The log has the outcome only: no name, no key.
+     */
+    private fun switchHome(device: HomeCard.Device) {
+        val target = device.target ?: return
+        if (homePending != null) return
+        val on = device.on != true
+        homePending = target
+        homeMessage = null
+        handler.removeCallbacks(clearHomeMessage)
+        showHome(homeCard)
+        dashboardThread.execute {
+            val token = TokenStore(this@MainActivity).token()
+            val body = if (token.isNullOrEmpty()) ""
+                       else runCatching { Broker(VoiceState.brokerBaseUrl, token).homeSwitch(target, on) }
+                               .getOrDefault("")
+            val switched = HomeCard.parseSwitched(body)
+            Log.i(DASHBOARD_TAG, "home switch on=$on ok=${switched.ok} online=${switched.online}")
+            handler.post {
+                homePending = null
+                homeMessage = switched.message
+                val card = homeCard
+                showHome(if (card == null) null else HomeCard.apply(card, target, switched))
+                handler.postDelayed(clearHomeMessage, HOME_MESSAGE_MILLIS)
+            }
+        }
     }
 
     /** A size from res/values/type_scale.xml, in sp — the one type scale. */
@@ -1094,6 +1202,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         networkWatch?.stop()
         networkWatch = null
+        handler.removeCallbacks(clearHomeMessage)
         super.onDestroy()
     }
 
@@ -1495,6 +1604,9 @@ class MainActivity : Activity() {
          *  shows the screen refreshing without the voice pipeline's
          *  traffic on top of it. */
         const val DASHBOARD_TAG = "KioskDashboard"
+
+        /** How long the line saying what a tap did stays under the rows. */
+        const val HOME_MESSAGE_MILLIS = 60_000L
 
         /** `adb logcat -s KioskScreen:*` for the idle rule on its own. */
         const val SCREEN_TAG = "KioskScreen"

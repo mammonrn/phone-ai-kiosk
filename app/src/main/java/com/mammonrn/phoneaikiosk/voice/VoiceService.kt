@@ -629,6 +629,13 @@ class VoiceService : Service() {
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
         if (action.type == KioskAction.SET_ALARM) return setAlarm(action)
         if (action.type == KioskAction.ALARM_ENABLE) return enableAlarm(action)
+        if (action.type == KioskAction.HOME_UPDATED) {
+            // The light is already switched (the broker did it) and the reply
+            // says so. Here only the card is told to ask again.
+            VoiceState.homeVersion += 1
+            VoiceState.lastAction = "home_updated"
+            return null
+        }
         if (action.type != KioskAction.OPEN_MAPS) {
             Log.w(TAG, "refused action type=${action.type}")
             VoiceState.lastAction = "${action.type}:refused"

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from kiosk_broker import envfile, ewelink, ewelink_cli, vault
+from kiosk_broker import envfile, ewelink, ewelink_cli, home_control, vault
 from kiosk_broker.service import handle_ewelink_callback, handle_ewelink_start
 
 APP = ewelink.App("TESTAPPID0000000000000000000abcd", "test-secret-never-real")
@@ -30,9 +30,9 @@ AT, RT = "access-token-SECRET-1", "refresh-token-SECRET-1"
 @pytest.fixture(autouse=True)
 def _no_wait(monkeypatch):
     monkeypatch.setattr(ewelink, "MIN_INTERVAL", 0.0)
-    ewelink._cache.clear()
+    home_control.forget()
     yield
-    ewelink._cache.clear()
+    home_control.forget()
 
 
 def _expected_sign(body: bytes) -> str:
@@ -49,6 +49,9 @@ class Cloud:
         self.things = things if things is not None else THINGS
         self.family = family if family is not None else FAMILY
         self.fail = dict(fail or {})
+        self.status_error = 0
+        self.batch_errors: dict[str, int] = {}
+        self.batch_missing: set[str] = set()
 
     def __call__(self, method, url, headers, body):
         self.requests.append((method, url, headers, body))
@@ -77,6 +80,14 @@ class Cloud:
             return 200, json.dumps({"error": 0, "msg": "", "data": self.family}).encode()
         if path == "/v2/device/thing":
             return 200, json.dumps({"error": 0, "msg": "", "data": self.things}).encode()
+        if path == "/v2/device/thing/status" and method == "POST":
+            assert headers["Content-Type"] == "application/json"
+            return 200, json.dumps({"error": self.status_error, "msg": "", "data": {}}).encode()
+        if path == "/v2/device/thing/batch-status":
+            sent = json.loads(body)
+            resp = [{"type": 1, "id": t["id"], "error": self.batch_errors.get(t["id"], 0)}
+                    for t in sent["thingList"] if t["id"] not in self.batch_missing]
+            return 200, json.dumps({"error": 0, "msg": "", "data": {"respList": resp}}).encode()
         if path == "/v2/user/oauth/token" and method == "DELETE":
             return 200, json.dumps({"error": 0, "msg": "", "data": {}}).encode()
         return 200, json.dumps({"error": 403, "msg": "api not found", "data": {}}).encode()
@@ -330,16 +341,23 @@ def test_the_house_is_read_and_reduced_to_what_a_person_needs(conn, tmp_path):
     assert len(thing_calls) == 1 and "familyid=fam1" in thing_calls[0][1]
 
 
-def test_this_round_sends_no_command_at_all():
+def test_only_send_posts_a_command():
     code = Path(ewelink.__file__).read_text(encoding="utf-8")
-    body = code.split('"""', 2)[2]         # past the module docstring, which names them
-    assert "/v2/device/thing/status" not in body and "batch-status" not in body
-    assert ewelink.ACTION_TYPE == "set_light"
+    body = code.split('"""', 2)[2]         # past the module docstring
+    # The two command endpoints appear in send() and nowhere else.
+    for path in ('"/v2/device/thing/status"', '"/v2/device/thing/batch-status"'):
+        assert body.count(path) == 1 and body.index(path) > body.index("def send(")
     from kiosk_broker import actions
-    assert ewelink.ACTION_TYPE not in actions.ENABLED_ACTION_TYPES
+    assert "set_light" not in actions.ENABLED_ACTION_TYPES     # a model can never ask for one
 
 
-# --------------------------------------------------------------- the gate
+def test_channel_names_come_from_the_tags_eWeLink_carries():
+    assert ewelink.channel_names({"ck_channel_name": {"0": "ไฟหน้าบ้าน", "2": " ไฟครัว "}}, 4) == \
+        ["ไฟหน้าบ้าน", "", "ไฟครัว", ""]
+    assert ewelink.channel_names({"ck_channel_name": ["a", "b"]}, 3) == ["a", "b", ""]
+    assert ewelink.channel_names({}, 2) == ["", ""]
+    assert ewelink.channel_names({"ck_channel_name": {"9": "x", "zz": "y"}}, 2) == ["", ""]
+
 
 @pytest.mark.parametrize("uiid,name,kind", [
     (1257, "ไฟห้องนั่งเล่น", "light"), (22, "Bulb", "light"), (3256, "สวิตช์ห้องครัว", "switch"),
@@ -359,72 +377,63 @@ def _device(**over):
     return d
 
 
-def test_the_designed_switch_allows_only_an_allowlisted_light_on_or_off():
-    allow = {"1000aaaa01": None, "1000bbbb02": {0}}
+def test_the_switch_allows_only_an_allowlisted_light_switch_or_plug_on_or_off():
+    allow = {"1000aaaa01": None, "1000bbbb02": {0}, "1000cccc03": None}
     assert ewelink.plan_switch(_device(), on=True, channel=None, allowlist=allow) == \
         {"type": 1, "id": "1000aaaa01", "params": {"switch": "on"}}
     assert ewelink.plan_switch(_device(uiid=22, power_key="state"), on=False, channel=None,
                                allowlist=allow)["params"] == {"state": "off"}
-    multi = _device(id="1000bbbb02", uiid=3256, name="สวิตช์", channels=[False, True, False])
+    # Poom 2026-09-24: a plug on the allowlist may be switched (Light1, Light2).
+    assert ewelink.plan_switch(_device(id="1000cccc03", uiid=1, name="Light1"), on=True, channel=None,
+                               allowlist=allow)["params"] == {"switch": "on"}
+    multi = _device(id="1000bbbb02", uiid=8, name="Switch1", channels=[False, True, False, False])
+    # Only the channel being changed — never the other three.
     assert ewelink.plan_switch(multi, on=True, channel=0, allowlist=allow)["params"] == \
         {"switches": [{"switch": "on", "outlet": 0}]}
     for bad in (
-        dict(device=multi, on=True, channel=1),                          # channel not allowed
+        dict(device=multi, on=True, channel=1),                                # channel not allowed
         dict(device=multi, on=True, channel=None),
-        dict(device=_device(id="nope"), on=True, channel=None),           # not allowlisted
-        dict(device=_device(), on="yes", channel=None),                   # not on/off
-        dict(device=_device(uiid=1, name="ปลั๊ก"), on=True, channel=None),   # a plug
+        dict(device=multi, on=True, channel=7),
+        dict(device=_device(id="nope"), on=True, channel=None),                 # not allowlisted
+        dict(device=_device(id="nope", uiid=1, name="ปลั๊ก"), on=True, channel=None),   # a plug NOT allowlisted
+        dict(device=_device(), on="yes", channel=None),                         # not on/off
         dict(device=_device(power_key=""), on=True, channel=None),
+        dict(device=_device(uiid=15, name="Thermostat"), on=True, channel=None),  # not a light
     ):
         with pytest.raises(ewelink.NotAllowed):
             ewelink.plan_switch(bad["device"], on=bad["on"], channel=bad["channel"], allowlist=allow)
 
 
 def test_the_allowlist_cannot_let_a_forbidden_device_through():
-    for device in (_device(uiid=171), _device(name="ประตูรั้ว"), _device(uiid=28), _device(name="Garage")):
+    for device in (_device(uiid=171), _device(name="ประตูรั้ว"), _device(uiid=28), _device(name="Garage"),
+                   _device(uiid=1, name="ม่านห้องนอน"), _device(uiid=91), _device(uiid=165)):
         with pytest.raises(ewelink.NotAllowed, match="forbidden"):
             ewelink.plan_switch(device, on=True, channel=None, allowlist={device["id"]: None})
 
 
-# ------------------------------------------------------------- the card
-
-def test_the_card_is_hidden_until_connected(conn, tmp_path):
-    key, token = _paths(tmp_path)
-    assert ewelink.card(lambda n: None, key_path=key, token_path=token, conn=conn) == \
-        {"ok": False, "error": "not-connected"}
-
-
-def test_the_card_carries_lights_and_switches_by_name_never_an_id(conn, tmp_path):
+def test_send_reports_what_eWeLink_answered_never_what_was_asked(conn, tmp_path):
     cloud = Cloud()
     key, token, _ = _connect(conn, tmp_path, cloud)
-    secret = {"EWELINK_APP_ID": APP.app_id, "EWELINK_APP_SECRET": APP.app_secret}.get
-    card = ewelink.card(secret, key_path=key, token_path=token, conn=conn, transport=cloud, now=NOW + 60)
-    assert card["ok"] is True and card["age_seconds"] == 0
-    names = [d["name"] for d in card["systems"][0]["devices"]]
-    assert names == ["ไฟห้องนั่งเล่น", "สวิตช์ 3 ช่อง", "หลอดไฟ"]     # no gate, camera or plug
-    blob = json.dumps(card, ensure_ascii=False)
-    assert "1000" not in blob and AT not in blob and "uiid" not in blob
-    calls = len(cloud.requests)
-    again = ewelink.card(secret, key_path=key, token_path=token, conn=conn, transport=cloud, now=NOW + 300)
-    assert len(cloud.requests) == calls and again["age_seconds"] == 240     # cached ten minutes
-
-
-def test_a_failing_eWeLink_is_asked_again_only_after_five_minutes(conn, tmp_path):
-    key, token, _ = _connect(conn, tmp_path)
-    secret = {"EWELINK_APP_ID": APP.app_id, "EWELINK_APP_SECRET": APP.app_secret}.get
-    asked = []
-
-    def down(*args):
-        asked.append(args)
-        return 500, b'{"error":500,"msg":"","data":{}}'
-
-    assert ewelink.card(secret, key_path=key, token_path=token, conn=conn, transport=down,
-                        now=NOW + 60)["ok"] is False
-    n = len(asked)
-    ewelink.card(secret, key_path=key, token_path=token, conn=conn, transport=down, now=NOW + 120)
-    assert len(asked) == n
-    ewelink.card(secret, key_path=key, token_path=token, conn=conn, transport=down, now=NOW + 400)
-    assert len(asked) > n
+    cloud.status_error = 30022
+    one = [{"type": 1, "id": "1000aaaa01", "params": {"switch": "on"}}]
+    assert ewelink.send(APP, key_path=key, token_path=token, conn=conn, commands=one,
+                        transport=cloud, now=NOW + 60) == {"1000aaaa01": "offline"}
+    cloud.status_error = 0
+    assert ewelink.send(APP, key_path=key, token_path=token, conn=conn, commands=one,
+                        transport=cloud, now=NOW + 61) == {"1000aaaa01": "ok"}
+    many = one + [{"type": 1, "id": "1000bbbb02", "params": {"switches": [{"switch": "on", "outlet": 0}]}},
+                  {"type": 1, "id": "1000bbbb02", "params": {"switches": [{"switch": "on", "outlet": 2}]}},
+                  {"type": 1, "id": "1000cccc03", "params": {"state": "on"}}]
+    cloud.batch_errors = {"1000cccc03": 30022}
+    cloud.batch_missing = {"1000bbbb02"}
+    got = ewelink.send(APP, key_path=key, token_path=token, conn=conn, commands=many,
+                       transport=cloud, now=NOW + 62)
+    # Not answered is not done; the two channels went as ONE command.
+    assert got == {"1000aaaa01": "ok", "1000bbbb02": "failed:-2", "1000cccc03": "offline"}
+    sent = json.loads(cloud.requests[-1][3])
+    assert sent["timeout"] == 6000 and len(sent["thingList"]) == 3
+    merged = next(t for t in sent["thingList"] if t["id"] == "1000bbbb02")
+    assert merged["params"] == {"switches": [{"switch": "on", "outlet": 0}, {"switch": "on", "outlet": 2}]}
 
 
 # ------------------------------------------------------------ the CLI

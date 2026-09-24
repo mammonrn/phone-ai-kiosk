@@ -12,8 +12,9 @@ import java.io.File
 
 /**
  * The "อุปกรณ์ในบ้าน" card (0.45.0): hidden until the broker has devices,
- * states in words, news only when a light changes, and nothing on the phone
- * that could switch anything.
+ * states in words, news only when a light changes. 0.46.0: a button only
+ * where the broker gave a key, and the row changes only with the broker's
+ * answer — the phone still holds no id, token or eWeLink address.
  */
 class HomeCardTest {
 
@@ -78,16 +79,59 @@ class HomeCardTest {
         assertEquals(3, more)
     }
 
+    private val switching = dashboard("""{"ok": true, "age_seconds": 0, "control": true, "systems": [{"id": "ewelink",
+        "name": "eWeLink", "devices": [
+        {"name": "Light1", "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "channels": [], "target": "k1aa"},
+        {"name": "Light2", "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "channels": [], "target": "k2bb"},
+        {"name": "ไฟหน้าบ้าน", "room": "", "kind": "switch", "online": true, "on": false, "channels": [], "target": "k3cc"},
+        {"name": "ไฟโต๊ะ", "room": "", "kind": "switch", "online": true, "on": false, "channels": []},
+        {"name": "แปลก", "room": "", "kind": "light", "online": true, "on": false, "channels": [], "target": "https://x/y"}]}]}""")
+
     @Test
-    fun `the phone holds nothing that could switch a light`() {
+    fun `a button only where the broker gave a key, the light is online and switching is on`() {
+        val card = HomeCard.parse(switching)!!
+        val d = card.systems.single().devices
+        assertEquals(listOf(true, false, true, false, false), d.map { HomeCard.canSwitch(card, it) })
+        assertNull("a key that is not a key is dropped", d[4].target)
+        assertEquals("สั่งปิด", HomeCard.buttonWord(d[0]))
+        assertEquals("สั่งเปิด", HomeCard.buttonWord(d[2]))
+        // ewelink-control off: the broker sends control=false and no keys.
+        val stopped = HomeCard.parse(switching.replace("\"control\": true", "\"control\": false"))!!
+        assertTrue(stopped.systems.single().devices.none { HomeCard.canSwitch(stopped, it) })
+        assertFalse(HomeCard.parse(connected)!!.control)                      // a 0.45.0 broker: read only
+    }
+
+    @Test
+    fun `the row changes only with what the broker says eWeLink did`() {
+        val card = HomeCard.parse(switching)!!
+        val done = HomeCard.parseSwitched("""{"ok": true, "result": "ok", "on": false, "online": true,
+            "message": "ปิด Light1 แล้วครับ"}""")
+        assertEquals("ปิด Light1 แล้วครับ", done.message)
+        assertEquals(false, HomeCard.apply(card, "k1aa", done).systems.single().devices[0].on)
+        val offline = HomeCard.parseSwitched("""{"ok": false, "result": "offline", "on": null, "online": false,
+            "message": "Light1 ออฟไลน์อยู่ครับ ยังสั่งไม่ได้"}""")
+        val after = HomeCard.apply(card, "k1aa", offline).systems.single().devices[0]
+        assertEquals(true, after.on)                                            // not changed by the tap
+        assertFalse(after.online)
+        // A refusal or no answer: words, and nothing changes.
+        assertEquals("ระบบขัดข้องครับ กรุณาลองใหม่อีกครั้ง", HomeCard.parseSwitched("").message)
+        assertFalse(HomeCard.parseSwitched("""{"ok": false, "message": "สั่งไฟถี่เกินไปครับ"}""").ok)
+        assertEquals(card, HomeCard.apply(card, "k1aa", HomeCard.parseSwitched("")))
+    }
+
+    @Test
+    fun `the phone holds no id, token or eWeLink address`() {
         val code = listOf("src/main/java/com/mammonrn/phoneaikiosk/home/HomeCard.kt",
                           "src/main/java/com/mammonrn/phoneaikiosk/MainActivity.kt")
             .joinToString("\n") { file(it) }
-        for (never in listOf("deviceid", "\"id\": ", "ewelink.cc", "coolkit", "Bearer ", "thing/status")) {
+        for (never in listOf("deviceid", "\"id\": ", "ewelink.cc", "coolkit", "Bearer ", "thing/status",
+                             "outlet", "switches")) {
             assertFalse("the phone must not know $never", never in code.replace("TEST_HOME_CARD", ""))
         }
-        assertFalse(File("src/main/java/com/mammonrn/phoneaikiosk/home/HomeControl.kt").exists() ||
-                    File("app/src/main/java/com/mammonrn/phoneaikiosk/home/HomeControl.kt").exists())
+        // The one way to switch: the broker's route, with the card's key.
+        val broker = file("src/main/java/com/mammonrn/phoneaikiosk/voice/Broker.kt")
+        assertTrue("\"/v1/home/switch\"" in broker)
+        assertFalse("coolkit" in broker || "ewelink.cc" in broker)
     }
 
     @Test

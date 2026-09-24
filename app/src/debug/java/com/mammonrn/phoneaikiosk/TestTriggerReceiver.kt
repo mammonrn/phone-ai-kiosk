@@ -277,13 +277,19 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
 
-        /** Made-up devices in the broker's `home` panel shape (ewelink.card). */
-        private const val SAMPLE_HOME = """{"home": {"ok": true, "age_seconds": 0, "systems": [{"id": "ewelink",
-            "name": "eWeLink", "devices": [
-            {"name": "ไฟเพดาน", "room": "ห้องนั่งเล่น", "kind": "light", "online": true, "on": true, "channels": []},
-            {"name": "สวิตช์ไฟ 3 ช่อง", "room": "ห้องครัว", "kind": "switch", "online": true, "on": true, "channels": [true, false, false]},
-            {"name": "ไฟหัวเตียง", "room": "ห้องนอน", "kind": "light", "online": true, "on": false, "channels": []},
-            {"name": "ไฟหน้าบ้าน", "room": "", "kind": "switch", "online": false, "on": null, "channels": []}]}]}}"""
+        /**
+         * Made-up devices in the broker's `home` panel shape (home_control.card),
+         * shaped like Poom's house: two plugs (one offline), a four-way switch
+         * with one channel not allowlisted. The keys are made up too: a tap
+         * reaches the real broker, which answers "ไม่พบอุปกรณ์นี้แล้วครับ".
+         */
+        private const val SAMPLE_HOME = """{"home": {"ok": true, "age_seconds": 0, "control": true,
+            "systems": [{"id": "ewelink", "name": "eWeLink", "devices": [
+            {"name": "Light1", "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "channels": [], "target": "sample0000000001"},
+            {"name": "Light2", "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "channels": [], "target": "sample0000000002"},
+            {"name": "ไฟหน้าบ้าน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": [], "target": "sample0000000003"},
+            {"name": "ไฟเพดาน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "channels": [], "target": "sample0000000004"},
+            {"name": "ไฟโต๊ะ", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": []}]}]}}"""
 
         /** The adb switch's pretend player (TEST_MEDIA_HOLD). */
         @Volatile private var testHold: com.mammonrn.phoneaikiosk.voice.WakePause.Hold? = null

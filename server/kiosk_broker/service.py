@@ -235,6 +235,38 @@ def handle_oauth_callback(conn: sqlite3.Connection, cfg: Config, query: str) -> 
                                  "กรุณาปิดหน้านี้")
 
 
+def handle_home_switch(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                       body: bytes) -> tuple[int, dict]:
+    """POST /v1/home/switch {"target": "<key from the card>", "on": true} — a tap
+    on the "อุปกรณ์ในบ้าน" card (0.46.0). Authenticated and rate limited like
+    everything else, then home_control's own gates: the stop file, its command
+    limit, the allowlist and plan_switch. Answers what eWeLink really did."""
+    from . import envfile, home_control
+
+    day = limits.day_key(cfg.budget_timezone)
+    device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint="home")
+    if refusal:
+        return refusal
+    device_id = int(device["id"])
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=home_control.PER_MINUTE,
+                             per_day=home_control.PER_DAY, day=day, endpoint="home")
+    if not rate.allowed:
+        store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
+                             text_len=None, endpoint="home")
+        return 429, {**_error(rate.code, "สั่งไฟถี่เกินไปครับ กรุณารอสักครู่"), "ok": False}
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok", text_len=None,
+                         endpoint="home")
+    try:
+        raw = json.loads(body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    key, on = raw.get("target") if isinstance(raw, dict) else None, raw.get("on") if isinstance(raw, dict) else None
+    if not isinstance(key, str) or not 1 <= len(key) <= 64 or not isinstance(on, bool):
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    return home_control.switch_key(
+        home_control.Context.from_config(cfg, envfile.reader(cfg.env_path), conn), key, on)
+
+
 def _ewelink_page(title: str, message: str) -> bytes:
     return google_auth.page(title, message)
 
@@ -486,6 +518,26 @@ def handle_chat(
         analysis.record_chat(conn, cfg.home, device=label, text=text, intent=intent,
                              action=action["type"] if action else "none", cost_usd=0.0)
         return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
+
+    # ---- the lights (0.46.0): switched in code, answered from eWeLink ----
+    # After the camera and the alarms, which own their sentences ("ปิดปลุก").
+    # None when the sentence is not about lights. The reply is eWeLink's
+    # answer in words: done, offline, asked back, or not done — never the
+    # model's. home_updated tells the phone to redraw the card now.
+    handled = None
+    if not is_camera and alarm is None:
+        try:
+            from . import envfile, home_control, lights
+            handled = lights.handle(home_control.Context.from_config(cfg, envfile.reader(cfg.env_path), conn),
+                                    text, who=label)
+        except Exception as exc:  # noqa: BLE001 — a light failure must not end the conversation
+            log.warning("lights failed: %s", type(exc).__name__)
+            handled = None
+    if handled is not None:
+        log_intent("skipped")
+        log.info("lights device=%s intent=%s changed=%s", label, handled.intent, handled.changed)
+        return answer_in_code(handled.reply, {"type": "home_updated"} if handled.changed else None,
+                              handled.intent)
 
     private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:
@@ -1108,14 +1160,15 @@ def handle_dashboard(
     if json.dumps(marks, sort_keys=True) != marks_before:
         store.write_state(conn, GOLD_MARK_KEY, marks, now)
 
-    # The "อุปกรณ์ในบ้าน" card (0.45.0): eWeLink, read only, cached ten
-    # minutes. Names, rooms and on/off only — no id, no token. A broker that
-    # was never connected answers {"ok": false, "error": "not-connected"} and
-    # the phone keeps the card hidden.
+    # The "อุปกรณ์ในบ้าน" card: eWeLink, cached ten minutes. Names, rooms,
+    # on/off and — for an allowlisted light while switching is not stopped —
+    # an opaque key for a tap (0.46.0). No id, no token. A broker that was
+    # never connected answers {"ok": false, "error": "not-connected"} and the
+    # phone keeps the card hidden.
     try:
-        from . import envfile, ewelink
-        snapshot["home"] = ewelink.card(envfile.reader(cfg.env_path), key_path=cfg.vault_key_path,
-                                        token_path=cfg.ewelink_token_path, conn=conn, now=now)
+        from . import envfile, home_control
+        snapshot["home"] = home_control.card(
+            home_control.Context.from_config(cfg, envfile.reader(cfg.env_path), conn), now=now)
     except Exception as exc:  # noqa: BLE001 — the rest of the screen must not fail with it
         log.warning("dashboard home panel failed: %s", type(exc).__name__)
         snapshot["home"] = {"ok": False, "error": "internal"}

@@ -5,12 +5,13 @@ POOM'S DECISIONS (2026-09-24), which this module is built around:
   * The developer application is OAuth 2.0, Standard Role. It EXPIRES ON
     2027-09-24: a new application, a new App ID and App Secret, and a new
     connection are needed before then (INSTALL.md, eWeLink).
-  * THIS ROUND READS. Nothing in this module can send a command: there is no
-    call to POST /v2/device/thing/status or /batch-status anywhere. The switch
-    is designed below (plan_switch) and checked in code, not wired.
-  * Only lights and light switches may ever be switched. Cameras, doors,
-    locks, garages, gates, curtains and alarms never — by device type AND by
-    name (see kind_of, FORBIDDEN_NAME_WORDS).
+  * 0.46.0 SWITCHES LIGHTS (Poom, 2026-09-24), through [send] and nowhere
+    else, and only a command [plan_switch] built: allowlisted by full device
+    id, a light, a light switch or — Poom's change of the rule — a plug on the
+    allowlist (Light1 and Light2 are plugs feeding real lamps). On or off only.
+  * Cameras, doors, locks, garages, gates, curtains and alarms never — by
+    device type AND by name (see kind_of, FORBIDDEN_NAME_WORDS) — checked
+    before the allowlist is even read.
   * THE PHONE NEVER HOLDS A TOKEN. It asks the broker for the dashboard; the
     broker asks eWeLink. The phone is not even given a device id.
 
@@ -368,7 +369,6 @@ def disconnect(app: App | None, *, key_path: Path, token_path: Path, conn: sqlit
         except (EwelinkError, vault.VaultError, KeyError, ValueError):
             unbound = False
     deleted = vault.destroy(Path(token_path))
-    _cache.clear()
     log.info("ewelink disconnected unbound=%s deleted=%s", unbound, deleted)
     return unbound, deleted
 
@@ -531,6 +531,7 @@ def reduce_thing(data: dict, rooms: dict[str, str], home: str) -> dict | None:
     params = data.get("params") if isinstance(data.get("params"), dict) else {}
     name = str(data.get("name") or "")
     power, channels = power_state(params)
+    tags = data.get("tags") if isinstance(data.get("tags"), dict) else {}
     power_key = next((k for k in ("switch", "state") if params.get(k) in ("on", "off")), "")
     return {
         "id": str(data["deviceid"]),
@@ -541,6 +542,7 @@ def reduce_thing(data: dict, rooms: dict[str, str], home: str) -> dict | None:
         "online": bool(data.get("online", False)),
         "on": power,
         "channels": channels,
+        "channel_names": channel_names(tags, len(channels)),
         # Which key this device reports its one channel under, "switch" or
         # "state" — the next round's command answers in the same key.
         "power_key": power_key,
@@ -548,6 +550,34 @@ def reduce_thing(data: dict, rooms: dict[str, str], home: str) -> dict | None:
         "home": home,
         "shared": bool(data.get("sharedBy")),
     }
+
+
+def channel_names(tags: dict, count: int) -> list[str]:
+    """The name Poom gave each channel in the eWeLink app, "" where none.
+
+    WHERE IT COMES FROM. CoolKit's docs say only that a thing's `tags` object
+    carries the channel names ("/v2/device/tags ... used to change the names of
+    different channels"); they do not name the key. homebridge-ewelink and
+    dotnet-ewelink-api both read `tags.ck_channel_name`, an object keyed by the
+    channel number as a string ("0", "1", ...) — the same numbering as
+    `outlet`. That is what is read here; `ewelink-devices` shows whether the
+    house's switch really carries it, and home_control's names file covers a
+    switch that does not."""
+    raw = tags.get("ck_channel_name") if isinstance(tags, dict) else None
+    names = [""] * count
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            try:
+                index = int(key)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < count and isinstance(value, str):
+                names[index] = value.strip()[:40]
+    elif isinstance(raw, list):
+        for index, value in enumerate(raw[:count]):
+            if isinstance(value, str):
+                names[index] = value.strip()[:40]
+    return names
 
 
 def power_state(params: dict) -> tuple[bool | None, list[bool]]:
@@ -574,8 +604,9 @@ LIGHT_UIIDS = frozenset({16, 22, 33, 36, 44, 45, 52, 56, 57, 59, 103, 104, 135, 
 #: Wall switches — what lights hang off.
 SWITCH_UIIDS = frozenset({6, 7, 8, 9, 14, 78, 112, 113, 114, 128, 130, 133,
                           160, 161, 162, 163, 1256, 2256, 3256, 4256, 7004})
-#: Plugs: listed and shown, NEVER switchable — a plug can feed a heater, and
-#: "turn off the light" must never reach one.
+#: Plugs. Switchable ONLY when on Poom's allowlist (0.46.0, Poom's change of
+#: the earlier "never a plug" rule: the house's Light1 and Light2 are plugs
+#: that feed real lamps). A plug not on the allowlist is never switched.
 PLUG_UIIDS = frozenset({1, 2, 3, 4, 5, 24, 27, 29, 31, 32, 77, 81, 82, 83, 84, 107, 110,
                         138, 139, 140, 141, 182, 1009})
 #: Never, whatever an allowlist says. Checked FIRST.
@@ -624,11 +655,10 @@ def mask_id(device_id: str) -> str:
     return "…" + str(device_id)[-4:] if device_id else "…"
 
 
-# ------------------------------------------ next round: designed, not on
+# ------------------------------------------------------- switching (0.46.0)
 
-#: The action the next round adds. NOT in actions.ENABLED_ACTION_TYPES, so a
-#: model that emits it has it dropped by code before anything looks at it.
-ACTION_TYPE = "set_light"
+#: The kinds that may be switched at all — each only when allowlisted.
+SWITCHABLE_KINDS = frozenset({"light", "switch", "plug"})
 
 
 class NotAllowed(EwelinkError):
@@ -639,21 +669,22 @@ class NotAllowed(EwelinkError):
 
 
 def plan_switch(device: dict, *, on: bool, channel: int | None, allowlist: dict[str, set[int] | None]) -> dict:
-    """The one command the next round may send, as data — never sent here.
+    """The one kind of command this broker sends, as data.
 
     `allowlist` is Poom's, by FULL device id (stable; a name anyone with the
-    eWeLink app can change), each with the channels allowed (None = the
-    device's only channel). In order, each a refusal a model cannot argue with:
+    eWeLink app can change), each with the channels allowed (None = every
+    channel of a multi-channel device, or its only one). In order, each a
+    refusal a model cannot argue with:
       1. forbidden by type or name — before the allowlist is even read
-      2. only a light or a light switch
-      3. only a device on the allowlist, and only an allowed channel
+      2. a light, a light switch, or a plug (Poom 2026-09-24) — nothing else
+      3. on the allowlist, and an allowed channel of it
       4. only on or off
     """
     kind = kind_of(int(device.get("uiid") or 0), str(device.get("name") or ""))
     if kind == "forbidden":
         raise NotAllowed("forbidden device type or name")
-    if kind not in ("light", "switch"):
-        raise NotAllowed("not a light or a light switch")
+    if kind not in SWITCHABLE_KINDS:
+        raise NotAllowed("not a light, a light switch or a plug")
     device_id = str(device.get("id") or "")
     if device_id not in allowlist:
         raise NotAllowed("not on the allowlist")
@@ -663,9 +694,13 @@ def plan_switch(device: dict, *, on: bool, channel: int | None, allowlist: dict[
     channels = device.get("channels") or []
     value = "on" if on else "off"
     if channels:
-        if channel is None or allowed_channels is None or channel not in allowed_channels \
-                or not 0 <= channel < len(channels):
+        if channel is None or not 0 <= channel < len(channels) or \
+                (allowed_channels is not None and channel not in allowed_channels):
             raise NotAllowed("channel not allowed")
+        # ONLY THE CHANNEL BEING CHANGED. CoolKit's own example for a
+        # multi-channel switch lists all four outlets, which would switch the
+        # other three to whatever this broker last read — a light turned on by
+        # hand since would go off. One outlet is what the integrations send.
         params = {"switches": [{"switch": value, "outlet": channel}]}
     else:
         if channel not in (None, 0):
@@ -677,62 +712,64 @@ def plan_switch(device: dict, *, on: bool, channel: int | None, allowlist: dict[
     return {"type": 1, "id": device_id, "params": params}
 
 
-# ------------------------------------------------- the dashboard's panel
-
-#: The card is read-only information; ten minutes keeps a phone polling every
-#: minute to ~13,000 calls a month, a quarter of the free quota.
-PANEL_TTL = 600
-#: After a failure, the card waits this long before asking eWeLink again, so
-#: an outage costs one slow dashboard every five minutes, not every minute.
-FAILURE_BACKOFF = 300
-_cache: dict = {}
-_cache_lock = threading.Lock()
+#: A device's result code that means it could not be reached.
+OFFLINE_CODES = frozenset({30022, 4002})
 
 
-def card(secret: Callable[[str], str | None], *, key_path: Path, token_path: Path,
-         conn: sqlite3.Connection, transport=None, now: float | None = None) -> dict:
-    """The phone's "อุปกรณ์ในบ้าน" data: lights and light switches only, by
-    name, room and state. No id, no token, nothing a phone could act with."""
-    now = time.time() if now is None else now
-    if not connected(token_path):
-        return {"ok": False, "error": "not-connected"}
-    with _cache_lock:
-        cached = _cache.get("card")
-        if cached and now - cached[0] < PANEL_TTL:
-            return dict(cached[1], age_seconds=int(now - cached[0]))
-        failed = _cache.get("failed")
-        if failed and now - failed[0] < FAILURE_BACKOFF:
-            if cached:
-                return dict(cached[1], ok=False, error=failed[1], age_seconds=int(now - cached[0]))
-            return {"ok": False, "error": failed[1]}
-    try:
-        app = load_app(secret)
-        home = read_home(app, key_path=key_path, token_path=token_path, conn=conn,
-                         transport=transport, now=now)
-    except (EwelinkError, vault.VaultError, KeyError, ValueError) as exc:
-        code = exc.code if isinstance(exc, EwelinkError) else 0
-        log.warning("ewelink card failed code=%s", code)
-        with _cache_lock:
-            _cache["failed"] = (now, f"ewelink-{code}")
-            cached = _cache.get("card")
-        if cached:
-            return dict(cached[1], ok=False, error=f"ewelink-{code}", age_seconds=int(now - cached[0]))
-        return {"ok": False, "error": f"ewelink-{code}"}
-    shown = [d for d in home["devices"] if d["kind"] in ("light", "switch")]
-    payload = {
-        "ok": True,
-        "systems": [{
-            "id": "ewelink",
-            "name": "eWeLink",
-            "devices": [{"name": d["name"], "room": d["room"], "kind": d["kind"],
-                         "online": d["online"], "on": d["on"],
-                         "channels": d["channels"]} for d in shown],
-        }],
-    }
-    with _cache_lock:
-        _cache["card"] = (now, payload)
-        _cache.pop("failed", None)
-    return dict(payload, age_seconds=0)
+def send(app: App, *, key_path: Path, token_path: Path, conn: sqlite3.Connection,
+         commands: list[dict], transport=None, now: float | None = None) -> dict[str, str]:
+    """Sends planned commands (plan_switch's) and says what really happened:
+    {device id: "ok" | "offline" | "failed:<code>"}.
+
+    One device: POST /v2/device/thing/status, which "returns an error if the
+    device is offline or sending fails" (docs). Several: POST
+    /v2/device/thing/batch-status WITH a timeout, because with timeout 0 the
+    docs say every item's error "is fixed to 0" — that would be success
+    reported for a command nobody confirmed. Commands for the same device are
+    merged into one (a switch's channels), at most ten per batch call.
+    """
+    if not commands:
+        return {}
+    merged: dict[str, dict] = {}
+    for command in commands:
+        target = merged.setdefault(command["id"], {"type": 1, "id": command["id"], "params": {}})
+        for key, value in command["params"].items():
+            if key == "switches":
+                target["params"].setdefault("switches", []).extend(value)
+            else:
+                target["params"][key] = value
+    record = fresh_record(app, key_path=key_path, token_path=token_path, conn=conn,
+                          transport=transport, now=now)
+    results: dict[str, str] = {}
+
+    def verdict(code: int) -> str:
+        return "ok" if code == 0 else "offline" if code in OFFLINE_CODES else f"failed:{code}"
+
+    items = list(merged.values())
+    if len(items) == 1:
+        try:
+            call(app, record["region"], "POST", "/v2/device/thing/status", body=items[0],
+                 bearer=record["at"], conn=conn, transport=transport, now=now)
+            results[items[0]["id"]] = "ok"
+        except EwelinkError as exc:
+            results[items[0]["id"]] = verdict(exc.code or -1)
+        return results
+    for begin in range(0, len(items), 10):
+        chunk = items[begin:begin + 10]
+        try:
+            data = call(app, record["region"], "POST", "/v2/device/thing/batch-status",
+                        body={"thingList": chunk, "timeout": 6000}, bearer=record["at"],
+                        conn=conn, transport=transport, now=now)
+        except EwelinkError as exc:
+            for item in chunk:
+                results[item["id"]] = verdict(exc.code or -1)
+            continue
+        answered = {str(r.get("id")): int(r.get("error") or 0)
+                    for r in data.get("respList") or [] if isinstance(r, dict)}
+        for item in chunk:
+            # No answer about a device is not a success.
+            results[item["id"]] = verdict(answered[item["id"]]) if item["id"] in answered else "failed:-2"
+    return results
 
 
 # ------------------------------------------------ keeping the token alive

@@ -236,6 +236,13 @@ class KioskAction(
          * phone asks for a grant and repeats the question (VoiceService).
          */
         const val VERIFY_IDENTITY = "verify_identity"
+
+        /**
+         * 0.46.0: the broker switched a light for a spoken command (in code,
+         * from eWeLink's answer). The phone does nothing but redraw the
+         * "อุปกรณ์ในบ้าน" card now instead of within the minute. No fields.
+         */
+        const val HOME_UPDATED = "home_updated"
     }
 }
 

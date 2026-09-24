@@ -464,6 +464,22 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("ewelink-devices", help="eWeLink: homes, rooms, devices, type, on/off. Read only")
     sub.add_parser("ewelink-refresh", help="eWeLink: refresh the tokens now (the broker also does it itself)")
     sub.add_parser("ewelink-disconnect", help="eWeLink: unbind the account and delete the token file now")
+    p = sub.add_parser("ewelink-allow", help="eWeLink: allow a device to be switched (id's last 4+ chars)")
+    p.add_argument("suffix")
+    p.add_argument("channels", nargs="?", default="all", help="all, or 1,2 (a switch's channels)")
+    p = sub.add_parser("ewelink-deny", help="eWeLink: take a device off the allowlist")
+    p.add_argument("suffix")
+    sub.add_parser("ewelink-allowlist", help="eWeLink: what may be switched, and whether switching is on")
+    p = sub.add_parser("ewelink-name", help="eWeLink: our own name for a device (-) or a channel (1..4)")
+    p.add_argument("suffix")
+    p.add_argument("channel")
+    p.add_argument("value", help='the name, or - to remove ours')
+    p = sub.add_parser("ewelink-control", help="eWeLink: off = refuse every command NOW; on; status")
+    p.add_argument("state", choices=("on", "off", "status"))
+    p = sub.add_parser("ewelink-switch", help="eWeLink: switch one target from the VPS, through every gate")
+    p.add_argument("suffix")
+    p.add_argument("channel", help="a channel number, or - for a plug or a light")
+    p.add_argument("state", choices=("on", "off"))
     sub.add_parser("google-connect",
                    help="print a one-time Google sign-in link (10 minutes) to connect Poom's "
                         "account; the token stays on this VPS")
@@ -908,6 +924,21 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd.startswith("ewelink-"):
             from . import ewelink_cli
 
+            extra = {
+                "ewelink-allow": lambda: ewelink_cli.allow(conn, cfg, _secret, args.suffix, args.channels),
+                "ewelink-deny": lambda: ewelink_cli.deny(conn, cfg, _secret, args.suffix),
+                "ewelink-allowlist": lambda: ewelink_cli.show_allowlist(conn, cfg, _secret),
+                "ewelink-name": lambda: ewelink_cli.name(conn, cfg, _secret, args.suffix, args.channel, args.value),
+                "ewelink-control": lambda: ewelink_cli.control(conn, cfg, _secret, args.state),
+                "ewelink-switch": lambda: ewelink_cli.switch(conn, cfg, _secret, args.suffix, args.channel,
+                                                             args.state),
+            }
+            if args.cmd in extra:
+                try:
+                    return extra[args.cmd]()
+                except ewelink_cli.ewelink.EwelinkError as error:
+                    print(f"failed: {error}")
+                    return 1
             return ewelink_cli.run(args.cmd, conn, cfg, _secret)
 
         if args.cmd == "google-connect":

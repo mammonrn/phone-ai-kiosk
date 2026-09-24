@@ -60,6 +60,7 @@ class Broker(private val baseUrl: String, private val token: String) {
                 KioskAction.OPEN_CAMERA_APP -> KioskAction(type, "")
                 // A private question with no live grant: the identity check.
                 KioskAction.VERIFY_IDENTITY -> KioskAction(type, "")
+                KioskAction.HOME_UPDATED -> KioskAction(type, "")
                 // The alarms: a time that parses, a name of bounded length, a
                 // boolean. Anything else is no action at all.
                 KioskAction.SET_ALARM -> {
@@ -205,6 +206,20 @@ class Broker(private val baseUrl: String, private val token: String) {
         val result = post("/v1/health", sample.toString().toByteArray(Charsets.UTF_8),
                           "application/json; charset=utf-8")
         return JSONObject(String(result.bytes, Charsets.UTF_8)).optBoolean("kept", false)
+    }
+
+    /**
+     * A tap on the "อุปกรณ์ในบ้าน" card (0.46.0): the row's opaque key and the
+     * state asked for. Returns the broker's JSON (what eWeLink really did and
+     * a Thai line) or, on a refusal (401, 403, 404, 429), the same shape with
+     * the broker's message, so the card always has words to show.
+     */
+    fun homeSwitch(target: String, on: Boolean): String = try {
+        String(post("/v1/home/switch",
+                    JSONObject().put("target", target).put("on", on).toString().toByteArray(Charsets.UTF_8),
+                    "application/json; charset=utf-8").bytes, Charsets.UTF_8)
+    } catch (e: Failure) {
+        JSONObject().put("ok", false).put("message", e.message).toString()
     }
 
     /** Text in, audio out, ready to play — with where the time went. */
