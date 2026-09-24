@@ -78,6 +78,8 @@ class VideoActivity : Activity() {
      */
     private var fill = false
     private var rotationLocked = false
+    /** A video was loaded at the last refresh: its ending is what ends full screen. */
+    private var hadMedia = false
     private var lockButton: TextView? = null
 
     // The player page's views.
@@ -557,8 +559,10 @@ class VideoActivity : Activity() {
         lockButton?.text = getString(if (rotationLocked) R.string.video_rotation_locked else R.string.video_rotation_free)
         lockButton?.contentDescription = getString(if (rotationLocked) R.string.video_rotation_locked_words else R.string.video_rotation_free_words)
         lockButton?.alpha = if (fill) 1f else 0.5f
-        // The video ended or was stopped: full screen ends, and portrait with it.
-        if (fill && !VideoPlayer.hasMedia && VideoPlayer.state == VideoPlayer.State.STOPPED) setFull(false)
+        // The video ended or was stopped: full screen ends, and portrait with it — at that
+        // moment only, so full screen can still be chosen before pressing play again.
+        if (fill && hadMedia && !VideoPlayer.hasMedia) setFull(false)
+        hadMedia = VideoPlayer.hasMedia
         val size = VideoPlayer.player?.videoSize
         if (size != null && size.width > 0) frame?.ratio = size.width * size.pixelWidthHeightRatio / size.height
         lcdFacts?.text = listOfNotNull(size?.takeIf { it.height > 0 }?.let { "${minOf(it.width, it.height)}p" },
