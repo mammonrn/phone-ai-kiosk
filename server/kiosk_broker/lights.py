@@ -21,6 +21,7 @@ THE RULES, in order:
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -28,6 +29,8 @@ from dataclasses import dataclass
 
 from . import home_control
 from .home_control import Context, Outcome, Target
+
+log = logging.getLogger("kiosk_broker")
 
 # ------------------------------------------------------------- the words
 
@@ -379,6 +382,53 @@ class Handled:
     intent: str            # for the intent log: a word, never the names
 
 
+#: A bare verb as an answer: "เปิด", "ปิดไว้", "เปิดเลยครับ", "ปิดไฟไว้เหมือนเดิม".
+#: A sentence with anything more ("เปิดไฟหน้าบ้าน") is a command of its own.
+BARE_VERB = re.compile(r"^(ช่วย)?(เปิด|ปิด|ดับ)(ไฟ)?(ให้)?(เลย|ไว้|ด้วย|หน่อย|สิ|ซิ|ก่อน|เหมือนเดิม)*"
+                       r"(ครับ|ค่ะ|คะ|นะ|จ้ะ)*$")
+
+#: A reply to Jarvis's question is short (speech_gate.MAX_ANSWER_CHARS). A
+#: longer sentence that happens to start with "ไม่" is its own sentence.
+MAX_ANSWER_CHARS = 24
+
+
+def classify(ctx: Context, text: str, intent: Intent | None, pending: Pending,
+             now: float) -> str:
+    """What a sentence is while Jarvis waits for an answer (0.51.2):
+
+      "no"        ไม่ / ไม่ใช่ / ไม่เอา / ยกเลิก / ไม่เปิด / ผิด — checked FIRST, so
+                  "ไม่เปิด" is never read as "เปิด" (0.51.1 switched on it)
+      "name"      it names a light or a room: a new command, or which one
+      "all"       ทั้งหมด (an answer to "ดวงไหน")
+      "verb-same" a bare เปิด/ปิด (BARE_VERB), the same as pending.on
+      "verb-other" the other one
+      "yes"       ใช่ / ครับ / ได้ / เอา ...
+      "other"     none of these: not an answer
+    """
+    t = normalize(text)
+    if len(t) <= MAX_ANSWER_CHARS and (CANCEL.search(t) or NO.match(t) or UNDO.match(t)):
+        return "no"
+    if intent is not None and intent.text.startswith(("both:", "unclear:")):
+        return "other"
+    probe = intent or Intent(pending.on, bool(ALL.search(t)), t)
+    found, _, _ = home_control.targets(ctx, now=now)
+    if find(probe, found).by in ("name", "device", "room"):
+        return "name"
+    if ALL.search(t):
+        return "all"
+    if intent is not None and intent.on is not None and BARE_VERB.match(t):
+        return "verb-same" if intent.on == pending.on else "verb-other"
+    if YES.match(t):
+        return "yes"
+    return "other"
+
+
+def _heard(who: str, kind: str, answer: str, result: str) -> None:
+    """One line for every sentence that arrives while a question is open —
+    what it was taken for and what was done. Never the words."""
+    log.info("lights answer device=%s waiting=%s answer=%s result=%s", who, kind, answer, result)
+
+
 def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Handled | None:
     """The whole of a light sentence, or None when the sentence is not one."""
     now = time.time() if now is None else now
@@ -386,66 +436,13 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
         pending = _pending.get(who)
         if pending and pending.expires < now:
             _pending.pop(who, None)
+            _heard(who, pending.kind, "-", "expired")
             pending = None
     intent = parse(text)
-
-    # Right after a switch: "ไม่ใช่" / "ผิด" puts it back (0.47.1).
-    if pending and pending.kind == "undo":
-        t = normalize(text)
-        if UNDO.match(t):
-            with _pending_lock:
-                _pending.pop(who, None)
-            found, _, _ = home_control.targets(ctx, now=now)
-            back = [x for x in found if x.key in pending.keys]
-            handled = _switch(ctx, back, pending.on, now, who=who, checked=True)
-            return Handled(_fit(UNDONE_PREFIX + handled.reply, handled.reply), handled.changed,
-                           "lights:undone")
-        with _pending_lock:
-            _pending.pop(who, None)
-        pending = None
-
-    # An answer to "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ": yes switches to the
-    # OTHER state, no leaves it; a new command is handled as one. Since 0.51.1
-    # the question ends "จะเปิดไหมครับ", so a bare verb is an answer too:
-    # "เปิด"/"เปิดเลย" is yes, "ปิด" is no — as long as it names no light.
-    if pending and pending.kind == "confirm" and intent is not None and intent.on is not None             and not intent.all and not _names_a_light(ctx, intent, now):
-        with _pending_lock:
-            _pending.pop(who, None)
-        if intent.on != pending.on:
-            return Handled(CANCELLED_REPLY, False, "lights:cancelled")
-        found, _, _ = home_control.targets(ctx, now=now)
-        return _switch(ctx, [x for x in found if x.key in pending.keys], pending.on, now,
-                       who=who, checked=True)
-    if pending and pending.kind == "confirm" and (intent is None or intent.on is None):
-        t = normalize(text)
-        with _pending_lock:
-            _pending.pop(who, None)
-        if CANCEL.search(t) or NO.match(t):
-            return Handled(CANCELLED_REPLY, False, "lights:cancelled")
-        if YES.match(t):
-            found, _, _ = home_control.targets(ctx, now=now)
-            return _switch(ctx, [x for x in found if x.key in pending.keys], pending.on, now,
-                           who=who, checked=True)
-        pending = None
-
-    # An answer to "ดวงไหน": a name, "ทั้งหมด", or "ยกเลิก" — no verb needed.
-    if pending and (intent is None or intent.on is None and not intent.text.startswith("both:")):
-        t = normalize(text)
-        if CANCEL.search(t):
-            with _pending_lock:
-                _pending.pop(who, None)
-            return Handled(CANCELLED_REPLY, False, "lights:cancelled")
-        found, _, error = home_control.targets(ctx, now=now)
-        candidates = [x for x in found if x.key in pending.keys]
-        answer = find(Intent(pending.on, bool(ALL.search(t)), t), candidates)
-        if answer.chosen and (answer.by in ("name", "device", "room", "all")):
-            with _pending_lock:
-                _pending.pop(who, None)
-            return _switch(ctx, answer.chosen, pending.on, now, who=who)
-        if intent is None:
-            with _pending_lock:
-                _pending.pop(who, None)
-            return None
+    if pending:
+        handled = _answer(ctx, text, intent, pending, who, now)
+        if handled is not False:
+            return handled
 
     if intent is None:
         return None
@@ -483,10 +480,79 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
     return _switch(ctx, answer.chosen, intent.on, now, who=who)
 
 
-def _names_a_light(ctx: Context, intent: Intent, now: float) -> bool:
-    """Whether a command says which light or room it means."""
-    found, _, _ = home_control.targets(ctx, now=now)
-    return find(intent, found).by in ("name", "device", "room")
+def _answer(ctx: Context, text: str, intent: Intent | None, pending: Pending, who: str,
+            now: float):
+    """A sentence heard while a question is open. A Handled, None when it is
+    nothing for the lights, or False to treat it as a new sentence."""
+    kind = pending.kind
+    answer = classify(ctx, text, intent, pending, now)
+
+    def close() -> None:
+        with _pending_lock:
+            _pending.pop(who, None)
+
+    def chosen() -> list[Target]:
+        found, _, _ = home_control.targets(ctx, now=now)
+        return [x for x in found if x.key in pending.keys]
+
+    # Right after a switch (0.47.1): "ไม่ใช่" puts it back. So does the bare
+    # verb of the state before it ("ปิด" just after "เปิดไฟหน้าบ้านแล้วครับ" —
+    # on the A07, 2026-09-24, that "ปิด" went to the model instead).
+    if kind == "undo":
+        t = normalize(text)
+        # A bare "ไม่" is not enough to switch a light back: UNDO or CANCEL is.
+        undo = answer == "verb-same" or (answer == "no" and bool(UNDO.match(t) or CANCEL.search(t)))
+        if undo:
+            close()
+            handled = _switch(ctx, chosen(), pending.on, now, who=who, checked=True)
+            _heard(who, kind, answer, "undone" if handled.changed else "not-undone")
+            return Handled(_fit(UNDONE_PREFIX + handled.reply, handled.reply), handled.changed,
+                           "lights:undone")
+        if answer == "verb-other":
+            close()
+            _heard(who, kind, answer, "already")
+            names = [t.name for t in chosen()]
+            return Handled(_glue("", _join(names) if names else "ไฟ",
+                                 f"{'ปิด' if pending.on else 'เปิด'}อยู่แล้วครับ"), False, "lights:already")
+        close()
+        _heard(who, kind, answer, "not-an-answer")
+        return False
+
+    # "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ": pending.on is the state offered.
+    if kind == "confirm":
+        close()
+        if answer in ("no", "verb-other"):
+            _heard(who, kind, answer, "cancelled")
+            return Handled(CANCELLED_REPLY, False, "lights:cancelled")
+        if answer in ("yes", "verb-same"):
+            _heard(who, kind, answer, "confirmed")
+            return _switch(ctx, chosen(), pending.on, now, who=who, checked=True)
+        _heard(who, kind, answer, "new-command" if answer == "name" else "not-an-answer")
+        return False
+
+    # "จะเปิดดวงไหนครับ": a name, ทั้งหมด, or no.
+    if answer in ("no", "verb-other"):
+        close()
+        _heard(who, kind, answer, "cancelled")
+        return Handled(CANCELLED_REPLY, False, "lights:cancelled")
+    if answer in ("name", "all"):
+        t = normalize(text)
+        candidates = chosen()
+        found = find(Intent(pending.on, answer == "all", t), candidates)
+        if found.chosen and found.by in ("name", "device", "room", "all"):
+            close()
+            _heard(who, kind, answer, "chosen")
+            return _switch(ctx, found.chosen, pending.on, now, who=who)
+        close()
+        _heard(who, kind, answer, "new-command")
+        return False
+    if answer == "verb-same":
+        # "เปิด" again, without saying which: the question again.
+        _heard(who, kind, answer, "asked-again")
+        return Handled(ask_reply(chosen(), pending.on), False, "lights:ask-again")
+    close()
+    _heard(who, kind, answer, "not-an-answer")
+    return None if intent is None else False
 
 
 def _switch(ctx: Context, chosen: list[Target], on: bool, now: float, *, who: str = "",

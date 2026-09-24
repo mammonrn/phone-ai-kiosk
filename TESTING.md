@@ -1839,3 +1839,19 @@ sudo journalctl -u kiosk-broker --since "10 min ago" | grep "stt ok" | grep -o "
 
 **3. ถอยกลับไป Groq:** `"maps_rescue_timeout_s": 0.01` ใน config.json แล้ว restart → พูดคำสั่งแผนที่ →
 Maps ยังเปิด (ชื่อจาก Groq) log ขึ้น `rescue=fallback-timeout` → เอาค่านั้นออกแล้ว restart
+
+## v0.51.2 (broker) — คำตอบระหว่างรอคำถามของไฟ
+
+ทุกประโยคที่เข้ามาระหว่างรอคำตอบมี log หนึ่งบรรทัด (ไม่มีคำพูด):
+`lights answer device=… waiting=<confirm|which|undo> answer=<no|yes|verb-same|verb-other|name|all|other|-> result=<confirmed|cancelled|undone|already|chosen|asked-again|new-command|not-an-answer|expired>`
+```
+sudo journalctl -u kiosk-broker --since "10 min ago" | grep "lights answer\|lights device\|home switch"
+```
+**ทดสอบบน A07 ด้วยข้อความพิมพ์ (ผ่าน broker จริง ไฟหน้าบ้านต้องปิดอยู่ก่อน):**
+```
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "ปิดไฟหน้าบ้าน" -p com.mammonrn.phoneaikiosk.debug   # → จะเปิดไหมครับ
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "ปิด" -p com.mammonrn.phoneaikiosk.debug              # → ยกเลิกแล้วครับ ไม่ได้สั่งไฟ (ไฟไม่เปลี่ยน)
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "ปิดไฟหน้าบ้าน" -p com.mammonrn.phoneaikiosk.debug
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "เปิด" -p com.mammonrn.phoneaikiosk.debug             # → เปิดไฟหน้าบ้านแล้วครับ
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "ปิด" -p com.mammonrn.phoneaikiosk.debug              # → ขอโทษครับ ปิดไฟหน้าบ้านแล้วครับ (ย้อนกลับ)
+```

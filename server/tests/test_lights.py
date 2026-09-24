@@ -537,3 +537,152 @@ def test_a_bare_verb_answers_the_ask_back(house):
     say(ctx, "ปิดหน้าบ้าน", now=NOW + 63)
     got = say(ctx, "เปิดเลยครับ", now=NOW + 64)
     assert got.reply == "เปิดไฟหน้าบ้านแล้วครับ" and got.changed
+
+
+# ------------------------------- answers while a question is open (0.51.2)
+# On the A07, 2026-09-24: ask-back, "เปิด" switched the porch on, then "ปิด"
+# fell through to the model ("ยังไม่ได้สั่งไฟครับ…"). And "ไม่เปิด" was read as
+# "เปิด". Every answer to every open question, and its log line:
+
+def _porch(cloud):
+    return cloud.things["thingList"][2]["itemData"]["params"]["switches"][0]["switch"]
+
+
+@pytest.mark.parametrize("answer", ["ปิด", "ปิดครับ", "ปิดไว้", "ไม่", "ไม่ครับ", "ไม่ใช่", "ไม่เอา",
+                                    "ไม่ต้อง", "ยกเลิก", "ไม่เปิด", "ไม่ต้องเปิด", "ผิด"])
+def test_every_no_to_the_ask_back_cancels_and_switches_nothing(house, answer, caplog):
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    assert say(ctx, "ปิดหน้าบ้าน").intent == "lights:already"
+    with caplog.at_level(logging.INFO):
+        got = say(ctx, answer, now=NOW + 62)
+    assert got.reply == lights.CANCELLED_REPLY == "ยกเลิกแล้วครับ ไม่ได้สั่งไฟ" and not got.changed
+    assert not cloud.commands() and _porch(cloud) == "off"
+    assert "lights answer device=kiosk-a07 waiting=confirm" in caplog.text and "result=cancelled" in caplog.text
+    assert answer not in caplog.text
+
+
+@pytest.mark.parametrize("answer", ["เปิด", "เปิดเลย", "เปิดครับ", "ใช่", "ใช่ครับ", "ครับ", "ได้", "เอา"])
+def test_every_yes_to_the_ask_back_switches(house, answer, caplog):
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    say(ctx, "ปิดหน้าบ้าน")
+    with caplog.at_level(logging.INFO):
+        got = say(ctx, answer, now=NOW + 62)
+    assert got.reply == "เปิดไฟหน้าบ้านแล้วครับ" and got.changed
+    assert "result=confirmed" in caplog.text
+
+
+def test_after_a_switch_the_bare_verb_before_it_puts_it_back(house, caplog):
+    """The real sequence: ask-back, "เปิด", then "ปิด"."""
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    say(ctx, "ปิดหน้าบ้าน")
+    assert say(ctx, "เปิด", now=NOW + 62).changed
+    with caplog.at_level(logging.INFO):
+        got = say(ctx, "ปิด", now=NOW + 64)
+    assert got is not None and got.intent == "lights:undone" and got.reply == "ขอโทษครับ ปิดไฟหน้าบ้านแล้วครับ"
+    assert "waiting=undo answer=verb-same result=undone" in caplog.text
+
+
+@pytest.mark.parametrize("answer", ["ไม่ใช่", "ผิด", "ยกเลิก", "เปิด"])
+def test_undo_after_a_switch(house, answer):
+    ctx, cloud = house
+    _state(cloud, porch=True)
+    assert say(ctx, "ปิดไฟหน้าบ้าน").changed
+    got = say(ctx, answer, now=NOW + 62)
+    assert got.intent == "lights:undone" and got.reply == "ขอโทษครับ เปิดไฟหน้าบ้านแล้วครับ"
+
+
+def test_after_a_switch_the_same_verb_says_it_already_is(house):
+    ctx, cloud = house
+    _state(cloud, porch=True)
+    say(ctx, "ปิดไฟหน้าบ้าน")
+    sent = len(cloud.commands())
+    got = say(ctx, "ปิด", now=NOW + 62)
+    assert got.reply == "ไฟหน้าบ้านปิดอยู่แล้วครับ" and not got.changed and len(cloud.commands()) == sent
+
+
+def test_a_bare_no_after_a_switch_is_not_enough_to_switch_back(house, caplog):
+    ctx, cloud = house
+    _state(cloud, porch=True)
+    say(ctx, "ปิดไฟหน้าบ้าน")
+    sent = len(cloud.commands())
+    with caplog.at_level(logging.INFO):
+        assert say(ctx, "ไม่", now=NOW + 62) is None
+    assert len(cloud.commands()) == sent and "waiting=undo answer=no result=not-an-answer" in caplog.text
+
+
+@pytest.mark.parametrize("answer", ["ไม่", "ไม่ใช่", "ยกเลิก", "ไม่เอา", "ปิด"])
+def test_every_no_to_which_light_cancels(house, answer, caplog):
+    ctx, cloud = house
+    assert say(ctx, "เปิดไฟห้องนั่งเล่น").intent.startswith("lights:ask")
+    with caplog.at_level(logging.INFO):
+        got = say(ctx, answer, now=NOW + 62)
+    assert got.reply == lights.CANCELLED_REPLY and not cloud.commands()
+    assert "waiting=which" in caplog.text and "result=cancelled" in caplog.text
+
+
+def test_the_same_verb_to_which_light_asks_again(house):
+    ctx, cloud = house
+    asked = say(ctx, "เปิดไฟห้องนั่งเล่น")
+    again = say(ctx, "เปิด", now=NOW + 62)
+    assert again.reply == asked.reply and not cloud.commands()
+    assert say(ctx, "ไฟเพดาน", now=NOW + 64).reply == "เปิดไฟเพดานแล้วครับ"   # still open
+
+
+def test_a_new_command_or_question_while_waiting_is_its_own(house, caplog):
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    say(ctx, "ปิดหน้าบ้าน")
+    with caplog.at_level(logging.INFO):
+        assert say(ctx, "วันนี้อากาศเป็นยังไง", now=NOW + 62) is None
+    assert "result=not-an-answer" in caplog.text and not cloud.commands()
+    say(ctx, "ปิดหน้าบ้าน", now=NOW + 64)
+    got = say(ctx, "เปิดไฟเพดาน", now=NOW + 66)
+    assert got.reply == "เปิดไฟเพดานแล้วครับ" and _porch(cloud) == "off"
+
+
+def test_an_expired_question_is_logged_and_the_answer_is_not_taken(house, caplog):
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    say(ctx, "ปิดหน้าบ้าน")
+    with caplog.at_level(logging.INFO):
+        assert say(ctx, "ใช่", now=NOW + 60 + lights.PENDING_SECONDS + 1) is None
+    assert "waiting=confirm answer=- result=expired" in caplog.text and not cloud.commands()
+
+
+def test_the_a07_sequence_through_the_chat_endpoint_never_reaches_the_model(house, conn, cfg):
+    """ปิดไฟหน้าบ้าน (it is off) → asked back → "เปิด" → on → "ปิด" → back off,
+    all in code; and a fresh ask-back answered "ปิด" is cancelled."""
+    ctx, cloud = house
+    cfg = type(cfg)(**{**cfg.__dict__, "rate_per_minute": 20, "rate_per_day": 50})
+    _state(cloud, porch=False)
+    client = FakeClient(reply="เปิดไฟให้แล้วครับ")
+    token = auth.issue(conn, "kiosk-a07")
+    cfg.env_path.write_text(f"EWELINK_APP_ID={APP.app_id}\nEWELINK_APP_SECRET={APP.app_secret}\n")
+    original = home_control.Context.from_config
+    home_control.Context.from_config = classmethod(lambda cls, c, s, cn, transport=None: original.__func__(
+        cls, c, s, cn, transport=cloud))
+
+    def chat(text):
+        status, body = handle_chat(conn, cfg, client, authorization=f"Bearer {token}",
+                                   body=json.dumps({"text": text}).encode())
+        assert status == 200
+        return body["reply"]
+
+    try:
+        def sent():
+            return [c["params"]["switches"][0]["switch"] for c in cloud.commands()]
+
+        assert chat("ปิดไฟหน้าบ้าน") == "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ"
+        assert chat("เปิด") == "เปิดไฟหน้าบ้านแล้วครับ" and sent() == ["on"]
+        _state(cloud, porch=True)                        # what eWeLink now reports
+        assert chat("ปิด") == "ขอโทษครับ ปิดไฟหน้าบ้านแล้วครับ" and sent() == ["on", "off"]
+        _state(cloud, porch=False)
+        assert chat("ปิดไฟหน้าบ้าน") == "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ"
+        assert chat("ปิด") == lights.CANCELLED_REPLY and sent() == ["on", "off"]
+        assert client.calls == []
+    finally:
+        home_control.Context.from_config = original
+        lights._pending.clear()
