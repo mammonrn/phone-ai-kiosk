@@ -180,9 +180,9 @@ enum class NasProblem {
 data class NasEntry(val name: String, val path: String, val folder: Boolean, val size: Long, val modifiedMs: Long)
 
 /**
- * One open connection to the share, used while the NAS pages are on screen
- * and closed when they are left. Every call blocks: the screen calls it from
- * its worker thread, never the main one.
+ * One connection to the share, opened for one action (a folder listed, a file
+ * copied) and closed after it. Every call blocks: the screen calls it from its
+ * worker thread, never the main one.
  */
 class NasSession private constructor(
     private val client: SMBClient,

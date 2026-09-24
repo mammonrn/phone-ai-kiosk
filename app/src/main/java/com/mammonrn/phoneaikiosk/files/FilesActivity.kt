@@ -109,9 +109,6 @@ class FilesActivity : Activity() {
     /** The work in progress, if any: how far, and the way to stop it. */
     @Volatile private var work: FileOps.Work? = null
 
-    /** The open NAS connection. Touched on [worker] only. */
-    private var nas: NasSession? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         thai = ResourcesCompat.getFont(this, R.font.plex_thai) ?: Typeface.DEFAULT
@@ -133,10 +130,8 @@ class FilesActivity : Activity() {
     }
 
     override fun onDestroy() {
-        // Hey Jarvis, the X, or Back from the top: whatever was running stops,
-        // and the NAS connection closes on the thread that owns it.
+        // Hey Jarvis, the X, or Back from the top: whatever was running stops.
         work?.cancelled = true
-        worker.execute { closeNas() }
         worker.shutdown()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -230,11 +225,6 @@ class FilesActivity : Activity() {
     private fun show(next: Page) {
         if (next !is Page.Details) confirmingDelete = false
         if (next !is Page.NasSetup) confirmingForget = false
-        val leavingNas = page is Page.NasFolder || page is Page.NasDetails
-        val toNas = next is Page.NasFolder || next is Page.NasDetails
-        // The NAS connection is kept while its pages are used, and closed on
-        // the way out — unless a copy from it is waiting for a destination.
-        if (leavingNas && !toNas && pick?.kind != Pick.Kind.DOWNLOAD) worker.execute { closeNas() }
         page = next
         generation += 1
         when (next) {
@@ -318,7 +308,7 @@ class FilesActivity : Activity() {
         val list = column()
         list.addView(button(getString(R.string.files_go_back)) { show(Page.Roots) },
                      LinearLayout.LayoutParams(WRAP, dp(48)))
-        list.addView(heading(R.drawable.ic_pixel_lock, getString(R.string.files_no_permission_title)))
+        list.addView(heading(R.drawable.ic_pixel_lock, getString(R.string.files_this_phone)))
         list.addView(text(getString(R.string.files_no_permission), 14f),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
         // The one command that grants it, with this build's package name.
@@ -403,11 +393,8 @@ class FilesActivity : Activity() {
         val list = column()
         list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
         list.addView(heading(R.drawable.ic_pixel_lock, p.dir.name))
-        list.addView(text(getString(R.string.files_blocked_title), 16f).apply {
-            typeface = Typeface.create(thai, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
         list.addView(text(getString(if (p.appPrivate) R.string.files_blocked_app else R.string.files_blocked_other), 14f),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
         setPage(ScrollView(this).apply { addView(list) })
     }
 
@@ -423,9 +410,7 @@ class FilesActivity : Activity() {
         val list = column()
         addNoticeAndPick(list)
         list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
-        list.addView(heading(if (kind == FileOps.Kind.FOLDER) R.drawable.ic_pixel_folder
-                             else if (kind == FileOps.Kind.ZIP) R.drawable.ic_pixel_files
-                             else R.drawable.ic_pixel_file, file.name))
+        list.addView(heading(iconFor(file), file.name))
         val kinds = resources.getStringArray(R.array.files_kinds)
         list.addView(fact(getString(R.string.files_type), kinds[kind.ordinal]))
         if (!file.isDirectory) list.addView(fact(getString(R.string.files_size), FileOps.formatSize(file.length())))
@@ -435,10 +420,9 @@ class FilesActivity : Activity() {
             fact(getString(R.string.files_inside), getString(R.string.data_loading)).also(list::addView) else null
         val insideValue = (inside as? LinearLayout)?.getChildAt(1) as? TextView
 
-        if (kind == FileOps.Kind.ZIP) {
-            list.addView(button(getString(R.string.files_unzip), big = true) { runUnzip(file) },
-                         LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(14) })
-        }
+        val unzip = if (kind == FileOps.Kind.ZIP) button(getString(R.string.files_unzip), big = true) { runUnzip(file) }
+            .also { list.addView(it, LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(14) }) }
+            else null
         if (kind == FileOps.Kind.OTHER_ARCHIVE) {
             list.addView(text(getString(R.string.files_other_archive), 13f, dim = true),
                          LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
@@ -483,16 +467,27 @@ class FilesActivity : Activity() {
                 } else runCatching {
                     val s = FileOps.zipSummary(file)
                     getString(R.string.files_zip_inside, s.files, FileOps.formatSize(s.bytes))
-                }.getOrElse { getString(R.string.files_zip_unreadable) }
+                }.getOrElse {
+                    // Known before anyone presses: why it cannot be unpacked,
+                    // and the button goes dim rather than invite a failure.
+                    runOnUiThread { if (asked == generation) unzip?.let(::disable) }
+                    if (it is FileOps.Refused) words(it) else getString(R.string.files_zip_unreadable)
+                }
                 runOnUiThread { if (asked == generation) insideValue.text = line }
             }
         }
     }
 
+    private fun iconFor(file: File): Int = when (FileOps.kind(file)) {
+        FileOps.Kind.FOLDER -> R.drawable.ic_pixel_folder
+        FileOps.Kind.ZIP -> R.drawable.ic_pixel_files
+        else -> R.drawable.ic_pixel_file
+    }
+
     private fun showRename(file: File) {
         titleText.text = getString(R.string.files_rename)
         val form = column()
-        form.addView(heading(if (file.isDirectory) R.drawable.ic_pixel_folder else R.drawable.ic_pixel_file, file.name))
+        form.addView(heading(iconFor(file), file.name))
         form.addView(label(getString(R.string.files_new_name)), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
         val field = field(file.name)
         // The name without its extension is selected, as a desktop does it.
@@ -613,15 +608,7 @@ class FilesActivity : Activity() {
                 val entry = p.nas!!
                 val target = File(dest, FileOps.freeName(dest, entry.name))
                 if (dest.usableSpace in 1 until entry.size) throw FileOps.Refused(FileOps.Reason.NOT_ENOUGH_SPACE)
-                try {
-                    nasSession().download(entry, target, job)
-                } catch (e: Exception) {
-                    // The connection may have gone stale while a folder was
-                    // being chosen: one more try on a fresh one.
-                    if (e is FileOps.Cancelled || NasProblem.of(e) !in RETRYABLE) throw e
-                    closeNas()
-                    nasSession().download(entry, target, job)
-                }
+                withNas { it.download(entry, target, job) }
                 done(R.string.files_done_download, target, entry.name) to Page.Folder(dest)
             }
         }
@@ -707,7 +694,6 @@ class FilesActivity : Activity() {
                         e is FileOps.Cancelled -> getString(R.string.files_stopped)
                         else -> words(e)
                     }, bad = e !is FileOps.Cancelled)
-                    if (e is FileOps.Cancelled || kind == "nas-copy") closeNasLater()
                     show(when (from) {
                         is Page.Details -> if (from.file.exists()) from else Page.Folder(from.file.parentFile ?: File("/"))
                         is Page.Folder -> from
@@ -749,6 +735,12 @@ class FilesActivity : Activity() {
             if (existing != null) R.string.nas_password_keep else R.string.nas_password, "", password = true)
         val error = errorLine()
         form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        // A message about what was wrong goes as soon as it is being put right.
+        for (f in listOf(address, share, user, password)) f.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) { error.visibility = View.GONE }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+        })
         form.addView(button(getString(R.string.nas_save_connect), big = true) {
             val typed = password.text.toString()
             when (val result = NasForm.parse(address.text.toString(), share.text.toString(), user.text.toString(),
@@ -766,7 +758,6 @@ class FilesActivity : Activity() {
                     NasStore.save(this, result.config)
                     Log.i(TAG, "nas settings saved")
                     hideKeyboard(password)
-                    worker.execute { closeNas() }
                     show(Page.NasFolder(""))
                 }
             }
@@ -780,7 +771,6 @@ class FilesActivity : Activity() {
                              LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
                 form.addView(pair(getString(R.string.files_delete_yes), {
                     NasStore.delete(this)
-                    worker.execute { closeNas() }
                     Log.i(TAG, "nas settings deleted")
                     say(getString(R.string.nas_forgotten))
                     show(Page.Roots)
@@ -798,19 +788,16 @@ class FilesActivity : Activity() {
         return (listOf("NAS", share) + path.split('\\').filter { it.isNotEmpty() }).joinToString(" › ")
     }
 
-    /** Worker thread only: the open session, opened now if there is none. */
-    private fun nasSession(): NasSession {
-        nas?.let { return it }
+    /**
+     * Worker thread only. A FRESH CONNECTION FOR EACH ACTION, closed after it:
+     * on the A07 a connection kept open between pages stalled on its second
+     * request for smbj's full 20-second timeout, while a new one answered in
+     * a tenth of a second. A NAS that sleeps drops kept connections too.
+     */
+    private fun <T> withNas(block: (NasSession) -> T): T {
         val config = NasStore.load(this) ?: throw IllegalStateException("no nas settings")
-        return NasSession.open(config).also { nas = it }
+        return NasSession.open(config).use(block)
     }
-
-    private fun closeNas() {
-        nas?.close()
-        nas = null
-    }
-
-    private fun closeNasLater() = worker.execute { closeNas() }
 
     private fun showNasFolder(path: String) {
         titleText.text = if (path.isEmpty()) getString(R.string.files_nas) else path.substringAfterLast('\\')
@@ -830,17 +817,7 @@ class FilesActivity : Activity() {
         val asked = generation
         val online = isOnline()
         worker.execute {
-            val result = if (!online) Result.failure(NoNetwork()) else runCatching {
-                try {
-                    nasSession().list(path)
-                } catch (e: Exception) {
-                    // One more try on a fresh connection: a NAS that slept
-                    // since the last page drops the old one.
-                    closeNas()
-                    if (NasProblem.of(e) in RETRYABLE) nasSession().list(path) else throw e
-                }
-            }
-            if (result.isFailure) closeNas()
+            val result = if (!online) Result.failure(NoNetwork()) else runCatching { withNas { it.list(path) } }
             runOnUiThread {
                 if (asked != generation) return@runOnUiThread
                 result.onSuccess { entries ->
@@ -987,7 +964,6 @@ class FilesActivity : Activity() {
                     LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(button(getString(R.string.cancel)) {
                 pick = null
-                if (p.kind == Pick.Kind.DOWNLOAD) closeNasLater()
                 show(page)
             }, LinearLayout.LayoutParams(dp(96), dp(48)).apply { marginStart = dp(6) })
         }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
@@ -1169,6 +1145,13 @@ class FilesActivity : Activity() {
         if (enabled) setOnClickListener { onClick() }
     }
 
+    private fun disable(button: TextView) {
+        button.isEnabled = false
+        button.isClickable = false
+        button.setOnClickListener(null)
+        button.setTextColor(color(R.color.retro_dim))
+    }
+
     private fun hideKeyboard(view: View) {
         getSystemService(android.view.inputmethod.InputMethodManager::class.java)
             ?.hideSoftInputFromWindow(view.windowToken, 0)
@@ -1190,8 +1173,5 @@ class FilesActivity : Activity() {
         const val TAG = "KioskFiles"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
-
-        /** Worth one reconnect: the connection went stale, not the settings wrong. */
-        private val RETRYABLE = setOf(NasProblem.NO_ANSWER, NasProblem.PROTOCOL, NasProblem.OTHER)
     }
 }

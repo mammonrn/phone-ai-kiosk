@@ -131,7 +131,7 @@
     <string name="files_blocked_title">เปิดโฟลเดอร์นี้ไม่ได้</string>
     <string name="files_blocked_app">โฟลเดอร์นี้เก็บข้อมูลของแอปแต่ละแอป ระบบ Android ไม่อนุญาตให้แอปอื่นเปิด ไม่ว่าจะให้สิทธิ์ใดก็ตาม ไฟล์ข้างในยังอยู่ครบ แต่เปิดได้จากแอปเจ้าของเท่านั้น</string>
     <string name="files_blocked_other">ระบบไม่อนุญาตให้อ่านโฟลเดอร์นี้</string>
-    <string name="files_go_back">กลับ</string>
+    <string name="files_go_back">◄ กลับ</string>
 
     <string name="files_details_title">รายละเอียด</string>
     <string name="files_name">ชื่อ</string>
