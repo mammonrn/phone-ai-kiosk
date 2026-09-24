@@ -41,6 +41,7 @@ import java.io.File
 import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.Executors
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * The file manager (0.44.0, Poom): the phone's files, and the NAS read only.
@@ -181,27 +182,27 @@ class FilesActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.retro_desktop))
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME))
         }
         val window = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_raised)
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET))
         }
         root.addView(window, LinearLayout.LayoutParams(MATCH, 0, 1f))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.retro_titlebar)
-            setPadding(dp(6), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
         }
         bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_files) },
-                    LinearLayout.LayoutParams(dp(16), dp(16)))
+                    LinearLayout.LayoutParams(dp(UiScale.ICON_S), dp(UiScale.ICON_S)))
         titleText = TextView(this).apply {
             setTextColor(color(R.color.retro_title_text))
-            textSize = 13f
+            textSize = UiScale.TEXT_BASE
             typeface = Typeface.create(thai, Typeface.BOLD)
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
@@ -212,13 +213,13 @@ class FilesActivity : Activity() {
             isClickable = true
             setOnClickListener { goHome() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
-                    FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(dp(44), dp(40)))
+                    FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
         content = FrameLayout(this)
-        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(5) })
+        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.WINDOW_INSET) })
         root.addView(button(getString(R.string.settings_home), big = true) { goHome() },
-                     LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(7) })
+                     LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.FRAME) })
         return root
     }
 
@@ -275,7 +276,7 @@ class FilesActivity : Activity() {
         val list = column()
         addNoticeAndPick(list)
         list.addView(button(getString(R.string.settings_back_to_panel)) { finish() },
-                     LinearLayout.LayoutParams(WRAP, dp(48)))
+                     LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
         val allowed = hasAllFiles()
         for (root in roots()) {
             val sub = if (allowed) getString(R.string.files_space,
@@ -284,7 +285,7 @@ class FilesActivity : Activity() {
             list.addView(bigRow(if (allowed) R.drawable.ic_pixel_phone else R.drawable.ic_pixel_lock,
                                 rootName(root), sub) {
                 show(if (allowed) Page.Folder(root) else Page.Permission)
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         }
         // The NAS is a source, never a destination (read only), so it is not
         // offered while a destination is being chosen.
@@ -294,10 +295,10 @@ class FilesActivity : Activity() {
                 if (config != null) getString(R.string.files_nas_set, config.share)
                 else getString(R.string.files_nas_not_set)) {
                 show(if (config != null) Page.NasFolder("") else Page.NasSetup)
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         } else {
-            list.addView(text(getString(R.string.files_pick_open_folder), 13f, dim = true).apply {
-                setPadding(dp(4), dp(10), dp(4), 0)
+            list.addView(text(getString(R.string.files_pick_open_folder), UiScale.TEXT_NOTE, dim = true).apply {
+                setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0)
             })
         }
         setPage(ScrollView(this).apply { addView(list) })
@@ -307,16 +308,16 @@ class FilesActivity : Activity() {
         titleText.text = getString(R.string.files_no_permission_title)
         val list = column()
         list.addView(button(getString(R.string.files_go_back)) { show(Page.Roots) },
-                     LinearLayout.LayoutParams(WRAP, dp(48)))
+                     LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
         list.addView(heading(R.drawable.ic_pixel_lock, getString(R.string.files_this_phone)))
-        list.addView(text(getString(R.string.files_no_permission), 14f),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        list.addView(text(getString(R.string.files_no_permission), UiScale.TEXT_BASE),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         // The one command that grants it, with this build's package name.
-        list.addView(text("adb shell appops set --uid $packageName MANAGE_EXTERNAL_STORAGE allow", 12f).apply {
+        list.addView(text("adb shell appops set --uid $packageName MANAGE_EXTERNAL_STORAGE allow", UiScale.TEXT_NOTE).apply {
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
             setTextIsSelectable(false)
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         setPage(ScrollView(this).apply { addView(list) })
     }
 
@@ -330,12 +331,12 @@ class FilesActivity : Activity() {
         addNoticeAndPick(box, dir)
         box.addView(toolbar(trail(dir), up = { show(folderAbove(dir)) },
                             search = if (pick == null) ({ show(Page.Search(dir)) }) else null))
-        val status = text(getString(R.string.files_loading), 14f, dim = true).apply {
-            setPadding(dp(8), dp(12), dp(8), dp(12))
+        val status = text(getString(R.string.files_loading), UiScale.TEXT_BASE, dim = true).apply {
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_M), dp(UiScale.SPACE_S), dp(UiScale.SPACE_M))
         }
         val frame = FrameLayout(this).apply { setBackgroundResource(R.drawable.retro_field) }
         frame.addView(status, FrameLayout.LayoutParams(MATCH, WRAP))
-        box.addView(frame, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(5) })
+        box.addView(frame, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         setPage(box)
 
         val asked = generation
@@ -391,10 +392,10 @@ class FilesActivity : Activity() {
     private fun showBlocked(p: Page.Blocked) {
         titleText.text = getString(R.string.files_blocked_title)
         val list = column()
-        list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
+        list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
         list.addView(heading(R.drawable.ic_pixel_lock, p.dir.name))
-        list.addView(text(getString(if (p.appPrivate) R.string.files_blocked_app else R.string.files_blocked_other), 14f),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+        list.addView(text(getString(if (p.appPrivate) R.string.files_blocked_app else R.string.files_blocked_other), UiScale.TEXT_BASE),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         setPage(ScrollView(this).apply { addView(list) })
     }
 
@@ -409,7 +410,7 @@ class FilesActivity : Activity() {
         val kind = FileOps.kind(file)
         val list = column()
         addNoticeAndPick(list)
-        list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
+        list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
         list.addView(heading(iconFor(file), file.name))
         val kinds = resources.getStringArray(R.array.files_kinds)
         list.addView(fact(getString(R.string.files_type), kinds[kind.ordinal]))
@@ -421,17 +422,17 @@ class FilesActivity : Activity() {
         val insideValue = (inside as? LinearLayout)?.getChildAt(1) as? TextView
 
         val unzip = if (kind == FileOps.Kind.ZIP) button(getString(R.string.files_unzip), big = true) { runUnzip(file) }
-            .also { list.addView(it, LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(14) }) }
+            .also { list.addView(it, LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.SPACE_M) }) }
             else null
         if (kind == FileOps.Kind.OTHER_ARCHIVE) {
-            list.addView(text(getString(R.string.files_other_archive), 13f, dim = true),
-                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+            list.addView(text(getString(R.string.files_other_archive), UiScale.TEXT_NOTE, dim = true),
+                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         }
         list.addView(pair(getString(R.string.files_copy), { startPick(Pick.Kind.COPY, file) },
                           getString(R.string.files_move), { startPick(Pick.Kind.MOVE, file) }),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(if (kind == FileOps.Kind.ZIP) 8 else 14) })
         val deleteArea = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        list.addView(deleteArea, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        list.addView(deleteArea, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         var insideCount = -1
         fun drawDelete() {
             deleteArea.removeAllViews()
@@ -444,14 +445,14 @@ class FilesActivity : Activity() {
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundResource(R.drawable.retro_sunken)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
             }
             box.addView(text(if (file.isDirectory)
                 getString(R.string.files_delete_confirm_folder, file.name, insideCount.coerceAtLeast(0))
-                else getString(R.string.files_delete_confirm_file, file.name), 14f))
+                else getString(R.string.files_delete_confirm_file, file.name), UiScale.TEXT_BASE))
             box.addView(pair(getString(R.string.files_delete_yes), { runDelete(file) },
                              getString(R.string.cancel), { confirmingDelete = false; drawDelete() }),
-                        LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+                        LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
             deleteArea.addView(box)
         }
         drawDelete()
@@ -488,14 +489,14 @@ class FilesActivity : Activity() {
         titleText.text = getString(R.string.files_rename)
         val form = column()
         form.addView(heading(iconFor(file), file.name))
-        form.addView(label(getString(R.string.files_new_name)), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+        form.addView(label(getString(R.string.files_new_name)), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
         val field = field(file.name)
         // The name without its extension is selected, as a desktop does it.
         val dot = file.name.lastIndexOf('.')
         field.setSelection(0, if (!file.isDirectory && dot > 0) dot else file.name.length)
-        form.addView(field, LinearLayout.LayoutParams(MATCH, dp(52)).apply { topMargin = dp(4) })
+        form.addView(field, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
         val error = errorLine()
-        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         form.addView(pair(getString(R.string.save), {
             val result = runCatching { FileOps.rename(file, field.text.toString()) }
             result.onSuccess {
@@ -508,7 +509,7 @@ class FilesActivity : Activity() {
                 error.visibility = View.VISIBLE
             }
         }, getString(R.string.cancel), { show(Page.Details(file)) }, big = true),
-            LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
         setPage(ScrollView(this).apply { addView(form) })
         field.requestFocus()
     }
@@ -518,16 +519,16 @@ class FilesActivity : Activity() {
     private fun showSearch(dir: File) {
         titleText.text = getString(R.string.files_search)
         val box = column(fill = true)
-        box.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
-        box.addView(text(getString(R.string.files_search_in, trail(dir)), 13f, dim = true).apply {
+        box.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
+        box.addView(text(getString(R.string.files_search_in, trail(dir)), UiScale.TEXT_NOTE, dim = true).apply {
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.START
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         val field = field("").apply {
             hint = getString(R.string.files_search_hint)
             imeOptions = EditorInfo.IME_ACTION_SEARCH
         }
-        val status = text("", 13f)
+        val status = text("", UiScale.TEXT_NOTE)
         val results = FrameLayout(this).apply { setBackgroundResource(R.drawable.retro_field) }
         val roots = roots()
         fun run() {
@@ -575,12 +576,12 @@ class FilesActivity : Activity() {
         field.setOnEditorActionListener { _, action, _ -> if (action == EditorInfo.IME_ACTION_SEARCH) { run(); true } else false }
         box.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(field, LinearLayout.LayoutParams(0, dp(52), 1f))
+            addView(field, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
             addView(button(getString(R.string.files_search)) { run() },
-                    LinearLayout.LayoutParams(dp(88), dp(52)).apply { marginStart = dp(6) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
-        box.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
-        box.addView(results, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(5) })
+                    LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
+        box.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
+        box.addView(results, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         setPage(box)
         field.requestFocus()
     }
@@ -647,18 +648,18 @@ class FilesActivity : Activity() {
         generation += 1
         titleText.text = title
         val box = column()
-        box.addView(text(title, 16f).apply { typeface = Typeface.create(thai, Typeface.BOLD) })
+        box.addView(text(title, UiScale.TEXT_HEADING).apply { typeface = Typeface.create(thai, Typeface.BOLD) })
         val track = FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_sunken)
-            setPadding(dp(3), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS))
         }
         val fill = View(this).apply { setBackgroundColor(color(R.color.retro_title)) }
         track.addView(fill, FrameLayout.LayoutParams(0, MATCH))
-        box.addView(track, LinearLayout.LayoutParams(MATCH, dp(28)).apply { topMargin = dp(14) })
-        val line = text("", 13f)
-        box.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        box.addView(track, LinearLayout.LayoutParams(MATCH, dp(UiScale.PROGRESS)).apply { topMargin = dp(UiScale.SPACE_M) })
+        val line = text("", UiScale.TEXT_NOTE)
+        box.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         box.addView(button(getString(R.string.files_cancel_work), big = true) { job.cancelled = true },
-                    LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(18) })
+                    LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.SPACE_L) })
         setPage(ScrollView(this).apply { addView(box) })
         val ticker = object : Runnable {
             override fun run() {
@@ -711,18 +712,18 @@ class FilesActivity : Activity() {
         val existing = runCatching { NasStore.load(this) }.getOrNull()
         val form = column()
         addNoticeAndPick(form)
-        form.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
-        form.addView(text(getString(R.string.nas_setup_intro), 13f),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        form.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
+        form.addView(text(getString(R.string.nas_setup_intro), UiScale.TEXT_NOTE),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         fun labelled(name: Int, hint: Int, value: String, password: Boolean = false): EditText {
-            form.addView(label(getString(name)), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            form.addView(label(getString(name)), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
             val f = field(value).apply {
                 this.hint = getString(hint)
                 inputType = if (password) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                             else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
                 if (password) typeface = thai
             }
-            form.addView(f, LinearLayout.LayoutParams(MATCH, dp(52)).apply { topMargin = dp(4) })
+            form.addView(f, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
             return f
         }
         val shownAddress = existing?.let { if (it.port == NasConfig.DEFAULT_PORT) it.host else "${it.host}:${it.port}" }.orEmpty()
@@ -734,7 +735,7 @@ class FilesActivity : Activity() {
         val password = labelled(R.string.nas_password,
             if (existing != null) R.string.nas_password_keep else R.string.nas_password, "", password = true)
         val error = errorLine()
-        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         // A message about what was wrong goes as soon as it is being put right.
         for (f in listOf(address, share, user, password)) f.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) { error.visibility = View.GONE }
@@ -761,25 +762,25 @@ class FilesActivity : Activity() {
                     show(Page.NasFolder(""))
                 }
             }
-        }, LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(12) })
+        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.SPACE_M) })
         if (existing != null) {
             if (!confirmingForget) {
                 form.addView(button(getString(R.string.nas_forget)) { confirmingForget = true; show(Page.NasSetup) },
-                             LinearLayout.LayoutParams(MATCH, dp(48)).apply { topMargin = dp(8) })
+                             LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
             } else {
-                form.addView(text(getString(R.string.nas_forget_confirm), 14f),
-                             LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+                form.addView(text(getString(R.string.nas_forget_confirm), UiScale.TEXT_BASE),
+                             LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
                 form.addView(pair(getString(R.string.files_delete_yes), {
                     NasStore.delete(this)
                     Log.i(TAG, "nas settings deleted")
                     say(getString(R.string.nas_forgotten))
                     show(Page.Roots)
                 }, getString(R.string.cancel), { confirmingForget = false; show(Page.NasSetup) }),
-                    LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+                    LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
             }
         }
-        form.addView(text(getString(R.string.nas_privacy), 12f, dim = true),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
+        form.addView(text(getString(R.string.nas_privacy), UiScale.TEXT_NOTE, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
         setPage(ScrollView(this).apply { addView(form) })
     }
 
@@ -807,11 +808,11 @@ class FilesActivity : Activity() {
         val frame = FrameLayout(this).apply { setBackgroundResource(R.drawable.retro_field) }
         val status = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(12), dp(8), dp(12))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_M), dp(UiScale.SPACE_S), dp(UiScale.SPACE_M))
         }
-        status.addView(text(getString(R.string.nas_connecting), 14f, dim = true))
+        status.addView(text(getString(R.string.nas_connecting), UiScale.TEXT_BASE, dim = true))
         frame.addView(status, FrameLayout.LayoutParams(MATCH, WRAP))
-        box.addView(frame, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(5) })
+        box.addView(frame, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         setPage(box)
 
         val asked = generation
@@ -842,10 +843,10 @@ class FilesActivity : Activity() {
                     // The problem's name only: never the address, the user or the message.
                     Log.i(TAG, "nas list failed problem=$problem")
                     status.removeAllViews()
-                    status.addView(text(nasWords(problem), 14f).apply { setTextColor(color(R.color.retro_bad)) })
+                    status.addView(text(nasWords(problem), UiScale.TEXT_BASE).apply { setTextColor(color(R.color.retro_bad)) })
                     status.addView(pair(getString(R.string.nas_retry), { show(Page.NasFolder(path)) },
                                         getString(R.string.nas_edit), { show(Page.NasSetup) }),
-                                   LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+                                   LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
                 }
             }
         }
@@ -862,7 +863,7 @@ class FilesActivity : Activity() {
         titleText.text = getString(R.string.files_details_title)
         val list = column()
         addNoticeAndPick(list)
-        list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(48)))
+        list.addView(button(getString(R.string.files_go_back)) { goBack() }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
         list.addView(heading(R.drawable.ic_pixel_file, entry.name))
         val kinds = resources.getStringArray(R.array.files_kinds)
         list.addView(fact(getString(R.string.files_type), kinds[FileOps.kindOfName(entry.name).ordinal]))
@@ -872,9 +873,9 @@ class FilesActivity : Activity() {
         list.addView(button(getString(R.string.files_download), big = true) {
             pick = Pick(Pick.Kind.DOWNLOAD, null, entry)
             show(Page.Roots)
-        }, LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(14) })
-        list.addView(text(getString(R.string.nas_read_only), 12f, dim = true),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.SPACE_M) })
+        list.addView(text(getString(R.string.nas_read_only), UiScale.TEXT_NOTE, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         setPage(ScrollView(this).apply { addView(list) })
     }
 
@@ -933,18 +934,18 @@ class FilesActivity : Activity() {
     /** The notice from the last action, and the destination banner while choosing one. */
     private fun addNoticeAndPick(box: LinearLayout, here: File? = null) {
         notice?.let { message ->
-            box.addView(text(message, 14f).apply {
+            box.addView(text(message, UiScale.TEXT_BASE).apply {
                 setBackgroundResource(R.drawable.retro_sunken)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
                 if (noticeBad) setTextColor(color(R.color.retro_bad))
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
             notice = null
         }
         val p = pick ?: return
         val banner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.retro_title))
-            setPadding(dp(8), dp(6), dp(8), dp(8))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
         banner.addView(TextView(this).apply {
             text = getString(when (p.kind) {
@@ -952,7 +953,7 @@ class FilesActivity : Activity() {
                 Pick.Kind.MOVE -> R.string.files_pick_move
                 Pick.Kind.DOWNLOAD -> R.string.files_pick_download
             }, p.name)
-            textSize = 14f
+            textSize = UiScale.TEXT_BASE
             typeface = Typeface.create(thai, Typeface.BOLD)
             setTextColor(color(R.color.retro_title_text))
             maxLines = 2
@@ -961,13 +962,13 @@ class FilesActivity : Activity() {
         banner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(button(getString(R.string.files_paste_here), enabled = here != null) { here?.let(::paste) },
-                    LinearLayout.LayoutParams(0, dp(48), 1f))
+                    LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
             addView(button(getString(R.string.cancel)) {
                 pick = null
                 show(page)
-            }, LinearLayout.LayoutParams(dp(96), dp(48)).apply { marginStart = dp(6) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
-        box.addView(banner, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) })
+            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
+        box.addView(banner, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
     }
 
     /** ◄ up, where we are, and search — the 1995 explorer's address row. */
@@ -976,17 +977,17 @@ class FilesActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(button("◄") { up() }.apply { contentDescription = getString(R.string.files_up) },
-                    LinearLayout.LayoutParams(dp(52), dp(48)))
-            addView(text(where, 13f).apply {
+                    LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
+            addView(text(where, UiScale.TEXT_NOTE).apply {
                 setBackgroundResource(R.drawable.retro_field)
-                setPadding(dp(8), 0, dp(8), 0)
+                setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
                 gravity = Gravity.CENTER_VERTICAL
                 maxLines = 1
                 // The end of the path is where you are: the start gives way.
                 ellipsize = TextUtils.TruncateAt.START
-            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(5) })
+            }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
             if (search != null) addView(button(getString(R.string.files_search)) { search() },
-                                        LinearLayout.LayoutParams(dp(76), dp(48)).apply { marginStart = dp(5) })
+                                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_XS) })
         }
 
     private class Row(val icon: Int, val name: String, val sub: () -> String, val open: () -> Unit,
@@ -1020,29 +1021,29 @@ class FilesActivity : Activity() {
     private fun rowView(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(56)
-        setPadding(dp(6), dp(4), dp(4), dp(4))
+        minimumHeight = dp(UiScale.ROW)
+        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS))
         isClickable = true
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), ColorDrawable(color(R.color.retro_face)))
             addState(intArrayOf(), ColorDrawable(0))
         }
-        addView(ImageView(context), LinearLayout.LayoutParams(dp(28), dp(28)))
+        addView(ImageView(context), LinearLayout.LayoutParams(dp(UiScale.ICON_L), dp(UiScale.ICON_L)))
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), 0, dp(4), 0)
-            addView(text("", 15f).apply {
+            setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_XS), 0)
+            addView(text("", UiScale.TEXT_ITEM).apply {
                 maxLines = 1
                 // Long names keep their start and their extension.
                 ellipsize = TextUtils.TruncateAt.MIDDLE
             })
-            addView(text("", 12f, dim = true).apply {
+            addView(text("", UiScale.TEXT_NOTE, dim = true).apply {
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             })
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
-        addView(button(getString(R.string.files_manage)) {}.apply { textSize = 13f },
-                LinearLayout.LayoutParams(dp(68), dp(44)))
+        addView(button(getString(R.string.files_manage)) {},
+                LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
     }
 
     /** A storage root or the NAS on the first page: a big raised button with two lines. */
@@ -1051,36 +1052,36 @@ class FilesActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.retro_button)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
             isClickable = true
             setOnClickListener { onClick() }
-            addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(UiScale.ICON_L), dp(UiScale.ICON_L)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), 0, 0, 0)
-                addView(text(name, 16f).apply { typeface = Typeface.create(thai, Typeface.BOLD) })
-                addView(text(sub, 13f, dim = true))
+                setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
+                addView(text(name, UiScale.TEXT_HEADING).apply { typeface = Typeface.create(thai, Typeface.BOLD) })
+                addView(text(sub, UiScale.TEXT_NOTE, dim = true))
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
-            minimumHeight = dp(64)
+            minimumHeight = dp(UiScale.ROW)
         }
 
     private fun heading(icon: Int, name: String): View = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(10), 0, 0)
-        addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(40), dp(40)))
-        addView(text(name, 16f).apply {
+        setPadding(0, dp(UiScale.SPACE_S), 0, 0)
+        addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(UiScale.ICON_L), dp(UiScale.ICON_L)))
+        addView(text(name, UiScale.TEXT_HEADING).apply {
             typeface = Typeface.create(thai, Typeface.BOLD)
-            setPadding(dp(10), 0, 0, 0)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
     }
 
     /** "ขนาด | 1.2 MB": a label over its value, the value in full (it may wrap). */
     private fun fact(name: String, value: String): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(0, dp(8), 0, 0)
-        addView(text(name, 12f, dim = true))
-        addView(text(value, 15f))
+        setPadding(0, dp(UiScale.SPACE_S), 0, 0)
+        addView(text(name, UiScale.TEXT_NOTE, dim = true))
+        addView(text(value, UiScale.TEXT_ITEM))
     }
 
     /** Two buttons side by side, equal width, 48dp (56dp when [big]). */
@@ -1089,28 +1090,28 @@ class FilesActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             addView(button(a, big) { onA() }, LinearLayout.LayoutParams(0, dp(if (big) 56 else 48), 1f))
             addView(button(b, big) { onB() }, LinearLayout.LayoutParams(0, dp(if (big) 56 else 48), 1f)
-                .apply { marginStart = dp(8) })
+                .apply { marginStart = dp(UiScale.SPACE_S) })
         }
 
     private fun field(value: String) = EditText(this).apply {
         setText(value)
         typeface = thai
-        textSize = 16f
+        textSize = UiScale.TEXT_HEADING
         setSingleLine()
         imeOptions = EditorInfo.IME_ACTION_DONE
         setBackgroundResource(R.drawable.retro_field)
-        setPadding(dp(10), dp(10), dp(10), dp(10))
+        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         setTextColor(color(R.color.retro_text))
     }
 
-    private fun errorLine() = text("", 13f).apply {
+    private fun errorLine() = text("", UiScale.TEXT_NOTE).apply {
         setTextColor(color(R.color.retro_bad))
         visibility = View.GONE
     }
 
     private fun column(fill: Boolean = false) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        if (!fill) setPadding(0, 0, 0, dp(8))
+        if (!fill) setPadding(0, 0, 0, dp(UiScale.SPACE_S))
     }
 
     private fun setPage(view: View) {
@@ -1125,7 +1126,7 @@ class FilesActivity : Activity() {
         setTextColor(color(if (dim) R.color.retro_dim else R.color.retro_text))
     }
 
-    private fun label(value: String) = text(value, 13f).apply {
+    private fun label(value: String) = text(value, UiScale.TEXT_NOTE).apply {
         typeface = Typeface.create(thai, Typeface.BOLD)
     }
 
@@ -1133,12 +1134,13 @@ class FilesActivity : Activity() {
     private fun button(value: String, big: Boolean = false, enabled: Boolean = true,
                        onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = if (big) 16f else 14f
+        textSize = if (big) UiScale.TEXT_HEADING else UiScale.TEXT_BASE
         typeface = Typeface.create(thai, Typeface.BOLD)
         gravity = Gravity.CENTER
         setTextColor(color(if (enabled) R.color.retro_text else R.color.retro_dim))
         setBackgroundResource(R.drawable.retro_button)
-        setPadding(dp(8), 0, dp(8), 0)
+        setPadding(dp(UiScale.SPACE_M), 0, dp(UiScale.SPACE_M), 0)
+        minWidth = dp(UiScale.TOUCH)
         maxLines = 1
         isClickable = enabled
         isEnabled = enabled

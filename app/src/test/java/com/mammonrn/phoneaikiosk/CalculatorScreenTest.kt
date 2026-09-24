@@ -87,7 +87,8 @@ class CalculatorScreenTest {
         // The keypad's rows share the height left (weight 1 each); how tall
         // that comes out is checked on the A07's screenshot, not here.
         val pages = calc.getValue("CalculatorActivity.kt") + calc.getValue("ElectricalPages.kt")
-        assertTrue("LinearLayout.LayoutParams(MATCH, a.dp(60))" in pages)            // the tool list
-        assertTrue("LinearLayout.LayoutParams(MATCH, dp(56))" in pages)              // "กลับหน้าหลัก"
+        // 0.54.0: the sizes are UiScale's names (UiScaleTest); the tool list was 60dp.
+        assertTrue("LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY))" in pages)   // the tool list
+        assertTrue("LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY))" in pages)     // "กลับหน้าหลัก"
     }
 }

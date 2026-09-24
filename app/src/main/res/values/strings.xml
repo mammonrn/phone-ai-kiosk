@@ -162,9 +162,9 @@
     <string name="files_back_to_panel">กลับแผงควบคุม</string>
 
     <string name="files_no_permission_title">ยังไม่ได้รับสิทธิ์เข้าถึงไฟล์</string>
-    <string name="files_no_permission">แอปยังไม่ได้รับสิทธิ์ “เข้าถึงไฟล์ทั้งหมด” สิทธิ์นี้ให้จากหน้าจอนี้ไม่ได้ ผู้ดูแลต้องให้สิทธิ์จากคอมพิวเตอร์ด้วยคำสั่งด้านล่าง แล้วเปิดหน้านี้ใหม่</string>
+    <string name="files_no_permission">แอปพลิเคชันยังไม่ได้รับสิทธิ์ “เข้าถึงไฟล์ทั้งหมด” สิทธิ์นี้ให้จากหน้าจอนี้ไม่ได้ ผู้ดูแลต้องให้สิทธิ์จากคอมพิวเตอร์ด้วยคำสั่งด้านล่าง แล้วเปิดหน้านี้ใหม่</string>
     <string name="files_blocked_title">เปิดโฟลเดอร์นี้ไม่ได้</string>
-    <string name="files_blocked_app">โฟลเดอร์นี้เก็บข้อมูลของแอปแต่ละแอป ระบบ Android ไม่อนุญาตให้แอปอื่นเปิด ไม่ว่าจะให้สิทธิ์ใดก็ตาม ไฟล์ข้างในยังอยู่ครบ แต่เปิดได้จากแอปเจ้าของเท่านั้น</string>
+    <string name="files_blocked_app">โฟลเดอร์นี้เก็บข้อมูลของแอปพลิเคชันแต่ละตัว ระบบ Android ไม่อนุญาตให้แอปพลิเคชันอื่นเปิด ไม่ว่าจะให้สิทธิ์ใดก็ตาม ไฟล์ข้างในยังอยู่ครบ แต่เปิดได้จากแอปพลิเคชันเจ้าของเท่านั้น</string>
     <string name="files_blocked_other">ระบบไม่อนุญาตให้อ่านโฟลเดอร์นี้</string>
     <string name="files_go_back">◄ กลับ</string>
 
@@ -250,7 +250,7 @@
     <string name="files_reason_name_taken">มีไฟล์หรือโฟลเดอร์ชื่อนี้อยู่แล้วในโฟลเดอร์นี้</string>
 
     <string name="nas_setup_title">ตั้งค่า NAS</string>
-    <string name="nas_setup_intro">เชื่อมต่อ NAS ในบ้านผ่าน SMB เพื่อเปิดดูและคัดลอกไฟล์ลงเครื่อง แอปจะไม่แก้ไขหรือลบไฟล์บน NAS</string>
+    <string name="nas_setup_intro">เชื่อมต่อ NAS ในบ้านผ่าน SMB เพื่อเปิดดูและคัดลอกไฟล์ลงเครื่อง แอปพลิเคชันจะไม่แก้ไขหรือลบไฟล์บน NAS</string>
     <string name="nas_address">ที่อยู่ NAS</string>
     <string name="nas_address_hint">เช่น 192.168.1.20 หรือ nas.local</string>
     <string name="nas_share">ชื่อโฟลเดอร์ที่แชร์</string>
@@ -266,7 +266,7 @@
     <string name="nas_privacy">รหัสผ่านถูกเข้ารหัสด้วยกุญแจใน Android Keystore ของเครื่องนี้ ไม่ถูกสำรองขึ้นคลาวด์ และไม่ถูกบันทึกลง log</string>
     <string name="nas_edit">แก้ไขการตั้งค่า</string>
     <string name="nas_retry">ลองใหม่</string>
-    <string name="nas_read_only">NAS เปิดได้แบบอ่านอย่างเดียว แอปจะไม่แก้ไขหรือลบไฟล์บน NAS</string>
+    <string name="nas_read_only">NAS เปิดได้แบบอ่านอย่างเดียว แอปพลิเคชันจะไม่แก้ไขหรือลบไฟล์บน NAS</string>
     <string name="nas_connecting">กำลังเชื่อมต่อ NAS…</string>
     <string name="nas_form_no_address">กรุณากรอกที่อยู่ NAS</string>
     <string name="nas_form_bad_address">ที่อยู่ไม่ถูกต้อง กรุณากรอกเป็นตัวเลข IP หรือชื่อเครื่อง เช่น 192.168.1.20</string>
@@ -274,7 +274,7 @@
     <string name="nas_form_no_share">กรุณากรอกชื่อโฟลเดอร์ที่แชร์บน NAS</string>
 
     <string name="nas_problem_no_network">เครื่องยังไม่ได้เชื่อมต่อเครือข่าย กรุณาเชื่อมต่อ WiFi ที่บ้านก่อน</string>
-    <string name="nas_problem_local_network">แอปยังไม่ได้รับสิทธิ์เข้าถึงเครือข่ายในบ้าน กรุณาปิดแล้วเปิดแอปใหม่ หากยังไม่ได้ ผู้ดูแลต้องให้สิทธิ์ผ่าน adb</string>
+    <string name="nas_problem_local_network">แอปพลิเคชันยังไม่ได้รับสิทธิ์เข้าถึงเครือข่ายในบ้าน กรุณาปิดแล้วเปิดแอปพลิเคชันใหม่ หากยังไม่ได้ ผู้ดูแลต้องให้สิทธิ์ผ่าน adb</string>
     <string name="nas_problem_host">ไม่พบเครื่อง NAS ตามที่อยู่นี้ กรุณาตรวจสอบที่อยู่</string>
     <string name="nas_problem_no_answer">NAS ไม่ตอบ เครื่องอาจปิดอยู่ อยู่คนละเครือข่าย หรือไฟร์วอลล์ของ NAS ปิดกั้นไว้</string>
     <string name="nas_problem_logon">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาแก้ไขการตั้งค่า</string>

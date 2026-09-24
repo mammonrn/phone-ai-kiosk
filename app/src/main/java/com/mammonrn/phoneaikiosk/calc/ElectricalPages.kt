@@ -13,6 +13,7 @@ import com.mammonrn.phoneaikiosk.R
 import com.mammonrn.phoneaikiosk.calc.CalculatorActivity.Companion.MATCH
 import com.mammonrn.phoneaikiosk.calc.CalculatorActivity.Companion.WRAP
 import com.mammonrn.phoneaikiosk.calc.Electrical.Band
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * The "ไฟฟ้า" tab of the calculator (0.52.0): a list of five tools, each a
@@ -60,9 +61,9 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             Tool.AC to R.string.el_ac, Tool.WIRE to R.string.el_wire)
         for ((t, name) in names) {
             page.addView(a.button(a.getString(name), big = true) { draw(t) },
-                         LinearLayout.LayoutParams(MATCH, a.dp(60)).apply { bottomMargin = a.dp(8) })
+                         LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY)).apply { bottomMargin = a.dp(UiScale.SPACE_S) })
         }
-        page.addView(a.text(a.getString(R.string.el_list_hint), 12f, dim = true))
+        page.addView(a.text(a.getString(R.string.el_list_hint), UiScale.TEXT_NOTE, dim = true))
         a.setPage(scroll(page))
     }
 
@@ -129,7 +130,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         }
         page.addView(a.button(a.getString(R.string.el_add_part)) {
             fields.firstOrNull { it.view.visibility == View.GONE }?.view?.visibility = View.VISIBLE
-        }, LinearLayout.LayoutParams(MATCH, a.dp(48)).apply { topMargin = a.dp(4) })
+        }, LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_XS) })
         page.addView(actions(onGo = {
             val given = fields.mapNotNull { it.value() }
             if (given.any { it.isNaN() }) return@actions out.error("กรุณากรอกตัวเลขให้ถูกต้อง")
@@ -197,9 +198,9 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         val current = (0 until bandCount).map { chosen[slot(it)] }
         for (index in 0 until bandCount) {
             val band = current[index]
-            page.addView(a.label(roleOf(index)).apply { setPadding(0, a.dp(6), 0, a.dp(2)) })
+            page.addView(a.label(roleOf(index)).apply { setPadding(0, a.dp(UiScale.SPACE_S), 0, a.dp(UiScale.SPACE_XS)) })
             page.addView(swatchButton(band, picking == index) { picking = if (picking == index) null else index; colour() },
-                         LinearLayout.LayoutParams(MATCH, a.dp(52)))
+                         LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)))
             if (picking == index) page.addView(palette(allowed(index)) { b -> chosen[slot(index)] = b; picking = null; colour() })
         }
         val reading = Electrical.read(current)
@@ -217,7 +218,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
     private fun encode(page: LinearLayout) {
         val value = Qty("ค่าความต้านทาน", listOf("Ω" to 1.0, "kΩ" to 1e3, "MΩ" to 1e6), 1)
         page.addView(value.view)
-        page.addView(a.label("ค่าความคลาดเคลื่อน").apply { setPadding(0, a.dp(8), 0, a.dp(2)) })
+        page.addView(a.label("ค่าความคลาดเคลื่อน").apply { setPadding(0, a.dp(UiScale.SPACE_S), 0, a.dp(UiScale.SPACE_XS)) })
         page.addView(row(listOf(1.0, 2.0, 5.0, 10.0).map { t ->
             a.toggle("±" + Electrical.plain(t) + "%", tolerance == t) { tolerance = t; colour() }
         }))
@@ -241,20 +242,20 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundResource(R.drawable.retro_button)
-        setPadding(a.dp(10), 0, a.dp(10), 0)
+        setPadding(a.dp(UiScale.SPACE_S), 0, a.dp(UiScale.SPACE_S), 0)
         isClickable = true
         contentDescription = "สี" + band.thai + if (open) " (กำลังเลือก)" else " แตะเพื่อเปลี่ยน"
         setOnClickListener { onClick() }
-        addView(swatch(band), LinearLayout.LayoutParams(a.dp(40), a.dp(28)))
-        addView(a.text(band.thai, 15f).apply { setPadding(a.dp(10), 0, 0, 0) }, LinearLayout.LayoutParams(0, WRAP, 1f))
-        addView(a.text(if (open) "▲" else "▼", 14f))
+        addView(swatch(band), LinearLayout.LayoutParams(a.dp(UiScale.ICON_L), a.dp(UiScale.ICON_L)))
+        addView(a.text(band.thai, UiScale.TEXT_ITEM).apply { setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0) }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        addView(a.text(if (open) "▲" else "▼", UiScale.TEXT_BASE))
     }
 
     private fun swatch(band: Band) = View(a).apply {
         // A dark edge round every swatch: white and silver would vanish on the grey face.
         background = android.graphics.drawable.GradientDrawable().apply {
             setColor(0xFF000000.toInt() or band.rgb)
-            setStroke(a.dp(2), a.color(R.color.retro_dark))
+            setStroke(a.dp(UiScale.BEVEL), a.color(R.color.retro_dark))
         }
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
@@ -267,16 +268,16 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setBackgroundResource(R.drawable.retro_button)
-                    setPadding(a.dp(6), 0, a.dp(4), 0)
+                    setPadding(a.dp(UiScale.SPACE_S), 0, a.dp(UiScale.SPACE_XS), 0)
                     isClickable = true
                     contentDescription = "เลือกสี" + b.thai
                     setOnClickListener { onPick(b) }
-                    addView(swatch(b), LinearLayout.LayoutParams(a.dp(22), a.dp(22)))
-                    addView(a.text(b.thai, 13f).apply { setPadding(a.dp(6), 0, 0, 0); maxLines = 1 })
+                    addView(swatch(b), LinearLayout.LayoutParams(a.dp(UiScale.ICON_M), a.dp(UiScale.ICON_M)))
+                    addView(a.text(b.thai, UiScale.TEXT_NOTE).apply { setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0); maxLines = 1 })
                 }
-            } + List(3 - line.size) { View(a) }), LinearLayout.LayoutParams(MATCH, a.dp(48)).apply { topMargin = a.dp(4) })
+            } + List(3 - line.size) { View(a) }), LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_XS) })
         }
-        return grid.apply { setPadding(0, 0, 0, a.dp(6)) }
+        return grid.apply { setPadding(0, 0, 0, a.dp(UiScale.SPACE_S)) }
     }
 
     // ------------------------------------------------------------ AC
@@ -313,7 +314,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         page.addView(out.view)
 
         // Reactance: whichever of L and C is filled in.
-        page.addView(a.label(a.getString(R.string.el_reactance)).apply { setPadding(0, a.dp(14), 0, a.dp(2)) })
+        page.addView(a.label(a.getString(R.string.el_reactance)).apply { setPadding(0, a.dp(UiScale.SPACE_M), 0, a.dp(UiScale.SPACE_XS)) })
         val f = Qty("ความถี่ f", listOf("Hz" to 1.0), 0, "50")
         val l = Qty("ความเหนี่ยวนำ L", listOf("µH" to 1e-6, "mH" to 1e-3, "H" to 1.0), 1)
         val c = Qty("ความจุ C", listOf("nF" to 1e-9, "µF" to 1e-6, "mF" to 1e-3), 1)
@@ -376,9 +377,9 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             out.show(lines, warn)
         }, onClear = { listOf(i, len).forEach { it.clear() }; out.clear() }))
         page.addView(out.view)
-        page.addView(a.text(a.getString(R.string.el_wire_source), 12f, dim = true).apply { setPadding(0, a.dp(8), 0, 0) })
-        page.addView(a.text(a.getString(R.string.el_wire_ampacity), 13f).apply {
-            setTextColor(a.color(R.color.retro_bad)); setPadding(0, a.dp(6), 0, 0)
+        page.addView(a.text(a.getString(R.string.el_wire_source), UiScale.TEXT_NOTE, dim = true).apply { setPadding(0, a.dp(UiScale.SPACE_S), 0, 0) })
+        page.addView(a.text(a.getString(R.string.el_wire_ampacity), UiScale.TEXT_NOTE).apply {
+            setTextColor(a.color(R.color.retro_bad)); setPadding(0, a.dp(UiScale.SPACE_S), 0, 0)
         })
         a.setPage(scroll(page))
     }
@@ -409,14 +410,14 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         private val unitViews = ArrayList<TextView>()
         val view: LinearLayout = column().apply {
             addView(a.label(label + if (units.size == 1) " (${units[0].first})" else "").apply {
-                setPadding(0, a.dp(6), 0, a.dp(2))
+                setPadding(0, a.dp(UiScale.SPACE_S), 0, a.dp(UiScale.SPACE_XS))
             })
             val line = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }
-            line.addView(field, LinearLayout.LayoutParams(0, a.dp(52), 1f))
+            line.addView(field, LinearLayout.LayoutParams(0, a.dp(UiScale.TOUCH), 1f))
             if (units.size > 1) for ((n, u) in units.withIndex()) {
                 val t = unitButton(u.first, n == unit) { pick(n) }
                 unitViews.add(t)
-                line.addView(t, LinearLayout.LayoutParams(a.dp(52), a.dp(52)).apply { marginStart = a.dp(4) })
+                line.addView(t, LinearLayout.LayoutParams(a.dp(UiScale.TOUCH), a.dp(UiScale.TOUCH)).apply { marginStart = a.dp(UiScale.SPACE_XS) })
             }
             addView(line, LinearLayout.LayoutParams(MATCH, WRAP))
         }
@@ -459,7 +460,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
     private fun styleUnit(t: TextView, value: String, on: Boolean) = t.apply {
         text = value
-        textSize = 14f
+        textSize = UiScale.TEXT_BASE
         typeface = Typeface.create(a.thai, if (on) Typeface.BOLD else Typeface.NORMAL)
         setTextColor(a.color(if (on) R.color.retro_title_text else R.color.retro_text))
         if (on) setBackgroundColor(a.color(R.color.retro_title)) else setBackgroundResource(R.drawable.retro_button)
@@ -470,7 +471,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
     private inner class Output {
         val view: LinearLayout = column().apply {
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(a.dp(10), a.dp(8), a.dp(10), a.dp(8))
+            setPadding(a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S))
             visibility = View.GONE
         }
 
@@ -478,19 +479,19 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
         fun error(message: String) {
             clear()
-            view.addView(a.text("ผิดพลาด: $message", 14f).apply { setTextColor(a.color(R.color.retro_bad)) })
+            view.addView(a.text("ผิดพลาด: $message", UiScale.TEXT_BASE).apply { setTextColor(a.color(R.color.retro_bad)) })
             view.visibility = View.VISIBLE
         }
 
         /** [bold]: which lines are the answer (the first, unless said otherwise). */
         fun show(lines: List<String>, warnings: List<String>, bold: Set<Int> = setOf(0)) {
             clear()
-            for ((n, line) in lines.withIndex()) view.addView(a.text(line, if (n in bold) 16f else 15f).apply {
+            for ((n, line) in lines.withIndex()) view.addView(a.text(line, if (n in bold) UiScale.TEXT_HEADING else UiScale.TEXT_ITEM).apply {
                 if (n in bold) typeface = Typeface.create(a.thai, Typeface.BOLD)
-                setPadding(0, if (n == 0) 0 else a.dp(4), 0, 0)
+                setPadding(0, if (n == 0) 0 else a.dp(UiScale.SPACE_XS), 0, 0)
             })
-            for (w in warnings) view.addView(a.text("โปรดตรวจ: $w", 13f).apply {
-                setTextColor(a.color(R.color.retro_bad)); setPadding(0, a.dp(6), 0, 0)
+            for (w in warnings) view.addView(a.text("โปรดตรวจ: $w", UiScale.TEXT_NOTE).apply {
+                setTextColor(a.color(R.color.retro_bad)); setPadding(0, a.dp(UiScale.SPACE_S), 0, 0)
             })
             view.visibility = View.VISIBLE
         }
@@ -500,34 +501,34 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             view.addView(row(bands.map { b ->
                 column().apply {
                     gravity = Gravity.CENTER_HORIZONTAL
-                    addView(swatch(b), LinearLayout.LayoutParams(a.dp(36), a.dp(36)))
-                    addView(a.text(b.thai, 12f).apply { gravity = Gravity.CENTER })
+                    addView(swatch(b), LinearLayout.LayoutParams(a.dp(UiScale.ICON_L), a.dp(UiScale.ICON_L)))
+                    addView(a.text(b.thai, UiScale.TEXT_NOTE).apply { gravity = Gravity.CENTER })
                 }
-            }, WRAP), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(8) })
+            }, WRAP), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         }
     }
 
     private fun toolPage(title: Int, hint: Int) = column().apply {
         addView(a.button(a.getString(R.string.el_back)) { draw(null) },
-                LinearLayout.LayoutParams(MATCH, a.dp(48)).apply { bottomMargin = a.dp(6) })
-        addView(a.text(a.getString(title), 16f).apply { typeface = Typeface.create(a.thai, Typeface.BOLD) })
-        addView(a.text(a.getString(hint), 12f, dim = true).apply { setPadding(0, a.dp(2), 0, a.dp(4)) })
+                LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { bottomMargin = a.dp(UiScale.SPACE_S) })
+        addView(a.text(a.getString(title), UiScale.TEXT_HEADING).apply { typeface = Typeface.create(a.thai, Typeface.BOLD) })
+        addView(a.text(a.getString(hint), UiScale.TEXT_NOTE, dim = true).apply { setPadding(0, a.dp(UiScale.SPACE_XS), 0, a.dp(UiScale.SPACE_XS)) })
     }
 
     private fun actions(onGo: () -> Unit, onClear: () -> Unit) = LinearLayout(a).apply {
         orientation = LinearLayout.HORIZONTAL
-        setPadding(0, a.dp(10), 0, a.dp(8))
-        addView(a.button(a.getString(R.string.el_calculate), big = true) { onGo() }, LinearLayout.LayoutParams(0, a.dp(56), 2f))
+        setPadding(0, a.dp(UiScale.SPACE_S), 0, a.dp(UiScale.SPACE_S))
+        addView(a.button(a.getString(R.string.el_calculate), big = true) { onGo() }, LinearLayout.LayoutParams(0, a.dp(UiScale.PRIMARY), 2f))
         addView(a.button(a.getString(R.string.el_clear)) { onClear() },
-                LinearLayout.LayoutParams(0, a.dp(56), 1f).apply { marginStart = a.dp(8) })
+                LinearLayout.LayoutParams(0, a.dp(UiScale.PRIMARY), 1f).apply { marginStart = a.dp(UiScale.SPACE_S) })
     }
 
-    private fun row(views: List<View>, height: Int = a.dp(48)) = LinearLayout(a).apply {
+    private fun row(views: List<View>, height: Int = a.dp(UiScale.TOUCH)) = LinearLayout(a).apply {
         orientation = LinearLayout.HORIZONTAL
-        for ((n, v) in views.withIndex()) addView(v, LinearLayout.LayoutParams(0, height, 1f).apply { if (n > 0) marginStart = a.dp(6) })
+        for ((n, v) in views.withIndex()) addView(v, LinearLayout.LayoutParams(0, height, 1f).apply { if (n > 0) marginStart = a.dp(UiScale.SPACE_S) })
     }
 
-    private fun gap() = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(6) }
+    private fun gap() = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) }
 
     private fun column() = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
 

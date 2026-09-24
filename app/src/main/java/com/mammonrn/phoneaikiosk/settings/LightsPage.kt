@@ -17,6 +17,7 @@ import com.mammonrn.phoneaikiosk.home.HomeSettings
 import com.mammonrn.phoneaikiosk.voice.Broker
 import com.mammonrn.phoneaikiosk.voice.TokenStore
 import com.mammonrn.phoneaikiosk.voice.VoiceState
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * The Control Panel's "ไฟในบ้าน" page (0.47.0, Poom 2026-09-24): where the
@@ -109,9 +110,9 @@ internal class LightsPage(private val a: SettingsActivity) {
         a.titleText.text = a.getString(R.string.window_lights)
         val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         list.addView(a.button(a.getString(R.string.settings_back_to_panel)) { a.showHomeFromPage() },
-                     LinearLayout.LayoutParams(WRAP, a.dp(48)))
-        list.addView(a.text(a.getString(R.string.lights_intro), 13f, dim = true),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(8) })
+                     LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)))
+        list.addView(a.text(a.getString(R.string.lights_intro), UiScale.TEXT_NOTE, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
 
         val current = page
         val status = when {
@@ -123,22 +124,22 @@ internal class LightsPage(private val a: SettingsActivity) {
             current.devices.isEmpty() -> a.getString(R.string.lights_empty)
             else -> null
         }
-        note?.let { list.addView(a.text(it, 14f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(8) }) }
-        status?.let { list.addView(a.text(it, 14f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(12) }) }
+        note?.let { list.addView(a.text(it, UiScale.TEXT_BASE), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) }) }
+        status?.let { list.addView(a.text(it, UiScale.TEXT_BASE), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_M) }) }
         if (current != null && current.devices.isNotEmpty() && !current.control) {
-            list.addView(a.text(a.getString(R.string.lights_stopped), 13f).apply {
+            list.addView(a.text(a.getString(R.string.lights_stopped), UiScale.TEXT_NOTE).apply {
                 setTextColor(a.color(R.color.retro_bad))
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(8) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         }
         for (device in current?.devices.orEmpty()) {
-            list.addView(deviceBox(device), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(10) })
+            list.addView(deviceBox(device), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         }
         if (current != null && !loading) {
             list.addView(a.button(a.getString(R.string.lights_reload)) {
                 note = null
                 load()
                 showList()
-            }, LinearLayout.LayoutParams(MATCH, a.dp(48)).apply { topMargin = a.dp(12) })
+            }, LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_M) })
         }
         val keep = scroller?.scrollY ?: 0
         val view = ScrollView(a).apply { addView(list) }
@@ -151,12 +152,12 @@ internal class LightsPage(private val a: SettingsActivity) {
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_sunken)
-            setPadding(a.dp(8), a.dp(8), a.dp(8), a.dp(8))
+            setPadding(a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S))
         }
-        box.addView(a.text(HomeSettings.describe(device), 13f, dim = true))
+        box.addView(a.text(HomeSettings.describe(device), UiScale.TEXT_NOTE, dim = true))
         // 0.53.4: where the device sits in the WiFi, for deciding where to move it.
         HomeSettings.signalLine(device).takeIf { it.isNotEmpty() }?.let {
-            box.addView(a.text(it, 13f, dim = true))
+            box.addView(a.text(it, UiScale.TEXT_NOTE, dim = true))
         }
         if (device.channels.isEmpty()) {
             box.addView(item(device, null, device.name, device.ownName, device.ewelinkName, device.online,
@@ -168,15 +169,15 @@ internal class LightsPage(private val a: SettingsActivity) {
         // voice), then one block per channel.
         box.addView(nameLine(device.name, bold = true, state = null))
         box.addView(a.text(HomeSettings.source(device.ownName, device.ewelinkName) + " · " +
-                           a.getString(R.string.lights_switch_name_hint), 12f, dim = true))
+                           a.getString(R.string.lights_switch_name_hint), UiScale.TEXT_NOTE, dim = true))
         warning(box, device.clash)
         box.addView(a.button(a.getString(R.string.lights_rename_switch)) {
             showName(device, null, device.name, device.ownName, device.ewelinkName)
-        }, LinearLayout.LayoutParams(WRAP, a.dp(48)).apply { topMargin = a.dp(6) })
+        }, LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_S) })
         for (c in device.channels) {
             box.addView(item(device, c.index, c.name, c.ownName, c.ewelinkName, device.online, c.on, c.allowed,
                              c.active, c.clash, c.icon, c.iconChosen, c.voice),
-                        LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(10) })
+                        LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         }
         return box
     }
@@ -188,30 +189,30 @@ internal class LightsPage(private val a: SettingsActivity) {
                      iconChosen: Boolean = false, voice: Boolean = true): View {
         val block = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            if (channel != null) setPadding(a.dp(8), 0, 0, 0)
+            if (channel != null) setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0)
         }
         val title = if (channel != null) a.getString(R.string.lights_channel, channel + 1) + " · " + name else name
         block.addView(nameLine(title, bold = channel == null, state = if (active) HomeSettings.state(online, on) else null,
                                lit = active && online && on == true))
         block.addView(a.text(if (active) HomeSettings.source(ownName, ewelinkName)
-                             else a.getString(R.string.lights_inactive), 12f, dim = active).apply {
+                             else a.getString(R.string.lights_inactive), UiScale.TEXT_NOTE, dim = active).apply {
             if (!active) setTextColor(a.color(R.color.retro_bad))
         })
         warning(block, clash)
         if (active && !voice) {
-            block.addView(a.text(HomeSettings.NOT_FOR_VOICE, 13f).apply { setTextColor(a.color(R.color.retro_bad)) })
+            block.addView(a.text(HomeSettings.NOT_FOR_VOICE, UiScale.TEXT_NOTE).apply { setTextColor(a.color(R.color.retro_bad)) })
         }
         block.addView(LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(allowBox(device, channel, allowed, enabled = active),
-                    LinearLayout.LayoutParams(0, a.dp(48), 1f))
+                    LinearLayout.LayoutParams(0, a.dp(UiScale.TOUCH), 1f))
             addView(a.button(a.getString(R.string.lights_rename)) {
                 showName(device, channel, name, ownName, ewelinkName)
-            }, LinearLayout.LayoutParams(a.dp(112), a.dp(48)).apply { marginStart = a.dp(6) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(6) })
+            }, LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { marginStart = a.dp(UiScale.SPACE_S) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         if (active) block.addView(iconPicker(device, channel, icon, iconChosen),
-                                  LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(6) })
+                                  LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         return block
     }
 
@@ -225,7 +226,7 @@ internal class LightsPage(private val a: SettingsActivity) {
             orientation = LinearLayout.VERTICAL
             addView(a.text(a.getString(R.string.lights_icon) + " · " +
                            a.getString(if (iconChosen) R.string.lights_icon_chosen else R.string.lights_icon_default),
-                           12f, dim = true))
+                           UiScale.TEXT_NOTE, dim = true))
             addView(LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL
                 for ((name, picture, label) in PICTURES) {
@@ -245,31 +246,31 @@ internal class LightsPage(private val a: SettingsActivity) {
                             }
                         }
                         addView(ImageView(a).apply { setImageResource(picture) },
-                                android.widget.FrameLayout.LayoutParams(a.dp(28), a.dp(28), Gravity.CENTER))
-                    }, LinearLayout.LayoutParams(a.dp(52), a.dp(48)).apply { marginEnd = a.dp(4) })
+                                android.widget.FrameLayout.LayoutParams(a.dp(UiScale.ICON_L), a.dp(UiScale.ICON_L), Gravity.CENTER))
+                    }, LinearLayout.LayoutParams(a.dp(UiScale.TOUCH), a.dp(UiScale.TOUCH)).apply { marginEnd = a.dp(UiScale.SPACE_XS) })
                 }
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(4) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_XS) })
         }
 
     private fun nameLine(value: String, bold: Boolean, state: String?, lit: Boolean = false) =
         LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, a.dp(4), 0, 0)
-            addView(a.text(value, 15f).apply {
+            setPadding(0, a.dp(UiScale.SPACE_XS), 0, 0)
+            addView(a.text(value, UiScale.TEXT_ITEM).apply {
                 if (bold) typeface = Typeface.create(a.thai, Typeface.BOLD)
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
-            if (state != null) addView(a.text(state, 14f, dim = !lit).apply {
+            if (state != null) addView(a.text(state, UiScale.TEXT_BASE, dim = !lit).apply {
                 if (lit) typeface = Typeface.create(a.thai, Typeface.BOLD)
-                setPadding(a.dp(8), 0, 0, 0)
+                setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0)
             })
         }
 
     private fun warning(parent: LinearLayout, clash: List<String>) {
         val line = HomeSettings.clashWarning(clash)
-        if (line.isNotEmpty()) parent.addView(a.text(line, 13f).apply { setTextColor(a.color(R.color.retro_bad)) })
+        if (line.isNotEmpty()) parent.addView(a.text(line, UiScale.TEXT_NOTE).apply { setTextColor(a.color(R.color.retro_bad)) })
     }
 
     /** The tick box: "อนุญาตให้สั่ง", a 48dp target with the word beside it, like the alarms'. */
@@ -283,9 +284,9 @@ internal class LightsPage(private val a: SettingsActivity) {
             addView(ImageView(a).apply {
                 setImageResource(if (allowed && enabled) R.drawable.ic_pixel_check_on else R.drawable.ic_pixel_check_off)
                 alpha = if (enabled) 1f else 0.4f
-            }, LinearLayout.LayoutParams(a.dp(32), a.dp(32)))
-            addView(a.text(a.getString(if (enabled) R.string.lights_allowed else R.string.lights_name_first), 14f,
-                           dim = !enabled).apply { setPadding(a.dp(6), 0, 0, 0) })
+            }, LinearLayout.LayoutParams(a.dp(UiScale.ICON_L), a.dp(UiScale.ICON_L)))
+            addView(a.text(a.getString(if (enabled) R.string.lights_allowed else R.string.lights_name_first), UiScale.TEXT_BASE,
+                           dim = !enabled).apply { setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0) })
             if (enabled) setOnClickListener {
                 note = a.getString(R.string.lights_saving)
                 showList()
@@ -304,37 +305,37 @@ internal class LightsPage(private val a: SettingsActivity) {
         a.titleText.text = a.getString(R.string.lights_name_title)
         val form = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, a.dp(8))
+            setPadding(0, 0, 0, a.dp(UiScale.SPACE_S))
         }
         form.addView(a.button(a.getString(R.string.lights_back)) { back(null) },
-                     LinearLayout.LayoutParams(WRAP, a.dp(48)))
+                     LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)))
         val what = if (channel == null) name else a.getString(R.string.lights_channel_of, channel + 1, device.name)
         form.addView(a.label(a.getString(R.string.lights_naming, what)),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(12) })
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_M) })
         form.addView(a.text(if (ewelinkName.isNotEmpty()) a.getString(R.string.lights_ewelink_name, ewelinkName)
-                            else a.getString(R.string.lights_no_ewelink_name), 13f, dim = true),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(4) })
+                            else a.getString(R.string.lights_no_ewelink_name), UiScale.TEXT_NOTE, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_XS) })
         val field = EditText(a).apply {
             setText(ownName)
             setSelection(text.length)
             hint = name
             filters = arrayOf(InputFilter.LengthFilter(HomeSettings.MAX_NAME))
             typeface = a.thai
-            textSize = 16f
+            textSize = UiScale.TEXT_HEADING
             setSingleLine()
             imeOptions = EditorInfo.IME_ACTION_DONE
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(a.dp(10), a.dp(10), a.dp(10), a.dp(10))
+            setPadding(a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S), a.dp(UiScale.SPACE_S))
             setTextColor(a.color(R.color.retro_text))
         }
-        form.addView(field, LinearLayout.LayoutParams(MATCH, a.dp(52)).apply { topMargin = a.dp(8) })
-        form.addView(a.text(a.getString(R.string.lights_name_hint), 13f, dim = true),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(6) })
-        val error = a.text("", 14f).apply {
+        form.addView(field, LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_S) })
+        form.addView(a.text(a.getString(R.string.lights_name_hint), UiScale.TEXT_NOTE, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
+        val error = a.text("", UiScale.TEXT_BASE).apply {
             setTextColor(a.color(R.color.retro_bad))
             visibility = View.GONE
         }
-        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(8) })
+        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
 
         fun save(value: String, saveButton: TextView?) {
             error.visibility = View.GONE
@@ -366,14 +367,14 @@ internal class LightsPage(private val a: SettingsActivity) {
                     save(value, saveButton)
                 }
             }
-            addView(saveButton, LinearLayout.LayoutParams(0, a.dp(56), 1f))
+            addView(saveButton, LinearLayout.LayoutParams(0, a.dp(UiScale.PRIMARY), 1f))
             addView(a.button(a.getString(R.string.cancel), big = true) { back(null) },
-                    LinearLayout.LayoutParams(0, a.dp(56), 1f).apply { marginStart = a.dp(8) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(12) })
+                    LinearLayout.LayoutParams(0, a.dp(UiScale.PRIMARY), 1f).apply { marginStart = a.dp(UiScale.SPACE_S) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_M) })
         if (ownName.isNotEmpty()) {
             // Reversible (type it again), so no second question.
             form.addView(a.button(a.getString(R.string.lights_name_remove)) { save("", null) },
-                         LinearLayout.LayoutParams(MATCH, a.dp(48)).apply { topMargin = a.dp(12) })
+                         LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_M) })
         }
         a.setPage(ScrollView(a).apply { addView(form) })
     }

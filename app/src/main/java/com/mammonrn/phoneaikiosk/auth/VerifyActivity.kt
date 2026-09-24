@@ -38,6 +38,7 @@ import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * "Is this Poom?" — the face with a blink, or the pattern when the face will
@@ -548,27 +549,27 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.retro_desktop))
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME))
         }
         val window = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_raised)
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET))
         }
         root.addView(window, LinearLayout.LayoutParams(MATCH, 0, 1f))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.retro_titlebar)
-            setPadding(dp(6), dp(8), dp(6), dp(8))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
         bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_face) },
-                    LinearLayout.LayoutParams(dp(16), dp(16)))
+                    LinearLayout.LayoutParams(dp(UiScale.ICON_S), dp(UiScale.ICON_S)))
         titleText = TextView(this).apply {
             setTextColor(color(R.color.retro_title_text))
-            textSize = 13f
+            textSize = UiScale.TEXT_BASE
             typeface = Typeface.create(thai, Typeface.BOLD)
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
             maxLines = 1
         }
         bar.addView(titleText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -578,12 +579,12 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundResource(R.drawable.retro_sunken)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
-        window.addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(5) })
+        window.addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.WINDOW_INSET) })
 
         status = TextView(this).apply {
-            textSize = 16f
+            textSize = UiScale.TEXT_HEADING
             typeface = Typeface.create(thai, Typeface.BOLD)
             setTextColor(color(R.color.retro_text))
             gravity = Gravity.CENTER
@@ -596,39 +597,39 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
         preview = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
         previewFrame = FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_sunken)
-            setPadding(dp(3), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS))
             addView(preview, FrameLayout.LayoutParams(MATCH, MATCH))
         }
-        body.addView(previewFrame, LinearLayout.LayoutParams(dp(240), dp(320)).apply { topMargin = dp(10) })
+        body.addView(previewFrame, LinearLayout.LayoutParams(dp(UiScale.CAMERA_W), dp(UiScale.CAMERA_H)).apply { topMargin = dp(UiScale.SPACE_S) })
 
         pad = PatternPad(this).apply {
             visibility = View.GONE
             onPattern = { dots -> this@VerifyActivity.onPattern(dots) }
         }
-        body.addView(pad, LinearLayout.LayoutParams(dp(280), dp(280)).apply { topMargin = dp(10) })
+        body.addView(pad, LinearLayout.LayoutParams(dp(UiScale.PATTERN_PAD), dp(UiScale.PATTERN_PAD)).apply { topMargin = dp(UiScale.SPACE_S) })
 
         hint = TextView(this).apply {
-            textSize = 13f
+            textSize = UiScale.TEXT_NOTE
             typeface = thai
             setTextColor(color(R.color.retro_dim))
             gravity = Gravity.CENTER
         }
         body.addView(hint, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT)
-            .apply { topMargin = dp(10) })
+            .apply { topMargin = dp(UiScale.SPACE_S) })
 
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         switchButton = button("") {}.apply { visibility = View.GONE }
-        buttons.addView(switchButton, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginEnd = dp(7) })
+        buttons.addView(switchButton, LinearLayout.LayoutParams(0, dp(UiScale.PRIMARY), 1f).apply { marginEnd = dp(UiScale.SPACE_S) })
         cancelButton = button(getString(R.string.auth_cancel)) { finishWith(OUTCOME_CANCELLED, null) }
-        buttons.addView(cancelButton, LinearLayout.LayoutParams(0, dp(56), 1f))
+        buttons.addView(cancelButton, LinearLayout.LayoutParams(0, dp(UiScale.PRIMARY), 1f))
         root.addView(buttons, LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT)
-            .apply { topMargin = dp(7) })
+            .apply { topMargin = dp(UiScale.SPACE_S) })
         return root
     }
 
     private fun button(value: String, onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = 16f
+        textSize = UiScale.TEXT_HEADING
         typeface = Typeface.create(thai, Typeface.BOLD)
         gravity = Gravity.CENTER
         setTextColor(color(R.color.retro_text))

@@ -35,6 +35,7 @@ import com.mammonrn.phoneaikiosk.auth.VerifyActivity
 import com.mammonrn.phoneaikiosk.ui.ScreenDate
 import com.mammonrn.phoneaikiosk.ui.RetroType
 import com.mammonrn.phoneaikiosk.voice.DashboardState
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * The Control Panel: settings, in a 1995 window, inside the kiosk.
@@ -184,12 +185,12 @@ class SettingsActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.retro_desktop))
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME))
         }
         val window = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_raised)
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET))
         }
         root.addView(window, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
@@ -198,15 +199,15 @@ class SettingsActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.retro_titlebar)
-            setPadding(dp(6), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
         }
         bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_control_panel) },
-                    LinearLayout.LayoutParams(dp(16), dp(16)))
+                    LinearLayout.LayoutParams(dp(UiScale.ICON_S), dp(UiScale.ICON_S)))
         titleText = TextView(this).apply {
             setTextColor(color(R.color.retro_title_text))
-            textSize = 13f
+            textSize = UiScale.TEXT_BASE
             typeface = Typeface.create(thai, Typeface.BOLD)
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
             maxLines = 1
         }
         bar.addView(titleText, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -216,16 +217,16 @@ class SettingsActivity : Activity() {
             isClickable = true
             setOnClickListener { goHome() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
-                    FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(dp(44), dp(40)))
+                    FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
 
         content = FrameLayout(this)
-        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(5) })
+        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.WINDOW_INSET) })
 
         // The way home, always at the bottom, the biggest thing on the page.
         root.addView(button(getString(R.string.settings_home), big = true) { goHome() },
-                     LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(7) })
+                     LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.FRAME) })
         return root
     }
 
@@ -242,35 +243,35 @@ class SettingsActivity : Activity() {
         val grid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(dp(10), dp(10), dp(10), dp(4))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS))
         }
         for (row in CATEGORIES.chunked(ICONS_PER_ROW)) {
             val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            grid.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) })
+            grid.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
             for ((index, category) in row.withIndex()) line.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 isClickable = true
                 setBackgroundResource(R.drawable.retro_button)
-                setPadding(dp(8), dp(10), dp(8), dp(10))
+                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
                 setOnClickListener { category.open(this@SettingsActivity) }
                 addView(ImageView(context).apply { setImageResource(category.icon) },
-                        LinearLayout.LayoutParams(dp(48), dp(48)))
-                addView(text(category.label(this@SettingsActivity), 14f).apply {
+                        LinearLayout.LayoutParams(dp(UiScale.ICON_XL), dp(UiScale.ICON_XL)))
+                addView(text(category.label(this@SettingsActivity), UiScale.TEXT_BASE).apply {
                     gravity = Gravity.CENTER
-                    setPadding(0, dp(6), 0, 0)
+                    setPadding(0, dp(UiScale.SPACE_S), 0, 0)
                 })
-            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (index > 0) marginStart = dp(6) })
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
             // A short last row keeps the icons the same width as the rows above.
             repeat(ICONS_PER_ROW - row.size) {
-                line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(6) })
+                line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
             }
         }
         setPage(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(grid, LinearLayout.LayoutParams(MATCH, WRAP))
-            addView(text(getString(R.string.settings_hint), 12f, dim = true).apply {
-                setPadding(dp(2), dp(8), dp(2), 0)
+            addView(text(getString(R.string.settings_hint), UiScale.TEXT_NOTE, dim = true).apply {
+                setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0)
             })
         })
     }
@@ -286,21 +287,21 @@ class SettingsActivity : Activity() {
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         list.addView(button(getString(R.string.settings_back_to_panel)) { showHome() },
-                     LinearLayout.LayoutParams(WRAP, dp(48)))
+                     LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
 
         if (book.alarms.isEmpty()) {
             // An empty page is an invitation: what to press, or what to say.
-            list.addView(text(getString(R.string.alarms_empty), 14f).apply {
-                setPadding(dp(4), dp(16), dp(4), dp(16))
+            list.addView(text(getString(R.string.alarms_empty), UiScale.TEXT_BASE).apply {
+                setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_L), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_L))
             })
         }
         for (alarm in book.alarms) list.addView(alarmRow(book, alarm), LinearLayout.LayoutParams(MATCH, WRAP)
-            .apply { topMargin = dp(8) })
+            .apply { topMargin = dp(UiScale.SPACE_S) })
 
         val full = book.alarms.size >= AlarmBook.MAX_ALARMS
         list.addView(button(getString(if (full) R.string.alarms_full else R.string.alarm_add),
                             big = true, enabled = !full) { showEdit(null) },
-                     LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(12) })
+                     LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.SPACE_M) })
         setPage(ScrollView(this).apply { addView(list) })
     }
 
@@ -314,11 +315,11 @@ class SettingsActivity : Activity() {
         titleText.text = getString(R.string.window_sources)
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         list.addView(button(getString(R.string.settings_back_to_panel)) { showHome() },
-                     LinearLayout.LayoutParams(WRAP, dp(48)))
+                     LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
         for (entry in resources.getStringArray(R.array.data_sources)) {
             val (heading, detail) = entry.split("|", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
-            list.addView(label(heading), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
-            list.addView(text(detail, 13f))
+            list.addView(label(heading), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
+            list.addView(text(detail, UiScale.TEXT_NOTE))
         }
         setPage(ScrollView(this).apply { addView(list) })
     }
@@ -413,7 +414,7 @@ class SettingsActivity : Activity() {
         val hasPattern = AuthStore.hasPattern(this)
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         list.addView(button(getString(R.string.settings_back_to_panel)) { showHome() },
-                     LinearLayout.LayoutParams(WRAP, dp(48)))
+                     LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
 
         val faceStatus = if (face != null) {
             getString(R.string.auth_face_yes, ScreenDate.format(
@@ -421,7 +422,7 @@ class SettingsActivity : Activity() {
         } else {
             getString(R.string.auth_face_no)
         }
-        list.addView(label(faceStatus), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+        list.addView(label(faceStatus), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
         list.addView(authRow(
             primary = getString(if (face != null) R.string.auth_reenroll_face else R.string.auth_enroll_face),
             onPrimary = { openVerify(VerifyActivity.Mode.ENROLL) },
@@ -429,20 +430,20 @@ class SettingsActivity : Activity() {
             confirm = getString(R.string.auth_delete_face_confirm)))
 
         list.addView(label(getString(if (hasPattern) R.string.auth_pattern_yes else R.string.auth_pattern_no)),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
         list.addView(authRow(
             primary = getString(if (hasPattern) R.string.auth_change_pattern else R.string.auth_set_pattern),
             onPrimary = { openVerify(VerifyActivity.Mode.SET_PATTERN) },
             deleteKey = if (hasPattern) "pattern" else null,
             confirm = getString(R.string.auth_delete_pattern_confirm)))
         deleteNote?.let {
-            list.addView(text(it, 13f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+            list.addView(text(it, UiScale.TEXT_NOTE), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         }
 
         val enrolled = face != null || hasPattern
         list.addView(button(getString(R.string.auth_test), enabled = enrolled) {
             openVerify(VerifyActivity.Mode.VERIFY)
-        }, LinearLayout.LayoutParams(MATCH, dp(52)).apply { topMargin = dp(16) })
+        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_L) })
         val result = when (lastAuthOutcome) {
             VerifyActivity.OUTCOME_PASSED -> R.string.auth_result_passed
             VerifyActivity.OUTCOME_CANCELLED -> R.string.auth_result_cancelled
@@ -450,34 +451,34 @@ class SettingsActivity : Activity() {
             else -> null
         }
         if (result != null) {
-            list.addView(text(getString(result), 13f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+            list.addView(text(getString(result), UiScale.TEXT_NOTE), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         }
-        val line = text(grantText(), 13f)
+        val line = text(grantText(), UiScale.TEXT_NOTE)
         grantLine = line
-        list.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        list.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         val close = button(getString(R.string.auth_close_grant)) {
             AccessGrant.close()
             showGrant()
         }
         grantClose = close
-        list.addView(close, LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
+        list.addView(close, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
         showGrant()
 
         // The id the broker approves (`approve-enrollment` on the VPS). Not a
         // secret; the first four characters are what Poom types.
         AuthStore.identityId(this)?.let { id ->
-            list.addView(text(getString(R.string.auth_identity, id.take(4)), 13f),
-                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+            list.addView(text(getString(R.string.auth_identity, id.take(4)), UiScale.TEXT_NOTE),
+                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
             val server = when (com.mammonrn.phoneaikiosk.voice.VoiceState.grantStatus) {
                 "approved" -> getString(R.string.auth_server_approved)
                 "pending" -> getString(R.string.auth_server_pending, id.take(4))
                 "error" -> getString(R.string.auth_server_error)
                 else -> getString(R.string.auth_server_unknown)
             }
-            list.addView(text(server, 13f), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+            list.addView(text(server, UiScale.TEXT_NOTE), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
         }
-        list.addView(text(getString(R.string.auth_privacy), 12f, dim = true),
-                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16) })
+        list.addView(text(getString(R.string.auth_privacy), UiScale.TEXT_NOTE, dim = true),
+                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_L) })
         setPage(ScrollView(this).apply { addView(list) })
         repeatHandler.removeCallbacks(grantTicker)
         repeatHandler.post(grantTicker)
@@ -494,11 +495,11 @@ class SettingsActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(UiScale.SPACE_S), 0, 0)
         }
         if (deleteKey != null && confirmingAuthDelete == deleteKey) {
             val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            box.addView(text(confirm, 13f))
+            box.addView(text(confirm, UiScale.TEXT_NOTE))
             box.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(button(getString(R.string.auth_delete_verify)) {
@@ -507,24 +508,24 @@ class SettingsActivity : Activity() {
                     @Suppress("DEPRECATION")
                     startActivityForResult(VerifyActivity.intent(this@SettingsActivity,
                         VerifyActivity.Mode.VERIFY), REQUEST_DELETE)
-                }, LinearLayout.LayoutParams(0, dp(48), 1f))
+                }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
                 addView(button(getString(R.string.cancel)) {
                     confirmingAuthDelete = null
                     deleteNote = null
                     showAuth()
-                }, LinearLayout.LayoutParams(dp(80), dp(48)).apply { marginStart = dp(6) })
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+                }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
             box.addView(button(getString(R.string.auth_reset_ask)) { askVpsForReset(deleteKey) },
-                        LinearLayout.LayoutParams(WRAP, dp(48)).apply { topMargin = dp(6) })
+                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
             row.addView(box, LinearLayout.LayoutParams(MATCH, WRAP))
             return row
         }
-        row.addView(button(primary) { onPrimary() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        row.addView(button(primary) { onPrimary() }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
         if (deleteKey != null) {
             row.addView(button(getString(R.string.auth_delete)) {
                 confirmingAuthDelete = deleteKey
                 showAuth()
-            }, LinearLayout.LayoutParams(dp(72), dp(48)).apply { marginStart = dp(6) })
+            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
         }
         return row
     }
@@ -557,7 +558,7 @@ class SettingsActivity : Activity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_sunken)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -576,15 +577,15 @@ class SettingsActivity : Activity() {
             }
             addView(ImageView(context).apply {
                 setImageResource(if (alarm.enabled) R.drawable.ic_pixel_check_on else R.drawable.ic_pixel_check_off)
-            }, LinearLayout.LayoutParams(dp(32), dp(32)))
-            addView(text(getString(if (alarm.enabled) R.string.alarm_on else R.string.alarm_off), 13f).apply {
-                setPadding(dp(4), 0, dp(10), 0)
+            }, LinearLayout.LayoutParams(dp(UiScale.ICON_L), dp(UiScale.ICON_L)))
+            addView(text(getString(if (alarm.enabled) R.string.alarm_on else R.string.alarm_off), UiScale.TEXT_NOTE).apply {
+                setPadding(dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_S), 0)
             })
-        }, LinearLayout.LayoutParams(WRAP, dp(48)))
-        top.addView(text(RetroType.pixelify(DashboardState.clock12(alarm.time), pixel), 20f, dim = !alarm.enabled),
+        }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
+        top.addView(text(RetroType.pixelify(DashboardState.clock12(alarm.time), pixel), UiScale.TEXT_VALUE, dim = !alarm.enabled),
                     LinearLayout.LayoutParams(WRAP, WRAP))
-        top.addView(text(alarm.label, 15f, dim = !alarm.enabled).apply {
-            setPadding(dp(10), 0, 0, 0)
+        top.addView(text(alarm.label, UiScale.TEXT_ITEM, dim = !alarm.enabled).apply {
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -593,29 +594,29 @@ class SettingsActivity : Activity() {
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(UiScale.SPACE_S), 0, 0)
         }
         if (confirmingDelete == alarm.id) {
             // Deleting cannot be undone, so it asks once, in place.
-            bottom.addView(text(getString(R.string.alarm_delete_confirm), 13f), LinearLayout.LayoutParams(0, WRAP, 1f))
+            bottom.addView(text(getString(R.string.alarm_delete_confirm), UiScale.TEXT_NOTE), LinearLayout.LayoutParams(0, WRAP, 1f))
             bottom.addView(button(getString(R.string.alarm_delete)) {
                 book.remove(alarm.id)
                 AlarmStore.save(this, book)
                 confirmingDelete = null
                 showAlarms()
-            }, LinearLayout.LayoutParams(dp(72), dp(48)))
+            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
             bottom.addView(button(getString(R.string.cancel)) {
                 confirmingDelete = null
                 showAlarms()
-            }, LinearLayout.LayoutParams(dp(80), dp(48)).apply { marginStart = dp(6) })
+            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
         } else {
-            bottom.addView(text(AlarmBook.repeatText(alarm), 13f, dim = true), LinearLayout.LayoutParams(0, WRAP, 1f))
+            bottom.addView(text(AlarmBook.repeatText(alarm), UiScale.TEXT_NOTE, dim = true), LinearLayout.LayoutParams(0, WRAP, 1f))
             bottom.addView(button(getString(R.string.edit)) { showEdit(alarm) },
-                           LinearLayout.LayoutParams(dp(72), dp(48)))
+                           LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
             bottom.addView(button(getString(R.string.alarm_delete)) {
                 confirmingDelete = alarm.id
                 showAlarms()
-            }, LinearLayout.LayoutParams(dp(64), dp(48)).apply { marginStart = dp(6) })
+            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
         }
         box.addView(bottom)
         return box
@@ -638,9 +639,9 @@ class SettingsActivity : Activity() {
 
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(8))
+            setPadding(0, 0, 0, dp(UiScale.SPACE_S))
         }
-        val error = text("", 13f).apply {
+        val error = text("", UiScale.TEXT_NOTE).apply {
             setTextColor(color(R.color.retro_bad))
             visibility = View.GONE
         }
@@ -648,13 +649,13 @@ class SettingsActivity : Activity() {
         // Time: the big display and two spinners, Win95 style — ▲ / ▼ buttons
         // a thumb can hit, repeating while held.
         form.addView(label(getString(R.string.alarm_time)))
-        val shown = text("", 26f).apply { gravity = Gravity.CENTER }
+        val shown = text("", UiScale.TEXT_DISPLAY).apply { gravity = Gravity.CENTER }
         fun refreshTime() {
             shown.text = RetroType.pixelify(DashboardState.clock12(
                 String.format(java.util.Locale.US, "%02d:%02d", hour, minute)), pixel)
         }
         refreshTime()
-        form.addView(shown, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+        form.addView(shown, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
         form.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -664,29 +665,29 @@ class SettingsActivity : Activity() {
             addView(spinner(getString(R.string.alarm_minute),
                 up = { minute = (minute + 1) % 60; refreshTime() },
                 down = { minute = (minute + 59) % 60; refreshTime() }),
-                LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(24) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+                LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(UiScale.SPACE_L) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
 
         // Name.
         form.addView(label(getString(R.string.alarm_name)), LinearLayout.LayoutParams(MATCH, WRAP)
-            .apply { topMargin = dp(14) })
+            .apply { topMargin = dp(UiScale.SPACE_M) })
         val name = EditText(this).apply {
             setText(alarm?.label.orEmpty())
             hint = getString(R.string.alarm_name_hint)
             filters = arrayOf(InputFilter.LengthFilter(AlarmBook.MAX_LABEL_CHARS))
             typeface = thai
-            textSize = 16f
+            textSize = UiScale.TEXT_HEADING
             setSingleLine()
             imeOptions = EditorInfo.IME_ACTION_DONE
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
             setTextColor(color(R.color.retro_text))
         }
-        form.addView(name, LinearLayout.LayoutParams(MATCH, dp(52)).apply { topMargin = dp(4) })
+        form.addView(name, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
 
         // Repeat: three big choices, then the days when "เลือกวัน".
         form.addView(label(getString(R.string.alarm_repeat)), LinearLayout.LayoutParams(MATCH, WRAP)
-            .apply { topMargin = dp(14) })
+            .apply { topMargin = dp(UiScale.SPACE_M) })
         val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val dayRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fun renderRepeat() {
@@ -696,7 +697,7 @@ class SettingsActivity : Activity() {
                     mode = choice
                     if (choice == Repeat.DAYS && days == AlarmBook.EVERY_DAY) days = AlarmBook.WEEKDAYS
                     renderRepeat()
-                }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4) })
+                }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginEnd = dp(UiScale.SPACE_XS) })
             }
             dayRow.removeAllViews()
             dayRow.visibility = if (mode == Repeat.DAYS) View.VISIBLE else View.GONE
@@ -706,13 +707,13 @@ class SettingsActivity : Activity() {
                 dayRow.addView(toggle(AlarmBook.DAY_NAMES[index], days and bit != 0) {
                     days = days xor bit
                     renderRepeat()
-                }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(3) })
+                }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginEnd = dp(UiScale.SPACE_XS) })
             }
         }
         renderRepeat()
-        form.addView(modeRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
-        form.addView(dayRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
-        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        form.addView(modeRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
+        form.addView(dayRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
+        form.addView(error, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
 
         // Save / cancel.
         form.addView(LinearLayout(this).apply {
@@ -743,10 +744,10 @@ class SettingsActivity : Activity() {
                 }
                 AlarmStore.save(this@SettingsActivity, book)
                 showAlarms()
-            }, LinearLayout.LayoutParams(0, dp(56), 1f))
+            }, LinearLayout.LayoutParams(0, dp(UiScale.PRIMARY), 1f))
             addView(button(getString(R.string.cancel), big = true) { showAlarms() },
-                    LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(8) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(14) })
+                    LinearLayout.LayoutParams(0, dp(UiScale.PRIMARY), 1f).apply { marginStart = dp(UiScale.SPACE_S) })
+        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
 
         setPage(ScrollView(this).apply { addView(form) })
     }
@@ -769,7 +770,7 @@ class SettingsActivity : Activity() {
         setTextColor(color(if (dim) R.color.retro_dim else R.color.retro_text))
     }
 
-    internal fun label(value: String) = text(value, 13f).apply {
+    internal fun label(value: String) = text(value, UiScale.TEXT_NOTE).apply {
         typeface = Typeface.create(thai, Typeface.BOLD)
     }
 
@@ -777,12 +778,13 @@ class SettingsActivity : Activity() {
     internal fun button(value: String, big: Boolean = false, enabled: Boolean = true,
                         onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = if (big) 16f else 14f
+        textSize = if (big) UiScale.TEXT_HEADING else UiScale.TEXT_BASE
         typeface = Typeface.create(thai, Typeface.BOLD)
         gravity = Gravity.CENTER
         setTextColor(color(if (enabled) R.color.retro_text else R.color.retro_dim))
         setBackgroundResource(R.drawable.retro_button)
-        setPadding(dp(12), 0, dp(12), 0)
+        setPadding(dp(UiScale.SPACE_M), 0, dp(UiScale.SPACE_M), 0)
+        minWidth = dp(UiScale.TOUCH)
         isClickable = enabled
         isEnabled = enabled
         if (enabled) setOnClickListener { onClick() }
@@ -791,7 +793,7 @@ class SettingsActivity : Activity() {
     /** A button that stays down while chosen: the day and repeat choices. */
     private fun toggle(value: String, on: Boolean, onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = 14f
+        textSize = UiScale.TEXT_BASE
         typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)
         gravity = Gravity.CENTER
         setTextColor(color(if (on) R.color.retro_title_text else R.color.retro_text))
@@ -806,11 +808,11 @@ class SettingsActivity : Activity() {
     private fun spinner(name: String, up: () -> Unit, down: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        addView(text(name, 13f).apply { gravity = Gravity.CENTER })
+        addView(text(name, UiScale.TEXT_NOTE).apply { gravity = Gravity.CENTER })
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(repeating("▲", up), LinearLayout.LayoutParams(dp(64), dp(48)))
-            addView(repeating("▼", down), LinearLayout.LayoutParams(dp(64), dp(48)).apply { marginStart = dp(6) })
+            addView(repeating("▲", up), LinearLayout.LayoutParams(dp(UiScale.SYMBOL_W), dp(UiScale.TOUCH)))
+            addView(repeating("▼", down), LinearLayout.LayoutParams(dp(UiScale.SYMBOL_W), dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
         })
     }
 
@@ -819,7 +821,7 @@ class SettingsActivity : Activity() {
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun repeating(symbol: String, step: () -> Unit) = TextView(this).apply {
         text = symbol
-        textSize = 18f
+        textSize = UiScale.TEXT_VALUE
         gravity = Gravity.CENTER
         setTextColor(color(R.color.retro_text))
         setBackgroundResource(R.drawable.retro_button)

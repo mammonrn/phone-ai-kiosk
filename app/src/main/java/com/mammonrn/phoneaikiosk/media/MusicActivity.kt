@@ -38,6 +38,7 @@ import com.mammonrn.phoneaikiosk.files.NasEntry
 import com.mammonrn.phoneaikiosk.files.NasSession
 import com.mammonrn.phoneaikiosk.files.NasStore
 import java.util.concurrent.Executors
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * The music player's screen (0.53.0, Poom: "หน้าตาคล้าย Winamp"), from the
@@ -151,28 +152,28 @@ class MusicActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.retro_desktop))
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME))
         }
         val window = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_raised)
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET))
         }
         root.addView(window, LinearLayout.LayoutParams(MATCH, 0, 1f))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.retro_titlebar)
-            setPadding(dp(6), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
         }
         bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_music_light) },
-                    LinearLayout.LayoutParams(dp(16), dp(16)))
+                    LinearLayout.LayoutParams(dp(UiScale.ICON_S), dp(UiScale.ICON_S)))
         bar.addView(TextView(this).apply {
             text = getString(R.string.window_music)
             setTextColor(color(R.color.retro_title_text))
-            textSize = 13f
+            textSize = UiScale.TEXT_BASE
             typeface = Typeface.create(thai, Typeface.BOLD)
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
             maxLines = 1
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
         bar.addView(FrameLayout(this).apply {
@@ -181,27 +182,27 @@ class MusicActivity : Activity() {
             isClickable = true
             setOnClickListener { goHome() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
-                    FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(dp(44), dp(40)))
+                    FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
 
         val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         for ((i, t) in Tab.entries.withIndex()) {
             val view = TextView(this).apply {
                 text = getString(if (t == Tab.NOW) R.string.music_tab_now else R.string.music_tab_library)
-                textSize = 14f
+                textSize = UiScale.TEXT_BASE
                 gravity = Gravity.CENTER
                 isClickable = true
                 setOnClickListener { show(t) }
             }
             tabs.add(view)
-            tabRow.addView(view, LinearLayout.LayoutParams(0, dp(48), 1f).apply { if (i > 0) marginStart = dp(6) })
+            tabRow.addView(view, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { if (i > 0) marginStart = dp(UiScale.SPACE_S) })
         }
-        window.addView(tabRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(5) })
+        window.addView(tabRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.WINDOW_INSET) })
         content = FrameLayout(this)
-        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(6) })
+        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_S) })
         root.addView(button(getString(R.string.settings_home), big = true) { goHome() },
-                     LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(7) })
+                     LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.FRAME) })
         return root
     }
 
@@ -225,28 +226,28 @@ class MusicActivity : Activity() {
         // The read-out: green on black, like the player it is modelled on.
         val lcd = column().apply {
             setBackgroundColor(color(R.color.retro_dark))
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
-        timeView = TextView(this).apply { typeface = pixel; textSize = 18f; setTextColor(color(R.color.retro_lcd)) }
+        timeView = TextView(this).apply { typeface = pixel; textSize = UiScale.TEXT_VALUE; setTextColor(color(R.color.retro_lcd)) }
         top.addView(timeView, LinearLayout.LayoutParams(0, WRAP, 1f))
-        stateView = TextView(this).apply { typeface = thai; textSize = 13f; setTextColor(color(R.color.retro_lcd)) }
+        stateView = TextView(this).apply { typeface = thai; textSize = UiScale.TEXT_NOTE; setTextColor(color(R.color.retro_lcd)) }
         top.addView(stateView)
         lcd.addView(top)
         titleView = TextView(this).apply {
-            typeface = Typeface.create(thai, Typeface.BOLD); textSize = 17f; setTextColor(color(R.color.retro_lcd))
+            typeface = Typeface.create(thai, Typeface.BOLD); textSize = UiScale.TEXT_HEADING; setTextColor(color(R.color.retro_lcd))
             maxLines = 1; ellipsize = TextUtils.TruncateAt.MARQUEE; marqueeRepeatLimit = -1; isSelected = true
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(UiScale.SPACE_S), 0, 0)
         }
         lcd.addView(titleView, LinearLayout.LayoutParams(MATCH, WRAP))
         artistView = TextView(this).apply {
-            typeface = thai; textSize = 13f; setTextColor(color(R.color.retro_lcd_dim)); maxLines = 1
+            typeface = thai; textSize = UiScale.TEXT_NOTE; setTextColor(color(R.color.retro_lcd_dim)); maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
         lcd.addView(artistView, LinearLayout.LayoutParams(MATCH, WRAP))
         page.addView(FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_sunken)
-            setPadding(dp(3), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS))
             addView(lcd)
         }, LinearLayout.LayoutParams(MATCH, WRAP))
 
@@ -263,7 +264,7 @@ class MusicActivity : Activity() {
                 }
             })
         }
-        page.addView(seek, LinearLayout.LayoutParams(MATCH, dp(44)).apply { topMargin = dp(4) })
+        page.addView(seek, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
 
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controls.addView(control(R.drawable.ic_pixel_prev, R.string.music_prev) { MusicPlayer.previous(this) }, weight(0))
@@ -273,18 +274,18 @@ class MusicActivity : Activity() {
         controls.addView(play, weight(1))
         controls.addView(control(R.drawable.ic_pixel_stop, R.string.music_stop) { MusicPlayer.stop(this) }, weight(1))
         controls.addView(control(R.drawable.ic_pixel_next, R.string.music_next) { MusicPlayer.next(this) }, weight(1))
-        page.addView(controls, LinearLayout.LayoutParams(MATCH, dp(64)).apply { topMargin = dp(4) })
+        page.addView(controls, LinearLayout.LayoutParams(MATCH, dp(UiScale.ICON_BUTTON)).apply { topMargin = dp(UiScale.SPACE_XS) })
 
         val modes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         shuffleView = choice("") { MusicPlayer.setShuffle(!MusicPlayer.queue.shuffle) }
         repeatView = choice("") { MusicPlayer.cycleRepeat() }
-        modes.addView(shuffleView, weight(0, dp(48)))
-        modes.addView(repeatView, weight(1, dp(48)))
-        page.addView(modes, LinearLayout.LayoutParams(MATCH, dp(48)).apply { topMargin = dp(6) })
+        modes.addView(shuffleView, weight(0, dp(UiScale.TOUCH)))
+        modes.addView(repeatView, weight(1, dp(UiScale.TOUCH)))
+        page.addView(modes, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
 
         val volumeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        volumeView = text("", 13f)
-        volumeRow.addView(volumeView, LinearLayout.LayoutParams(dp(112), WRAP))
+        volumeView = text("", UiScale.TEXT_NOTE)
+        volumeRow.addView(volumeView, LinearLayout.LayoutParams(dp(UiScale.VOLUME_LABEL), WRAP))
         volumeRow.addView(retroSeek().apply {
             max = 100
             progress = (MusicPlayer.volume * 100).toInt()
@@ -296,23 +297,23 @@ class MusicActivity : Activity() {
                 override fun onStartTrackingTouch(bar: SeekBar) = Unit
                 override fun onStopTrackingTouch(bar: SeekBar) = Unit
             })
-        }, LinearLayout.LayoutParams(0, dp(44), 1f))
-        page.addView(volumeRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+        }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
+        page.addView(volumeRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
 
-        errorView = text("", 13f).apply { setTextColor(color(R.color.retro_bad)); visibility = View.GONE }
+        errorView = text("", UiScale.TEXT_NOTE).apply { setTextColor(color(R.color.retro_bad)); visibility = View.GONE }
         page.addView(errorView)
 
         queueTitle = label("")
-        page.addView(queueTitle, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+        page.addView(queueTitle, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         if (MusicPlayer.queue.isEmpty) {
-            page.addView(text(getString(R.string.music_queue_empty), 14f).apply { setPadding(0, dp(4), 0, dp(8)) })
+            page.addView(text(getString(R.string.music_queue_empty), UiScale.TEXT_BASE).apply { setPadding(0, dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_S)) })
             page.addView(button(getString(R.string.music_go_library)) { show(Tab.LIBRARY) },
-                         LinearLayout.LayoutParams(MATCH, dp(48)))
+                         LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)))
         } else {
             val adapter = TrackAdapter(MusicPlayer.queue.tracks) { MusicPlayer.queue.currentIndex }
             queueAdapter = adapter
             page.addView(list(adapter) { index -> MusicPlayer.jumpTo(this, index) },
-                         LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(2) })
+                         LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         }
         setPage(page)
         refreshNow()
@@ -369,32 +370,32 @@ class MusicActivity : Activity() {
     private fun showLibrary() {
         val page = column()
         val sources = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        sources.addView(choice(getString(R.string.music_local), !onNas) { onNas = false; showLibrary() }, weight(0, dp(48)))
-        sources.addView(choice(getString(R.string.music_nas), onNas) { onNas = true; showLibrary() }, weight(1, dp(48)))
-        page.addView(sources, LinearLayout.LayoutParams(MATCH, dp(48)))
+        sources.addView(choice(getString(R.string.music_local), !onNas) { onNas = false; showLibrary() }, weight(0, dp(UiScale.TOUCH)))
+        sources.addView(choice(getString(R.string.music_nas), onNas) { onNas = true; showLibrary() }, weight(1, dp(UiScale.TOUCH)))
+        page.addView(sources, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)))
         if (onNas) nasPage(page) else localPage(page)
         setPage(page)
     }
 
     private fun localPage(page: LinearLayout) {
         val search = EditText(this).apply {
-            typeface = thai; textSize = 16f; setSingleLine(); hint = getString(R.string.music_search_hint)
+            typeface = thai; textSize = UiScale.TEXT_HEADING; setSingleLine(); hint = getString(R.string.music_search_hint)
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setBackgroundResource(R.drawable.retro_field); setPadding(dp(10), 0, dp(10), 0)
+            setBackgroundResource(R.drawable.retro_field); setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
             setTextColor(color(R.color.retro_text)); setHintTextColor(color(R.color.retro_dim))
         }
-        page.addView(search, LinearLayout.LayoutParams(MATCH, dp(52)).apply { topMargin = dp(6) })
-        val status = text(getString(R.string.music_loading), 14f, dim = true)
-        page.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+        page.addView(search, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
+        val status = text(getString(R.string.music_loading), UiScale.TEXT_BASE, dim = true)
+        page.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
         val all = ArrayList<Track>()
         var shown: List<Track> = emptyList()
         val adapter = TrackAdapter(emptyList()) { -1 }
         val playAll = button(getString(R.string.music_play_all)) {
             if (shown.isNotEmpty()) { MusicPlayer.play(this, shown); show(Tab.NOW) }
         }
-        page.addView(playAll, LinearLayout.LayoutParams(MATCH, dp(48)).apply { topMargin = dp(4) })
+        page.addView(playAll, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
         page.addView(list(adapter) { index -> MusicPlayer.play(this, shown, index); show(Tab.NOW) },
-                     LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(4) })
+                     LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         fun filter() {
             val q = MusicLibrary.key(search.text.toString())
             shown = if (q.isEmpty()) all else all.filter {
@@ -426,26 +427,26 @@ class MusicActivity : Activity() {
 
     private fun nasPage(page: LinearLayout) {
         if (NasStore.load(this) == null) {
-            page.addView(text(getString(R.string.music_nas_not_set), 15f).apply { setPadding(dp(2), dp(10), dp(2), 0) })
+            page.addView(text(getString(R.string.music_nas_not_set), UiScale.TEXT_ITEM).apply { setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0) })
             return
         }
         val pathRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         pathRow.addView(button("◄") { if (nasPath.isNotEmpty()) { nasPath = nasPath.substringBeforeLast('\\', ""); showLibrary() } },
-                        LinearLayout.LayoutParams(dp(52), dp(48)))
-        pathRow.addView(text(("NAS › " + nasPath.replace("\\", " › ")).trimEnd(' ', '›'), 14f).apply {
+                        LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
+        pathRow.addView(text(("NAS › " + nasPath.replace("\\", " › ")).trimEnd(' ', '›'), UiScale.TEXT_BASE).apply {
             setBackgroundResource(R.drawable.retro_field); gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(8), 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.START
-        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(4) })
-        page.addView(pathRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
-        val status = text(getString(R.string.music_loading), 14f, dim = true)
-        page.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
+            setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.START
+        }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
+        page.addView(pathRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
+        val status = text(getString(R.string.music_loading), UiScale.TEXT_BASE, dim = true)
+        page.addView(status, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
         val entries = ArrayList<NasEntry>()
         val adapter = EntryAdapter()
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE }
         actions.addView(button(getString(R.string.music_nas_play_folder)) {
             val songs = entries.filter { !it.folder && MusicLibrary.playable(it.name) }.map(::nasTrack)
             if (songs.isNotEmpty()) { MusicPlayer.play(this, songs); show(Tab.NOW) }
-        }, weight(0, dp(48)))
+        }, weight(0, dp(UiScale.TOUCH)))
         actions.addView(button(getString(R.string.music_nas_add)) {
             status.text = getString(R.string.music_nas_adding)
             val path = nasPath
@@ -455,8 +456,8 @@ class MusicActivity : Activity() {
                            catch (e: Exception) { getString(R.string.music_nas_failed) }
                 handler.post { if (mine == generation) status.text = text + "  ·  " + libraryLine() }
             }
-        }, weight(1, dp(48)))
-        page.addView(actions, LinearLayout.LayoutParams(MATCH, dp(48)).apply { topMargin = dp(4) })
+        }, weight(1, dp(UiScale.TOUCH)))
+        page.addView(actions, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
         page.addView(list(adapter) { index ->
             val entry = entries[index]
             when {
@@ -467,7 +468,7 @@ class MusicActivity : Activity() {
                     show(Tab.NOW)
                 }
             }
-        }, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(4) })
+        }, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         adapter.entries = entries
         val mine = generation
         val path = nasPath
@@ -556,10 +557,10 @@ class MusicActivity : Activity() {
     private fun rowView() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(56)
-        setPadding(dp(10), dp(6), dp(10), dp(6))
-        addView(TextView(context).apply { typeface = thai; textSize = 15f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
-        addView(TextView(context).apply { typeface = thai; textSize = 12f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+        minimumHeight = dp(UiScale.ROW)
+        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
+        addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_ITEM; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
+        addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_NOTE; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
         layoutParams = ViewGroup.LayoutParams(MATCH, WRAP)
     }
 
@@ -573,23 +574,23 @@ class MusicActivity : Activity() {
         isClickable = true
         contentDescription = getString(word)
         setOnClickListener { onClick() }
-        addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(24), dp(24)))
-        addView(text(getString(word), 12f).apply { gravity = Gravity.CENTER; maxLines = 1 })
+        addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M)))
+        addView(text(getString(word), UiScale.TEXT_NOTE).apply { gravity = Gravity.CENTER; maxLines = 1 })
     }
 
     /** A retro slider: a sunken grey track, navy to the thumb, a raised square thumb. */
     private fun retroSeek() = SeekBar(this).apply {
-        val track = GradientDrawable().apply { setColor(color(R.color.retro_light)); setStroke(dp(1), color(R.color.retro_shadow)) }
+        val track = GradientDrawable().apply { setColor(color(R.color.retro_light)); setStroke(dp(UiScale.HAIRLINE), color(R.color.retro_shadow)) }
         val fill = ClipDrawable(GradientDrawable().apply { setColor(color(R.color.retro_title)) }, Gravity.START, ClipDrawable.HORIZONTAL)
         progressDrawable = LayerDrawable(arrayOf(track, fill)).apply {
             setId(0, android.R.id.background); setId(1, android.R.id.progress)
         }
         thumb = GradientDrawable().apply {
-            setColor(color(R.color.retro_face)); setStroke(dp(2), color(R.color.retro_dark)); setSize(dp(18), dp(30))
+            setColor(color(R.color.retro_face)); setStroke(dp(UiScale.BEVEL), color(R.color.retro_dark)); setSize(dp(UiScale.THUMB_W), dp(UiScale.THUMB_H))
         }
         splitTrack = false
-        minimumHeight = dp(12)
-        setPadding(dp(12), 0, dp(12), 0)
+        minimumHeight = dp(UiScale.SPACE_M)
+        setPadding(dp(UiScale.SPACE_M), 0, dp(UiScale.SPACE_M), 0)
     }
 
     private fun choice(value: String, on: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
@@ -601,7 +602,7 @@ class MusicActivity : Activity() {
 
     private fun styleChoice(view: TextView, on: Boolean, value: String = view.text.toString()) = view.apply {
         text = value
-        textSize = 14f
+        textSize = UiScale.TEXT_BASE
         typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)
         setTextColor(color(if (on) R.color.retro_title_text else R.color.retro_text))
         if (on) setBackgroundColor(color(R.color.retro_title)) else setBackgroundResource(R.drawable.retro_button)
@@ -610,12 +611,13 @@ class MusicActivity : Activity() {
 
     private fun button(value: String, big: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = if (big) 16f else 14f
+        textSize = if (big) UiScale.TEXT_HEADING else UiScale.TEXT_BASE
         typeface = Typeface.create(thai, Typeface.BOLD)
         gravity = Gravity.CENTER
         setTextColor(color(R.color.retro_text))
         setBackgroundResource(R.drawable.retro_button)
-        setPadding(dp(6), 0, dp(6), 0)
+        setPadding(dp(UiScale.SPACE_M), 0, dp(UiScale.SPACE_M), 0)
+        minWidth = dp(UiScale.TOUCH)
         maxLines = 1
         isClickable = true
         setOnClickListener { onClick() }
@@ -628,12 +630,12 @@ class MusicActivity : Activity() {
         setTextColor(color(if (dim) R.color.retro_dim else R.color.retro_text))
     }
 
-    private fun label(value: String) = text(value, 13f).apply { typeface = Typeface.create(thai, Typeface.BOLD) }
+    private fun label(value: String) = text(value, UiScale.TEXT_NOTE).apply { typeface = Typeface.create(thai, Typeface.BOLD) }
 
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
     private fun weight(index: Int, height: Int = MATCH) =
-        LinearLayout.LayoutParams(0, height, 1f).apply { if (index > 0) marginStart = dp(6) }
+        LinearLayout.LayoutParams(0, height, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) }
 
     private fun clock(ms: Long): String {
         val s = (ms / 1000).coerceAtLeast(0)

@@ -27,6 +27,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.mammonrn.phoneaikiosk.KioskScreens
 import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
+import com.mammonrn.phoneaikiosk.ui.UiScale
 
 /**
  * The engineering calculator (0.52.0, Poom), opened from the Control Panel.
@@ -119,28 +120,28 @@ class CalculatorActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.retro_desktop))
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME), dp(UiScale.FRAME))
         }
         val window = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_raised)
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET))
         }
         root.addView(window, LinearLayout.LayoutParams(MATCH, 0, 1f))
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.retro_titlebar)
-            setPadding(dp(6), dp(3), dp(3), dp(3))
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
         }
         bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_calculator) },
-                    LinearLayout.LayoutParams(dp(16), dp(16)))
+                    LinearLayout.LayoutParams(dp(UiScale.ICON_S), dp(UiScale.ICON_S)))
         bar.addView(TextView(this).apply {
             text = getString(R.string.window_calculator)
             setTextColor(color(R.color.retro_title_text))
-            textSize = 13f
+            textSize = UiScale.TEXT_BASE
             typeface = Typeface.create(thai, Typeface.BOLD)
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -150,8 +151,8 @@ class CalculatorActivity : Activity() {
             isClickable = true
             setOnClickListener { goHome() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
-                    FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(dp(44), dp(40)))
+                    FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
 
         val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -163,20 +164,20 @@ class CalculatorActivity : Activity() {
             })
             val view = TextView(this).apply {
                 text = label
-                textSize = 14f
+                textSize = UiScale.TEXT_BASE
                 gravity = Gravity.CENTER
                 isClickable = true
                 setOnClickListener { show(t) }
             }
             tabs.add(view)
-            tabRow.addView(view, LinearLayout.LayoutParams(0, dp(48), 1f).apply { if (i > 0) marginStart = dp(6) })
+            tabRow.addView(view, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { if (i > 0) marginStart = dp(UiScale.SPACE_S) })
         }
-        window.addView(tabRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(5) })
+        window.addView(tabRow, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.WINDOW_INSET) })
 
         content = FrameLayout(this)
-        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(6) })
+        window.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_S) })
         root.addView(button(getString(R.string.settings_home), big = true) { goHome() },
-                     LinearLayout.LayoutParams(MATCH, dp(56)).apply { topMargin = dp(7) })
+                     LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY)).apply { topMargin = dp(UiScale.FRAME) })
         return root
     }
 
@@ -232,25 +233,25 @@ class CalculatorActivity : Activity() {
         val display = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_field)
-            setPadding(dp(8), dp(6), dp(8), dp(8))
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
         }
-        statusView = text("", 12f, dim = true)
+        statusView = text("", UiScale.TEXT_NOTE, dim = true)
         display.addView(statusView)
         exprView = TextView(this).apply {
             typeface = pixel
-            textSize = 13f
+            textSize = UiScale.TEXT_NOTE
             setTextColor(color(R.color.retro_text))
             gravity = Gravity.END
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.START
-            setPadding(0, dp(6), 0, dp(6))
+            setPadding(0, dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S))
         }
         display.addView(exprView, LinearLayout.LayoutParams(MATCH, WRAP))
         resultView = TextView(this).apply {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             maxLines = 1
         }
-        display.addView(resultView, LinearLayout.LayoutParams(MATCH, dp(32)))
+        display.addView(resultView, LinearLayout.LayoutParams(MATCH, dp(UiScale.DISPLAY_LINE)))
         page.addView(display, LinearLayout.LayoutParams(MATCH, WRAP))
 
         val pad = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -260,11 +261,11 @@ class CalculatorActivity : Activity() {
                 val view = keyView(key)
                 if (key.label == "DEG") angleKey = view
                 line.addView(view, LinearLayout.LayoutParams(0, MATCH, key.wide.toFloat())
-                    .apply { if (i > 0) marginStart = dp(4) })
+                    .apply { if (i > 0) marginStart = dp(UiScale.SPACE_XS) })
             }
-            pad.addView(line, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(4) })
+            pad.addView(line, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         }
-        page.addView(pad, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(2) })
+        page.addView(pad, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.SPACE_XS) })
         setPage(page)
         refresh()
     }
@@ -274,11 +275,7 @@ class CalculatorActivity : Activity() {
         typeface = pixel
         gravity = Gravity.CENTER
         maxLines = 1
-        textSize = when {
-            key.label.length == 1 -> 16f                    // digits and + - × ÷ ( )
-            key.label.length >= 4 -> 10f
-            else -> 12f
-        }
+        textSize = if (key.label.length == 1) UiScale.KEY_TEXT else UiScale.KEY_WORD   // "sin", "asin", "DEG"
         // Colour follows Windows 95's calculator, and the label says it too.
         setTextColor(color(when (key.kind) {
             Key.Kind.OPERATOR, Key.Kind.MEMORY -> R.color.retro_title
@@ -288,13 +285,13 @@ class CalculatorActivity : Activity() {
         }))
         if (key.kind == Key.Kind.EQUALS) {
             setBackgroundColor(color(R.color.retro_title))
-            textSize = 18f
+            textSize = UiScale.KEY_EQUALS
         } else setBackgroundResource(R.drawable.retro_button)
         // Press Start 2P draws × and ÷ at half the height of its digits (seen
         // on the A07): these two come from Plex, bold, at the digits' size.
         if (key.label == "×" || key.label == "÷") {
             typeface = Typeface.create(thai, Typeface.BOLD)
-            textSize = 24f
+            textSize = UiScale.KEY_SYMBOL
         }
         contentDescription = spoken(key)
         isClickable = true
@@ -391,12 +388,12 @@ class CalculatorActivity : Activity() {
             if (error != null) {
                 text = error
                 typeface = Typeface.create(thai, Typeface.BOLD)
-                textSize = 15f
+                textSize = UiScale.TEXT_ITEM
                 setTextColor(color(R.color.retro_bad))
             } else {
                 text = shownResult.ifEmpty { if (input.isEmpty()) "0" else "" }
                 typeface = pixel
-                textSize = 20f
+                textSize = UiScale.TEXT_VALUE
                 setTextColor(color(R.color.retro_text))
             }
         }
@@ -412,39 +409,39 @@ class CalculatorActivity : Activity() {
     private fun showHistory() {
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         if (history.isEmpty()) {
-            page.addView(text(getString(R.string.calc_history_empty), 15f).apply { setPadding(dp(4), dp(8), dp(4), 0) })
+            page.addView(text(getString(R.string.calc_history_empty), UiScale.TEXT_ITEM).apply { setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0) })
             setPage(page)
             return
         }
-        page.addView(text(getString(R.string.calc_history_hint), 12f, dim = true).apply { setPadding(dp(2), 0, dp(2), dp(4)) })
+        page.addView(text(getString(R.string.calc_history_hint), UiScale.TEXT_NOTE, dim = true).apply { setPadding(dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS)) })
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         for ((expr, result) in history) {
             list.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundResource(R.drawable.retro_button)
-                setPadding(dp(10), dp(8), dp(10), dp(8))
-                minimumHeight = dp(56)
+                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
+                minimumHeight = dp(UiScale.ROW)
                 isClickable = true
                 contentDescription = "$expr เท่ากับ $result"
                 setOnClickListener { reuse(result) }
                 addView(TextView(context).apply {
-                    text = expr; typeface = pixel; textSize = 11f
+                    text = expr; typeface = pixel; textSize = UiScale.TEXT_NOTE
                     setTextColor(color(R.color.retro_dim)); maxLines = 1; ellipsize = TextUtils.TruncateAt.START
                 })
                 addView(TextView(context).apply {
-                    text = "= $result"; typeface = pixel; textSize = 15f
-                    setTextColor(color(R.color.retro_text)); gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
+                    text = "= $result"; typeface = pixel; textSize = UiScale.TEXT_ITEM
+                    setTextColor(color(R.color.retro_text)); gravity = Gravity.END; setPadding(0, dp(UiScale.SPACE_S), 0, 0)
                 }, LinearLayout.LayoutParams(MATCH, WRAP))
-            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) })
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
         }
         page.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(MATCH, 0, 1f))
         if (confirmingClear) {
-            page.addView(text(getString(R.string.calc_history_clear_ask), 14f).apply { setPadding(dp(2), dp(6), dp(2), dp(4)) })
+            page.addView(text(getString(R.string.calc_history_clear_ask), UiScale.TEXT_BASE).apply { setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_XS)) })
             page.addView(pair(getString(R.string.calc_history_clear_yes), { history.clear(); confirmingClear = false; save(); showHistory() },
                               getString(R.string.cancel), { confirmingClear = false; showHistory() }))
         } else {
             page.addView(button(getString(R.string.calc_history_clear)) { confirmingClear = true; showHistory() },
-                         LinearLayout.LayoutParams(MATCH, dp(48)).apply { topMargin = dp(6) })
+                         LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
         }
         setPage(page)
     }
@@ -488,17 +485,18 @@ class CalculatorActivity : Activity() {
         setTextColor(color(if (dim) R.color.retro_dim else R.color.retro_text))
     }
 
-    internal fun label(value: String) = text(value, 13f).apply { typeface = Typeface.create(thai, Typeface.BOLD) }
+    internal fun label(value: String) = text(value, UiScale.TEXT_NOTE).apply { typeface = Typeface.create(thai, Typeface.BOLD) }
 
     /** A raised 1995 button that sinks while pressed. */
     internal fun button(value: String, big: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = if (big) 16f else 14f
+        textSize = if (big) UiScale.TEXT_HEADING else UiScale.TEXT_BASE
         typeface = Typeface.create(thai, Typeface.BOLD)
         gravity = Gravity.CENTER
         setTextColor(color(R.color.retro_text))
         setBackgroundResource(R.drawable.retro_button)
-        setPadding(dp(8), 0, dp(8), 0)
+        setPadding(dp(UiScale.SPACE_M), 0, dp(UiScale.SPACE_M), 0)
+        minWidth = dp(UiScale.TOUCH)
         maxLines = 1
         isClickable = true
         setOnClickListener { onClick() }
@@ -507,7 +505,7 @@ class CalculatorActivity : Activity() {
     /** A button that stays down while chosen. */
     internal fun toggle(value: String, on: Boolean, onClick: () -> Unit) = TextView(this).apply {
         text = value
-        textSize = 14f
+        textSize = UiScale.TEXT_BASE
         typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)
         gravity = Gravity.CENTER
         setTextColor(color(if (on) R.color.retro_title_text else R.color.retro_text))
@@ -519,20 +517,20 @@ class CalculatorActivity : Activity() {
 
     internal fun pair(a: String, onA: () -> Unit, b: String, onB: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
-        addView(button(a) { onA() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        addView(button(b) { onB() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(8) })
+        addView(button(a) { onA() }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
+        addView(button(b) { onB() }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_S) })
     }
 
     /** A number field: the decimal keyboard, a sign allowed, the white 1995 box. */
     internal fun numberField(hint: String = "") = EditText(this).apply {
         typeface = thai
-        textSize = 16f
+        textSize = UiScale.TEXT_HEADING
         setSingleLine()
         this.hint = hint
         inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
         imeOptions = EditorInfo.IME_ACTION_DONE
         setBackgroundResource(R.drawable.retro_field)
-        setPadding(dp(10), 0, dp(10), 0)
+        setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
         setTextColor(color(R.color.retro_text))
         setHintTextColor(color(R.color.retro_dim))
     }
