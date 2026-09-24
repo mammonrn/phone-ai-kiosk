@@ -1397,3 +1397,123 @@ URL จึงมีคีย์อยู่ ดังนั้น**ไม่ม�
 ถ้า Google ยังใช้ไม่ได้: เพิ่ม `--providers groq,groq-hints`
 
 `/healthz` ต้องแสดง `"build"` ของรุ่นนี้ก่อน ถ้าไม่มี แปลว่ายังไม่ได้ deploy
+
+## eWeLink — ไฟบ้าน (0.45.0 อ่านอย่างเดียว)
+
+ทางหลักคุมไฟบ้าน (Poom 2026-09-24) Google Home และ Tuya พักไว้ รอบนี้ **อ่านอย่างเดียว**
+โค้ดไม่มีคำสั่งเปิดปิดอุปกรณ์เลย (`POST /v2/device/thing/status` ไม่มีในโค้ด มี test ตรวจ)
+
+สิ่งที่อยู่ที่ไหน:
+- App ID และ App Secret: ไฟล์ env ของ broker (0600) ใส่ด้วย `set-key` แบบไม่แสดงค่า
+- access token (30 วัน) และ refresh token (60 วัน): `~/.config/kiosk-broker/ewelink_token.bin`
+  เข้ารหัส AES-256-GCM ด้วย `vault.key` วิธีเดียวกับ token ของ Google
+- มือถือไม่มี token ไม่มี id อุปกรณ์ ได้แค่ชื่อ ห้อง และเปิด/ปิด ผ่าน `/v1/dashboard`
+- log ไม่มี App ID, Secret, code, state, token หรือ id เต็ม
+
+### ขั้นที่ 1 — deploy (รวม nginx สองเส้นทางใหม่)
+
+```bash
+cd ~/phone-ai-kiosk && git pull && sudo bash server/install/install.sh && sudo systemctl restart kiosk-broker
+```
+
+`install.sh` เขียน `/etc/nginx/sites-available/kiosk` ไฟล์เดียว (ไม่แตะ vhost ของ thaitrack
+และ monthreport) แล้ว **รัน `nginx -t` ก่อน reload** ถ้าไม่ผ่านจะไม่ reload และบอกให้แก้
+ตรวจเองได้ด้วย `sudo nginx -t` สองเส้นทางใหม่คือ `/oauth/ewelink/start` และ
+`/oauth/ewelink/callback` (GET อย่างเดียว ส่ง error log ทิ้ง เพราะ error log ของ nginx
+เขียน query string ทั้งบรรทัด)
+
+### ขั้นที่ 2 — ใส่ App ID และ App Secret (ไม่แสดงค่าที่พิมพ์)
+
+```bash
+B='sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker'
+$B set-key EWELINK_APP_ID        # วาง App ID จาก password manager แล้ว Enter (มองไม่เห็นตอนวาง)
+$B set-key EWELINK_APP_SECRET    # วาง App Secret แล้ว Enter
+$B keys                          # EWELINK_APP_ID และ EWELINK_APP_SECRET ต้องขึ้น present
+```
+
+**ห้ามวางค่าเหล่านี้ในแชท ห้ามใส่เป็น argument ของคำสั่ง และห้ามถ่ายหน้าจอ nano**
+ไม่ต้อง restart broker หลังใส่คีย์ broker อ่านไฟล์ env ใหม่ทุกครั้งที่ต้องใช้
+
+### ขั้นที่ 3 — เชื่อมบัญชี
+
+```bash
+$B ewelink-connect
+```
+
+คำสั่งพิมพ์ลิงก์ `https://kiosk.xn--l3cgts1b3bzcvf.com/oauth/ewelink/start?t=...` ของโดเมนเราเอง
+(ไม่ใช่ลิงก์ของ eWeLink ซึ่งมี App ID อยู่ในนั้น) เปิดในเบราว์เซอร์ **ภายใน 10 นาที ใช้ได้ครั้งเดียว**
+แล้วเข้าสู่ระบบบัญชี eWeLink ของ Poom หน้าสุดท้ายจะบอก "เชื่อมต่อบัญชี eWeLink แล้ว"
+
+- code ที่ eWeLink ส่งกลับมีอายุ 30 วินาที broker แลกเป็น token ทันทีเอง ไม่ต้องทำอะไร
+- ภูมิภาคมาจาก eWeLink เอง บัญชีไทยควรเป็น `as` (Asia) ตามตารางในเอกสาร
+- Redirect URL ต้องตรงกับที่ตั้งไว้ใน dev.ewelink.cc ทุกตัวอักษร:
+  `https://kiosk.xn--l3cgts1b3bzcvf.com/oauth/ewelink/callback`
+
+### ขั้นที่ 4 — ตรวจ (อ่านอย่างเดียว)
+
+```bash
+$B ewelink-status     # คีย์ present · connected · region · วันเหลือของ token · จำนวนครั้งที่เรียกเดือนนี้
+$B ewelink-devices    # บ้าน · ห้อง · ชื่อ · ประเภท · uiid · online · เปิด/ปิด · …4 ตัวท้ายของ id
+```
+
+`ewelink-devices` ติดป้าย `(ห้ามควบคุม)` ให้กล้อง ประตู กุญแจ โรงรถ รั้ว ม่าน สัญญาณเตือน
+และอุปกรณ์ที่ชื่อมีคำเหล่านั้น ถ้าขึ้น "eWeLink counts N things but returned M" แปลว่ามีอุปกรณ์
+ยี่ห้ออื่นที่ App ID แบบนี้มองไม่เห็น (เอกสารระบุว่าเห็นเฉพาะ Sonoff และ CoolKit)
+
+หลังเชื่อมแล้ว การ์ด "อุปกรณ์ในบ้าน" จะขึ้นบนจอเองภายในราว 1 นาที
+
+### ต่ออายุ token
+
+broker ต่ออายุเองทุก 6 ชั่วโมงเมื่อ access token เหลือไม่ถึง 10 วัน (ต่อทีละ 30 วัน และได้
+refresh token ใหม่ 60 วันพร้อมกัน) ต่อทันทีด้วยมือได้:
+
+```bash
+$B ewelink-refresh
+```
+
+ถ้า broker หยุดนานเกิน 60 วัน refresh token หมด ต้อง `ewelink-connect` ใหม่ `ewelink-status` จะบอก
+
+### ยกเลิกการเชื่อมบัญชีและลบ token ทันที
+
+```bash
+$B ewelink-disconnect
+```
+
+ส่งคำขอยกเลิกไปที่ eWeLink และ **ลบไฟล์ token เสมอ** แม้ eWeLink ตอบไม่ได้ ❓ เอกสารของ
+eWeLink ไม่ได้บอกชัดว่าคำขอยกเลิกต้องยืนยันตัวแบบไหน ถ้าขึ้น "unbound at eWeLink: no"
+ให้ถือว่าฝั่ง eWeLink อาจยังค้าง และเปลี่ยน App Secret ที่ dev.ewelink.cc เพื่อให้ token เดิมใช้ไม่ได้
+
+### 🔴 application หมดอายุ 2027-09-24
+
+ก่อนวันนั้น (แนะนำเดือนสิงหาคม 2027):
+1. ที่ dev.ewelink.cc สร้าง application ใหม่ OAuth 2.0 · Standard Role · Redirect URL เดิม
+2. เก็บ App ID และ App Secret ใหม่ใน password manager
+3. บน VPS: `$B ewelink-disconnect`
+4. ลบบรรทัด `EWELINK_APP_ID=` และ `EWELINK_APP_SECRET=` เดิมด้วย
+   `sudo -u kioskbroker nano /home/kioskbroker/.config/kiosk-broker/env` (อย่าถ่ายหน้าจอ)
+5. `$B set-key EWELINK_APP_ID` และ `$B set-key EWELINK_APP_SECRET` ใส่ค่าใหม่
+6. `$B ewelink-connect` แล้ว `$B ewelink-status`
+
+### 🔴 ถ้ามือถือ kiosk หาย
+
+มือถือไม่มี token ของ eWeLink หรือ Google จึงไม่ต้องยกเลิกบัญชีเหล่านั้นเพราะมือถือหาย แต่:
+1. ตัดมือถือออกจาก broker ทันที: `$B list-devices` แล้ว `$B revoke-token <label>`
+   (มือถือเครื่องนั้นเรียก broker ไม่ได้อีก การ์ดบ้านและทุกอย่างหยุด)
+2. ยกเลิกการยืนยันตัวตนของเครื่องนั้น: `$B enrollments` แล้ว `$B revoke-enrollment <id 4 ตัวแรก>`
+3. เปลี่ยนรหัสผ่าน NAS ที่ NAS (รหัสผ่านเข้ารหัสอยู่ในมือถือ แต่คนที่ได้เครื่องไปอาจใช้แอปเปิดดู NAS ได้)
+4. บัญชี eWeLink ไม่ต้องทำอะไร เว้นแต่อยากตัดให้แน่: `$B ewelink-disconnect`
+
+### 🔴 ถ้าสงสัยว่า VPS ถูกเข้าถึง
+
+root บน VPS อ่านได้ทั้งไฟล์ token และ `vault.key` ดังนั้น:
+1. `$B ewelink-disconnect` และเปลี่ยน App Secret ที่ dev.ewelink.cc
+2. เปลี่ยนรหัสผ่านบัญชี eWeLink ของ Poom
+3. ทำขั้นตอนของ Google ในหัวข้อ "บัญชี Google และข้อมูลส่วนตัว" ด้วย
+
+### ข้อจำกัดและสิ่งที่เอกสารไม่ชัด
+
+- โควตา App ID ฟรี: 50,000 ครั้งต่อเดือนต่อภูมิภาค broker หยุดเองที่ 40,000 การ์ดบนจอใช้ราว
+  13,000 ครั้งต่อเดือน (ถามใหม่ทุก 10 นาที) ห่างกันอย่างน้อย 0.6 วินาทีต่อครั้ง (เอกสาร: ≥ 0.5 วินาที)
+- ❓ เอกสารไม่บอกว่า "เดือน" เริ่มนับเมื่อไร broker นับตามเดือน UTC
+- ❓ เอกสารไม่บอกวิธีแบ่งหน้าเกิน 30 อุปกรณ์ด้วย `beginIndex` ให้ชัด broker ขอทั้งหมดครั้งเดียว (`num=0`)
+- ❓ วิธียืนยันตัวของคำขอยกเลิกการเชื่อม (ดูด้านบน)

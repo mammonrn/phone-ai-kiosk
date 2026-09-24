@@ -1696,3 +1696,18 @@ adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.
 - เปิดแล้ว: การ์ดขึ้น "จาร์วิส · พักระหว่างเล่นเพลง" พูด Hey Jarvis ต้องไม่ปลุก
 - กดปุ่มจาร์วิส: ต้องถามได้ และ log มี `test media quiet` ตอนเริ่มฟัง `test media resume` หลังตอบ
 - ปิดแล้ว (หรือรอ 90 วินาทีเพราะสวิตช์นี้ไม่ต่ออายุ): การ์ดกลับเป็น "พร้อมฟัง" และ Hey Jarvis ใช้ได้
+
+---
+## v0.45.0 — การ์ด "อุปกรณ์ในบ้าน" (eWeLink อ่านอย่างเดียว)
+
+การ์ดซ่อนอยู่จนกว่า broker จะมีอุปกรณ์ให้แสดง ถ้าจะดูหน้าตาการ์ดก่อนเชื่อมบัญชีจริง
+(debug build เท่านั้น ชื่ออุปกรณ์เป็นตัวอย่าง ไม่มีอะไรส่งไป broker):
+
+```
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME_CARD --ez on true  -p com.mammonrn.phoneaikiosk.debug
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME_CARD --ez on false -p com.mammonrn.phoneaikiosk.debug
+```
+
+การ์ดขึ้นหรือหายในรอบดึง dashboard ถัดไป (ไม่เกิน 1 นาที) log: `adb logcat -s KioskHome:I`
+
+ฝั่ง VPS ดู INSTALL.md หัวข้อ eWeLink

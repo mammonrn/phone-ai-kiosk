@@ -459,6 +459,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--vps-csv", default="/var/lib/kiosk-soak/vps.csv",
                    help="what install/soak.sh's timer wrote (read if present)")
 
+    sub.add_parser("ewelink-connect", help="eWeLink: print a one-time sign-in link (read only this round)")
+    sub.add_parser("ewelink-status", help="eWeLink: keys present, connected, region, days left — no secrets")
+    sub.add_parser("ewelink-devices", help="eWeLink: homes, rooms, devices, type, on/off. Read only")
+    sub.add_parser("ewelink-refresh", help="eWeLink: refresh the tokens now (the broker also does it itself)")
+    sub.add_parser("ewelink-disconnect", help="eWeLink: unbind the account and delete the token file now")
     sub.add_parser("google-connect",
                    help="print a one-time Google sign-in link (10 minutes) to connect Poom's "
                         "account; the token stays on this VPS")
@@ -562,6 +567,16 @@ def main(argv: list[str] | None = None) -> int:
         # key as TTS, by Poom's choice — restricted to Text-to-Speech and
         # Speech-to-Text and to the VPS's addresses.
         google_stt_key = tts_key
+
+        # eWeLink tokens refreshed by the broker itself, every six hours when
+        # due (ewelink.keep_fresh). A daemon thread: it never holds up a stop.
+        import threading
+
+        from . import ewelink
+        threading.Thread(target=ewelink.keep_fresh, name="ewelink-keeper", daemon=True,
+                         kwargs={"secret": _secret, "key_path": cfg.vault_key_path,
+                                 "token_path": cfg.ewelink_token_path, "db_path": cfg.db_path,
+                                 "stop": threading.Event()}).start()
 
         httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key,
                             botnoi_token=botnoi_token, google_stt_key=google_stt_key)
@@ -890,6 +905,11 @@ def main(argv: list[str] | None = None) -> int:
                     print("  " + line)
             return 0
 
+        if args.cmd.startswith("ewelink-"):
+            from . import ewelink_cli
+
+            return ewelink_cli.run(args.cmd, conn, cfg, _secret)
+
         if args.cmd == "google-connect":
             from . import google_auth
 
@@ -1158,6 +1178,8 @@ def main(argv: list[str] | None = None) -> int:
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
                 ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),
                 ("TUYA_DATA_CENTER", "which Tuya host to call"),
+                ("EWELINK_APP_ID", "eWeLink application (expires 2027-09-24)"),
+                ("EWELINK_APP_SECRET", "eWeLink application"),
             ):
                 state = "present" if _secret(name) else "missing"
                 print(f"  {name:<20} {state:<8} {what}")

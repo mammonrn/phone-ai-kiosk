@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import store
 from .config import Config
 from .service import (handle_auth_reset, handle_chat, handle_dashboard, handle_grant, handle_health,
+                      handle_ewelink_callback, handle_ewelink_start,
                       handle_oauth_callback, handle_stt, handle_tts)
 
 log = logging.getLogger("kiosk_broker")
@@ -187,6 +188,30 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
             self._send(status, {"audio": html, "content_type": "text/html; charset=utf-8",
                                 "headers": {"Referrer-Policy": "no-referrer"}})
+            return
+
+        if route in ("/oauth/ewelink/start", "/oauth/ewelink/callback"):
+            # eWeLink sign-in (0.45.0). Like Google's: the query string (a
+            # ticket, or a code and state) is never logged — log_message cuts
+            # it, nginx logs $uri and sends this route's error log nowhere.
+            conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            location = ""
+            try:
+                if route.endswith("/start"):
+                    status, html, location = handle_ewelink_start(conn, self.config, query)
+                else:
+                    status, html = handle_ewelink_callback(conn, self.config, query)
+            except Exception:
+                log.exception("unhandled error in the eWeLink sign-in")
+                status, html = 500, b"error"
+            finally:
+                conn.close()
+            headers = {"Referrer-Policy": "no-referrer"}
+            if location:
+                headers["Location"] = location
+            self._send(status, {"audio": html, "content_type": "text/html; charset=utf-8",
+                                "headers": headers})
             return
 
         if route == "/healthz":

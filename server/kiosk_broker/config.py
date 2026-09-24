@@ -208,6 +208,16 @@ class Config:
         return self.home / "google_token.bin"
 
     @property
+    def ewelink_token_path(self) -> Path:
+        """eWeLink access and refresh tokens and the region, sealed (vault.py)."""
+        return self.home / "ewelink_token.bin"
+
+    @property
+    def env_path(self) -> Path:
+        """The broker's 0600 env file, which `set-key` appends to."""
+        return self.home / "env"
+
+    @property
     def vault_key_path(self) -> Path:
         """The key that seals google_token.bin — a separate file, 0600."""
         return self.home / "vault.key"

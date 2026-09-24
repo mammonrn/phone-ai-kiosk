@@ -136,6 +136,20 @@ jobs:
           python -m kiosk_broker soak-report | tee "$home/soak.txt"
           grep -q "phone samples: 1" "$home/soak.txt" || { echo "soak-report did not see the sample"; kill "$pid"; exit 1; }
           python -m kiosk_broker soak-stop
+          # 0.45.0, eWeLink read only, through the running server: a made-up
+          # ticket and a made-up callback are refused politely and never reach
+          # the log; the dashboard carries a "home" panel that says
+          # not-connected; the status command runs with no keys at all.
+          code="$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18770/oauth/ewelink/start?t=made-up-ticket')"
+          [ "$code" = "400" ] || { echo "the eWeLink start answered $code to a made-up ticket"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18770/oauth/ewelink/callback?code=made-up-code&region=as&state=made-up-state')"
+          [ "$code" = "400" ] || { echo "the eWeLink callback answered $code to a made-up state"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          if grep -qE "made-up-(ticket|code|state)" "$home/serve.log"; then echo "an eWeLink query string reached the log"; kill "$pid"; exit 1; fi
+          curl -sS http://127.0.0.1:18770/v1/dashboard -H "Authorization: Bearer $token" \
+            | python -c 'import json,sys; h=json.load(sys.stdin).get("home"); print("home:", h); sys.exit(0 if h == {"ok": False, "error": "not-connected"} else 1)' \
+            || { echo "the dashboard has no not-connected home panel"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          python -m kiosk_broker ewelink-status | tee "$home/ewelink.txt"
+          grep -q "account               not connected" "$home/ewelink.txt" || { echo "ewelink-status did not run"; kill "$pid"; exit 1; }
           kill "$pid"
 
       - name: Run tests

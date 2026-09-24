@@ -235,6 +235,57 @@ def handle_oauth_callback(conn: sqlite3.Connection, cfg: Config, query: str) -> 
                                  "กรุณาปิดหน้านี้")
 
 
+def _ewelink_page(title: str, message: str) -> bytes:
+    return google_auth.page(title, message)
+
+
+def handle_ewelink_start(conn: sqlite3.Connection, cfg: Config, query: str) -> tuple[int, bytes, str]:
+    """GET /oauth/ewelink/start?t=<ticket> — the one-time link `ewelink-connect`
+    printed. Returns (status, page, redirect). A good ticket redirects to
+    eWeLink's sign-in page, signed now; the App ID appears only in that
+    redirect, never in a terminal or a log."""
+    import urllib.parse as _up
+
+    from . import envfile, ewelink
+
+    ticket = (_up.parse_qs(query or "").get("t") or [""])[0]
+    try:
+        app = ewelink.load_app(envfile.reader(cfg.env_path))
+        url = ewelink.open_ticket(conn, app, cfg.public_base_url, ticket)
+    except ewelink.EwelinkError as exc:
+        log.warning("ewelink start refused: %s", exc.meaning if exc.code == 0 else exc.code)
+        return 400, _ewelink_page("ลิงก์นี้ใช้ไม่ได้",
+                                  "ลิงก์หมดอายุหรือถูกใช้ไปแล้ว กรุณาเริ่มใหม่ด้วยคำสั่ง ewelink-connect บน VPS"), ""
+    log.info("ewelink sign-in page opened")
+    return 302, b"", url
+
+
+def handle_ewelink_callback(conn: sqlite3.Connection, cfg: Config, query: str) -> tuple[int, bytes]:
+    """GET /oauth/ewelink/callback?code=..&region=..&state=.. — where eWeLink
+    sends the browser. The code lives 30 seconds, so it is exchanged now. The
+    code and state never reach a log; the region may (it is not a secret)."""
+    import urllib.parse as _up
+
+    from . import envfile, ewelink
+
+    params = _up.parse_qs(query or "", keep_blank_values=False)
+    one = lambda name: (params.get(name) or [""])[0]  # noqa: E731
+    try:
+        app = ewelink.load_app(envfile.reader(cfg.env_path))
+        region = ewelink.finish(conn, app, cfg.public_base_url, state=one("state"), code=one("code"),
+                                region=one("region"), key_path=cfg.vault_key_path,
+                                token_path=cfg.ewelink_token_path)
+    except (ewelink.EwelinkError, OSError) as exc:
+        code = exc.code if isinstance(exc, ewelink.EwelinkError) else 0
+        log.warning("ewelink connect failed code=%s", code)
+        return 400, _ewelink_page("เชื่อมต่อไม่สำเร็จ",
+                                  "กรุณาเริ่มใหม่ด้วยคำสั่ง ewelink-connect บน VPS "
+                                  "แล้วเข้าสู่ระบบภายใน 10 นาที")
+    return 200, _ewelink_page("เชื่อมต่อบัญชี eWeLink แล้ว",
+                              f"Kiosk Jarvis อ่านรายชื่ออุปกรณ์และสถานะได้อย่างเดียว (ภูมิภาค {region}) "
+                              "ยังไม่สั่งเปิดหรือปิดอุปกรณ์ใด กรุณาปิดหน้านี้")
+
+
 CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
@@ -1056,6 +1107,18 @@ def handle_dashboard(
 
     if json.dumps(marks, sort_keys=True) != marks_before:
         store.write_state(conn, GOLD_MARK_KEY, marks, now)
+
+    # The "อุปกรณ์ในบ้าน" card (0.45.0): eWeLink, read only, cached ten
+    # minutes. Names, rooms and on/off only — no id, no token. A broker that
+    # was never connected answers {"ok": false, "error": "not-connected"} and
+    # the phone keeps the card hidden.
+    try:
+        from . import envfile, ewelink
+        snapshot["home"] = ewelink.card(envfile.reader(cfg.env_path), key_path=cfg.vault_key_path,
+                                        token_path=cfg.ewelink_token_path, conn=conn, now=now)
+    except Exception as exc:  # noqa: BLE001 — the rest of the screen must not fail with it
+        log.warning("dashboard home panel failed: %s", type(exc).__name__)
+        snapshot["home"] = {"ok": False, "error": "internal"}
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
 

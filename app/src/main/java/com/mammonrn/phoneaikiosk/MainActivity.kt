@@ -25,7 +25,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
-import com.mammonrn.phoneaikiosk.home.HomeControl
+import com.mammonrn.phoneaikiosk.home.HomeCard
 import com.mammonrn.phoneaikiosk.alarm.AlarmBook
 import com.mammonrn.phoneaikiosk.alarm.AlarmScheduler
 import com.mammonrn.phoneaikiosk.alarm.AlarmStore
@@ -73,7 +73,9 @@ class MainActivity : Activity() {
     private lateinit var batteryIcon: ImageView
     private lateinit var batteryText: TextView
     private var ticks = 0
-    private lateinit var homeNote: TextView
+    /** The house's lights, one page per system (0.45.0, home/HomeCard). */
+    private lateinit var homePages: com.mammonrn.phoneaikiosk.ui.PagedPanel
+    private lateinit var homePage: android.widget.LinearLayout
     private lateinit var weatherTitle: TextView
     private lateinit var weatherBody: TextView
     private lateinit var goldHeader: TextView
@@ -186,7 +188,8 @@ class MainActivity : Activity() {
     private val recentTurn = FadingLine()
 
     /** What the Google Home button does. Not connected this phase. */
-    private val homeControl: HomeControl = HomeControl.NotConnected
+    /** What the "อุปกรณ์ในบ้าน" card shows; null keeps it hidden. */
+    private var homeCard: HomeCard.Card? = null
 
     /**
      * 12-hour with AM/PM, as Poom asked, and in Locale.US on purpose: under the
@@ -376,6 +379,14 @@ class MainActivity : Activity() {
         val dim = ContextCompat.getColor(this, R.color.retro_dim)
         weatherBody.text = RetroType.pixelifyHeadline(screen.weather.text, pixelFace, dim)
         showCommodities(DashboardState.commodities(payload, getString(R.string.data_unavailable)))
+        // The house's lights (0.45.0): hidden until the broker has devices to
+        // show; news is a light going on or off, never the age of the reading.
+        val home = HomeCard.parse(payload)
+        if (home != homeCard) showHome(home)
+        if (home != null) {
+            board.report("home", HomeCard.signature(home), nowMs)
+            summaries["home"] = HomeCard.summary(home.systems.first())
+        }
         // The blank line between two coins at under half height: enough to
         // tell the pairs apart, not the full empty line that spread four coins
         // over the whole window.
@@ -472,9 +483,9 @@ class MainActivity : Activity() {
              1f, 120 * minute)
         card("crypto", R.id.card_crypto, R.id.crypto_panel, R.id.crypto_badge,
              R.id.crypto_titlebar, 0.25f, 60 * minute, openOnFirst = false)
+        // The house's lights, last: read at a glance, acted on by nobody yet.
         card("home", R.id.card_home, R.id.home_body, R.id.home_badge, R.id.home_titlebar,
-             0.7f, 0)
-        summaries["home"] = getString(R.string.home_not_connected)
+             0.7f, 60 * minute)
         alarmStop.setOnClickListener {
             VoiceService.start(this, VoiceService.ACTION_ALARM_STOP)
         }
@@ -488,9 +499,9 @@ class MainActivity : Activity() {
     private fun renderCards(nowMs: Long) {
         // A card with nothing to be yet is not on the screen at all: the alarms
         // with no alarm set, Google Home until it can control something (ค —
-        // it comes back by itself the day HomeControl says it is available).
+        // it comes back by itself the day the broker has devices to show).
         fun hidden(id: String) = (id == "alarms" && !alarmsVisible) ||
-            (id == "home" && !homeControl.available)
+            (id == "home" && homeCard == null)
         val slots = fitToStack(board.layout(nowMs).filterNot { hidden(it.id) }, nowMs)
         val ids = slots.map { it.id }
         if (ids != shownOrder) {
@@ -616,6 +627,63 @@ class MainActivity : Activity() {
         }
         board.report("alarms", book.toJson() + "|" + ringing, nowMs)
         board.pin("alarms", ringing.isNotEmpty())
+    }
+
+    /**
+     * The "อุปกรณ์ในบ้าน" card (0.45.0): one row per light or light switch —
+     * name and room on the left, the state in words on the right ("เปิด",
+     * "ปิด", "เปิด 1 จาก 3", "ออฟไลน์"), never a colour alone. At most
+     * HomeCard.MAX_ROWS rows; the rest is counted. A dim line under them says
+     * where it came from, that it is read only, and how old it is when stale.
+     */
+    private fun showHome(card: HomeCard.Card?) {
+        homeCard = card
+        homePage.removeAllViews()
+        val system = card?.systems?.firstOrNull() ?: return
+        val plex = ResourcesCompat.getFont(this, R.font.plex_thai)
+        val (rows, more) = HomeCard.rows(system)
+        for ((index, device) in rows.withIndex()) {
+            homePage.addView(android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                isBaselineAligned = true
+                if (index > 0) setPadding(0, dp(3), 0, 0)
+                addView(TextView(this@MainActivity).apply {
+                    text = HomeCard.label(device)
+                    textSize = sp(R.dimen.type_secondary)
+                    typeface = plex
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_text))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                val lit = HomeCard.onCount(device) > 0
+                addView(TextView(this@MainActivity).apply {
+                    text = RetroType.pixelify(HomeCard.stateWord(device), pixelFace)
+                    textSize = sp(R.dimen.type_secondary)
+                    typeface = if (lit) android.graphics.Typeface.create(plex, android.graphics.Typeface.BOLD) else plex
+                    setTextColor(ContextCompat.getColor(this@MainActivity,
+                        if (lit) R.color.retro_text else R.color.retro_dim))
+                    maxLines = 1
+                    includeFontPadding = false
+                    setPadding(dp(8), 0, 0, 0)
+                })
+            })
+        }
+        val foot = buildList {
+            if (more > 0) add(getString(R.string.home_more, more))
+            add(getString(R.string.home_source, system.name))
+            if (card.stale && card.ageSeconds >= 60) add(getString(R.string.home_stale, card.ageSeconds / 60))
+        }.joinToString(" · ")
+        homePage.addView(TextView(this).apply {
+            text = RetroType.pixelify(foot, pixelFace)
+            textSize = sp(R.dimen.type_label)
+            typeface = plex
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_dim))
+            setPadding(0, dp(5), 0, 0)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        homePages.news("ewelink", HomeCard.signature(card), SystemClock.elapsedRealtime())
     }
 
     /** A size from res/values/type_scale.xml, in sp — the one type scale. */
@@ -847,7 +915,8 @@ class MainActivity : Activity() {
         netText = findViewById(R.id.net_text)
         batteryIcon = findViewById(R.id.battery_icon)
         batteryText = findViewById(R.id.battery_text)
-        homeNote = findViewById(R.id.home_note)
+        homePages = findViewById(R.id.home_pages)
+        homePage = findViewById(R.id.home_page_ewelink)
         weatherTitle = findViewById(R.id.weather_title)
         weatherBody = findViewById(R.id.weather_body)
         goldHeader = findViewById(R.id.gold_header)
@@ -892,10 +961,6 @@ class MainActivity : Activity() {
 
         findViewById<android.view.View>(R.id.exit_corner).setOnClickListener {
             onCornerTap()
-        }
-
-        findViewById<android.view.View>(R.id.home_button).setOnClickListener {
-            onHomeTap()
         }
 
         // "จาร์วิส": the same as saying Hey Jarvis. The service decides whether
@@ -1150,24 +1215,6 @@ class MainActivity : Activity() {
             VoiceState.screenNote = "lock-refused"
             Log.w(SCREEN_TAG, "lockNow refused: ${e.javaClass.simpleName}")
         }
-    }
-
-    /**
-     * The Google Home button. Says it is not switched on yet, in its own window
-     * rather than a toast, and puts the old line back after a few seconds.
-     */
-    private fun onHomeTap() {
-        if (homeControl.available) {
-            homeControl.open(this)?.let { homeNote.text = it }
-            return
-        }
-        homeNote.text = getString(R.string.home_disabled)
-        handler.removeCallbacks(restoreHomeNote)
-        handler.postDelayed(restoreHomeNote, HOME_NOTE_MILLIS)
-    }
-
-    private val restoreHomeNote = Runnable {
-        homeNote.text = getString(R.string.home_not_connected)
     }
 
     /**
@@ -1453,7 +1500,6 @@ class MainActivity : Activity() {
         const val SCREEN_TAG = "KioskScreen"
 
         /** How long "ยังไม่เปิดใช้งาน" stays under the Google Home button. */
-        const val HOME_NOTE_MILLIS = 4_000L
 
         /** A blank line between two coins, as a fraction of a full one. */
         const val COIN_GAP = 0.4f

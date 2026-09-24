@@ -31,6 +31,8 @@ SETTABLE: dict[str, str] = {
     "TUYA_ACCESS_ID": "Tuya Cloud project Access ID (Client ID)",
     "TUYA_ACCESS_SECRET": "Tuya Cloud project Access Secret (Client Secret)",
     "TUYA_DATA_CENTER": "the Tuya data center the project is in — see tuya.DATA_CENTERS",
+    "EWELINK_APP_ID": "eWeLink developer application App ID (OAuth 2.0) — expires 2027-09-24",
+    "EWELINK_APP_SECRET": "eWeLink developer application App Secret",
     "ANTHROPIC_API_KEY": "/v1/chat",
     "GROQ_API_KEY": "/v1/stt",
     "GOOGLE_TTS_API_KEY": "/v1/tts",
@@ -54,6 +56,24 @@ def names_in(env_path: Path) -> set[str]:
         if value.strip().strip("'\""):
             found.add(name.strip())
     return found
+
+
+def value(env_path: Path, name: str) -> str | None:
+    """One value out of the env file, the same way __main__._secret reads it.
+    For code in the server process that needs a key only now and then (the
+    eWeLink card): read when needed, never kept in a module global."""
+    found = None
+    if Path(env_path).is_file():
+        for line in Path(env_path).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith(f"{name}="):
+                found = line.split("=", 1)[1].strip().strip("'\"")
+    return found or os.environ.get(name) or None
+
+
+def reader(env_path: Path):
+    """`name -> value` over [env_path], for modules that take a secret source."""
+    return lambda name: value(env_path, name)
 
 
 def check_value(name: str, value: str) -> str:

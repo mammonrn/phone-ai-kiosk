@@ -48,6 +48,16 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             }
 
+            ACTION_HOME_CARD -> {
+                // A sample "อุปกรณ์ในบ้าน" panel, for seeing the card on the A07
+                // before an eWeLink account is connected (0.45.0). --ez on
+                // true|false. Shown at the next dashboard refresh (a minute).
+                // The names are made up; nothing here reaches the broker.
+                com.mammonrn.phoneaikiosk.home.HomeCard.override =
+                    if (intent.getBooleanExtra("on", true)) SAMPLE_HOME else null
+                android.util.Log.i("KioskHome", "sample home card ${if (com.mammonrn.phoneaikiosk.home.HomeCard.override != null) "on" else "off"}")
+            }
+
             ACTION_MEDIA_HOLD -> {
                 // Pretends music is playing, for the Jarvis card's "resting"
                 // state and the button-during-media path, before a real player
@@ -265,6 +275,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK"
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
         const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
+        const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
+
+        /** Made-up devices in the broker's `home` panel shape (ewelink.card). */
+        private const val SAMPLE_HOME = """{"home": {"ok": true, "age_seconds": 0, "systems": [{"id": "ewelink",
+            "name": "eWeLink", "devices": [
+            {"name": "ไฟเพดาน", "room": "ห้องนั่งเล่น", "kind": "light", "online": true, "on": true, "channels": []},
+            {"name": "สวิตช์ไฟ 3 ช่อง", "room": "ห้องครัว", "kind": "switch", "online": true, "on": true, "channels": [true, false, false]},
+            {"name": "ไฟหัวเตียง", "room": "ห้องนอน", "kind": "light", "online": true, "on": false, "channels": []},
+            {"name": "ไฟหน้าบ้าน", "room": "", "kind": "switch", "online": false, "on": null, "channels": []}]}]}}"""
 
         /** The adb switch's pretend player (TEST_MEDIA_HOLD). */
         @Volatile private var testHold: com.mammonrn.phoneaikiosk.voice.WakePause.Hold? = null
