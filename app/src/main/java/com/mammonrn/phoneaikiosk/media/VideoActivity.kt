@@ -214,6 +214,9 @@ class VideoActivity : Activity() {
      * (VideoService.stopAll saves it) and the wake word comes back at once.
      */
     private fun stopForLeaving(why: String) {
+        // Left on purpose: the next video's loading gap must not read as "this one ended"
+        // (0.58.0: that turned full screen off as the next video began, on the A07).
+        hadMedia = false
         if (!VideoPlayer.hasMedia) return
         VideoPlayer.stop(this)
         Log.i(VideoService.TAG, "stopped: left the player ($why)")
