@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- กล้องถ่ายรูป (0.61.0, camera/CameraActivity). -->
+<resources>
+    <string name="window_camera">กล้อง</string>
+    <string name="camera_take">ถ่ายรูป</string>
+    <string name="camera_switch">สลับกล้อง (ตอนนี้: %1$s)</string>
+    <string name="camera_lens_back">กล้องหลัง</string>
+    <string name="camera_lens_front">กล้องหน้า</string>
+    <string name="camera_open_last">ดูรูปล่าสุด</string>
+    <string name="camera_preview">ภาพจากกล้อง</string>
+    <string name="camera_saving">กำลังบันทึกรูป…</string>
+    <string name="camera_saved">บันทึกรูปแล้วใน %1$s ดูได้ในตัวจัดการไฟล์</string>
+    <string name="camera_photo_failed">ถ่ายรูปไม่สำเร็จ ลองใหม่อีกครั้ง</string>
+    <string name="camera_failed">เปิดกล้องไม่ได้ กรุณาปิดหน้านี้แล้วเปิดใหม่</string>
+</resources>

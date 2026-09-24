@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0): a camera body, dark with a light top, a round
+     lens in steps and a white flash window, for the Control Panel's grey.
+     16x16, four colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M5,2h5v2h-5z M1,4h14v10h-14z" />
+    <path android:fillColor="#808080" android:pathData="M2,5h12v8h-12z" />
+    <path android:fillColor="#000000" android:pathData="M6,6h4v1h-4z M5,7h6v4h-6z M6,11h4v1h-4z" />
+    <path android:fillColor="#0E6E86" android:pathData="M7,7h2v1h-2z M6,8h4v2h-4z M7,10h2v1h-2z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M12,6h1v1h-1z M7,8h1v1h-1z" />
+</vector>
