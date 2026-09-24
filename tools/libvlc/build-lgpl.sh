@@ -70,13 +70,26 @@ EOF
 ./buildsystem/compile.sh -l -a arm64 -r --license a
 
 # ------------------------------------------------------------------ what came out
-BUILD=$(ls -d libvlcjni/vlc/build-android-aarch64-linux-android)
-CONTRIB_SRC=$(ls -d libvlcjni/vlc/contrib/contrib-android-aarch64-linux-android)
+# From here on a lookup that finds nothing is not a failure; the checks at the end are explicit.
+set +e
+BUILD=libvlcjni/vlc/build-android-aarch64-linux-android
+CONTRIB_SRC=libvlcjni/vlc/contrib/contrib-android-aarch64-linux-android
 AAR=$(find libvlcjni/libvlc/build/outputs/aar -name '*release*.aar' | head -1)
 [ -n "$AAR" ] || { echo "no AAR"; find . -name '*.aar'; exit 1; }
-cp "$AAR" "$OUT/libvlc-lgpl-3.7.6-arm64.aar"
+BIN=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
 
-mkdir -p /tmp/aar && (cd /tmp/aar && unzip -o -q "$OUT/libvlc-lgpl-3.7.6-arm64.aar")
+# No debug symbols (Poom): every .so stripped with the NDK's own llvm-strip, the AAR packed again.
+AAR=$(readlink -f "$AAR")
+rm -rf /tmp/aar && mkdir -p /tmp/aar && (cd /tmp/aar && unzip -q "$AAR")
+for so in /tmp/aar/jni/*/*.so; do "$BIN/llvm-strip" --strip-unneeded "$so" || exit 1; done
+(cd /tmp/aar && rm -f "$OUT/libvlc-lgpl-3.7.6-arm64.aar" && python3 -c "
+import os, zipfile
+with zipfile.ZipFile('$OUT/libvlc-lgpl-3.7.6-arm64.aar', 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, _, files in os.walk('.'):
+        for f in sorted(files):
+            p = os.path.join(root, f)
+            z.write(p, os.path.relpath(p, '.'))
+")
 SO=/tmp/aar/jni/arm64-v8a/libvlc.so
 
 {
@@ -110,12 +123,16 @@ SO=/tmp/aar/jni/arm64-v8a/libvlc.so
   echo "## 5. Checks on the final libvlc.so"
   echo "- GPL module string in libvlc.so: $(grep -acF "$GPL_MARK" "$SO") (must be 0)"
   echo "- LGPL module strings in libvlc.so: $(grep -aoF "$LGPL_MARK" "$SO" | wc -l)"
-  echo "- stripped: $(file "$SO" | grep -o 'stripped\|not stripped')"
+  echo "- debug sections left in libvlc.so: $("$BIN/llvm-readelf" -S "$SO" | grep -c '\.debug\|\.symtab') (must be 0)"
+  echo "- sizes (bytes): $(ls -l /tmp/aar/jni/arm64-v8a/ | awk 'NR>1 {print $9"="$5}' | tr '\n' ' ')"
 } > "$OUT/license-report.txt"
 cat "$OUT/license-report.txt"
 
 if grep -qF "MUST NOT BE HERE" "$OUT/license-report.txt" || [ "$(grep -acF "$GPL_MARK" "$SO")" != "0" ]; then
   echo "A GPL module is in the build"; exit 1
+fi
+if [ "$("$BIN/llvm-readelf" -S "$SO" | grep -c '\.debug\|\.symtab')" != "0" ]; then
+  echo "libvlc.so still has debug symbols"; exit 1
 fi
 
 {
@@ -124,7 +141,8 @@ fi
   echo "vlc $(git -C libvlcjni/vlc rev-parse HEAD)"
   echo "license a (LGPL v2.1 + ad-clauses), GPL modules left out: $(wc -l < "$BUILD/gpl-modules-left-out.txt")"
   echo "abi arm64-v8a"
+  echo "image registry.videolan.org/vlc-debian-android:20260610055743"
   ls -l "$OUT/libvlc-lgpl-3.7.6-arm64.aar" /tmp/aar/jni/arm64-v8a/
 } > "$OUT/build-info.txt"
 cat "$OUT/build-info.txt"
-(cd "$OUT" && sha256sum *.aar > SHA256SUMS && cat SHA256SUMS)
+(cd "$OUT" && sha256sum *.aar > SHA256SUMS && cat SHA256SUMS) || exit 1
