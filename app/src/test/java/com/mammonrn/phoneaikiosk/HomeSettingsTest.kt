@@ -24,7 +24,7 @@ class HomeSettingsTest {
          "room": "Livingroom", "kind": "switch", "online": true, "on": true, "allowed": true, "clash": [],
          "channels": [
            {"channel": 0, "name": "ไฟหน้าบ้าน", "own_name": "ไฟหน้าบ้าน", "ewelink_name": "", "on": true,
-            "allowed": true, "active": true, "clash": []},
+            "allowed": true, "active": true, "clash": [], "icon": "fan", "icon_chosen": true},
            {"channel": 1, "name": "Switch1 ช่อง 2", "own_name": "", "ewelink_name": "", "on": false,
             "allowed": false, "active": true, "clash": ["Light1"]},
            {"channel": 2, "name": "Switch1 ช่อง 3", "own_name": "", "ewelink_name": "", "on": false,
@@ -47,6 +47,12 @@ class HomeSettingsTest {
         assertEquals("ชื่อจาก eWeLink", HomeSettings.source("", "Channel1"))
         assertEquals("เปิดอยู่", HomeSettings.state(true, ch1.on))
         assertFalse(ch3.active)
+        // Icons: chosen, or the kind's own (a switch's channel is a switch, a plug a bulb).
+        assertEquals("fan", ch1.icon)
+        assertTrue(ch1.iconChosen)
+        assertEquals("switch", ch2.icon)
+        assertEquals("bulb", light2.icon)
+        assertTrue(ch1.voice)
         assertEquals("ชื่อซ้ำกับ \"Light1\" จาร์วิสจะแยกไม่ออก กรุณาเปลี่ยนชื่อ", HomeSettings.clashWarning(ch2.clash))
         assertEquals("", HomeSettings.clashWarning(ch1.clash))
     }

@@ -223,6 +223,25 @@ class Broker(private val baseUrl: String, private val token: String) {
                  .put("name", name).toString().toByteArray(Charsets.UTF_8), "application/json; charset=utf-8")
     }
 
+    /** 0.48.0: the picture of one light; "" goes back to the kind's own. */
+    fun homeIcon(device: String, channel: Int?, icon: String): String = settingsCall {
+        post("/v1/home/icon", JSONObject().put("device", device).put("channel", channel ?: JSONObject.NULL)
+                 .put("icon", icon).toString().toByteArray(Charsets.UTF_8), "application/json; charset=utf-8")
+    }
+
+    /**
+     * A tap on the home card (0.48.0): the row's opaque key and the state it
+     * does not have now. The broker's answer (or its refusal, same shape) is
+     * returned as JSON; only that answer changes the picture.
+     */
+    fun homeSwitch(target: String, on: Boolean): String = try {
+        String(post("/v1/home/switch",
+                    JSONObject().put("target", target).put("on", on).toString().toByteArray(Charsets.UTF_8),
+                    "application/json; charset=utf-8").bytes, Charsets.UTF_8)
+    } catch (e: Failure) {
+        JSONObject().put("ok", false).put("message", if (e.code.startsWith("http_")) "" else e.message).toString()
+    }
+
     fun homeAllow(device: String, channel: Int?, allowed: Boolean): String = settingsCall {
         post("/v1/home/allow", JSONObject().put("device", device).put("channel", channel ?: JSONObject.NULL)
                  .put("allowed", allowed).toString().toByteArray(Charsets.UTF_8), "application/json; charset=utf-8")

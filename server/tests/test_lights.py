@@ -280,9 +280,14 @@ def test_a_tap_switches_through_every_gate_and_says_what_happened(house, conn, c
     ctx, cloud = house
     card = home_control.card(ctx, now=NOW + 60)
     key = next(r["target"] for r in card["systems"][0]["devices"] if r["name"] == "ไฟโต๊ะ")
-    offline = next(r["target"] for r in card["systems"][0]["devices"] if r["name"] == "Light2")
+    light2 = next(r for r in card["systems"][0]["devices"] if r["name"] == "Light2")
+    # 0.48.0: an offline row carries a reason, not a key — nothing to tap.
+    assert "target" not in light2 and light2["reason"] == "offline"
     status, body = home_control.switch_key(ctx, key, True, now=NOW + 61)
     assert status == 200 and body["ok"] and body["on"] is True and body["message"] == "เปิดไฟโต๊ะแล้วครับ"
+    # Offline by the time the tap lands: said so, never "done".
+    from kiosk_broker import vault
+    offline = home_control.target_key(vault.key(ctx.key_path), "10002bbb02", None)
     status, body = home_control.switch_key(ctx, offline, True, now=NOW + 62)
     assert body["ok"] is False and body["result"] == "offline" and body["online"] is False
     status, body = home_control.switch_key(ctx, "made-up", True, now=NOW + 63)
@@ -459,3 +464,46 @@ def test_undo_has_a_minute(house):
     assert say(ctx, "ปิดไฟหน้าบ้าน").changed
     cloud.things["thingList"][2]["itemData"]["params"]["switches"][0]["switch"] = "off"   # as eWeLink now reads
     assert say(ctx, "ไม่ใช่", now=NOW + 60 + 45).reply == "ขอโทษครับ เปิดไฟหน้าบ้านแล้วครับ"
+
+
+
+# ------------------------------------------------------------ icons (0.48.0)
+
+def test_each_row_has_an_icon_and_a_reason_when_it_cannot_be_tapped(house):
+    ctx, cloud = house
+    rows = {r["name"]: r for r in home_control.card(ctx, now=NOW + 60)["systems"][0]["devices"]}
+    assert rows["Light1"]["icon"] == "bulb" and rows["ไฟหน้าบ้าน"]["icon"] == "switch"   # plug / switch channel
+    assert "target" in rows["Light1"] and "reason" not in rows["Light1"]
+    home_control.save_allowlist(ctx.home_dir, {"10001aaa01": None, "10002bbb02": None, "10003ccc03": {0}})
+    rows = {r["name"]: r for r in home_control.card(ctx, now=NOW + 61)["systems"][0]["devices"]}
+    assert rows["ไฟเพดาน"]["reason"] == "not-allowed" and "target" not in rows["ไฟเพดาน"]
+    home_control.set_stopped(ctx.home_dir, True)
+    rows = {r["name"]: r for r in home_control.card(ctx, now=NOW + 62)["systems"][0]["devices"]}
+    assert rows["Light1"]["reason"] == "stopped" and "target" not in rows["Light1"]
+
+
+def test_a_tap_on_a_light_already_there_switches_nothing(house):
+    ctx, cloud = house
+    _state(cloud, light1=True)
+    key = next(r["target"] for r in home_control.card(ctx, now=NOW + 60)["systems"][0]["devices"]
+               if r["name"] == "Light1")
+    status, body = home_control.switch_key(ctx, key, True, now=NOW + 61)
+    assert status == 200 and body["result"] == "already" and body["message"] == "Light1 เปิดอยู่แล้วครับ"
+    assert not cloud.commands()
+
+
+def test_the_chosen_icon_is_kept_on_the_vps_and_used_on_the_card(house):
+    from kiosk_broker import home_settings
+    ctx, cloud = house
+    body = home_settings.view(ctx, now=NOW + 60)[1]
+    switch = next(d for d in body["devices"] if d["name"] == "Switch1")
+    assert switch["channels"][0]["icon"] == "switch" and switch["channels"][0]["icon_chosen"] is False
+    status, answer = home_settings.set_icon(ctx, switch["key"], 1, "fan", now=NOW + 61)
+    assert status == 200 and answer["ok"]
+    assert home_control.icons(ctx.home_dir) == {"10003ccc03": {"channels": {"1": "fan"}}}
+    rows = {r["name"]: r for r in home_control.card(ctx, now=NOW + 62)["systems"][0]["devices"]}
+    assert rows["ไฟเพดาน"]["icon"] == "fan" and rows["ไฟหน้าบ้าน"]["icon"] == "switch"
+    assert home_settings.set_icon(ctx, switch["key"], 1, "rocket", now=NOW + 63)[0] == 400
+    assert home_settings.set_icon(ctx, switch["key"], None, "fan", now=NOW + 63)[0] == 400   # a channel is needed
+    home_settings.set_icon(ctx, switch["key"], 1, "", now=NOW + 64)                         # back to the default
+    assert home_control.icons(ctx.home_dir) == {}

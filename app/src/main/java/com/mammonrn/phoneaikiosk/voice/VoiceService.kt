@@ -406,6 +406,7 @@ class VoiceService : Service() {
                         }
                         VoiceState.heard = ""
                         VoiceState.reply = ""
+                        VoiceState.homeNotice = ""
                         // EVERY NUMBER NEEDED TO TELL THE TWO CASES APART.
                         // "The room was silent" and "the bar was set too high"
                         // look identical without peak_while_waiting: if it is
@@ -891,6 +892,7 @@ class VoiceService : Service() {
         VoiceState.lastCancel = ""
         VoiceState.heard = ""
         VoiceState.reply = ""
+        VoiceState.homeNotice = ""
         VoiceState.wake = "heard"
         // A dark kiosk lights up the moment it hears its name, before the tone,
         // so the screen is already there by the time the question starts. See

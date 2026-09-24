@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.48.0): tv (ทีวี), OFF: grey, no marks.
+     16x16, drawn from squares by a script, no brand's icon. DESIGN.md 5ง. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#808080" android:pathData="M1,3h14v1h-14z M1,4h14v1h-14z M1,5h14v1h-14z M1,6h14v1h-14z M1,7h14v1h-14z M1,8h14v1h-14z M1,9h14v1h-14z M1,10h14v1h-14z M1,11h14v1h-14z" />
+    <path android:fillColor="#000000" android:pathData="M0,2h16v1h-16z M0,3h1v1h-1z M15,3h1v1h-1z M0,4h1v1h-1z M15,4h1v1h-1z M0,5h1v1h-1z M15,5h1v1h-1z M0,6h1v1h-1z M15,6h1v1h-1z M0,7h1v1h-1z M15,7h1v1h-1z M0,8h1v1h-1z M15,8h1v1h-1z M0,9h1v1h-1z M15,9h1v1h-1z M0,10h1v1h-1z M15,10h1v1h-1z M0,11h1v1h-1z M15,11h1v1h-1z M0,12h16v1h-16z M6,13h4v1h-4z M4,14h8v1h-8z" />
+</vector>

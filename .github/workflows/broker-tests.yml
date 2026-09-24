@@ -165,7 +165,7 @@ jobs:
             code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18770/v1/home/$route)"
             [ "$code" = "401" ] || { echo "/v1/home/$route without a token answered $code"; kill "$pid"; exit 1; }
           done
-          for route in name allow; do
+          for route in name allow icon; do
             code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18770/v1/home/$route --data '{}')"
             [ "$code" = "401" ] || { echo "/v1/home/$route without a token answered $code"; kill "$pid"; exit 1; }
           done

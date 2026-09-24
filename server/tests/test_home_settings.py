@@ -241,3 +241,18 @@ def test_a_generic_name_is_refused_and_an_existing_one_is_flagged(house):
     home_control.save_names(ctx.home_dir, {"10001aaa01": {"name": "ไฟ"}})
     assert device(page(ctx, now=NOW + 62), "ไฟ")["voice"] is False
     assert device(page(ctx, now=NOW + 62), "Switch1")["voice"] is True
+
+
+def test_nginx_passes_the_icon_route_post_only():
+    from pathlib import Path
+    conf = (Path(__file__).resolve().parents[1] / "install" / "nginx-kiosk.conf").read_text(encoding="utf-8")
+    block = conf.split("location = /v1/home/icon {", 1)[1].split("\n    }", 1)[0]
+    assert "limit_except POST" in block and "client_max_body_size 1k;" in block
+
+
+def test_the_icon_endpoint_needs_a_token_and_a_well_formed_body(conn, cfg):
+    from kiosk_broker.service import handle_home_icon
+    assert handle_home_icon(conn, cfg, authorization=None, body=b"{}")[0] == 401
+    token = auth.issue(conn, "kiosk-a07")
+    assert handle_home_icon(conn, cfg, authorization=f"Bearer {token}",
+                            body=b'{"device": "k", "channel": null, "icon": 5}')[0] == 400

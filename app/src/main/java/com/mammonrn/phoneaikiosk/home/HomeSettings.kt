@@ -20,11 +20,16 @@ object HomeSettings {
     const val MAX_NAME = 40
 
     data class Channel(val index: Int, val name: String, val ownName: String, val ewelinkName: String,
-                       val on: Boolean?, val allowed: Boolean, val active: Boolean, val clash: List<String>)
+                       val on: Boolean?, val allowed: Boolean, val active: Boolean, val clash: List<String>,
+                       val icon: String = "bulb", val iconChosen: Boolean = false, val voice: Boolean = true)
 
     data class Device(val key: String, val name: String, val ownName: String, val ewelinkName: String,
                       val room: String, val kind: String, val online: Boolean, val on: Boolean?,
-                      val allowed: Boolean, val clash: List<String>, val channels: List<Channel>)
+                      val allowed: Boolean, val clash: List<String>, val channels: List<Channel>,
+                      val icon: String = "bulb", val iconChosen: Boolean = false, val voice: Boolean = true)
+
+    /** A name voice cannot use ("ไฟ" alone). "" when it can. */
+    const val NOT_FOR_VOICE = "ชื่อนี้กว้างเกินไป จาร์วิสจะสั่งผิดดวง กรุณาตั้งชื่อที่บอกว่าดวงไหน"
 
     /** [error] is "" when the list is good; [control] false after `ewelink-control off`. */
     data class Page(val devices: List<Device>, val control: Boolean, val error: String)
@@ -62,11 +67,15 @@ object HomeSettings {
                 val c = chs!!.optJSONObject(j) ?: continue
                 channels += Channel(c.optInt("channel", j), c.optString("name"), c.optString("own_name"),
                                     c.optString("ewelink_name"), bool(c, "on"), c.optBoolean("allowed"),
-                                    c.optBoolean("active", true), strings(c, "clash"))
+                                    c.optBoolean("active", true), strings(c, "clash"),
+                                    icon(c, "switch"), c.optBoolean("icon_chosen"), c.optBoolean("voice", true))
             }
+            val kind = d.optString("kind")
             devices += Device(key, d.optString("name"), d.optString("own_name"), d.optString("ewelink_name"),
-                              d.optString("room"), d.optString("kind"), d.optBoolean("online"), bool(d, "on"),
-                              d.optBoolean("allowed"), strings(d, "clash"), channels)
+                              d.optString("room"), kind, d.optBoolean("online"), bool(d, "on"),
+                              d.optBoolean("allowed"), strings(d, "clash"), channels,
+                              icon(d, HomeCard.defaultIcon(kind)), d.optBoolean("icon_chosen"),
+                              d.optBoolean("voice", true))
         }
         val error = when {
             json.optString("error") == "not-connected" -> "not-connected"
@@ -120,6 +129,9 @@ object HomeSettings {
     fun clashWarning(clash: List<String>): String =
         if (clash.isEmpty()) "" else "ชื่อซ้ำกับ " + clash.joinToString(", ") { "\"$it\"" } +
             " จาร์วิสจะแยกไม่ออก กรุณาเปลี่ยนชื่อ"
+
+    private fun icon(json: JSONObject, fallback: String): String =
+        json.optString("icon").takeIf { it in HomeCard.ICONS } ?: fallback
 
     private fun bool(json: JSONObject, name: String): Boolean? =
         if (!json.has(name) || json.isNull(name)) null else json.optBoolean(name)

@@ -13,6 +13,13 @@ import org.json.JSONObject
  * bulb crossed out = offline (its state is unknown, so it is never drawn as
  * off). No buttons: six 48dp tiles pushed Jarvis toward its 156dp floor.
  *
+ * TAP TO SWITCH (0.48.0, Poom): each light is a 48dp cell — raised when a tap
+ * can switch it, flat when it cannot (offline, not allowed, switching
+ * stopped; a tap then says why). The picture is the one Poom chose in the
+ * Control Panel ([ICONS]; by kind when none). A tap sends the row's opaque
+ * key and the state it does not have now; the broker checks everything
+ * again, and ONLY its answer changes the picture ([apply]).
+ *
  * WHAT THE PHONE GETS. The broker's /v1/dashboard `home` panel: per light
  * (one per channel of a multi-way switch) a NAME, room, online and on/off.
  * No device id, no token, no account.
@@ -32,7 +39,20 @@ object HomeCard {
     const val MAX_BULBS = 9
 
     data class Device(val name: String, val room: String, val kind: String, val online: Boolean,
-                      val on: Boolean?, val channels: List<Boolean>)
+                      val on: Boolean?, val channels: List<Boolean>, val icon: String = "bulb",
+                      val target: String? = null, val reason: String = "")
+
+    /** The pictures there are (res/drawable/ic_pixel_<icon>_<on|off|offline>). */
+    val ICONS = listOf("bulb", "fan", "aircon", "tv", "switch")
+
+    /** Poom's rule when none was chosen: a switch is a switch, the rest a bulb. */
+    fun defaultIcon(kind: String): String = if (kind == "switch") "switch" else "bulb"
+
+    /** What the broker answered to a tap: what eWeLink really did, in words. */
+    data class Switched(val ok: Boolean, val on: Boolean?, val online: Boolean?, val message: String)
+
+    private val TARGET = Regex("^[A-Za-z0-9_-]{1,64}$")
+    private const val FAILED = "ระบบขัดข้องครับ กรุณาลองใหม่อีกครั้ง"
 
     data class System(val id: String, val name: String, val devices: List<Device>)
 
@@ -63,10 +83,14 @@ object HomeCard {
                     if (name.isEmpty()) continue
                     val channels = ArrayList<Boolean>()
                     d.optJSONArray("channels")?.let { c -> for (k in 0 until c.length()) channels += c.optBoolean(k) }
-                    devices += Device(name, d.optString("room", "").trim(), d.optString("kind", ""),
+                    val kind = d.optString("kind", "")
+                    val icon = d.optString("icon", "").takeIf { it in ICONS } ?: defaultIcon(kind)
+                    devices += Device(name, d.optString("room", "").trim(), kind,
                                       d.optBoolean("online", false),
                                       if (d.isNull("on") || !d.has("on")) null else d.optBoolean("on"),
-                                      channels)
+                                      channels, icon,
+                                      d.optString("target", "").takeIf { TARGET.matches(it) },
+                                      d.optString("reason", "").take(20))
                 }
                 if (devices.isNotEmpty()) systems += System(s.optString("id", ""), s.optString("name", ""), devices)
             }
@@ -114,6 +138,39 @@ object HomeCard {
         Bulb.OFFLINE -> "ออฟไลน์"
         Bulb.UNKNOWN -> "ไม่ทราบสถานะ"
     }
+
+    /** A tap can switch it: the broker gave a key, and the state is known. */
+    fun canTap(device: Device): Boolean =
+        device.target != null && device.online && device.channels.isEmpty() && device.on != null
+
+    /** Why a cell cannot be tapped, in words (shown in the Jarvis window). "" when it can. */
+    fun whyNot(device: Device): String = when {
+        canTap(device) -> ""
+        !device.online || device.reason == "offline" -> "${device.name} ออฟไลน์อยู่ครับ จึงสั่งไม่ได้"
+        device.reason == "not-allowed" ->
+            "${device.name} ยังไม่ได้รับอนุญาตให้สั่งครับ ตั้งได้ที่แผงควบคุม › ไฟในบ้าน"
+        device.reason == "stopped" -> "ตอนนี้ปิดการสั่งไฟไว้ครับ"
+        else -> "ไม่ทราบสถานะของ ${device.name} ครับ จึงยังสั่งไม่ได้"
+    }
+
+    /** The broker's answer to POST /v1/home/switch; a refusal's message is shown as it is. */
+    fun parseSwitched(body: String): Switched = try {
+        val json = JSONObject(body)
+        Switched(json.optBoolean("ok", false),
+                 if (json.has("on") && !json.isNull("on")) json.optBoolean("on") else null,
+                 if (json.has("online") && !json.isNull("online")) json.optBoolean("online") else null,
+                 json.optString("message", "").trim().take(120).ifEmpty { FAILED })
+    } catch (e: Exception) {
+        Switched(false, null, null, FAILED)
+    }
+
+    /** The card with what eWeLink confirmed for one row, until the next reading. */
+    fun apply(card: Card, target: String, switched: Switched): Card = card.copy(systems = card.systems.map { s ->
+        s.copy(devices = s.devices.map { d ->
+            if (d.target != target) d
+            else d.copy(on = switched.on ?: d.on, online = switched.online ?: d.online)
+        })
+    })
 
     /** The bulbs a card shows, and how many did not fit. */
     fun bulbs(system: System): Pair<List<Device>, Int> =

@@ -113,6 +113,13 @@ object VoiceState : VoiceSink {
     /** Why the broker's gate stopped the last transcript, or "" if it did not. */
     @Volatile var lastGate: String = ""
 
+    /**
+     * What the last tap on the home card did, or why it could not (0.48.0),
+     * shown in the Jarvis window so the lights card never grows. Cleared when
+     * a voice turn starts.
+     */
+    @Volatile var homeNotice: String = ""
+
     /** Bumped when the broker says it switched a light (home_updated): redraw the card now. */
     @Volatile var homeVersion: Int = 0
 

@@ -330,6 +330,22 @@ def handle_home_name(conn: sqlite3.Connection, cfg: Config, *, authorization: st
     return home_settings.rename(ctx, target[0], target[1], name)
 
 
+def handle_home_icon(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                     body: bytes) -> tuple[int, dict]:
+    """POST /v1/home/icon {"device": key, "channel": null | n, "icon": "fan" | ""} (0.48.0)."""
+    from . import home_settings
+
+    ctx, refusal = _home_settings(conn, cfg, authorization)
+    if refusal:
+        return refusal
+    raw = _json_object(body)
+    target = _device_and_channel(raw) if raw is not None else None
+    icon = raw.get("icon") if raw is not None else None
+    if target is None or not isinstance(icon, str) or len(icon) > 16:
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    return home_settings.set_icon(ctx, target[0], target[1], icon)
+
+
 def handle_home_allow(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
                       body: bytes) -> tuple[int, dict]:
     """POST /v1/home/allow {"device": key, "channel": null | n, "allowed": bool}."""

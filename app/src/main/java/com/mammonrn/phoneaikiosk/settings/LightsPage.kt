@@ -145,7 +145,8 @@ internal class LightsPage(private val a: SettingsActivity) {
         box.addView(a.text(HomeSettings.describe(device), 13f, dim = true))
         if (device.channels.isEmpty()) {
             box.addView(item(device, null, device.name, device.ownName, device.ewelinkName, device.online,
-                             device.on, device.allowed, active = true, clash = device.clash))
+                             device.on, device.allowed, active = true, clash = device.clash,
+                             icon = device.icon, iconChosen = device.iconChosen, voice = device.voice))
             return box
         }
         // A multi-way switch: its own name (which switches every channel by
@@ -159,7 +160,7 @@ internal class LightsPage(private val a: SettingsActivity) {
         }, LinearLayout.LayoutParams(WRAP, a.dp(48)).apply { topMargin = a.dp(6) })
         for (c in device.channels) {
             box.addView(item(device, c.index, c.name, c.ownName, c.ewelinkName, device.online, c.on, c.allowed,
-                             c.active, c.clash),
+                             c.active, c.clash, c.icon, c.iconChosen, c.voice),
                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(10) })
         }
         return box
@@ -168,7 +169,8 @@ internal class LightsPage(private val a: SettingsActivity) {
     /** One thing voice can switch: its name and state, where the name came from, allow, rename. */
     private fun item(device: HomeSettings.Device, channel: Int?, name: String, ownName: String,
                      ewelinkName: String, online: Boolean, on: Boolean?, allowed: Boolean,
-                     active: Boolean, clash: List<String>): View {
+                     active: Boolean, clash: List<String>, icon: String = "bulb",
+                     iconChosen: Boolean = false, voice: Boolean = true): View {
         val block = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             if (channel != null) setPadding(a.dp(8), 0, 0, 0)
@@ -181,6 +183,9 @@ internal class LightsPage(private val a: SettingsActivity) {
             if (!active) setTextColor(a.color(R.color.retro_bad))
         })
         warning(block, clash)
+        if (active && !voice) {
+            block.addView(a.text(HomeSettings.NOT_FOR_VOICE, 13f).apply { setTextColor(a.color(R.color.retro_bad)) })
+        }
         block.addView(LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -190,8 +195,46 @@ internal class LightsPage(private val a: SettingsActivity) {
                 showName(device, channel, name, ownName, ewelinkName)
             }, LinearLayout.LayoutParams(a.dp(112), a.dp(48)).apply { marginStart = a.dp(6) })
         }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(6) })
+        if (active) block.addView(iconPicker(device, channel, icon, iconChosen),
+                                  LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(6) })
         return block
     }
+
+    /**
+     * The picture this light has on the home card (0.48.0): five 48dp
+     * choices, the chosen one pressed in (navy, like the alarm days). Kept on
+     * the VPS; the card follows at its next reading.
+     */
+    private fun iconPicker(device: HomeSettings.Device, channel: Int?, icon: String, iconChosen: Boolean) =
+        LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(a.text(a.getString(R.string.lights_icon) + " · " +
+                           a.getString(if (iconChosen) R.string.lights_icon_chosen else R.string.lights_icon_default),
+                           12f, dim = true))
+            addView(LinearLayout(a).apply {
+                orientation = LinearLayout.HORIZONTAL
+                for ((name, picture, label) in PICTURES) {
+                    val on = name == icon
+                    addView(android.widget.FrameLayout(a).apply {
+                        if (on) setBackgroundColor(a.color(R.color.retro_title))
+                        else setBackgroundResource(R.drawable.retro_button)
+                        isClickable = true
+                        contentDescription = a.getString(label) + if (on) " (เลือกอยู่)" else ""
+                        setOnClickListener {
+                            if (on && iconChosen) return@setOnClickListener
+                            note = a.getString(R.string.lights_saving)
+                            showList()
+                            change({ it.homeIcon(device.key, channel, name) }) { done ->
+                                note = done.message
+                                if (a.page == SettingsActivity.Page.LIGHTS) showList()
+                            }
+                        }
+                        addView(ImageView(a).apply { setImageResource(picture) },
+                                android.widget.FrameLayout.LayoutParams(a.dp(28), a.dp(28), Gravity.CENTER))
+                    }, LinearLayout.LayoutParams(a.dp(52), a.dp(48)).apply { marginEnd = a.dp(4) })
+                }
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(4) })
+        }
 
     private fun nameLine(value: String, bold: Boolean, state: String?, lit: Boolean = false) =
         LinearLayout(a).apply {
@@ -330,6 +373,14 @@ internal class LightsPage(private val a: SettingsActivity) {
     }
 
     companion object {
+        /** (the broker's name, the picture shown — its ON state, the most telling — and its words). */
+        private val PICTURES = listOf(
+            Triple("bulb", R.drawable.ic_pixel_bulb_on, R.string.icon_bulb),
+            Triple("fan", R.drawable.ic_pixel_fan_on, R.string.icon_fan),
+            Triple("aircon", R.drawable.ic_pixel_aircon_on, R.string.icon_aircon),
+            Triple("tv", R.drawable.ic_pixel_tv_on, R.string.icon_tv),
+            Triple("switch", R.drawable.ic_pixel_switch_on, R.string.icon_switch),
+        )
         private const val TAG = "KioskHome"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT

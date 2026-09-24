@@ -26,6 +26,16 @@
     <string name="window_home">อุปกรณ์ในบ้าน</string>
     <!-- 0.45.0, the "อุปกรณ์ในบ้าน" card's dim last line (home/HomeCard). -->
     <string name="home_more">และอีก %1$d รายการ</string>
+    <string name="home_switching">กำลังสั่ง…</string>
+    <string name="home_switching_line">กำลังสั่ง %1$s…</string>
+    <string name="lights_icon">ไอคอนบนหน้าหลัก</string>
+    <string name="lights_icon_default">ตามประเภท</string>
+    <string name="lights_icon_chosen">เลือกเอง</string>
+    <string name="icon_bulb">หลอดไฟ</string>
+    <string name="icon_fan">พัดลม</string>
+    <string name="icon_aircon">แอร์</string>
+    <string name="icon_tv">ทีวี</string>
+    <string name="icon_switch">สวิตช์</string>
     <string name="window_lights">ไฟในบ้าน</string>
     <string name="lights_intro">ตั้งชื่อไฟที่ใช้สั่งด้วยเสียง และเลือกว่าดวงใดสั่งได้ ชื่อและสิทธิ์เก็บไว้ที่ VPS ใช้ได้ทันทีหลังบันทึก</string>
     <string name="lights_loading">กำลังอ่านข้อมูลจาก VPS…</string>

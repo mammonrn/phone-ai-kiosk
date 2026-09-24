@@ -43,6 +43,17 @@ log = logging.getLogger("kiosk_broker")
 ALLOWLIST_FILE = "ewelink_allowlist.json"
 NAMES_FILE = "ewelink_names.json"
 STOP_FILE = "ewelink_stop"
+#: {"<full device id>": {"icon": "fan", "channels": {"0": "bulb"}}} (0.48.0).
+ICONS_FILE = "ewelink_icons.json"
+
+#: The pictures a light can have on the card (0.48.0, Poom). Our own pixel
+#: art on the phone; the broker only keeps which.
+ICON_CHOICES = ("bulb", "fan", "aircon", "tv", "switch")
+
+
+def default_icon(kind: str) -> str:
+    """Poom: a light switch's channel is a switch, a plug a bulb, a light a bulb."""
+    return "switch" if kind == "switch" else "bulb"
 
 #: Commands (a voice command or a tap, however many lights it switches) —
 #: generous for a person, a hard wall for a loop.
@@ -87,6 +98,7 @@ class Target:
     on: bool | None
     allowed: bool
     device: dict = field(repr=False, default_factory=dict)
+    icon: str = "bulb"
 
     @property
     def short(self) -> str:
@@ -136,6 +148,21 @@ def save_names(home_dir: Path, value: dict) -> None:
     _write_json(Path(home_dir) / NAMES_FILE, value)
 
 
+def icons(home_dir: Path) -> dict:
+    raw = _read_json(Path(home_dir) / ICONS_FILE, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def save_icons(home_dir: Path, value: dict) -> None:
+    _write_json(Path(home_dir) / ICONS_FILE, value)
+
+
+def chosen_icon(own_icons: dict, device_id: str, channel: int | None) -> str | None:
+    entry = own_icons.get(device_id) if isinstance(own_icons.get(device_id), dict) else {}
+    value = entry.get("icon") if channel is None else (entry.get("channels") or {}).get(str(channel))
+    return value if value in ICON_CHOICES else None
+
+
 def stopped(home_dir: Path) -> bool:
     return (Path(home_dir) / STOP_FILE).exists()
 
@@ -156,7 +183,7 @@ def target_key(secret_key: bytes, device_id: str, channel: int | None) -> str:
 
 
 def build_targets(home: dict, allow: dict[str, set[int] | None], own_names: dict,
-                  secret_key: bytes) -> list[Target]:
+                  secret_key: bytes, own_icons: dict | None = None) -> list[Target]:
     """Every light, light switch channel and allowlisted plug, named.
 
     A plug not on the allowlist is left out entirely: a plug can be anything
@@ -187,11 +214,13 @@ def build_targets(home: dict, allow: dict[str, set[int] | None], own_names: dict
                 allowed = allowed_channels is None or (isinstance(allowed_channels, set) and i in allowed_channels)
                 targets.append(Target(target_key(secret_key, d["id"], i), d["id"], i, name, d.get("room", ""),
                                       kind, bool(d.get("online")), state if d.get("online") else None,
-                                      allowed, d))
+                                      allowed, d,
+                                      chosen_icon(own_icons or {}, d["id"], i) or default_icon(kind)))
         else:
             targets.append(Target(target_key(secret_key, d["id"], None), d["id"], None, device_name,
                                   d.get("room", ""), kind, bool(d.get("online")), d.get("on"),
-                                  allowed_channels != "absent", d))
+                                  allowed_channels != "absent", d,
+                                  chosen_icon(own_icons or {}, d["id"], None) or default_icon(kind)))
     return targets
 
 
@@ -268,7 +297,7 @@ def targets(ctx: Context, *, now: float | None = None,
     if home is None:
         return [], 0, error
     return build_targets(home, allowlist(ctx.home_dir), names(ctx.home_dir),
-                         vault.key(ctx.key_path)), age, error
+                         vault.key(ctx.key_path), icons(ctx.home_dir)), age, error
 
 
 # ------------------------------------------------------------- switching
@@ -355,8 +384,16 @@ def card(ctx: Context, *, now: float | None = None) -> dict:
     rows = []
     for t in found:
         row = {"name": t.name, "room": t.room, "kind": t.kind, "online": t.online, "on": t.on,
-               "channels": []}
-        if t.allowed and control:
+               "channels": [], "icon": t.icon}
+        # 0.48.0: a tap on the card switches, through switch_key's gates. A
+        # row that cannot be tapped says why, and the phone says it in words.
+        if not t.online:
+            row["reason"] = "offline"
+        elif not t.allowed:
+            row["reason"] = "not-allowed"
+        elif not control:
+            row["reason"] = "stopped"
+        else:
             row["target"] = t.key
         rows.append(row)
     payload = {"ok": not error, "age_seconds": age, "control": control,
@@ -372,12 +409,17 @@ def switch_key(ctx: Context, key: str, on: bool, *, now: float | None = None) ->
     uses the broker's usual {"error": {code, message}} so the phone shows it."""
     from . import lights   # noqa: PLC0415 — the words live there
 
-    found, _, error = targets(ctx, now=now)
+    # The state as it is NOW, like a voice command (lights.FRESH_SECONDS): a
+    # card a minute old must not switch a light that is already there.
+    found, age, error = targets(ctx, now=now, max_age=lights.FRESH_SECONDS)
     target = next((t for t in found if t.key == key), None)
     if target is None:
         return 404, {"ok": False, "error": {"code": "unknown-target", "message": "ไม่พบอุปกรณ์นี้แล้วครับ"}}
     if not target.allowed:
         return 403, {"ok": False, "error": {"code": "not-allowed", "message": lights.not_allowed_reply([target])}}
+    if not error and target.online and target.on is on:
+        return 200, {"ok": True, "result": "already", "on": on, "online": True,
+                     "message": lights._glue("", target.name, f"{'เปิด' if on else 'ปิด'}อยู่แล้วครับ")}
     outcome = switch(ctx, [target], on, via="screen", now=now)
     result = outcome.results[0][1]
     return 200, {"ok": result == "ok", "result": result.split(":", 1)[0],

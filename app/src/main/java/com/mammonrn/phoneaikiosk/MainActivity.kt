@@ -676,29 +676,46 @@ class MainActivity : Activity() {
         homePages.news("ewelink", HomeCard.signature(card), SystemClock.elapsedRealtime())
     }
 
-    /** One light: its bulb, then its name on one line. The state is the bulb. */
+    /** The row being switched (its key) while the broker answers; one tap at a time. */
+    private var homePending: String? = null
+
+    /**
+     * One light: its picture, then its name, in a 48dp cell (0.48.0). A cell
+     * a tap can switch is raised (the 1995 sign for "press me"); one that
+     * cannot is flat, and a tap on it says why in the Jarvis window. While
+     * the broker answers, the name reads "กำลังสั่ง…" and the picture stays as
+     * it was: it changes only with the broker's answer (switchHome).
+     */
     private fun homeBulb(device: HomeCard.Device, plex: android.graphics.Typeface?): android.view.View =
         android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            contentDescription = HomeCard.spoken(device)
-            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            minimumHeight = dp(CELL_DP)
+            setPadding(dp(4), 0, dp(2), 0)
             val bulb = HomeCard.bulb(device)
+            val tappable = HomeCard.canTap(device)
+            val mine = homePending != null && homePending == device.target
+            val waiting = homePending != null
+            if (tappable) setBackgroundResource(R.drawable.retro_button)
+            contentDescription = HomeCard.spoken(device) +
+                if (tappable) " กดเพื่อ${if (device.on == true) "ปิด" else "เปิด"}" else ""
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isClickable = true
+            isEnabled = !waiting
+            setOnClickListener {
+                if (tappable) switchHome(device) else homeSay(HomeCard.whyNot(device))
+            }
             addView(android.widget.ImageView(this@MainActivity).apply {
-                setImageResource(when (bulb) {
-                    HomeCard.Bulb.ON -> R.drawable.ic_pixel_bulb_on
-                    HomeCard.Bulb.OFF -> R.drawable.ic_pixel_bulb_off
-                    else -> R.drawable.ic_pixel_bulb_offline
-                })
+                setImageResource(iconRes(device.icon, bulb))
                 importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, android.widget.LinearLayout.LayoutParams(dp(BULB_DP), dp(BULB_DP)))
             addView(TextView(this@MainActivity).apply {
-                text = device.name
+                text = if (mine) getString(R.string.home_switching) else device.name
                 textSize = sp(R.dimen.type_secondary)
-                typeface = if (bulb == HomeCard.Bulb.ON)
+                typeface = if (bulb == HomeCard.Bulb.ON || mine)
                     android.graphics.Typeface.create(plex, android.graphics.Typeface.BOLD) else plex
                 setTextColor(ContextCompat.getColor(this@MainActivity,
-                    if (bulb == HomeCard.Bulb.ON) R.color.retro_text else R.color.retro_dim))
+                    if (bulb == HomeCard.Bulb.ON || mine) R.color.retro_text else R.color.retro_dim))
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 includeFontPadding = false
@@ -706,6 +723,63 @@ class MainActivity : Activity() {
                 importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
+
+    /** Our own pixel art (res/drawable), by picture and state. */
+    private fun iconRes(icon: String, bulb: HomeCard.Bulb): Int {
+        val state = when (bulb) {
+            HomeCard.Bulb.ON -> 0
+            HomeCard.Bulb.OFF -> 1
+            else -> 2
+        }
+        val set = when (icon) {
+            "fan" -> intArrayOf(R.drawable.ic_pixel_fan_on, R.drawable.ic_pixel_fan_off, R.drawable.ic_pixel_fan_offline)
+            "aircon" -> intArrayOf(R.drawable.ic_pixel_aircon_on, R.drawable.ic_pixel_aircon_off,
+                                   R.drawable.ic_pixel_aircon_offline)
+            "tv" -> intArrayOf(R.drawable.ic_pixel_tv_on, R.drawable.ic_pixel_tv_off, R.drawable.ic_pixel_tv_offline)
+            "switch" -> intArrayOf(R.drawable.ic_pixel_switch_on, R.drawable.ic_pixel_switch_off,
+                                   R.drawable.ic_pixel_switch_offline)
+            else -> intArrayOf(R.drawable.ic_pixel_bulb_on, R.drawable.ic_pixel_bulb_off, R.drawable.ic_pixel_bulb_offline)
+        }
+        return set[state]
+    }
+
+    /** A line in the Jarvis window about the lights card, in place of the last turn. */
+    private fun homeSay(line: String) {
+        if (line.isEmpty()) return
+        VoiceState.heard = ""
+        VoiceState.reply = ""
+        VoiceState.lastCancel = ""
+        VoiceState.homeNotice = line
+    }
+
+    /**
+     * A tap (0.48.0): the key and the state the light does NOT have now, to
+     * the broker, which checks the stop switch, its limits, the allowlist and
+     * the state as it is now. The card changes only with its answer. The log
+     * says the outcome only — no name, no key.
+     */
+    private fun switchHome(device: HomeCard.Device) {
+        val target = device.target ?: return
+        if (homePending != null) return
+        val on = device.on != true
+        homePending = target
+        homeSay(getString(R.string.home_switching_line, device.name))
+        showHome(homeCard)
+        dashboardThread.execute {
+            val token = TokenStore(this@MainActivity).token()
+            val body = if (token.isNullOrEmpty()) ""
+                       else runCatching { Broker(VoiceState.brokerBaseUrl, token).homeSwitch(target, on) }
+                               .getOrDefault("")
+            val switched = HomeCard.parseSwitched(body)
+            Log.i(DASHBOARD_TAG, "home tap on=$on ok=${switched.ok} online=${switched.online}")
+            handler.post {
+                homePending = null
+                homeSay(switched.message)
+                val card = homeCard
+                showHome(if (card == null) null else HomeCard.apply(card, target, switched))
+            }
+        }
+    }
 
     /** A size from res/values/type_scale.xml, in sp — the one type scale. */
     private fun sp(id: Int): Float {
@@ -1369,6 +1443,12 @@ class MainActivity : Activity() {
             if (isNotEmpty()) append("\n")
             append("ได้ยิน: ${VoiceState.heard}")
         }
+        // A tap on the lights card (0.48.0): what it did, here and not in the
+        // card, so the card stays two rows high.
+        if (VoiceState.homeNotice.isNotEmpty() && VoiceState.heard.isEmpty() && VoiceState.reply.isEmpty()) {
+            if (isNotEmpty()) append("\n")
+            append(VoiceState.homeNotice)
+        }
         if (VoiceState.reply.isNotEmpty()) {
             if (isNotEmpty()) append("\n")
             append("ตอบ: ${VoiceState.reply}")
@@ -1519,6 +1599,9 @@ class MainActivity : Activity() {
 
         /** A home-card bulb: 16 pixels drawn at 1.5dp each, read at 20 cm (DESIGN 5ง). */
         const val BULB_DP = 24
+
+        /** A home-card cell: a finger's target (DESIGN: every button at least 48dp). */
+        const val CELL_DP = 48
 
         /** `adb logcat -s KioskScreen:*` for the idle rule on its own. */
         const val SCREEN_TAG = "KioskScreen"

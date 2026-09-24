@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.48.0): switch (สวิตช์), ON: the active part yellow, and marks outside it.
+     16x16, drawn from squares by a script, no brand's icon. DESIGN.md 5ง. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#C8C8C8" android:pathData="M4,1h8v1h-8z M4,2h8v1h-8z M4,3h2v1h-2z M10,3h2v1h-2z M4,4h2v1h-2z M10,4h2v1h-2z M4,5h2v1h-2z M10,5h2v1h-2z M4,6h2v1h-2z M10,6h2v1h-2z M4,7h2v1h-2z M10,7h2v1h-2z M4,8h2v1h-2z M10,8h2v1h-2z M4,9h2v1h-2z M10,9h2v1h-2z M4,10h2v1h-2z M10,10h2v1h-2z M4,11h2v1h-2z M10,11h2v1h-2z M4,12h2v1h-2z M10,12h2v1h-2z M4,13h8v1h-8z M4,14h8v1h-8z" />
+    <path android:fillColor="#808080" android:pathData="M7,8h2v1h-2z M7,9h2v1h-2z M7,10h2v1h-2z M7,11h2v1h-2z" />
+    <path android:fillColor="#FFD700" android:pathData="M1,2h1v1h-1z M14,2h1v1h-1z M7,4h2v1h-2z M0,5h1v1h-1z M7,5h2v1h-2z M15,5h1v1h-1z M7,6h2v1h-2z M7,7h2v1h-2z M1,8h1v1h-1z M14,8h1v1h-1z" />
+    <path android:fillColor="#000000" android:pathData="M3,0h10v1h-10z M3,1h1v1h-1z M12,1h1v1h-1z M3,2h1v1h-1z M12,2h1v1h-1z M3,3h1v1h-1z M6,3h4v1h-4z M12,3h1v1h-1z M3,4h1v1h-1z M6,4h1v1h-1z M9,4h1v1h-1z M12,4h1v1h-1z M3,5h1v1h-1z M6,5h1v1h-1z M9,5h1v1h-1z M12,5h1v1h-1z M3,6h1v1h-1z M6,6h1v1h-1z M9,6h1v1h-1z M12,6h1v1h-1z M3,7h1v1h-1z M6,7h1v1h-1z M9,7h1v1h-1z M12,7h1v1h-1z M3,8h1v1h-1z M6,8h1v1h-1z M9,8h1v1h-1z M12,8h1v1h-1z M3,9h1v1h-1z M6,9h1v1h-1z M9,9h1v1h-1z M12,9h1v1h-1z M3,10h1v1h-1z M6,10h1v1h-1z M9,10h1v1h-1z M12,10h1v1h-1z M3,11h1v1h-1z M6,11h1v1h-1z M9,11h1v1h-1z M12,11h1v1h-1z M3,12h1v1h-1z M6,12h4v1h-4z M12,12h1v1h-1z M3,13h1v1h-1z M12,13h1v1h-1z M3,14h1v1h-1z M12,14h1v1h-1z M3,15h10v1h-10z" />
+</vector>

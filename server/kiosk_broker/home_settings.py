@@ -130,9 +130,16 @@ def view(ctx: home_control.Context, *, now: float | None = None) -> tuple[int, d
             return []
         return sorted({names[other] for pair in clashes if who in pair for other in pair if other != who})
 
+    own_icons = home_control.icons(ctx.home_dir)
+
+    def icon_of(e, channel):
+        chosen = home_control.chosen_icon(own_icons, e["id"], channel)
+        return {"icon": chosen or home_control.default_icon(e["kind"]), "icon_chosen": chosen is not None}
+
     devices = []
     for e in sorted(entries, key=lambda e: (e["room"], e["name"])):
         devices.append({
+            **icon_of(e, None),
             "key": device_key(secret_key, e["id"]), "name": e["name"], "own_name": e["own_name"],
             "ewelink_name": e["ewelink_name"], "room": e["room"], "kind": e["kind"],
             "online": e["online"], "on": e["on"], "allowed": e["allowed"],
@@ -140,7 +147,7 @@ def view(ctx: home_control.Context, *, now: float | None = None) -> tuple[int, d
             # A name voice cannot use ("ไฟ" alone): shown as a warning.
             "voice": bool(lights._keys(e["name"])),
             "channels": [{**{k: v for k, v in c.items()}, "clash": clash_with((e["id"], c["channel"])),
-                          "voice": bool(lights._keys(c["name"]))}
+                          "voice": bool(lights._keys(c["name"])), **icon_of(e, c["channel"])}
                          for c in e["channels"]],
         })
     return 200, {"ok": not error, "age_seconds": age, "control": not home_control.stopped(ctx.home_dir),
@@ -267,3 +274,42 @@ def set_allowed(ctx: home_control.Context, key: str, channel, allowed: bool, *,
     status, body = view(ctx, now=now)
     return status, {"ok": True, "message": "อนุญาตให้สั่งแล้วครับ" if allowed else "หยุดการสั่งดวงนี้แล้วครับ",
                     "view": body}
+
+
+def set_icon(ctx: home_control.Context, key: str, channel, icon: str, *,
+             now: float | None = None) -> tuple[int, dict]:
+    """POST /v1/home/icon (0.48.0). "" goes back to the kind's own picture."""
+    now = time.time() if now is None else now
+    _, device, refusal = _find(ctx, key, now)
+    if refusal:
+        return refusal
+    index = _channel(device, channel)
+    count = len(device.get("channels") or [])
+    if index is False or (count and index is None) or (not count and index is not None):
+        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์ครับ")
+    if icon and icon not in home_control.ICON_CHOICES:
+        return 400, _refusal("bad-icon", "ไม่มีไอคอนนี้ครับ")
+    own = home_control.icons(ctx.home_dir)
+    entry = dict(own.get(device["id"]) or {}) if isinstance(own.get(device["id"]), dict) else {}
+    channels = dict(entry.get("channels") or {})
+    if index is None:
+        if icon:
+            entry["icon"] = icon
+        else:
+            entry.pop("icon", None)
+    elif icon:
+        channels[str(index)] = icon
+    else:
+        channels.pop(str(index), None)
+    if channels:
+        entry["channels"] = channels
+    else:
+        entry.pop("channels", None)
+    if entry:
+        own[device["id"]] = entry
+    else:
+        own.pop(device["id"], None)
+    home_control.save_icons(ctx.home_dir, own)
+    log.info("home icon via=screen target=%s icon=%s", _short(device, index), icon or "default")
+    status, body = view(ctx, now=now)
+    return status, {"ok": True, "message": "เปลี่ยนไอคอนแล้วครับ", "view": body}

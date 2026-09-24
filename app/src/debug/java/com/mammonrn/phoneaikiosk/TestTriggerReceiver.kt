@@ -310,11 +310,11 @@ class TestTriggerReceiver : BroadcastReceiver() {
          */
         private const val SAMPLE_HOME = """{"home": {"ok": true, "age_seconds": 0, "control": true,
             "systems": [{"id": "ewelink", "name": "eWeLink", "devices": [
-            {"name": "Light1", "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "channels": []},
-            {"name": "Light2", "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "channels": []},
-            {"name": "ไฟหน้าบ้าน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "channels": []},
-            {"name": "ไฟเพดาน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": []},
-            {"name": "Switch1 ช่อง 3", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": []}]}]}}"""
+            {"name": "Light1", "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "channels": [], "icon": "bulb", "target": "sample0000000001"},
+            {"name": "Light2", "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "channels": [], "icon": "fan", "reason": "offline"},
+            {"name": "ไฟหน้าบ้าน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "channels": [], "icon": "switch", "target": "sample0000000003"},
+            {"name": "แอร์", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": [], "icon": "aircon", "target": "sample0000000004"},
+            {"name": "ทีวี", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "channels": [], "icon": "tv", "reason": "not-allowed"}]}]}}"""
 
         /** The adb switch's pretend player (TEST_MEDIA_HOLD). */
         @Volatile private var testHold: com.mammonrn.phoneaikiosk.voice.WakePause.Hold? = null

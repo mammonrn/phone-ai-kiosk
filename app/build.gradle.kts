@@ -32,8 +32,8 @@ android {
         minSdk = 29
         targetSdk = 36
 
-        versionCode = 59
-        versionName = "0.47.0"
+        versionCode = 60
+        versionName = "0.48.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
