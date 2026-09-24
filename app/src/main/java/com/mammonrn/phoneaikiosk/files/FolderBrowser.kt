@@ -316,7 +316,11 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
             val tick = row.getChildAt(0) as ImageView
             tick.visibility = if (ticking && !e.folder) View.VISIBLE else if (ticking) View.INVISIBLE else View.GONE
             tick.setImageResource(if (chosen) R.drawable.ic_pixel_check_on else R.drawable.ic_pixel_check_off)
-            (row.getChildAt(1) as ImageView).setImageResource(iconOf(e))
+            (row.getChildAt(1) as ImageView).apply {
+                setImageResource(iconOf(e))
+                // On a navy row the navy note would vanish (seen on the A07): a light plate behind it.
+                setBackgroundColor(if (chosen) r.color(R.color.retro_face) else 0)
+            }
             val kind = if (e.folder) FileOps.Kind.FOLDER else FileOps.kindOfName(e.name)
             val kinds = r.activity.resources.getStringArray(R.array.files_kinds)
             val fg = r.color(if (chosen) R.color.retro_title_text else R.color.retro_text)

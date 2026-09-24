@@ -572,7 +572,7 @@
     <string name="folder_count">%d รายการ</string>
     <string name="folder_ticked">เลือกแล้ว %d รายการ</string>
     <string name="folder_ticked_short">เลือก %d รายการ</string>
-    <string name="folder_ticked_bytes">เลือก %1$d รายการ (%2$s)</string>
+    <string name="folder_ticked_bytes">เลือก %1$d · %2$s</string>
     <string name="folder_tick_all">เลือกทั้งหมด</string>
     <string name="folder_tick_none">ไม่เลือก</string>
     <string name="folder_hold_hint">แตะค้างที่รายการเพื่อดูรายละเอียด คัดลอก ย้าย หรือลบ</string>
