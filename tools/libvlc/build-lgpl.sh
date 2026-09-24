@@ -66,6 +66,12 @@ s = s.replace(anchor, patch + anchor, 1)
 open(path, "w").write(s)
 EOF
 
+# zvbi (DVB teletext) is left out as well: its own README calls the project GPL-2+
+# with only some files LGPL. VLC's own telx module (LGPL) still decodes teletext.
+sed -i 's/--enable-zvbi/--disable-zvbi/g' "$CL"
+sed -i 's/VLC_CONTRIB_ARGS="$VLC_CONTRIB_ARGS --disable-gpl --disable-gnuv3 --enable-ad-clauses"/VLC_CONTRIB_ARGS="$VLC_CONTRIB_ARGS --disable-gpl --disable-gnuv3 --enable-ad-clauses --disable-zvbi"/' "$CL"
+grep -q -- '--disable-zvbi' "$CL" && ! grep -q -- '--enable-zvbi' "$CL"
+
 # Build: libvlc only, release, contribs under LGPL v2.1 + ad-clauses.
 ./buildsystem/compile.sh -l -a arm64 -r --license a
 
@@ -122,7 +128,7 @@ SO=/tmp/aar/jni/arm64-v8a/libvlc.so
   echo
   echo "## 5. Checks on the final libvlc.so"
   echo "- GPL module string in libvlc.so: $(grep -acF "$GPL_MARK" "$SO") (must be 0)"
-  echo "- LGPL module strings in libvlc.so: $(grep -aoF "$LGPL_MARK" "$SO" | wc -l)"
+  echo "  (the linker drops the modules' license strings it does not need, so section 2, read from each module before linking, is the check that counts)"
   echo "- debug sections left in libvlc.so: $("$BIN/llvm-readelf" -S "$SO" | grep -c '\.debug\|\.symtab') (must be 0)"
   echo "- sizes (bytes): $(ls -l /tmp/aar/jni/arm64-v8a/ | awk 'NR>1 {print $9"="$5}' | tr '\n' ' ')"
 } > "$OUT/license-report.txt"
@@ -130,6 +136,9 @@ cat "$OUT/license-report.txt"
 
 if grep -qF "MUST NOT BE HERE" "$OUT/license-report.txt" || [ "$(grep -acF "$GPL_MARK" "$SO")" != "0" ]; then
   echo "A GPL module is in the build"; exit 1
+fi
+if [ -d "$CONTRIB_SRC/zvbi" ] || grep -q '^- zvbi:' "$OUT/license-report.txt"; then
+  echo "zvbi is in the build"; exit 1
 fi
 if [ "$("$BIN/llvm-readelf" -S "$SO" | grep -c '\.debug\|\.symtab')" != "0" ]; then
   echo "libvlc.so still has debug symbols"; exit 1
