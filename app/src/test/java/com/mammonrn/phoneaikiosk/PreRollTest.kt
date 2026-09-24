@@ -35,9 +35,18 @@ class PreRollTest {
 
     @Test
     fun `a dip between two words is not the gap`() {
-        // "…Jarvis" · gap · "เปิด" dip "ไฟ": one quiet frame inside the command.
-        val peaks = intArrayOf(s, s, q, q, s, s, q, s, s)
-        assertEquals(5, PreRoll.framesToKeep(peaks, t))
+        // "…Jarvis" · gap · "เปิ" dip "ด": one quiet frame, inside the lookback.
+        val peaks = intArrayOf(s, s, s, q, q, s, q, s)
+        assertEquals(3, PreRoll.framesToKeep(peaks, t))
+    }
+
+    @Test
+    fun `the wake word firing at its own end keeps nothing`() {
+        // The A07 case: "Hey" · pause · "Jarvis", the detector fires on the last
+        // frame of "Jarvis". Its newest frames are the wake word; the pause
+        // between "Hey" and "Jarvis" is further back than the lookback.
+        val peaks = intArrayOf(s, s, q, q, q, s, s, s, s, s, s, s)
+        assertEquals(0, PreRoll.framesToKeep(peaks, t))
     }
 
     @Test
@@ -47,12 +56,11 @@ class PreRollTest {
     }
 
     @Test
-    fun `no gap at all keeps the fallback, never the whole second`() {
-        val peaks = IntArray(16) { s }
-        assertEquals(PreRoll.FALLBACK_FRAMES, PreRoll.framesToKeep(peaks, t))
+    fun `no gap at all keeps nothing`() {
+        assertEquals(0, PreRoll.FALLBACK_FRAMES)
+        assertEquals(0, PreRoll.framesToKeep(IntArray(16) { s }, t))
         // A gap further back than the lookback does not count.
-        val far = intArrayOf(q, q) + IntArray(12) { s }
-        assertEquals(PreRoll.FALLBACK_FRAMES, PreRoll.framesToKeep(far, t))
+        assertEquals(0, PreRoll.framesToKeep(intArrayOf(q, q) + IntArray(12) { s }, t))
     }
 
     @Test

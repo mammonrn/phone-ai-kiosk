@@ -12,9 +12,16 @@ import java.io.ByteArrayOutputStream
  *
  * So the last second of microphone frames is kept here, in memory only, and
  * when a capture starts from the wake word the frames AFTER THE GAP that
- * follows "Jarvis" are put in front of the recording ([framesToKeep]). No gap
- * — the command ran straight on — and a fixed [FALLBACK_FRAMES] are kept; the
+ * follows "Jarvis" are put in front of the recording ([framesToKeep]); the
  * broker strips a "จาร์วิส" that comes with them (speech_gate.strip_wake).
+ *
+ * NO GAP, NOTHING KEPT (fixed on the A07 the day it shipped). The first
+ * version kept 375 ms when it found no gap, assuming the command had run
+ * straight on. But the detector fires AT THE END of the wake word (climb_ms
+ * 0-1 on every A07 detection), so with no gap the newest frames are "Jarvis"
+ * itself: a paused "เปิดไฟหน้าบ้านอยู่ไหม" came back garbled enough to open the
+ * camera app. Only a real gap says where the command began; without one,
+ * the recording starts where it always did.
  *
  * PRIVACY. Nothing new is kept: the wake detector already hears these same
  * frames. They live in this ring, are overwritten every ~62 ms, and reach the
@@ -63,11 +70,15 @@ class PreRoll(private val capacity: Int = CAPACITY_FRAMES) {
         /** 16 frames of ~62 ms (Recorder.frameSamples at 16 kHz): a second. */
         const val CAPACITY_FRAMES = 16
 
-        /** How far back to look for the gap after "Jarvis": ~625 ms. */
-        const val LOOKBACK_FRAMES = 10
+        /**
+         * How far back to look for the gap after "Jarvis": ~312 ms. Short on
+         * purpose: "Jarvis" itself is longer than this, so the pause between
+         * "Hey" and "Jarvis" is never within reach and never taken for the gap.
+         */
+        const val LOOKBACK_FRAMES = 5
 
-        /** No gap found: ~375 ms, about one syllable and a half. */
-        const val FALLBACK_FRAMES = 6
+        /** No gap found: nothing kept — the newest frames are then the wake word. */
+        const val FALLBACK_FRAMES = 0
 
         /** A pause between two words is shorter than this; the one after "Jarvis" is not. */
         const val GAP_FRAMES = 2
