@@ -83,20 +83,14 @@ class VlcDeck(context: Context, private val events: Events) {
         open(track, startMs, play)
     }
 
-    /**
-     * A damaged spot in a file (a VCD copied from a scratched disc: 0.60.0,
-     * Poom's คู่โจร1 stops at 4:07 of 1:05:07) makes VLC's demuxer give up
-     * and say the file ended. An end that comes well before the length is not
-     * the end: the file is opened again a little past the spot and plays on.
-     * A few times per file at most, so a file that is broken to the end still ends.
-     */
+    /** An end before the length, from a damaged spot ([EarlyEnd]): the file plays on past it. */
     private fun rescue(atMs: Long): Boolean {
         val t = track ?: return false
-        val length = lengthMs.takeIf { it > 0 } ?: player.length
-        if (!loaded || length <= 0 || atMs <= 0 || atMs >= length - EARLY_END_MS || rescues >= MAX_RESCUES) return false
+        if (!loaded) return false
+        val from = EarlyEnd.goOnAt(atMs, lengthMs.takeIf { it > 0 } ?: player.length, rescues) ?: return false
         rescues++
         Log.w(TAG, "vlc: early end, going on past it ($rescues)")
-        open(t, atMs + SKIP_MS, play = true)
+        open(t, from, play = true)
         return true
     }
 
@@ -255,11 +249,6 @@ class VlcDeck(context: Context, private val events: Events) {
 
     companion object {
         private const val TAG = "KioskVlc"
-        /** An end this far or more before the length is taken as a damaged spot, not the end. */
-        const val EARLY_END_MS = 10_000L
-        /** How far past the damaged spot the file is opened again. */
-        const val SKIP_MS = 2_000L
-        const val MAX_RESCUES = 10
 
         @Volatile private var shared: LibVLC? = null
 
