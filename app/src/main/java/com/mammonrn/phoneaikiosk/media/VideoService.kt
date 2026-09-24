@@ -300,6 +300,8 @@ class VideoService : Service(), WakePause.Media {
     private val vlcEvents = object : VlcDeck.Events {
         override fun onPlaying() = update()
         override fun onPaused() = update()
+        /** Another app's sound took over, or headphones came out (0.61.0): paused as by hand. */
+        override fun onOutsidePause() { vlcWant = false; update() }
         override fun onEnded() {
             vlcWant = false
             loadedVideo?.let { VideoPlayer.savePlace(this@VideoService, it, Long.MAX_VALUE, 0) }
@@ -497,7 +499,7 @@ class VideoService : Service(), WakePause.Media {
             player.stop()
             player.clearMediaItems()
             view?.let { player.clearVideoSurfaceView(it) }
-            val deck = vlc ?: VlcDeck(this, vlcEvents).also { vlc = it }
+            val deck = vlc ?: VlcDeck(this, vlcEvents, movie = true).also { vlc = it }
             usingVlc = true
             vlcWant = play && !HeatWatch.step.pause
             deck.setVolume(VideoPlayer.volume)

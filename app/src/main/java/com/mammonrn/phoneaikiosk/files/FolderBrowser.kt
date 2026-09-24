@@ -163,7 +163,7 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
         adapter.notifyDataSetChanged()
         say(r.activity.getString(R.string.folder_loading))
         r.setEnabledButton(up, from.parent(at) != null || leavesTop) { up() }
-        drawStatus()
+        drawTicks()
         host.onChanged()
         val asked = generation
         worker.execute {
@@ -198,6 +198,16 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
     }
 
     fun tickedEntries(): List<FolderEntry> = ticked.values.toList()
+
+    /**
+     * Nothing chosen, and every count on screen says so (0.61.0: the picker opened
+     * again read "เลือกแล้ว 4 รายการ" at the top and "เพิ่ม 0 เพลง" below — the map
+     * was cleared but the bar above was not drawn again).
+     */
+    fun clearTicks() {
+        ticked.clear()
+        changed()
+    }
 
     private fun tap(e: FolderEntry) {
         val s = source ?: return

@@ -474,6 +474,8 @@
     <string name="music_khz">kHz</string>
     <string name="music_volume_slider">ระดับเสียงเพลง</string>
     <string name="music_balance_slider">สมดุลซ้ายขวา</string>
+    <string name="music_balance_slider_off">สมดุลซ้ายขวา ใช้ไม่ได้กับไฟล์ที่เล่นผ่าน VLC</string>
+    <string name="music_balance_vlc">ปรับเสียงซ้ายขวาไม่ได้ ไฟล์นี้เล่นผ่าน VLC</string>
     <string name="music_balance_center">สมดุล: กลาง</string>
     <string name="music_balance_left">สมดุล: ซ้าย %1$d%%</string>
     <string name="music_balance_right">สมดุล: ขวา %1$d%%</string>

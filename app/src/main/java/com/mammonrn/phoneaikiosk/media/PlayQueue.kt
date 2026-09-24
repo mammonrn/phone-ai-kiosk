@@ -12,7 +12,8 @@ import kotlin.random.Random
  *  * SHUFFLE is an order over the same list, made when it is switched on; the
  *    track playing stays playing and comes first in the new order, so
  *    switching shuffle never jumps. Switching it off goes back to list order
- *    from the track playing.
+ *    from the track playing. Every time the order runs out and starts again
+ *    (repeat ALL, or "ถัดไป" at the end) a new order is made.
  *  * "ถัดไป" pressed by hand at the end of the list with repeat OFF goes to the
  *    first track (a person asked for another song); only the automatic
  *    end-of-track stops there.
@@ -67,6 +68,9 @@ class PlayQueue(private val random: Random = Random.Default) {
         if (auto && repeat == Repeat.ONE) return current
         if (pos + 1 < order.size) { pos += 1; return current }
         if (auto && repeat == Repeat.OFF) return null
+        // Round again. With shuffle on it is a new order every round (0.61.0, Poom:
+        // repeat ALL + shuffle played the same order over and over).
+        if (shuffle) order = nextRound(order[pos])
         pos = 0
         return current
     }
@@ -194,6 +198,16 @@ class PlayQueue(private val random: Random = Random.Default) {
 
     /** The play order from the current track on, for the list on screen. */
     fun upcoming(): List<Track> = if (pos < 0) emptyList() else order.drop(pos).map { tracks[it] }
+
+    /** A new shuffled order for the next round; the song just heard does not open it (when there are two or more). */
+    private fun nextRound(last: Int): IntArray {
+        val round = tracks.indices.shuffled(random).toIntArray()
+        if (round.size > 1 && round[0] == last) {
+            val j = 1 + random.nextInt(round.size - 1)
+            round[0] = round[j]; round[j] = last
+        }
+        return round
+    }
 
     private fun shuffledFrom(first: Int): IntArray {
         val rest = (tracks.indices).filter { it != first }.shuffled(random)

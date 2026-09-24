@@ -250,7 +250,7 @@ class MediaPicker(
         val a = r.activity
         titleView.text = if (list != null) a.getString(if (kind == Playlist.Kind.MUSIC) R.string.picker_title_music else R.string.picker_title_video, list.name)
                          else a.getString(R.string.picker_title_queue)
-        browser.ticked.clear()
+        browser.clearTicks()
         say(null)
         busy = false
         drawSources()
@@ -363,7 +363,7 @@ class MediaPicker(
                 }
                 Log.i(TAG, "added to a list: chosen=${entries.size} new=$count")
                 busy = false
-                browser.ticked.clear()
+                browser.clearTicks()
                 host.added(count, a.getString(if (kind == Playlist.Kind.MUSIC) R.string.picker_added_songs else R.string.picker_added_videos,
                                                count, tracks.size - count))
             }

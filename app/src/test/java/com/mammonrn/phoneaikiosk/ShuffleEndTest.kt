@@ -3,7 +3,9 @@ package com.mammonrn.phoneaikiosk
 import com.mammonrn.phoneaikiosk.media.PlayQueue
 import com.mammonrn.phoneaikiosk.media.Track
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -86,5 +88,58 @@ class ShuffleEndTest {
             assertEquals("shuffle=$shuffle", true, extra in rest)
             assertNull(q.next(auto = true))
         }
+    }
+
+    /** 0.61.0, Poom: repeat ALL with shuffle makes a new order every round, not the same one again. */
+    @Test
+    fun `repeat all with shuffle plays every song each round in a new order`() {
+        var sameRounds = 0
+        for (seed in 0 until 50) {
+            val q = PlayQueue(Random(seed))
+            q.set(songs(6), 0)
+            q.setShuffle(true)
+            q.repeat = PlayQueue.Repeat.ALL
+            val heard = ArrayList<Track>()
+            var t = q.current
+            repeat(18) { heard += t!!; t = q.next(auto = true) }
+            val rounds = heard.chunked(6)
+            for (r in rounds) assertEquals("seed $seed", 6, r.toSet().size)
+            for (i in 1 until rounds.size) assertNotEquals("seed $seed round $i opens with the song just heard",
+                rounds[i - 1].last(), rounds[i].first())
+            if (rounds[0] == rounds[1]) sameRounds++
+        }
+        // 6 songs: two rounds alike by chance is about 1 in 600 per seed.
+        assertTrue("same order in $sameRounds of 50", sameRounds <= 1)
+    }
+
+    @Test
+    fun `a song added while one plays stays in every later round of repeat all with shuffle`() {
+        val q = PlayQueue(Random(4))
+        q.set(songs(3), 0)
+        q.setShuffle(true)
+        q.repeat = PlayQueue.Repeat.ALL
+        q.next(auto = true)
+        val extra = Track("local:/m/new.mp3", "ใหม่")
+        q.add(listOf(extra))
+        val heard = ArrayList<Track>()
+        var t = q.current
+        repeat(12) { heard += t!!; t = q.next(auto = true) }
+        // After the first round finishes, each later round of 4 has the new song.
+        val firstRoundLeft = 3                  // 2 left of the first round + the added one
+        heard.drop(firstRoundLeft).chunked(4).filter { it.size == 4 }.forEach {
+            assertEquals(4, it.toSet().size)
+            assertTrue(extra in it)
+        }
+    }
+
+    @Test
+    fun `next by hand at the end with shuffle starts a new order too`() {
+        val q = PlayQueue(Random(1))
+        q.set(songs(5), 0)
+        q.setShuffle(true)
+        val round1 = (0 until 5).map { val c = q.current!!; if (it < 4) q.next(auto = false); c }
+        val round2 = (0 until 5).map { q.next(auto = false)!! }
+        assertEquals(5, round2.toSet().size)
+        assertNotEquals(round1.last(), round2.first())
     }
 }

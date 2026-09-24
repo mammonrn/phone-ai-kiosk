@@ -1,6 +1,12 @@
 package com.mammonrn.phoneaikiosk.media
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -27,8 +33,16 @@ import org.videolan.libvlc.interfaces.IMedia
  * audio path). Poom: the file uses VLC's 10-band equalizer, set from the same
  * settings ([equalize]), and the bars say there is no graph for this file.
  * Nothing about the file is logged.
+ *
+ * AUDIO FOCUS (0.61.0, Poom: "ทำให้ครบ" — as Media3 does it for its files):
+ * playing asks the phone for focus as media ([movie]: a film's sound). Another
+ * sound that takes it for good, or headphones pulled out, pauses the file and
+ * the service is told ([Events.onOutsidePause]) as if paused by hand; a short
+ * one (a navigation prompt, a call) pauses it and it plays on after; one that
+ * lets others duck lowers it to [DUCK] of its volume. Jarvis's own voice
+ * pauses it through WakePause, the same way as Media3's files.
  */
-class VlcDeck(context: Context, private val events: Events) {
+class VlcDeck(context: Context, private val events: Events, private val movie: Boolean = false) {
 
     interface Events {
         fun onPlaying()
@@ -37,6 +51,8 @@ class VlcDeck(context: Context, private val events: Events) {
         fun onError()
         /** The picture's size is known (video only). */
         fun onVideo(width: Int, height: Int) {}
+        /** Paused from outside the app (focus lost for good, headphones out): as a pause by hand. */
+        fun onOutsidePause() {}
     }
 
     private val app = context.applicationContext
@@ -148,7 +164,7 @@ class VlcDeck(context: Context, private val events: Events) {
         player.media = m
         loaded = true
         // Not playing: nothing is started — VLC has no "prepare" — and play() starts it at [startMs].
-        if (play) player.play()
+        if (play) start()
     }
 
     /**
@@ -166,10 +182,14 @@ class VlcDeck(context: Context, private val events: Events) {
         return m
     }
 
-    fun play() { if (loaded) player.play() }
-    fun pause() { if (player.isPlaying) player.pause() }
+    fun play() { if (loaded) start() }
+    fun pause() {
+        letFocusGo()
+        if (player.isPlaying) player.pause()
+    }
 
     fun stop() {
+        letFocusGo()
         if (loaded) player.stop()
         loaded = false
         playing = false
@@ -188,7 +208,86 @@ class VlcDeck(context: Context, private val events: Events) {
     }
 
     /** 0..1, as the players' own volume. */
-    fun setVolume(v: Float) { player.volume = (v.coerceIn(0f, 1f) * 100).toInt() }
+    fun setVolume(v: Float) {
+        volume = v.coerceIn(0f, 1f)
+        applyVolume()
+    }
+
+    private var volume = 1f
+    private fun applyVolume() { player.volume = ((if (ducked) volume * DUCK else volume) * 100).toInt() }
+
+    // ------------------------------------------------------------ audio focus (0.61.0)
+
+    private val audio = app.getSystemService(AudioManager::class.java)
+    private var hasFocus = false
+    /** Paused for a short sound of another app; plays on when focus comes back. */
+    private var pausedForOther = false
+    private var ducked = false
+
+    private val onFocus = AudioManager.OnAudioFocusChangeListener { change ->
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                Log.i(TAG, "vlc: focus lost")
+                letFocusGo()
+                if (player.isPlaying) player.pause()
+                events.onOutsidePause()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                Log.i(TAG, "vlc: focus lost for a moment")
+                if (player.isPlaying) { pausedForOther = true; player.pause() }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> { Log.i(TAG, "vlc: ducked"); ducked = true; applyVolume() }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                Log.i(TAG, "vlc: focus back")
+                if (ducked) { ducked = false; applyVolume() }
+                if (pausedForOther) { pausedForOther = false; if (loaded) player.play() }
+            }
+        }
+    }
+
+    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(if (movie) AudioAttributes.CONTENT_TYPE_MOVIE else AudioAttributes.CONTENT_TYPE_MUSIC).build())
+        .setOnAudioFocusChangeListener(onFocus, main)
+        .build()
+
+    /** Headphones pulled out: paused, as Media3's setHandleAudioBecomingNoisy does. */
+    private val noisy = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != AudioManager.ACTION_AUDIO_BECOMING_NOISY || !player.isPlaying) return
+            Log.i(TAG, "vlc: headphones out")
+            letFocusGo()
+            player.pause()
+            events.onOutsidePause()
+        }
+    }
+    private var noisyOn = false
+
+    /** Plays once the phone gives focus; refused (a call on), it stays paused and the service is told. */
+    private fun start() {
+        if (!hasFocus) {
+            if (audio.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                Log.i(TAG, "vlc: focus refused")
+                events.onOutsidePause()
+                return
+            }
+            hasFocus = true
+        }
+        pausedForOther = false
+        if (!noisyOn) {
+            androidx.core.content.ContextCompat.registerReceiver(app, noisy,
+                IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+            noisyOn = true
+        }
+        player.play()
+    }
+
+    private fun letFocusGo() {
+        pausedForOther = false
+        if (ducked) { ducked = false; applyVolume() }
+        if (hasFocus) { audio.abandonAudioFocusRequest(focusRequest); hasFocus = false }
+        if (noisyOn) { runCatching { app.unregisterReceiver(noisy) }; noisyOn = false }
+    }
 
     fun setRate(r: Float) { player.rate = r }
 
@@ -328,6 +427,8 @@ class VlcDeck(context: Context, private val events: Events) {
         /** MPEG-1/2 program streams, whose shape [MpegSniff] reads. */
         private val MPEG_KINDS = setOf("dat", "mpg", "mpeg", "vob")
         private val sniffer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-vlc-sniff") }
+        /** Another app's sound that lets others duck: VLC plays at this share of its volume (Media3's is 0.2). */
+        private const val DUCK = 0.2f
         /** A start this close to where it was asked counts as there. */
         private const val START_NEAR_MS = 3_000L
         private const val MAX_SEEK_TRIES = 5

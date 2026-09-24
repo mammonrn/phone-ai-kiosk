@@ -421,6 +421,8 @@ class MusicService : Service(), WakePause.Media {
         override fun onPlaying() { failures = 0; learnDuration(); update() }
         override fun onPaused() = update()
         override fun onEnded() { vlcWant = false; trackEnded() }
+        /** Another app's sound took over, or headphones came out (0.61.0): paused as by hand. */
+        override fun onOutsidePause() { vlcWant = false; update() }
         override fun onError() {
             Log.w(TAG, "track failed: vlc")
             vlcWant = false

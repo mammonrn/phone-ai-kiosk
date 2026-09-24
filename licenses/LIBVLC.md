@@ -27,6 +27,20 @@ It is built by us **with no GPL component**:
    in it, and FFmpeg's own configuration must say LGPL. The build fails
    otherwise.
 
+**gettext and iconv (checked 2026-09-25 on release `-6`):** the license report
+lists both with a GPL `COPYING`, because it reads only a contrib's top-level
+file. Neither brings the GPL into `libvlc.so`:
+
+- **gettext is built as a contrib but not linked.** VLC is configured with
+  `--disable-nls` (VLC's configure line inside `libvlc.so` says so);
+  `vlc_gettext` is a bare `ret` that hands back the text unchanged;
+  `libvlc.so` has no `libintl_*`, `gettext`, `dcgettext`, `bindtextdomain`
+  or `_nl_*` symbol, defined or needed, and no `DT_NEEDED` on any libintl.
+- **GNU libiconv is linked in statically** (`libiconv_open` and friends are
+  defined in `libvlc.so`; `vlc_iconv_open` branches to it). Its library is
+  under the **LGPL 2.1 or later** (`COPYING.LIB`); only the `iconv` program is
+  GPL, and it is not in the app.
+
 LibVLC is loaded as its own shared libraries (`libvlc.so`, `libvlcjni.so`,
 `libc++_shared.so`); it can be replaced by another build of the same API.
 

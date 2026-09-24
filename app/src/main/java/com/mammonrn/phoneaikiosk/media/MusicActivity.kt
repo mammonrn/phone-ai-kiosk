@@ -281,6 +281,10 @@ class MusicActivity : Activity() {
     private var plToggle: TextView? = null
     private var volumeSeek: SeekBar? = null
     private var balanceSeek: SeekBar? = null
+    private var balanceThumb: android.graphics.drawable.Drawable? = null
+    /** The file plays through VLC, which has no balance: the slider shows it cannot be used. */
+    private var balanceOff = false
+    private val clearBalanceNote = Runnable { sliderNote = null; refreshNow() }
     private var eqView: EqView? = null
     private var eqCurve: EqCurveView? = null
     private var eqOnToggle: TextView? = null
@@ -380,8 +384,20 @@ class MusicActivity : Activity() {
         balanceSeek = ampSeek(R.color.retro_lcd).apply {
             max = 200; progress = ((MusicPlayer.balance + 1) * 100).toInt(); contentDescription = getString(R.string.music_balance_slider)
             setOnSeekBarChangeListener(slider({ v ->
+                if (balanceOff) return@slider getString(R.string.music_balance_vlc)   // an accessibility action, say
                 MusicPlayer.setBalance(this@MusicActivity, (v - 100) / 100f)
                 balanceWords(MusicPlayer.balance) }, done = { progress = ((MusicPlayer.balance + 1) * 100).toInt() }))
+            balanceThumb = thumb
+            // A VLC file (0.61.0, Poom): the slider cannot move, and a touch says why, instead of moving to no effect.
+            setOnTouchListener { _, e ->
+                if (!balanceOff) return@setOnTouchListener false
+                if (e.action == android.view.MotionEvent.ACTION_UP) {
+                    val words = getString(R.string.music_balance_vlc)
+                    sliderNote = words; titleLine?.text = words
+                    removeCallbacks(clearBalanceNote); postDelayed(clearBalanceNote, NOTE_MS)
+                }
+                true
+            }
         }
         sliders.addView(balanceSeek, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 2f).apply { marginStart = dp(UiScale.SPACE_XS) })
         // The equalizer and the list share the space under the player, one at a
@@ -612,6 +628,7 @@ class MusicActivity : Activity() {
         val artist = (tags?.artist?.toString() ?: vt?.second)?.ifBlank { null } ?: track?.artist.orEmpty()
         val album = (tags?.albumTitle?.toString() ?: vt?.third)?.ifBlank { null } ?: track?.album.orEmpty()
         noGraphView?.visibility = if (MusicPlayer.usingVlc && MusicPlayer.hasMedia) View.VISIBLE else View.GONE
+        drawBalance(MusicPlayer.usingVlc && MusicPlayer.hasMedia)
         val length = MusicPlayer.durationMs.takeIf { it > 0 } ?: track?.durationMs ?: 0
         titleLine?.text = sliderNote ?: if (track == null) "—" else
             "${q.currentIndex + 1}. " + listOf(artist, title.orEmpty()).filter { it.isNotEmpty() }.joinToString(" - ") +
@@ -670,6 +687,19 @@ class MusicActivity : Activity() {
             remaining && duration > 0 -> "-" + clock(duration - pos)
             else -> clock(pos)
         }
+    }
+
+    /**
+     * Off for a VLC file: no thumb (a flat bar, so it differs by shape, not only by
+     * colour), dimmed, and read out as not usable. Back as it was for any other file.
+     */
+    private fun drawBalance(off: Boolean) {
+        val b = balanceSeek ?: return
+        if (off == balanceOff) return
+        balanceOff = off
+        b.thumb = if (off) null else balanceThumb
+        b.alpha = if (off) 0.4f else 1f
+        b.contentDescription = getString(if (off) R.string.music_balance_slider_off else R.string.music_balance_slider)
     }
 
     private fun balanceWords(b: Float): String = when {
@@ -953,5 +983,7 @@ class MusicActivity : Activity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        /** How long "ปรับเสียงซ้ายขวาไม่ได้" stays in the title line after a touch. */
+        private const val NOTE_MS = 3_000L
     }
 }
