@@ -2003,3 +2003,24 @@ id ถูกตัดเหลือ 4 ตัวท้าย ไม่พิม�
   adb shell content query --uri content://media/external/video/media --projection _data
   ```
   - ไฟล์ที่ลบไปแล้วแต่ยังอยู่ในรายการเพลงที่บันทึกไว้ จะไม่หายเอง กดเล่นแล้วแอปหยุดเองและขึ้นข้อความ ต้องเอาออกจากรายการด้วยปุ่ม "ลบ"
+
+## v0.59.0 — โฟลเดอร์มาตรฐาน, playlist, ไฟล์เดียว, ตัวดูรูป
+
+- **อัปเดตทับแล้ว "รายการเดิม" ต้องครบ:** ก่อนอัปเดต ให้ใส่เพลงลงรายการของเครื่องเล่นเพลงรุ่นเก่าก่อน แล้วเทียบรายการก่อนและหลัง โดยดูแค่จำนวนและ hash ของ id ไม่พิมพ์ชื่อเพลง
+  ```
+  adb shell run-as com.mammonrn.phoneaikiosk.debug cat files/music_session.txt      # ก่อน: บรรทัดแรกคือ index ตำแหน่ง สุ่ม เล่นซ้ำ
+  adb shell run-as com.mammonrn.phoneaikiosk.debug cat files/playlists.txt          # หลัง: "L" คือ playlist, "T" คือเพลง
+  ```
+  - playlist ถูกสร้างตอนเปิดเครื่องเล่นเพลงครั้งแรกหลังอัปเดต ใน log ต้องมี `KioskMusic: playlists made: lists=1 songs=N`
+  - build ของ CI เป็น test-only ต้องติดตั้งด้วย `adb install -r -t`
+- **ไฟล์เดียวจากตัวจัดการไฟล์:** ใน log ต้องเห็น `one file playing on its own` แล้วตามด้วย `list back after one file` เมื่อกด Back หรือไฟล์เล่นจบ
+  - ระหว่างนั้น `music_session.txt` ต้องยังเป็นรายการเดิม
+- **ตัวดูรูป:** `mCurrentFocus` ต้องเป็น `ImageViewerActivity` และ `mLockTaskModeState=LOCKED`
+  - adb ทำนิ้วเดียวได้อย่างเดียว จึงทดสอบได้แค่แตะสองครั้งเพื่อขยาย 2 เท่าและลากรูป ส่วนการขยายด้วยสองนิ้วต้องใช้มือจริง
+- **ไฟล์ที่ยังไม่รองรับ (.DAT .mpg .wmv .wma):** กดแล้วใน log ต้องเห็น `not played: kind not yet` ทันที บนจอขึ้น "ยังไม่รองรับไฟล์ชนิด …" และไม่ค้าง
+- **คำสั่งเสียงค้นเฉพาะ playlist:** ทดสอบผ่านโค้ดของเครื่องได้โดยไม่ต้องใช้ broker ใน log เห็นแค่ `done=true/false`
+  ```
+  adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_PERFORM -p com.mammonrn.phoneaikiosk.debug --es type music --es command play --es query 'ชื่อเพลง'"
+  ```
+- **แตะด้วยข้อความ (tapt):** "ลบ playlist" ตรงกับทั้งประโยคคำถามและปุ่ม ต้องเลือกรายการที่สอง (`tapt.sh "ลบ playlist" 1`)
+- **ลบไฟล์ทดสอบ:** ใช้ path เต็มทีละไฟล์ แล้ว `rmdir` ทีละโฟลเดอร์จากชั้นในสุด
