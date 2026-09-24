@@ -228,6 +228,8 @@ class MusicActivity : Activity() {
     private var selecting = false
     private val selected = HashSet<Int>()
     private var listFilter = ""
+    /** The search box shows only when asked for (or while it holds words): five songs fit then. */
+    private var searching = false
     private var confirmClear = false
     private var sorting = false
     /** While a slider is dragged, the title line says its value, as the reference's did. */
@@ -305,12 +307,13 @@ class MusicActivity : Activity() {
         facts.addView(khzView, LinearLayout.LayoutParams(WRAP, dp(UiScale.AMP_LINE)))
         facts.addView(ampText(getString(R.string.music_khz)).apply { setPadding(dp(UiScale.SPACE_XS), 0, 0, 0) })
         right.addView(facts, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
-        // mono / stereo on a line of their own: beside kHz they ran off the edge (seen on the A07).
-        val channels = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        // mono / stereo under the bars, in the black read-out: beside kHz they ran off the
+        // edge, and on a line of their own they cost the list a song (Poom: five songs showing).
+        val channels = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         monoView = ampText(getString(R.string.music_mono)); stereoView = ampText(getString(R.string.music_stereo))
         channels.addView(monoView)
         channels.addView(stereoView, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(UiScale.SPACE_S) })
-        right.addView(channels, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
+        left.addView(channels, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
         val tagsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         coverView = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP; contentDescription = getString(R.string.music_cover); visibility = View.GONE
@@ -459,7 +462,10 @@ class MusicActivity : Activity() {
                 override fun afterTextChanged(s: Editable?) { listFilter = s.toString(); listAdapter?.refilter() }
             })
         }
-        body.addView(search, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
+        if (searching || listFilter.isNotEmpty()) {
+            body.addView(search, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_XS) })
+            if (searching && listFilter.isEmpty()) search.post { search.requestFocus() }
+        }
         val adapter = QueueAdapter()
         listAdapter = adapter
         body.addView(ListView(this).apply {
@@ -514,7 +520,10 @@ class MusicActivity : Activity() {
             else -> {
                 add(getString(R.string.music_list_add)) { addMode = true; show(Tab.LIBRARY) }
                 add(getString(R.string.music_list_remove)) { selecting = true; refreshTools(); listAdapter?.notifyDataSetChanged() }
-                add(getString(R.string.music_list_select)) { selecting = true; refreshTools(); listAdapter?.notifyDataSetChanged() }
+                add(getString(if (searching || listFilter.isNotEmpty()) R.string.music_list_search_close else R.string.music_list_search_button)) {
+                    if (searching || listFilter.isNotEmpty()) { searching = false; listFilter = "" } else searching = true
+                    showNow()
+                }
                 add(getString(R.string.music_list_sort)) { sorting = true; refreshTools() }
                 add(getString(R.string.music_list_clear)) { confirmClear = true; refreshTools() }
             }
