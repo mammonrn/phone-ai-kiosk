@@ -166,14 +166,15 @@ internal class LightsPage(private val a: SettingsActivity) {
             return box
         }
         // A multi-way switch: its own name (which switches every channel by
-        // voice), then one block per channel.
-        box.addView(nameLine(device.name, bold = true, state = null))
-        box.addView(a.text(HomeSettings.source(device.ownName, device.ewelinkName) + " · " +
-                           a.getString(R.string.lights_switch_name_hint), UiScale.TEXT_NOTE, dim = true))
+        // voice) with its rename on the same row, then one block per channel.
+        box.addView(nameRow(device.name, bold = true,
+                            meta = HomeSettings.source(device.ownName, device.ewelinkName) + " · " +
+                                   a.getString(R.string.lights_switch_name_hint)) {
+            addView(a.button(a.getString(R.string.lights_rename_switch)) {
+                showName(device, null, device.name, device.ownName, device.ewelinkName)
+            }, LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { marginStart = a.dp(UiScale.SPACE_S) })
+        })
         warning(box, device.clash)
-        box.addView(a.button(a.getString(R.string.lights_rename_switch)) {
-            showName(device, null, device.name, device.ownName, device.ewelinkName)
-        }, LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { topMargin = a.dp(UiScale.SPACE_S) })
         for (c in device.channels) {
             box.addView(item(device, c.index, c.name, c.ownName, c.ewelinkName, device.online, c.on, c.allowed,
                              c.active, c.clash, c.icon, c.iconChosen, c.voice),
@@ -191,26 +192,31 @@ internal class LightsPage(private val a: SettingsActivity) {
             orientation = LinearLayout.VERTICAL
             if (channel != null) setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0)
         }
-        val title = if (channel != null) a.getString(R.string.lights_channel, channel + 1) + " · " + name else name
-        block.addView(nameLine(title, bold = channel == null, state = if (active) HomeSettings.state(online, on) else null,
-                               lit = active && online && on == true))
-        block.addView(a.text(if (active) HomeSettings.source(ownName, ewelinkName)
-                             else a.getString(R.string.lights_inactive), UiScale.TEXT_NOTE, dim = active).apply {
-            if (!active) setTextColor(a.color(R.color.retro_bad))
+        // 0.54.1 (Poom): the name, "อนุญาตให้สั่ง" and "ตั้งชื่อ" on one row; the
+        // channel, the state and where the name came from on the line under
+        // the name. Offline is said once, on the device's line above.
+        val meta = android.text.SpannableStringBuilder()
+        if (channel != null) meta.append(a.getString(R.string.lights_channel, channel + 1)).append(" · ")
+        if (active && online) {
+            val start = meta.length
+            meta.append(HomeSettings.state(online, on)).append(" · ")
+            if (on == true) {
+                meta.setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, meta.length - 3, 0)
+                meta.setSpan(android.text.style.ForegroundColorSpan(a.color(R.color.retro_text)), start, meta.length - 3, 0)
+            }
+        }
+        meta.append(if (active) HomeSettings.source(ownName, ewelinkName) else a.getString(R.string.lights_inactive))
+        block.addView(nameRow(name, bold = channel == null, meta = meta, metaBad = !active) {
+            addView(allowBox(device, channel, allowed, enabled = active),
+                    LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { marginStart = a.dp(UiScale.SPACE_S) })
+            addView(a.button(a.getString(R.string.lights_rename)) {
+                showName(device, channel, name, ownName, ewelinkName)
+            }, LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { marginStart = a.dp(UiScale.SPACE_S) })
         })
         warning(block, clash)
         if (active && !voice) {
             block.addView(a.text(HomeSettings.NOT_FOR_VOICE, UiScale.TEXT_NOTE).apply { setTextColor(a.color(R.color.retro_bad)) })
         }
-        block.addView(LinearLayout(a).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(allowBox(device, channel, allowed, enabled = active),
-                    LinearLayout.LayoutParams(0, a.dp(UiScale.TOUCH), 1f))
-            addView(a.button(a.getString(R.string.lights_rename)) {
-                showName(device, channel, name, ownName, ewelinkName)
-            }, LinearLayout.LayoutParams(WRAP, a.dp(UiScale.TOUCH)).apply { marginStart = a.dp(UiScale.SPACE_S) })
-        }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         if (active) block.addView(iconPicker(device, channel, icon, iconChosen),
                                   LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) })
         return block
@@ -252,20 +258,28 @@ internal class LightsPage(private val a: SettingsActivity) {
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_XS) })
         }
 
-    private fun nameLine(value: String, bold: Boolean, state: String?, lit: Boolean = false) =
+    /**
+     * A name with its note under it, and the row's controls ([controls]) at
+     * the right, 48dp each: one row where there were three (0.54.1).
+     */
+    private fun nameRow(value: String, bold: Boolean, meta: CharSequence, metaBad: Boolean = false,
+                        controls: LinearLayout.() -> Unit) =
         LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, a.dp(UiScale.SPACE_XS), 0, 0)
-            addView(a.text(value, UiScale.TEXT_ITEM).apply {
-                if (bold) typeface = Typeface.create(a.thai, Typeface.BOLD)
-                maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
+            minimumHeight = a.dp(UiScale.TOUCH)
+            addView(LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(a.text(value, UiScale.TEXT_ITEM).apply {
+                    if (bold) typeface = Typeface.create(a.thai, Typeface.BOLD)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                addView(a.text(meta, UiScale.TEXT_NOTE, dim = !metaBad).apply {
+                    if (metaBad) setTextColor(a.color(R.color.retro_bad))
+                })
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
-            if (state != null) addView(a.text(state, UiScale.TEXT_BASE, dim = !lit).apply {
-                if (lit) typeface = Typeface.create(a.thai, Typeface.BOLD)
-                setPadding(a.dp(UiScale.SPACE_S), 0, 0, 0)
-            })
+            controls()
         }
 
     private fun warning(parent: LinearLayout, clash: List<String>) {

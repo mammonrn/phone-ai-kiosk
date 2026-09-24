@@ -122,7 +122,7 @@ object HomeSettings {
     fun signalLine(device: Device): String {
         val rssi = device.rssi ?: return ""
         val word = device.signal.ifEmpty { return "" }
-        return "สัญญาณ WiFi: $word ($rssi dBm)" + if (device.online) "" else " · ค่าล่าสุดก่อนออฟไลน์"
+        return "สัญญาณ WiFi: $word ($rssi dBm)" + if (device.online) "" else " · ค่าที่อ่านได้ครั้งล่าสุด"
     }
 
     /** The state in words, never a colour alone. */

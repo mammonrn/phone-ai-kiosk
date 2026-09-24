@@ -369,9 +369,17 @@ class MusicActivity : Activity() {
 
     private fun showLibrary() {
         val page = column()
-        val sources = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        sources.addView(choice(getString(R.string.music_local), !onNas) { onNas = false; showLibrary() }, weight(0, dp(UiScale.TOUCH)))
-        sources.addView(choice(getString(R.string.music_nas), onNas) { onNas = true; showLibrary() }, weight(1, dp(UiScale.TOUCH)))
+        // 0.54.1 (Poom): where the songs come from is an option row, sized to
+        // its words and flat — not a second row of navy tabs under the tabs.
+        val sources = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        sources.addView(label(getString(R.string.music_source)))
+        sources.addView(option(getString(R.string.music_local), !onNas) { onNas = false; showLibrary() },
+                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
+        sources.addView(option(getString(R.string.music_nas), onNas) { onNas = true; showLibrary() },
+                        LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_S) })
         page.addView(sources, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)))
         if (onNas) nasPage(page) else localPage(page)
         setPage(page)
@@ -592,6 +600,20 @@ class MusicActivity : Activity() {
         splitTrack = false
         minimumHeight = dp(UiScale.SPACE_M)
         setPadding(dp(UiScale.SPACE_M), 0, dp(UiScale.SPACE_M), 0)
+    }
+
+    /** A 1995 option button: ● chosen, ○ not, the word beside it; a 48dp target, no fill. */
+    private fun option(value: String, on: Boolean, onClick: () -> Unit) = TextView(this).apply {
+        text = (if (on) "● " else "○ ") + value
+        textSize = UiScale.TEXT_BASE
+        typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)
+        setTextColor(color(R.color.retro_text))
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
+        minWidth = dp(UiScale.TOUCH)
+        contentDescription = value + if (on) " (เลือกอยู่)" else ""
+        isClickable = true
+        setOnClickListener { if (!on) onClick() }
     }
 
     private fun choice(value: String, on: Boolean = false, onClick: () -> Unit) = TextView(this).apply {

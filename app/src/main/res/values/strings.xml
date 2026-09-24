@@ -447,6 +447,7 @@
     <string name="music_error_track">เล่นเพลง "%1$s" ไม่ได้ ไฟล์อาจเสียหรือเป็นรูปแบบที่ไม่รองรับ</string>
     <string name="music_local">ในเครื่อง</string>
     <string name="music_nas">NAS</string>
+    <string name="music_source">แหล่งเพลง</string>
     <string name="music_search_hint">ค้นหาชื่อเพลง ศิลปิน หรืออัลบั้ม</string>
     <string name="music_play_all">เล่นทั้งหมด</string>
     <string name="music_loading">กำลังอ่านรายการเพลง…</string>

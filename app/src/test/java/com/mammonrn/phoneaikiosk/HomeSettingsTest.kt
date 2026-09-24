@@ -108,7 +108,7 @@ class HomeSettingsTest {
         val page = HomeSettings.parse(house)
         val light2 = page.devices.first { it.name == "Light2" }
         val switch1 = page.devices.first { it.name == "Switch1" }
-        assertEquals("สัญญาณ WiFi: พอใช้ (-70 dBm) · ค่าล่าสุดก่อนออฟไลน์", HomeSettings.signalLine(light2))
+        assertEquals("สัญญาณ WiFi: พอใช้ (-70 dBm) · ค่าที่อ่านได้ครั้งล่าสุด", HomeSettings.signalLine(light2))
         assertEquals("สัญญาณ WiFi: ดี (-52 dBm)", HomeSettings.signalLine(switch1))
         // An older broker sends neither: no line at all.
         val old = HomeSettings.parse(house.replace("\"rssi\": -52, \"signal\": \"ดี\", ", ""))
