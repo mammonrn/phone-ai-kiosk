@@ -220,8 +220,10 @@ class VlcDeck(context: Context, private val events: Events) {
             // for later left the VCD black with its sound playing).
             vout.setVideoView(surface)
             val m = surface.resources.displayMetrics
-            vout.setWindowSize(if (surface.width > 0) surface.width else m.widthPixels,
-                               if (surface.height > 0) surface.height else m.widthPixels * 9 / 16)
+            val w = if (surface.width > 0) surface.width else m.widthPixels
+            val h = if (surface.height > 0) surface.height else m.widthPixels * 9 / 16
+            vout.setWindowSize(w, h)
+            Log.i(TAG, "vlc: window ${w}x$h at attach")
             vout.attachViews()
             viewAttached = true
         }
@@ -236,7 +238,10 @@ class VlcDeck(context: Context, private val events: Events) {
     }
 
     /** The surface was laid out again (turned, full screen): VLC draws to its new size. */
-    fun resized(width: Int, height: Int) { if (viewAttached && width > 0) player.vlcVout.setWindowSize(width, height) }
+    fun resized(width: Int, height: Int) {
+        Log.i(TAG, "vlc: window ${width}x$height (attached=$viewAttached)")
+        if (viewAttached && width > 0) player.vlcVout.setWindowSize(width, height)
+    }
 
     /** The picture as it is shown (its sample aspect applied), or null before it is known. */
     fun videoSize(): Pair<Int, Int>? {
