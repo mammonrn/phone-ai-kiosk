@@ -267,6 +267,85 @@ def handle_home_switch(conn: sqlite3.Connection, cfg: Config, *, authorization: 
         home_control.Context.from_config(cfg, envfile.reader(cfg.env_path), conn), key, on)
 
 
+def _home_settings(conn: sqlite3.Connection, cfg: Config, authorization: str | None):
+    """The phone behind a "ไฟในบ้าน" page request, rate limited, and the
+    home Context; or the refusal to send back."""
+    from . import envfile, home_control, home_settings
+
+    day = limits.day_key(cfg.budget_timezone)
+    device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint="home-settings")
+    if refusal:
+        return None, refusal
+    device_id = int(device["id"])
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=home_settings.PER_MINUTE,
+                             per_day=home_settings.PER_DAY, day=day, endpoint="home-settings")
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok" if rate.allowed else rate.code,
+                         text_len=None, endpoint="home-settings")
+    if not rate.allowed:
+        return None, (429, {**_error(rate.code, "ส่งคำขอถี่เกินไปครับ กรุณารอสักครู่"), "ok": False})
+    return home_control.Context.from_config(cfg, envfile.reader(cfg.env_path), conn), None
+
+
+def _json_object(body: bytes) -> dict | None:
+    try:
+        raw = json.loads(body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _device_and_channel(raw: dict):
+    key, channel = raw.get("device"), raw.get("channel")
+    if not isinstance(key, str) or not 1 <= len(key) <= 64:
+        return None
+    if channel is not None and (isinstance(channel, bool) or not isinstance(channel, int)):
+        return None
+    return key, channel
+
+
+def handle_home_devices(conn: sqlite3.Connection, cfg: Config, *,
+                        authorization: str | None) -> tuple[int, dict]:
+    """GET /v1/home/devices — the Control Panel's "ไฟในบ้าน" page (0.47.0)."""
+    from . import home_settings
+
+    ctx, refusal = _home_settings(conn, cfg, authorization)
+    if refusal:
+        return refusal
+    return home_settings.view(ctx)
+
+
+def handle_home_name(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                     body: bytes) -> tuple[int, dict]:
+    """POST /v1/home/name {"device": key, "channel": null | n, "name": "..." | ""}."""
+    from . import home_settings
+
+    ctx, refusal = _home_settings(conn, cfg, authorization)
+    if refusal:
+        return refusal
+    raw = _json_object(body)
+    target = _device_and_channel(raw) if raw is not None else None
+    name = raw.get("name") if raw is not None else None
+    if target is None or not isinstance(name, str) or len(name) > 200:
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    return home_settings.rename(ctx, target[0], target[1], name)
+
+
+def handle_home_allow(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                      body: bytes) -> tuple[int, dict]:
+    """POST /v1/home/allow {"device": key, "channel": null | n, "allowed": bool}."""
+    from . import home_settings
+
+    ctx, refusal = _home_settings(conn, cfg, authorization)
+    if refusal:
+        return refusal
+    raw = _json_object(body)
+    target = _device_and_channel(raw) if raw is not None else None
+    allowed = raw.get("allowed") if raw is not None else None
+    if target is None or not isinstance(allowed, bool):
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    return home_settings.set_allowed(ctx, target[0], target[1], allowed)
+
+
 def _ewelink_page(title: str, message: str) -> bytes:
     return google_auth.page(title, message)
 

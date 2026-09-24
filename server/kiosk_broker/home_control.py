@@ -177,8 +177,13 @@ def build_targets(home: dict, allow: dict[str, set[int] | None], own_names: dict
             api_names = d.get("channel_names") or [""] * len(channels)
             my_channels = mine.get("channels") if isinstance(mine.get("channels"), dict) else {}
             for i, state in enumerate(channels):
-                name = str(my_channels.get(str(i)) or (api_names[i] if i < len(api_names) else "") or
-                           f"{device_name} ช่อง {i + 1}").strip()
+                given = str(my_channels.get(str(i)) or (api_names[i] if i < len(api_names) else "")).strip()
+                if not given and not d.get("channels_known", True):
+                    # Poom 2026-09-24: when the real channel count is unknown,
+                    # a channel nobody named is not in use — never listed on
+                    # the card, never heard by voice, never switched.
+                    continue
+                name = given or f"{device_name} ช่อง {i + 1}"
                 allowed = allowed_channels is None or (isinstance(allowed_channels, set) and i in allowed_channels)
                 targets.append(Target(target_key(secret_key, d["id"], i), d["id"], i, name, d.get("room", ""),
                                       kind, bool(d.get("online")), state if d.get("online") else None,

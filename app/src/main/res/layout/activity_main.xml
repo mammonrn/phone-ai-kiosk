@@ -702,13 +702,29 @@
 
                 <TextView
                     android:id="@+id/jarvis_state"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     android:text="@string/jarvis_ready"
                     android:textColor="@color/retro_title_text"
                     android:textSize="12sp"
                     android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+
+                <!-- THE DATE (0.47.0, Poom): here, at the right like every other
+                     window's badge (same colour, size and face), so the taskbar
+                     holds only the time, the battery and the connection. -->
+                <TextView
+                    android:id="@+id/jarvis_date"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
                     android:fontFamily="@font/plex_thai" />
             </LinearLayout>
 
@@ -898,15 +914,6 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="2dp"
-                    android:layout_marginEnd="5dp"
-                    android:textColor="@color/retro_dim"
-                    android:textSize="10sp"
-                    android:fontFamily="@font/plex_thai" />
-
-                <TextView
-                    android:id="@+id/taskbar_date"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
                     android:layout_marginEnd="5dp"
                     android:textColor="@color/retro_dim"
                     android:textSize="10sp"

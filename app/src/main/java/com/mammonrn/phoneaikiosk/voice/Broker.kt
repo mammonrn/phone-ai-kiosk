@@ -209,21 +209,32 @@ class Broker(private val baseUrl: String, private val token: String) {
     }
 
     /**
-     * A tap on the "อุปกรณ์ในบ้าน" card (0.46.0): the row's opaque key and the
-     * state asked for. Returns the broker's JSON (what eWeLink really did and
-     * a Thai line) or, on a refusal (401, 403, 404, 429), the same shape with
-     * the broker's message, so the card always has words to show.
+     * The Control Panel's "ไฟในบ้าน" page (0.47.0): the lights by opaque key,
+     * their names, state and permission. Names and permissions live on the
+     * VPS; the phone only shows them and asks for a change. Each call returns
+     * the broker's JSON, or on a refusal the same {"ok": false, "error":
+     * {"code", "message"}} shape, so the page always has a line to show.
      */
-    fun homeSwitch(target: String, on: Boolean): String = try {
-        String(post("/v1/home/switch",
-                    JSONObject().put("target", target).put("on", on).toString().toByteArray(Charsets.UTF_8),
-                    "application/json; charset=utf-8").bytes, Charsets.UTF_8)
+    fun homeDevices(): String = settingsCall { get("/v1/home/devices") }
+
+    /** [channel] null for the device itself; "" as [name] removes ours. */
+    fun homeName(device: String, channel: Int?, name: String): String = settingsCall {
+        post("/v1/home/name", JSONObject().put("device", device).put("channel", channel ?: JSONObject.NULL)
+                 .put("name", name).toString().toByteArray(Charsets.UTF_8), "application/json; charset=utf-8")
+    }
+
+    fun homeAllow(device: String, channel: Int?, allowed: Boolean): String = settingsCall {
+        post("/v1/home/allow", JSONObject().put("device", device).put("channel", channel ?: JSONObject.NULL)
+                 .put("allowed", allowed).toString().toByteArray(Charsets.UTF_8), "application/json; charset=utf-8")
+    }
+
+    private fun settingsCall(call: () -> Result): String = try {
+        String(call().bytes, Charsets.UTF_8)
     } catch (e: Failure) {
-        // A broker message is shown as it is; a bare HTTP error (an older
-        // broker without the route, nginx) gets HomeCard's formal line, not
-        // the spoken fallback in failure().
-        JSONObject().put("ok", false)
-            .put("message", if (e.code.startsWith("http_")) "" else e.message).toString()
+        // A broker message is shown as it is; a bare HTTP error (a broker
+        // without the route, nginx) gets the page's own formal line.
+        JSONObject().put("ok", false).put("error", JSONObject().put("code", e.code)
+            .put("message", if (e.code.startsWith("http_")) "" else e.message)).toString()
     }
 
     /** Text in, audio out, ready to play — with where the time went. */

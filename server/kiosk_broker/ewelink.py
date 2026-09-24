@@ -531,6 +531,15 @@ def reduce_thing(data: dict, rooms: dict[str, str], home: str) -> dict | None:
     params = data.get("params") if isinstance(data.get("params"), dict) else {}
     name = str(data.get("name") or "")
     power, channels = power_state(params)
+    # A switch reports more `switches` entries than it has channels: Poom's
+    # Switch1 (uiid 8, "Three-channel Switch") sends four, and the fourth
+    # switches nothing (2026-09-24, checked by Poom in the eWeLink app and on
+    # the kiosk). Where UIIDProtocol.md says how many there are, the rest is
+    # dropped HERE, so no list, card, voice command or plan_switch sees it.
+    known = CHANNELS_BY_UIID.get(uiid)
+    if channels and known:
+        channels = channels[:known]
+        power = any(channels) if power is not None else None
     tags = data.get("tags") if isinstance(data.get("tags"), dict) else {}
     power_key = next((k for k in ("switch", "state") if params.get(k) in ("on", "off")), "")
     return {
@@ -543,6 +552,9 @@ def reduce_thing(data: dict, rooms: dict[str, str], home: str) -> dict | None:
         "on": power,
         "channels": channels,
         "channel_names": channel_names(tags, len(channels)),
+        # False: this uiid's real channel count is not in the docs, so a
+        # channel without a name counts as not in use (home_control).
+        "channels_known": not channels or known is not None,
         # Which key this device reports its one channel under, "switch" or
         # "state" — the next round's command answers in the same key.
         "power_key": power_key,
@@ -601,6 +613,11 @@ def power_state(params: dict) -> tuple[bool | None, list[bool]]:
 #: UIIDs from UIIDProtocol.md, "List of main stream device types".
 LIGHT_UIIDS = frozenset({16, 22, 33, 36, 44, 45, 52, 56, 57, 59, 103, 104, 135, 136, 137,
                          157, 159, 173, 179, 1257, 1258, 3258})
+#: How many channels a multi-channel uiid really has — ONLY those whose
+#: name in UIIDProtocol.md says so ("Dual-/Three-/Four-channel Plug" 2/3/4,
+#: "Dual-/Three-/Four-channel Switch" 7/8/9). Any other uiid's `switches`
+#: length is not trusted: its unnamed channels are treated as unused.
+CHANNELS_BY_UIID = {2: 2, 3: 3, 4: 4, 7: 2, 8: 3, 9: 4}
 #: Wall switches — what lights hang off.
 SWITCH_UIIDS = frozenset({6, 7, 8, 9, 14, 78, 112, 113, 114, 128, 130, 133,
                           160, 161, 162, 163, 1256, 2256, 3256, 4256, 7004})

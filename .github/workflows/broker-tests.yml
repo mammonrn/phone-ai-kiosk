@@ -160,6 +160,18 @@ jobs:
                -H 'Content-Type: application/json; charset=utf-8' --data "$body" \
             | python -c 'import json,sys; a=json.load(sys.stdin); print("reply:", a.get("reply")); sys.exit(0 if a.get("reply") == "ยังไม่ได้เชื่อมต่อระบบไฟบ้านครับ" else 1)' \
             || { echo "a light command without eWeLink did not say so"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          # 0.47.0: the Control Panel's "ไฟในบ้าน" routes need a token too.
+          for route in devices; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18770/v1/home/$route)"
+            [ "$code" = "401" ] || { echo "/v1/home/$route without a token answered $code"; kill "$pid"; exit 1; }
+          done
+          for route in name allow; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18770/v1/home/$route --data '{}')"
+            [ "$code" = "401" ] || { echo "/v1/home/$route without a token answered $code"; kill "$pid"; exit 1; }
+          done
+          curl -sS http://127.0.0.1:18770/v1/home/devices -H "Authorization: Bearer $token" \
+            | python -c 'import json,sys; a=json.load(sys.stdin); print("devices:", a); sys.exit(0 if a == {"ok": False, "error": "not-connected"} else 1)' \
+            || { echo "/v1/home/devices did not say not-connected"; cat "$home/serve.log"; kill "$pid"; exit 1; }
           python -m kiosk_broker ewelink-control off | grep -q "switching STOPPED" || { echo "ewelink-control off did not run"; kill "$pid"; exit 1; }
           python -m kiosk_broker ewelink-allowlist | grep -q "STOPPED" || { echo "ewelink-allowlist does not show the stop"; kill "$pid"; exit 1; }
           python -m kiosk_broker ewelink-control on > /dev/null

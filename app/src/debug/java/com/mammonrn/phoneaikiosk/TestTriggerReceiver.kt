@@ -52,8 +52,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 // A sample "อุปกรณ์ในบ้าน" panel, for seeing the card on the A07
                 // before an eWeLink account is connected (0.45.0). --ez on
                 // true|false. Shown at the next dashboard refresh (a minute).
-                // The names and keys are made up: showing it reaches no broker, and a
-                // tap on a tile (0.46.0) is answered "not found" by the real one.
+                // The names are made up; nothing here reaches the broker.
                 com.mammonrn.phoneaikiosk.home.HomeCard.override =
                     if (intent.getBooleanExtra("on", true)) SAMPLE_HOME else null
                 android.util.Log.i("KioskHome", "sample home card ${if (com.mammonrn.phoneaikiosk.home.HomeCard.override != null) "on" else "off"}")
@@ -280,17 +279,17 @@ class TestTriggerReceiver : BroadcastReceiver() {
 
         /**
          * Made-up devices in the broker's `home` panel shape (home_control.card),
-         * shaped like Poom's house: two plugs (one offline), a four-way switch
-         * with one channel not allowlisted. The keys are made up too: a tap
-         * reaches the real broker, which answers "ไม่พบอุปกรณ์นี้แล้วครับ".
+         * shaped like Poom's house on 2026-09-24: two plugs (one offline) and
+         * Switch1's three real channels, one still unnamed. Showing it reaches
+         * no broker; the card has nothing to press (0.47.0).
          */
         private const val SAMPLE_HOME = """{"home": {"ok": true, "age_seconds": 0, "control": true,
             "systems": [{"id": "ewelink", "name": "eWeLink", "devices": [
-            {"name": "Light1", "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "channels": [], "target": "sample0000000001"},
-            {"name": "Light2", "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "channels": [], "target": "sample0000000002"},
-            {"name": "ไฟหน้าบ้าน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": [], "target": "sample0000000003"},
-            {"name": "ไฟเพดาน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "channels": [], "target": "sample0000000004"},
-            {"name": "ไฟโต๊ะ", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": []}]}]}}"""
+            {"name": "Light1", "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "channels": []},
+            {"name": "Light2", "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "channels": []},
+            {"name": "ไฟหน้าบ้าน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "channels": []},
+            {"name": "ไฟเพดาน", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": []},
+            {"name": "Switch1 ช่อง 3", "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": false, "channels": []}]}]}}"""
 
         /** The adb switch's pretend player (TEST_MEDIA_HOLD). */
         @Volatile private var testHold: com.mammonrn.phoneaikiosk.voice.WakePause.Hold? = null

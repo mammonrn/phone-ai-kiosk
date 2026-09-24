@@ -26,9 +26,32 @@
     <string name="window_home">อุปกรณ์ในบ้าน</string>
     <!-- 0.45.0, the "อุปกรณ์ในบ้าน" card's dim last line (home/HomeCard). -->
     <string name="home_more">และอีก %1$d รายการ</string>
-    <string name="home_source">จาก %1$s · อ่านอย่างเดียว</string>
-    <string name="home_source_switch">จาก %1$s · กดปุ่มเพื่อสั่งเปิดหรือปิด</string>
-    <string name="home_switching">กำลังสั่ง…</string>
+    <string name="window_lights">ไฟในบ้าน</string>
+    <string name="lights_intro">ตั้งชื่อไฟที่ใช้สั่งด้วยเสียง และเลือกว่าดวงใดสั่งได้ ชื่อและสิทธิ์เก็บไว้ที่ VPS ใช้ได้ทันทีหลังบันทึก</string>
+    <string name="lights_loading">กำลังอ่านข้อมูลจาก VPS…</string>
+    <string name="lights_not_connected">ยังไม่ได้เชื่อมต่อบัญชี eWeLink กรุณาเชื่อมต่อบน VPS ก่อน</string>
+    <string name="lights_no_token">เครื่องนี้ยังไม่ได้ลงทะเบียนกับ VPS</string>
+    <string name="lights_error">อ่านข้อมูลจาก VPS ไม่ได้ กรุณาลองใหม่อีกครั้ง</string>
+    <string name="lights_empty">ไม่พบไฟที่ควบคุมได้ในบัญชี eWeLink</string>
+    <string name="lights_stopped">ตอนนี้การสั่งไฟถูกหยุดไว้จาก VPS ตั้งชื่อและสิทธิ์ได้ แต่จะสั่งไฟได้เมื่อเปิดการสั่งบน VPS อีกครั้ง</string>
+    <string name="lights_reload">อ่านข้อมูลใหม่</string>
+    <string name="lights_channel">ช่อง %1$d</string>
+    <string name="lights_channel_of">ช่อง %1$d ของ %2$s</string>
+    <string name="lights_switch_name_hint">ชื่อนี้สั่งทุกช่องพร้อมกัน</string>
+    <string name="lights_rename_switch">เปลี่ยนชื่อสวิตช์</string>
+    <string name="lights_rename">ตั้งชื่อ</string>
+    <string name="lights_inactive">ยังไม่ใช้งาน กรุณาตั้งชื่อก่อนจึงจะสั่งได้</string>
+    <string name="lights_allowed">อนุญาตให้สั่ง</string>
+    <string name="lights_name_first">ตั้งชื่อก่อน</string>
+    <string name="lights_saving">กำลังบันทึก…</string>
+    <string name="lights_name_title">ตั้งชื่อไฟ</string>
+    <string name="lights_back">◄ ไฟในบ้าน</string>
+    <string name="lights_naming">ตั้งชื่อ: %1$s</string>
+    <string name="lights_ewelink_name">ชื่อจาก eWeLink: %1$s</string>
+    <string name="lights_no_ewelink_name">eWeLink ไม่ได้ส่งชื่อมา</string>
+    <string name="lights_name_hint">จาร์วิสจะฟังชื่อนี้ เช่น "เปิดไฟหน้าบ้าน" ชื่อต้องไม่ซ้ำกับดวงอื่น</string>
+    <string name="lights_name_empty">กรุณาพิมพ์ชื่อ หรือกด "ลบชื่อที่ตั้งเอง"</string>
+    <string name="lights_name_remove">ลบชื่อที่ตั้งเอง</string>
     <string name="home_stale">ข้อมูลเมื่อ %1$d นาทีก่อน</string>
     <!-- Title bar of the gold window when the broker sends the purity. The
          WORD is there on purpose: the body carries a price move that is also a

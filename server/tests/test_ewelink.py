@@ -351,6 +351,18 @@ def test_only_send_posts_a_command():
     assert "set_light" not in actions.ENABLED_ACTION_TYPES     # a model can never ask for one
 
 
+def test_a_three_channel_switch_keeps_three_of_the_four_switches_it_reports():
+    four = {"switches": [{"switch": s, "outlet": i} for i, s in enumerate(("off", "off", "off", "on"))]}
+    three = ewelink.reduce_thing(_thing("1000dddd04", "Switch1", 8, four)["itemData"], {}, "h")
+    assert three["channels"] == [False, False, False] and three["on"] is False and three["channels_known"]
+    nine = ewelink.reduce_thing(_thing("1000dddd04", "S", 9, four)["itemData"], {}, "h")
+    assert len(nine["channels"]) == 4 and nine["on"] is True
+    unknown = ewelink.reduce_thing(_thing("1000dddd04", "S", 112, four)["itemData"], {}, "h")
+    assert len(unknown["channels"]) == 4 and unknown["channels_known"] is False
+    plug = ewelink.reduce_thing(_thing("1000dddd04", "P", 1, {"switch": "on"})["itemData"], {}, "h")
+    assert plug["channels"] == [] and plug["channels_known"] is True
+
+
 def test_channel_names_come_from_the_tags_eWeLink_carries():
     assert ewelink.channel_names({"ck_channel_name": {"0": "ไฟหน้าบ้าน", "2": " ไฟครัว "}}, 4) == \
         ["ไฟหน้าบ้าน", "", "ไฟครัว", ""]

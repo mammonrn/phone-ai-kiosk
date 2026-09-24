@@ -20,7 +20,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import store
 from .config import Config
 from .service import (handle_auth_reset, handle_chat, handle_dashboard, handle_grant, handle_health,
-                      handle_ewelink_callback, handle_ewelink_start, handle_home_switch,
+                      handle_ewelink_callback, handle_ewelink_start, handle_home_allow,
+                      handle_home_devices, handle_home_name, handle_home_switch,
                       handle_oauth_callback, handle_stt, handle_tts)
 
 log = logging.getLogger("kiosk_broker")
@@ -214,6 +215,22 @@ class Handler(BaseHTTPRequestHandler):
                                 "headers": headers})
             return
 
+        if route == "/v1/home/devices":
+            # The Control Panel's "ไฟในบ้าน" page (0.47.0): names, state and
+            # permission, by opaque key. Reads and changes nothing.
+            conn = sqlite3.connect(self.db_path, timeout=10.0, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            try:
+                status, payload = handle_home_devices(
+                    conn, self.config, authorization=self.headers.get("Authorization"))
+            except Exception:
+                log.exception("unhandled error")
+                status, payload = 500, {"error": {"code": "internal", "message": "ระบบขัดข้องครับ"}}
+            finally:
+                conn.close()
+            self._send(status, payload)
+            return
+
         if route == "/healthz":
             # Deliberately says nothing about tokens, spend or the model: it is
             # reachable from nginx and exists only to answer "is it up".
@@ -226,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path not in ("/v1/chat", "/v1/stt", "/v1/tts", "/v1/auth/grant", "/v1/health",
-                             "/v1/auth/reset", "/v1/home/switch"):
+                             "/v1/auth/reset", "/v1/home/switch", "/v1/home/name", "/v1/home/allow"):
             self._send(404, {"error": {"code": "not_found", "message": "ไม่พบปลายทางนี้"}})
             return
 
@@ -262,6 +279,12 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/v1/health":
                 status, payload = handle_health(
+                    conn, self.config, authorization=self.headers.get("Authorization"), body=body)
+            elif self.path == "/v1/home/name":
+                status, payload = handle_home_name(
+                    conn, self.config, authorization=self.headers.get("Authorization"), body=body)
+            elif self.path == "/v1/home/allow":
+                status, payload = handle_home_allow(
                     conn, self.config, authorization=self.headers.get("Authorization"), body=body)
             elif self.path == "/v1/home/switch":
                 status, payload = handle_home_switch(

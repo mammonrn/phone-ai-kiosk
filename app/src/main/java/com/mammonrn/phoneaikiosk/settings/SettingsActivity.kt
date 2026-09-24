@@ -61,14 +61,17 @@ import com.mammonrn.phoneaikiosk.voice.DashboardState
 class SettingsActivity : Activity() {
 
     private lateinit var pixel: Typeface
-    private lateinit var thai: Typeface
-    private lateinit var titleText: TextView
+    internal lateinit var thai: Typeface
+    internal lateinit var titleText: TextView
     private lateinit var content: FrameLayout
 
     /** The page on screen, so Back can go up one level before leaving. */
-    private var page = Page.HOME
+    internal var page = Page.HOME
 
-    private enum class Page { HOME, ALARMS, EDIT, SOURCES, AUTH }
+    internal enum class Page { HOME, ALARMS, EDIT, SOURCES, AUTH, LIGHTS, LIGHT_NAME }
+
+    /** The "ไฟในบ้าน" page (0.47.0), in a file of its own: settings/LightsPage. */
+    private val lights by lazy { LightsPage(this) }
 
     /** [label] is read each time the panel is drawn, so a switch can say its state. */
     private class Category(val icon: Int, val label: (SettingsActivity) -> String,
@@ -158,7 +161,8 @@ class SettingsActivity : Activity() {
     private fun goBack() {
         when (page) {
             Page.EDIT -> showAlarms()
-            Page.ALARMS, Page.SOURCES, Page.AUTH -> showHome()
+            Page.LIGHT_NAME -> lights.back(null)
+            Page.ALARMS, Page.SOURCES, Page.AUTH, Page.LIGHTS -> showHome()
             Page.HOME -> goHome()
         }
     }
@@ -226,6 +230,9 @@ class SettingsActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- home
+
+    /** For a page in another file: back to the panel's icons. */
+    internal fun showHomeFromPage() = showHome()
 
     private fun showHome() {
         page = Page.HOME
@@ -750,25 +757,25 @@ class SettingsActivity : Activity() {
 
     // ------------------------------------------------------------- the parts
 
-    private fun setPage(view: View) {
+    internal fun setPage(view: View) {
         content.removeAllViews()
         content.addView(view, FrameLayout.LayoutParams(MATCH, MATCH))
     }
 
-    private fun text(value: CharSequence, sp: Float, dim: Boolean = false) = TextView(this).apply {
+    internal fun text(value: CharSequence, sp: Float, dim: Boolean = false) = TextView(this).apply {
         text = value
         textSize = sp
         typeface = thai
         setTextColor(color(if (dim) R.color.retro_dim else R.color.retro_text))
     }
 
-    private fun label(value: String) = text(value, 13f).apply {
+    internal fun label(value: String) = text(value, 13f).apply {
         typeface = Typeface.create(thai, Typeface.BOLD)
     }
 
     /** A raised 1995 button that sinks while pressed. */
-    private fun button(value: String, big: Boolean = false, enabled: Boolean = true,
-                       onClick: () -> Unit) = TextView(this).apply {
+    internal fun button(value: String, big: Boolean = false, enabled: Boolean = true,
+                        onClick: () -> Unit) = TextView(this).apply {
         text = value
         textSize = if (big) 16f else 14f
         typeface = Typeface.create(thai, Typeface.BOLD)
@@ -845,10 +852,10 @@ class SettingsActivity : Activity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
-    private fun dp(value: Int): Int = TypedValue.applyDimension(
+    internal fun dp(value: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
 
-    private fun color(id: Int): Int = ContextCompat.getColor(this, id)
+    internal fun color(id: Int): Int = ContextCompat.getColor(this, id)
 
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
@@ -875,6 +882,9 @@ class SettingsActivity : Activity() {
             Category(R.drawable.ic_pixel_files, { it.getString(R.string.window_files) }) {
                 it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.files.FilesActivity::class.java))
             },
+            // 0.47.0: name the lights, allow each one, see its state. Kept on
+            // the VPS; this is where they are set up, not switched.
+            Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
         )
     }
 }

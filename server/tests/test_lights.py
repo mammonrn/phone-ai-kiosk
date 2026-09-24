@@ -21,7 +21,9 @@ from test_ewelink import APP, NOW, Cloud, FAMILY, _connect, _thing
 HOUSE = {"total": 3, "thingList": [
     _thing("10001aaa01", "Light1", 1, {"switch": "off"}, room="r1"),
     _thing("10002bbb02", "Light2", 1, {"switch": "off"}, room="r2", online=False),
-    _thing("10003ccc03", "Switch1", 8, {"switches": [{"switch": "off", "outlet": i} for i in range(4)]},
+    # uiid 9, a FOUR-channel switch, so four named channels are real here.
+    # Poom's own Switch1 is uiid 8 with three (test_home_settings).
+    _thing("10003ccc03", "Switch1", 9, {"switches": [{"switch": "off", "outlet": i} for i in range(4)]},
            room="r1"),
 ]}
 HOUSE["thingList"][2]["itemData"]["tags"] = {

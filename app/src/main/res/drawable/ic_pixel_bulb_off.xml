@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.47.0): a light bulb that is OFF — grey glass, no
+     rays, a black outline like ON's. DESIGN.md 5ง. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#808080" android:pathData="M5,3h6v1h-6z M4,4h8v5h-8z M5,9h6v1h-6z M6,10h4v1h-4z M6,11h4v1h-4z M6,13h4v1h-4z" />
+    <path android:fillColor="#A8A8A8" android:pathData="M5,4h1v2h-1z" />
+    <path android:fillColor="#000000" android:pathData="M5,2h6v1h-6z M4,3h1v1h-1z M11,3h1v1h-1z M3,4h1v5h-1z M12,4h1v5h-1z M4,9h1v1h-1z M11,9h1v1h-1z M5,10h1v1h-1z M10,10h1v1h-1z M5,11h1v3h-1z M10,11h1v3h-1z M6,14h4v1h-4z M6,12h4v1h-4z" />
+</vector>

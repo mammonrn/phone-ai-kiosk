@@ -69,7 +69,8 @@ class MainActivity : Activity() {
     /** The last touch on the answer, which keeps it on screen while read. */
     private var transcriptTouchedAt = 0L
     private lateinit var taskbarClock: TextView
-    private lateinit var taskbarDate: TextView
+    /** The date, on the Jarvis window's title bar (0.47.0, Poom): the taskbar keeps the time. */
+    private lateinit var jarvisDate: TextView
     private lateinit var batteryIcon: ImageView
     private lateinit var batteryText: TextView
     private var ticks = 0
@@ -193,17 +194,6 @@ class MainActivity : Activity() {
     /** What the "อุปกรณ์ในบ้าน" card shows; null keeps it hidden. */
     private var homeCard: HomeCard.Card? = null
 
-    /** The row being switched (its key) while the broker answers; one at a time. */
-    private var homePending: String? = null
-
-    /** What the broker said about the last tap, shown under the rows for a minute. */
-    private var homeMessage: String? = null
-
-    private val clearHomeMessage = Runnable {
-        homeMessage = null
-        showHome(homeCard)
-    }
-
     /**
      * 12-hour with AM/PM, as Poom asked, and in Locale.US on purpose: under the
      * phone's Thai locale "a" is "ก่อนเที่ยง"/"หลังเที่ยง", which is correct Thai
@@ -219,7 +209,7 @@ class MainActivity : Activity() {
             taskbarClock.text = taskbarFormat.format(now)
             // Thai, "พ. 23 ก.ย.": the time stays AM/PM as asked, the date is
             // in the language of everything else on the screen.
-            taskbarDate.text = com.mammonrn.phoneaikiosk.ui.ScreenDate.format(
+            jarvisDate.text = com.mammonrn.phoneaikiosk.ui.ScreenDate.format(
                 java.util.Calendar.getInstance().apply { time = now })
             // Every ten seconds: a battery moves a percent in minutes, and the
             // sticky broadcast is cheap but not free.
@@ -649,180 +639,73 @@ class MainActivity : Activity() {
     }
 
     /**
-     * The "อุปกรณ์ในบ้าน" card (0.45.0): one row per light (one per channel of
-     * a multi-way switch) — name and room on the left, the state in words on
-     * the right ("เปิด", "ปิด", "ออฟไลน์"), never a colour alone. At most
-     * HomeCard.MAX_ROWS lights; the rest is counted.
-     *
-     * 0.46.0: when the broker lets this screen switch, the lights become a
-     * grid of tiles, two a row — a row of 48dp buttons each with its own name
-     * and state was 340dp for five lights and pushed Jarvis under its 156dp
-     * floor (A07 screenshot 2026-09-24). A tile is the name, then the state
-     * and what a tap does ("ปิดอยู่ · กดเพื่อเปิด"). A light that can be
-     * switched is a raised tile you press; offline or not allowed is flat,
-     * words only. While the broker answers, the tile reads "กำลังสั่ง…" and
-     * every tile waits; then the line under the grid says what eWeLink really
-     * did (DESIGN 5ง). A dim line says where it came from, and how old it is
-     * when stale.
+     * The "อุปกรณ์ในบ้าน" card (0.47.0, Poom): every light as a pixel bulb and
+     * its name, HomeCard.PER_ROW to a row — yellow with rays on, grey off,
+     * hollow and crossed out offline (HomeCard.bulb). Nothing to press: the
+     * lights are switched by voice and set up in the Control Panel. A dim
+     * line under the bulbs only when some did not fit or the reading is old.
      */
     private fun showHome(card: HomeCard.Card?) {
         homeCard = card
         homePage.removeAllViews()
         val system = card?.systems?.firstOrNull() ?: return
         val plex = ResourcesCompat.getFont(this, R.font.plex_thai)
-        val bold = android.graphics.Typeface.create(plex, android.graphics.Typeface.BOLD)
-        val (rows, more) = HomeCard.rows(system)
-        val switchable = system.devices.any { HomeCard.canSwitch(card, it) }
-        if (switchable) {
-            for ((index, pair) in rows.chunked(2).withIndex()) {
-                homePage.addView(android.widget.LinearLayout(this).apply {
-                    orientation = android.widget.LinearLayout.HORIZONTAL
-                    if (index > 0) setPadding(0, dp(TILE_GAP_DP), 0, 0)
-                    for ((column, device) in pair.withIndex()) {
-                        addView(homeTile(card, device, plex, bold),
-                            android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                                .apply { if (column > 0) leftMargin = dp(TILE_GAP_DP) })
-                    }
-                    // An odd last light keeps half the width, not the whole row.
-                    if (pair.size == 1) addView(android.view.View(this@MainActivity),
-                        android.widget.LinearLayout.LayoutParams(0, 0, 1f).apply { leftMargin = dp(TILE_GAP_DP) })
-                })
-            }
-        } else for ((index, device) in rows.withIndex()) {
+        val (shown, more) = HomeCard.bulbs(system)
+        for ((index, row) in shown.chunked(HomeCard.PER_ROW).withIndex()) {
             homePage.addView(android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.HORIZONTAL
-                isBaselineAligned = true
-                if (index > 0) setPadding(0, dp(3), 0, 0)
-                addView(TextView(this@MainActivity).apply {
-                    text = HomeCard.label(device)
-                    textSize = sp(R.dimen.type_secondary)
-                    typeface = plex
-                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_text))
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    includeFontPadding = false
-                }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                val lit = HomeCard.onCount(device) > 0
-                addView(TextView(this@MainActivity).apply {
-                    text = RetroType.pixelify(HomeCard.stateWord(device), pixelFace)
-                    textSize = sp(R.dimen.type_secondary)
-                    typeface = if (lit) bold else plex
-                    setTextColor(ContextCompat.getColor(this@MainActivity,
-                        if (lit) R.color.retro_text else R.color.retro_dim))
-                    maxLines = 1
-                    includeFontPadding = false
-                    setPadding(dp(8), 0, 0, 0)
-                })
+                if (index > 0) setPadding(0, dp(4), 0, 0)
+                for (device in row) addView(homeBulb(device, plex),
+                    android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                // A short last row keeps each bulb in its column.
+                repeat(HomeCard.PER_ROW - row.size) {
+                    addView(android.view.View(this@MainActivity), android.widget.LinearLayout.LayoutParams(0, 0, 1f))
+                }
             })
         }
-        val message = homeMessage
-        val foot = buildList {
-            if (more > 0) add(getString(R.string.home_more, more))
-            add(if (switchable) getString(R.string.home_source_switch, system.name)
-                else getString(R.string.home_source, system.name))
-            if (card.stale && card.ageSeconds >= 60) add(getString(R.string.home_stale, card.ageSeconds / 60))
-        }.joinToString(" · ")
-        if (message != null) {
-            // What eWeLink really did, in the broker's words, where the eye
-            // already is: under the row that was tapped. Not dim — it is news.
-            homePage.addView(TextView(this).apply {
-                text = message
-                textSize = sp(R.dimen.type_secondary)
-                typeface = plex
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_text))
-                setPadding(0, dp(5), 0, 0)
-                maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE
-            })
-        }
-        homePage.addView(TextView(this).apply {
-            text = RetroType.pixelify(foot, pixelFace)
+        val note = HomeCard.note(card, more)
+        if (note.isNotEmpty()) homePage.addView(TextView(this).apply {
+            text = RetroType.pixelify(note, pixelFace)
             textSize = sp(R.dimen.type_label)
             typeface = plex
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_dim))
-            setPadding(0, dp(5), 0, 0)
+            setPadding(0, dp(4), 0, 0)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         })
         homePages.news("ewelink", HomeCard.signature(card), SystemClock.elapsedRealtime())
     }
 
-    /** One light in the grid: a raised tile to press, or a flat one to read (see showHome). */
-    private fun homeTile(card: HomeCard.Card, device: HomeCard.Device,
-                         plex: android.graphics.Typeface?, bold: android.graphics.Typeface): android.view.View {
-        val canSwitch = HomeCard.canSwitch(card, device)
-        val pending = homePending != null
-        val mine = pending && homePending == device.target
-        val lit = HomeCard.onCount(device) > 0
-        return android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+    /** One light: its bulb, then its name on one line. The state is the bulb. */
+    private fun homeBulb(device: HomeCard.Device, plex: android.graphics.Typeface?): android.view.View =
+        android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            minimumHeight = dp(TILE_MIN_HEIGHT_DP)
-            setPadding(dp(8), dp(4), dp(6), dp(4))
+            contentDescription = HomeCard.spoken(device)
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            val bulb = HomeCard.bulb(device)
+            addView(android.widget.ImageView(this@MainActivity).apply {
+                setImageResource(when (bulb) {
+                    HomeCard.Bulb.ON -> R.drawable.ic_pixel_bulb_on
+                    HomeCard.Bulb.OFF -> R.drawable.ic_pixel_bulb_off
+                    else -> R.drawable.ic_pixel_bulb_offline
+                })
+                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, android.widget.LinearLayout.LayoutParams(dp(BULB_DP), dp(BULB_DP)))
             addView(TextView(this@MainActivity).apply {
                 text = device.name
                 textSize = sp(R.dimen.type_secondary)
-                typeface = plex
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.retro_text))
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                includeFontPadding = false
-            })
-            addView(TextView(this@MainActivity).apply {
-                text = if (mine) getString(R.string.home_switching)
-                       else RetroType.pixelify(HomeCard.tileLine(card, device), pixelFace)
-                textSize = sp(R.dimen.type_secondary)
-                typeface = if (lit || mine) bold else plex
+                typeface = if (bulb == HomeCard.Bulb.ON)
+                    android.graphics.Typeface.create(plex, android.graphics.Typeface.BOLD) else plex
                 setTextColor(ContextCompat.getColor(this@MainActivity,
-                    if (lit && !(pending && !mine)) R.color.retro_text else R.color.retro_dim))
+                    if (bulb == HomeCard.Bulb.ON) R.color.retro_text else R.color.retro_dim))
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 includeFontPadding = false
-                setPadding(0, dp(3), 0, 0)
-            })
-            if (canSwitch) {
-                setBackgroundResource(R.drawable.retro_button)
-                contentDescription = "${device.name} ${HomeCard.stateWord(device)} ${HomeCard.buttonWord(device)}"
-                isEnabled = !pending
-                isClickable = !pending
-                isFocusable = true
-                if (!pending) setOnClickListener { switchHome(device) }
-            }
+                setPadding(dp(4), 0, dp(2), 0)
+                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-    }
-
-    /**
-     * A tap on a tile (0.46.0). The phone sends the light's opaque key
-     * and the state the tile promised; the broker checks everything again
-     * and answers what eWeLink really did. Only that answer changes the row —
-     * never the tap itself — so the card cannot say "เปิด" for a light that
-     * stayed off. The log has the outcome only: no name, no key.
-     */
-    private fun switchHome(device: HomeCard.Device) {
-        val target = device.target ?: return
-        if (homePending != null) return
-        val on = device.on != true
-        homePending = target
-        homeMessage = null
-        handler.removeCallbacks(clearHomeMessage)
-        showHome(homeCard)
-        dashboardThread.execute {
-            val token = TokenStore(this@MainActivity).token()
-            val body = if (token.isNullOrEmpty()) ""
-                       else runCatching { Broker(VoiceState.brokerBaseUrl, token).homeSwitch(target, on) }
-                               .getOrDefault("")
-            val switched = HomeCard.parseSwitched(body)
-            Log.i(DASHBOARD_TAG, "home switch on=$on ok=${switched.ok} online=${switched.online}")
-            handler.post {
-                homePending = null
-                homeMessage = switched.message
-                val card = homeCard
-                showHome(if (card == null) null else HomeCard.apply(card, target, switched))
-                handler.postDelayed(clearHomeMessage, HOME_MESSAGE_MILLIS)
-            }
-        }
-    }
 
     /** A size from res/values/type_scale.xml, in sp — the one type scale. */
     private fun sp(id: Int): Float {
@@ -1048,7 +931,7 @@ class MainActivity : Activity() {
             false
         }
         taskbarClock = findViewById(R.id.taskbar_clock)
-        taskbarDate = findViewById(R.id.taskbar_date)
+        jarvisDate = findViewById(R.id.jarvis_date)
         cardJarvis = findViewById(R.id.card_jarvis)
         netText = findViewById(R.id.net_text)
         batteryIcon = findViewById(R.id.battery_icon)
@@ -1232,7 +1115,6 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         networkWatch?.stop()
         networkWatch = null
-        handler.removeCallbacks(clearHomeMessage)
         super.onDestroy()
     }
 
@@ -1635,12 +1517,8 @@ class MainActivity : Activity() {
          *  traffic on top of it. */
         const val DASHBOARD_TAG = "KioskDashboard"
 
-        /** How long the line saying what a tap did stays under the rows. */
-        const val HOME_MESSAGE_MILLIS = 60_000L
-
-        /** A home tile: at least a finger high (DESIGN 5ก, 48dp), two lines of 14sp fit. */
-        const val TILE_MIN_HEIGHT_DP = 52
-        const val TILE_GAP_DP = 6
+        /** A home-card bulb: 16 pixels drawn at 1.5dp each, read at 20 cm (DESIGN 5ง). */
+        const val BULB_DP = 24
 
         /** `adb logcat -s KioskScreen:*` for the idle rule on its own. */
         const val SCREEN_TAG = "KioskScreen"
