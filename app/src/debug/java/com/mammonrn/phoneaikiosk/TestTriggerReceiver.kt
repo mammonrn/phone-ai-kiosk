@@ -76,6 +76,10 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 intent.getStringExtra("preset")?.let { name ->
                     mp.setEq(context, com.mammonrn.phoneaikiosk.media.fx.Eq.preset(name, intent.getBooleanExtra("on", true)))
                 }
+                // --es tones "60,170,310": also each tone's level in dB, by Goertzel on the same
+                // samples — exact at a band's centre, where the bars' FFT is 43 Hz coarse (0.57.0).
+                val tones = intent.getStringExtra("tones")?.split(',')?.mapNotNull { it.trim().toDoubleOrNull() }.orEmpty()
+                val toneSums = DoubleArray(tones.size)
                 val sums = FloatArray(com.mammonrn.phoneaikiosk.media.fx.Spectrum.BARS)
                 var n = 0
                 var tries = 0
@@ -86,6 +90,14 @@ class TestTriggerReceiver : BroadcastReceiver() {
                         mp.fx.tap.at(mp.positionMs * 1000)?.let { s ->
                             val b = com.mammonrn.phoneaikiosk.media.fx.Spectrum.bars(s, mp.fx.tap.sampleRate)
                             for (i in b.indices) sums[i] += b[i]
+                            for ((k, f) in tones.withIndex()) {
+                                val w = 2 * Math.PI * f / mp.fx.tap.sampleRate
+                                val c = 2 * Math.cos(w)
+                                var s1 = 0.0; var s2 = 0.0
+                                for (x in s) { val s0 = x + c * s1 - s2; s2 = s1; s1 = s0 }
+                                val power = s1 * s1 + s2 * s2 - c * s1 * s2
+                                toneSums[k] += 20 * Math.log10(Math.sqrt(power.coerceAtLeast(1e-18)) * 2 / s.size)
+                            }
                             n += 1
                         }
                         // At most 5 s: a song with no samples (one the phone cannot decode) held
@@ -95,7 +107,9 @@ class TestTriggerReceiver : BroadcastReceiver() {
                         val info = mp.fileInfo()
                         android.util.Log.i("KioskMusic", "fx bars eq=${mp.eq.on}/${mp.eq.preset} working=${mp.fx.working} " +
                             "kbps=${info.kbps} khz=${info.khz} ch=${info.channels} n=$n " +
-                            sums.joinToString(" ") { "%.2f".format(if (n == 0) 0f else it / n) })
+                            sums.joinToString(" ") { "%.2f".format(if (n == 0) 0f else it / n) } +
+                            (if (tones.isEmpty()) "" else " tones " + tones.indices.joinToString(" ") {
+                                "%.0f=%.1f".format(tones[it], if (n == 0) 0.0 else toneSums[it] / n) }))
                         pending.finish()
                     }
                 }
