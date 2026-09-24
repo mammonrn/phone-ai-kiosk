@@ -355,7 +355,7 @@ class MusicService : Service(), WakePause.Media {
                 MusicPlayer.error = getString(R.string.music_no_decoder, MusicPlayer.queue.current?.title.orEmpty(), kind)
                 failures += 1
                 val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
-                handler.post { if (next != null) load(next, true) else stopAll() }
+                handler.post { if (next != null) load(next, true, keepError = true) else stopAll() }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -374,7 +374,7 @@ class MusicService : Service(), WakePause.Media {
                 MusicPlayer.error = getString(R.string.music_error_track, MusicPlayer.queue.current?.title.orEmpty())
                 failures += 1
                 val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
-                if (next != null) load(next, true) else stopAll()
+                if (next != null) load(next, true, keepError = true) else stopAll()
             }
         })
         HeatWatch.start(this)
@@ -407,9 +407,10 @@ class MusicService : Service(), WakePause.Media {
         super.onDestroy()
     }
 
-    fun load(track: Track?, play: Boolean) {
+    fun load(track: Track?, play: Boolean, keepError: Boolean = false) {
         if (track == null) return stopAll()
-        MusicPlayer.error = null
+        // A song skipped because it failed keeps its reason on screen while the next plays.
+        if (!keepError) MusicPlayer.error = null
         // Back where it was left (0.55.0): the saved place, once, for the saved song.
         val at = MusicPlayer.resumeAtMs
         MusicPlayer.resumeAtMs = 0
