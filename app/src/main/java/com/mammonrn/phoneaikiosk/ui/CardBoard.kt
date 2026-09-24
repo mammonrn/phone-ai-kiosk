@@ -28,7 +28,8 @@ package com.mammonrn.phoneaikiosk.ui
  *    update. A collapsed card is a bar: its title and a one-line summary.
  *  * PINNED cards (an alarm ringing) are always open and always first.
  *  * TOUCH: tapping a bar opens it for [touchOpenMs] without counting as an
- *    update, so it does not jump to the top under the finger.
+ *    update, so it does not jump to the top under the finger. When space runs
+ *    out, only the card tapped LAST is kept over the news order ([fit]).
  *
  * FIXED ORDER (0.36.0, [fixedOrder]): the kiosk now keeps every card in its
  * registered place — weather, alarms, commodities, crypto — and news shows as
@@ -140,30 +141,44 @@ class CardBoard(
     /**
      * The same slots, with open cards folded until the stack fits [available]
      * pixels — so an open card never has its last lines cut off by the one
-     * below it (seen on the A07 in 0.36.0: crypto opened by a tap, and the
-     * weather's outlook and the last fuel row were clipped).
+     * below it (seen on the A07 in 0.36.0), and JARVIS NEVER GOES UNDER ITS
+     * 156dp: [available] is measured down to Jarvis's floor (MainActivity).
      *
      * [openPx] and [barPx] are each card's real height open and folded, as
-     * measured on screen. Folded first: the open card whose news is OLDEST.
-     * Never folded: an always-open card (the weather), a pinned one (an alarm
-     * ringing) and one a finger just opened — the person asked to see it, so
-     * something else makes room. If nothing is left to fold, the slots are
-     * returned as they are.
+     * measured on screen. What folds, in this order, until it fits:
+     *   1. an open card nobody tapped, OLDEST NEWS first;
+     *   2. a card tapped open, oldest news first — except the one tapped last;
+     *   3. the card tapped last (it only stays if there is room for it);
+     *   4. a card held open (the music, 0.53.0).
+     * NEVER folded: an always-open card (the weather) and a pinned one (an
+     * alarm ringing, with its stop button).
+     *
+     * 0.53.1: taps had no ceiling. On the A07 Poom tapped every folded card
+     * open, all of them became unfoldable, and Jarvis was pushed down to about
+     * 58dp. Now only ONE tapped card ([MAX_TOUCH_KEPT]) outranks the news
+     * order. If nothing is left to fold, the slots are returned as they are.
      */
     fun fit(slots: List<Slot>, openPx: Map<String, Int>, barPx: Map<String, Int>,
             available: Int, nowMs: Long): List<Slot> {
         if (available <= 0) return slots
         val open = slots.associate { it.id to it.open }.toMutableMap()
         fun total() = slots.sumOf { (if (open.getValue(it.id)) openPx[it.id] else barPx[it.id]) ?: 0 }
+        fun touched(s: State) = s.openedByTouchAt != Long.MIN_VALUE && nowMs - s.openedByTouchAt < touchOpenMs
+        val kept = slots.map { cards.getValue(it.id) }.filter(::touched)
+            .sortedByDescending { it.openedByTouchAt }.take(MAX_TOUCH_KEPT).toSet()
+        fun tier(s: State): Int = when {
+            s.spec.alwaysOpen || s.pinned -> Int.MAX_VALUE
+            s.held -> 4
+            s in kept -> 3
+            touched(s) -> 2
+            else -> 1
+        }
         while (total() > available) {
             val victim = slots
                 .filter { open.getValue(it.id) }
                 .map { cards.getValue(it.id) }
-                .filterNot {
-                    it.spec.alwaysOpen || it.pinned || it.held ||
-                        (it.openedByTouchAt != Long.MIN_VALUE && nowMs - it.openedByTouchAt < touchOpenMs)
-                }
-                .minByOrNull { it.changedAt }
+                .filter { tier(it) != Int.MAX_VALUE }
+                .minWithOrNull(compareBy<State> { tier(it) }.thenBy { it.changedAt })
                 ?: break
             open[victim.spec.id] = false
         }
@@ -175,5 +190,7 @@ class CardBoard(
         const val FRESH_MS = 10 * MINUTE
         const val REORDER_GAP_MS = MINUTE
         const val TOUCH_OPEN_MS = 2 * MINUTE
+        /** Cards tapped open that outrank the news order when space runs out (0.53.1). */
+        const val MAX_TOUCH_KEPT = 1
     }
 }
