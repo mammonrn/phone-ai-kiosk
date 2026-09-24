@@ -52,7 +52,8 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 // A sample "อุปกรณ์ในบ้าน" panel, for seeing the card on the A07
                 // before an eWeLink account is connected (0.45.0). --ez on
                 // true|false. Shown at the next dashboard refresh (a minute).
-                // The names are made up; nothing here reaches the broker.
+                // The names and keys are made up: showing it reaches no broker, and a
+                // tap on a tile (0.46.0) is answered "not found" by the real one.
                 com.mammonrn.phoneaikiosk.home.HomeCard.override =
                     if (intent.getBooleanExtra("on", true)) SAMPLE_HOME else null
                 android.util.Log.i("KioskHome", "sample home card ${if (com.mammonrn.phoneaikiosk.home.HomeCard.override != null) "on" else "off"}")
