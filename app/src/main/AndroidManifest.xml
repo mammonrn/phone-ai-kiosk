@@ -200,6 +200,14 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- The engineering calculator (0.52.0), opened from the Control Panel.
+             Our own activity, so lock task mode allows it; not exported. -->
+        <activity
+            android:name=".calc.CalculatorActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- The identity check: face with a blink, or the pattern. Our own
              activity, so lock task mode allows it; not exported. -->
         <activity

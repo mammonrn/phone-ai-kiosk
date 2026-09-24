@@ -885,6 +885,10 @@ class SettingsActivity : Activity() {
             // 0.47.0: name the lights, allow each one, see its state. Kept on
             // the VPS; this is where they are set up, not switched.
             Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
+            // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).
+            Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
+                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java))
+            },
         )
     }
 }

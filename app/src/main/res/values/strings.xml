@@ -384,4 +384,41 @@
     <!-- The connection, in the taskbar tray (0.42.0). -->
     <string name="net_offline">ออฟไลน์</string>
     <string name="net_description">การเชื่อมต่อ: %s</string>
+
+    <!-- The engineering calculator (0.52.0), opened from the Control Panel. -->
+    <string name="window_calculator">เครื่องคิดเลข</string>
+    <string name="calc_tab_keypad">คำนวณ</string>
+    <string name="calc_tab_electrical">ไฟฟ้า</string>
+    <string name="calc_tab_history">ประวัติ</string>
+    <string name="calc_error_divide">หารด้วยศูนย์ไม่ได้</string>
+    <string name="calc_error_domain">ค่านี้อยู่นอกขอบเขตของฟังก์ชัน</string>
+    <string name="calc_error_big">ผลลัพธ์ใหญ่เกินกว่าจะแสดงได้</string>
+    <string name="calc_error_incomplete">โจทย์ยังไม่ครบ กรุณาตรวจอีกครั้ง</string>
+    <string name="calc_angle_degrees">มุม: องศา</string>
+    <string name="calc_angle_radians">มุม: เรเดียน</string>
+    <string name="calc_memory">หน่วยความจำ: %1$s</string>
+    <string name="calc_history_empty">ยังไม่มีประวัติการคำนวณ ผลที่ได้จากปุ่ม = ในหน้าคำนวณจะแสดงที่นี่</string>
+    <string name="calc_history_hint">แตะรายการเพื่อนำผลลัพธ์กลับไปใช้ในหน้าคำนวณ</string>
+    <string name="calc_history_clear">ล้างประวัติ</string>
+    <string name="calc_history_clear_ask">ล้างประวัติทั้งหมดใช่หรือไม่ เมื่อล้างแล้วจะกู้คืนไม่ได้</string>
+    <string name="calc_history_clear_yes">ล้างประวัติ</string>
+    <string name="el_list_hint">ทุกผลลัพธ์มีหน่วยกำกับ ค่าที่ผิดปกติจะมีคำเตือน</string>
+    <string name="el_back">◄ ไฟฟ้า</string>
+    <string name="el_calculate">คำนวณ</string>
+    <string name="el_clear">ล้างค่า</string>
+    <string name="el_ohm">กฎของโอห์ม</string>
+    <string name="el_ohm_hint">กรอก 2 ค่า แล้วเว้นว่างช่องที่ต้องการหา</string>
+    <string name="el_ohm_two">กรุณากรอก 2 ค่าพอดี แล้วเว้นว่างช่องที่ต้องการหา</string>
+    <string name="el_combine">วงจรอนุกรมและขนาน</string>
+    <string name="el_combine_hint">กรอกค่าตั้งแต่ 2 ตัวขึ้นไป แต่ละตัวเลือกหน่วยของตัวเอง</string>
+    <string name="el_add_part">เพิ่มอีกหนึ่งตัว</string>
+    <string name="el_colour">รหัสสีตัวต้านทาน</string>
+    <string name="el_colour_source">ตามมาตรฐาน IEC 60062:2016</string>
+    <string name="el_ac">ไฟฟ้ากระแสสลับและกำลังไฟฟ้า</string>
+    <string name="el_ac_hint">กำลังไฟฟ้าจากแรงดัน กระแส และตัวประกอบกำลัง</string>
+    <string name="el_reactance">รีแอกแตนซ์ (X_L = 2πfL, X_C = 1/(2πfC))</string>
+    <string name="el_wire">ขนาดสายไฟจากแรงดันตก</string>
+    <string name="el_wire_hint">สายทองแดง หาขนาดที่เล็กที่สุดที่แรงดันตกไม่เกินค่าที่ยอมได้</string>
+    <string name="el_wire_source">อ้างอิง: ความต้านทานสายทองแดงตาม IEC 60228 (สายตีเกลียว class 2) ปรับเป็นที่อุณหภูมิตัวนำ 70°C ไม่รวมรีแอกแตนซ์ของสาย ค่าแรงดันตก 3% เป็นค่าตั้งต้นที่แก้ได้ ไม่ได้อ้างมาตรฐาน</string>
+    <string name="el_wire_ampacity">ผลนี้คิดจากแรงดันตกเท่านั้น ยังไม่ได้ตรวจพิกัดกระแสของสาย กรุณาตรวจกับตารางพิกัดกระแสในมาตรฐานการติดตั้งทางไฟฟ้าของ วสท. และใช้ขนาดที่ใหญ่กว่าระหว่างสองเกณฑ์</string>
 </resources>

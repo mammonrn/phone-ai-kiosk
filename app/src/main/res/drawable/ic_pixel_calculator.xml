@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.52.0): a pocket calculator. Black case, dark grey
+     face, a green read-out (the battery's green) and nine white keys. Drawn
+     here from squares, not traced from any product (DESIGN.md 8). 16x16 grid,
+     four colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M2,0h12v16h-12z" />
+    <path android:fillColor="#808080" android:pathData="M3,1h10v14h-10z" />
+    <path android:fillColor="#2E8B2E" android:pathData="M4,2h8v3h-8z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M4,7h2v2h-2z M7,7h2v2h-2z M10,7h2v2h-2z
+        M4,10h2v2h-2z M7,10h2v2h-2z M10,10h2v2h-2z
+        M4,13h2v2h-2z M7,13h2v2h-2z M10,13h2v2h-2z" />
+</vector>
