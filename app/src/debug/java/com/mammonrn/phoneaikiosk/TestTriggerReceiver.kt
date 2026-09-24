@@ -102,6 +102,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 main.postDelayed(sample, 1000)
             }
 
+            ACTION_VIDEO_ROTATE -> {
+                // 0.57.0: the sensor's word, for a test without turning the phone:
+                // --es to landscape|portrait. Only in full screen and not locked.
+                val landscape = intent.getStringExtra("to") == "landscape"
+                val turn = com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn
+                android.util.Log.i("KioskVideo", "test turn to=${if (landscape) "landscape" else "portrait"} screen=${turn != null}")
+                turn?.let { android.os.Handler(android.os.Looper.getMainLooper()).post { it(landscape) } }
+            }
+
             ACTION_MEDIA_HOLD -> {
                 // Pretends music is playing, for the Jarvis card's "resting"
                 // state and the button-during-media path, before a real player
@@ -329,6 +338,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
         const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
         const val ACTION_FX = "com.mammonrn.phoneaikiosk.TEST_FX"
+        const val ACTION_VIDEO_ROTATE = "com.mammonrn.phoneaikiosk.TEST_VIDEO_ROTATE"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
         const val ACTION_LIGHTS_PAGE = "com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE"
 

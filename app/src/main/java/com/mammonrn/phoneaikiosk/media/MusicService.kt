@@ -106,7 +106,8 @@ object MusicPlayer {
     /** A video starting: playing music pauses (one sound at a time); stopped music is not woken. */
     fun quietForVideo(context: Context) { if (state == State.PLAYING) pause(context) }
 
-    fun pause(context: Context) = run(context) { it.player.pause() }
+    /** Paused on purpose (a button, a spoken "หยุด"): not started again when a question ends. */
+    fun pause(context: Context) = run(context) { it.pauseOnPurpose() }
 
     fun toggle(context: Context) = if (state == State.PLAYING) pause(context) else resume(context)
 
@@ -468,6 +469,18 @@ class MusicService : Service(), WakePause.Media {
     }
 
     // ------------------------------------------------------------ Jarvis
+
+    /**
+     * A pause somebody asked for. Quieted for a question, the player keeps its
+     * hold so it can play on after the answer; asked to pause, it lets go, and
+     * WakePause.turnEnded leaves a released player alone (0.57.0: "หยุดวิดีโอ"
+     * said through the button would otherwise start again after the reply).
+     */
+    fun pauseOnPurpose() {
+        quieted = false
+        player.pause()
+        update()
+    }
 
     override fun quietForJarvis() {
         if (!player.playWhenReady) return

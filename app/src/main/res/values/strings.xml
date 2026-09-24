@@ -539,6 +539,11 @@
     <string name="video_speed">ความเร็ว\n%1$s</string>
     <string name="video_fill_on">เต็มจอ\nเปิด</string>
     <string name="video_fill_off">เต็มจอ\nปิด</string>
+    <string name="video_rotation_free">หมุนจอ\nอิสระ</string>
+    <string name="video_rotation_locked">หมุนจอ\nล็อก</string>
+    <string name="video_rotation_free_words">หมุนจอตามเครื่องได้ แตะเพื่อล็อกไว้ที่ทิศนี้ ใช้เมื่อเปิดเต็มจอ</string>
+    <string name="video_rotation_locked_words">ล็อกการหมุนจออยู่ แตะเพื่อให้หมุนตามเครื่อง ใช้เมื่อเปิดเต็มจอ</string>
+    <string name="video_ask_jarvis">จาร์วิส</string>
     <string name="video_ring">วงแหวนควบคุม แตะกลางเพื่อเล่น แตะซ้ายหรือขวาเพื่อถอยหรือข้าม 10 วินาที ลากรอบวงเพื่อเลื่อนตำแหน่ง</string>
     <string name="video_ring_playing">วงแหวนควบคุม แตะกลางเพื่อหยุดชั่วคราว แตะซ้ายหรือขวาเพื่อถอยหรือข้าม 10 วินาที ลากรอบวงเพื่อเลื่อนตำแหน่ง</string>
     <string name="video_lcd_index">ไฟล์ %1$02d/%2$02d</string>

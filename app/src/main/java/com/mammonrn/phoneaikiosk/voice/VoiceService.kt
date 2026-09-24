@@ -677,12 +677,44 @@ class VoiceService : Service() {
         return failure
     }
 
+    /**
+     * A spoken video command (0.57.0), done before the reply is said. A video
+     * found is opened on its screen, playing; "หยุดวิดีโอ" pauses it for good
+     * (VideoPlayer.pause lets go of the hold, so the end of this question does
+     * not start it again). Logged: the command and whether it worked, never a name.
+     */
+    private fun video(action: KioskAction): String? {
+        val player = com.mammonrn.phoneaikiosk.media.VideoPlayer
+        val context = this
+        val deck = object : com.mammonrn.phoneaikiosk.media.VideoVoice.Deck {
+            override val hasMedia get() = player.hasMedia
+            override val playing get() = player.state == com.mammonrn.phoneaikiosk.media.VideoPlayer.State.PLAYING
+            override fun play(videos: List<com.mammonrn.phoneaikiosk.media.Video>, start: Int) {
+                player.play(context, videos, start)
+                runCatching {
+                    startActivity(Intent(context, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { Log.w(TAG, "video screen not opened: ${it.javaClass.simpleName}") }
+            }
+            override fun resume() = player.resume(context)
+            override fun pause() = player.pause(context)
+            override fun stop() = player.stop(context)
+        }
+        val command = action.params["command"].orEmpty()
+        val failure = com.mammonrn.phoneaikiosk.media.VideoVoice.perform(
+            command, action.params["query"].orEmpty(), { player.local(context) }, deck)
+        VoiceState.lastAction = "video:$command:${if (failure == null) "ok" else "not-done"}"
+        Log.i(TAG, "action video command=$command done=${failure == null}")
+        return failure
+    }
+
     private fun performAction(action: KioskAction): String? {
         if (action.type == KioskAction.VERIFY_IDENTITY) return verifyForPrivate()
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
         if (action.type == KioskAction.SET_ALARM) return setAlarm(action)
         if (action.type == KioskAction.ALARM_ENABLE) return enableAlarm(action)
         if (action.type == KioskAction.MUSIC) return music(action)
+        if (action.type == KioskAction.VIDEO) return video(action)
         if (action.type == KioskAction.HOME_UPDATED) {
             // The light is already switched (the broker did it) and the reply
             // says so. Here only the card is told to ask again.

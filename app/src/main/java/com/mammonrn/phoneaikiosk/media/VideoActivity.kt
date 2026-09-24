@@ -2,6 +2,9 @@ package com.mammonrn.phoneaikiosk.media
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.util.Log
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Build
@@ -67,7 +70,15 @@ class VideoActivity : Activity() {
     private var page = Page.LIST
     private var onNas = false
     private var nasPath = ""
+    /**
+     * FULL SCREEN (0.57.0, Poom approved): the one place in the kiosk that may
+     * turn sideways. On: the phone's turning decides portrait or landscape,
+     * unless [rotationLocked] holds it where it is. Off, leaving the player,
+     * or the video ending: back to portrait at once (DESIGN.md 1 and 5ซ).
+     */
     private var fill = false
+    private var rotationLocked = false
+    private var lockButton: TextView? = null
 
     // The player page's views.
     private var surface: SurfaceView? = null
@@ -119,15 +130,58 @@ class VideoActivity : Activity() {
         applyDim(HeatWatch.step)
         handler.post(tick)
         if (page == Page.PLAYER) { attach(); refresh() }
+        applyOrientation()
+        debugTurn = { landscape -> debugRotate(landscape) }
     }
 
     override fun onPause() {
         super.onPause()
+        debugTurn = null
+        // Leaving the player (Back, X, Hey Jarvis, the home screen): portrait again.
+        if (isFinishing) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         VideoPlayer.listeners.remove(listener)
         HeatWatch.listeners.remove(heat)
         handler.removeCallbacks(tick)
         surface?.let { VideoPlayer.detachSurface(it) }
         attachedTo = null
+    }
+
+    /** Turned (configChanges in the manifest): the same views, laid out again; the video never stops. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        hideSystemBars()
+        frame?.fill = fill && newConfig.orientation != Configuration.ORIENTATION_LANDSCAPE
+        frame?.requestLayout()
+        (panel?.layoutParams as? FrameLayout.LayoutParams)?.let { panel?.layoutParams = panelParams() }
+        Log.i(VideoService.TAG, "turned ${if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"}")
+    }
+
+    /** Portrait, unless full screen: then the phone's turning, or held where it is when locked. */
+    private fun applyOrientation() {
+        requestedOrientation = when {
+            page != Page.PLAYER || !fill -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            rotationLocked -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        }
+    }
+
+    /** Debug only (TEST_VIDEO_ROTATE): what the phone's sensor would say, for a test without turning it. */
+    private fun debugRotate(landscape: Boolean) {
+        if (page != Page.PLAYER || !fill || rotationLocked) {
+            Log.i(VideoService.TAG, "test turn ignored: full=$fill locked=$rotationLocked")
+            return
+        }
+        requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                               else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
+
+    private fun panelParams(): FrameLayout.LayoutParams {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        // Sideways the panel keeps a phone's width, centred, so the picture stays in view.
+        return FrameLayout.LayoutParams(if (landscape) dp(UiScale.VIDEO_PANEL_W) else MATCH, WRAP,
+                                        Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            setMargins(dp(UiScale.FRAME), 0, dp(UiScale.FRAME), dp(UiScale.FRAME))
+        }
     }
 
     override fun onDestroy() {
@@ -160,6 +214,7 @@ class VideoActivity : Activity() {
     private fun showList() {
         page = Page.LIST
         generation += 1
+        applyOrientation()
         surface?.let { VideoPlayer.detachSurface(it) }
         surface = null
         attachedTo = null
@@ -333,6 +388,12 @@ class VideoActivity : Activity() {
                 maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
             }
             addView(titleView, LinearLayout.LayoutParams(0, WRAP, 1f))
+            // 0.57.0: the way to say "หยุดวิดีโอ" while the wake word rests — the same
+            // as the taskbar's Jarvis button (the question ends on the home screen, DESIGN.md 11).
+            addView(dvdButton(getString(R.string.video_ask_jarvis)) {
+                com.mammonrn.phoneaikiosk.voice.VoiceService.start(this@VideoActivity,
+                    com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_BUTTON_LISTEN)
+            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginEnd = dp(UiScale.SPACE_S) })
             addView(FrameLayout(context).apply {
                 background = DvdSkin.button(context); isClickable = true
                 contentDescription = getString(R.string.settings_home)
@@ -349,8 +410,7 @@ class VideoActivity : Activity() {
         root.addView(noteView, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.TOP).apply { topMargin = dp(UiScale.VIDEO_NOTE_TOP) })
 
         panel = buildPanel()
-        root.addView(panel, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply {
-            setMargins(dp(UiScale.FRAME), 0, dp(UiScale.FRAME), dp(UiScale.FRAME)) })
+        root.addView(panel, panelParams())
 
         attach()
         refresh()
@@ -416,8 +476,13 @@ class VideoActivity : Activity() {
                     LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
         row.addView(dvdButton(getString(R.string.video_subtitles), small = true) { chooseTrack(C.TRACK_TYPE_TEXT, it) },
                     LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
-        fillButton = dvdButton("", small = true) { fill = !fill; frame?.fill = fill; refresh(); poke() }
+        fillButton = dvdButton("", small = true) { setFull(!fill); poke() }
         row.addView(fillButton, LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
+        lockButton = dvdButton("", small = true) {
+            rotationLocked = !rotationLocked
+            applyOrientation(); refresh(); poke()
+        }
+        row.addView(lockButton, LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         return body
     }
@@ -456,6 +521,15 @@ class VideoActivity : Activity() {
         attachedTo = p
     }
 
+    /** Full screen on or off: the picture fills, and the phone may turn (DESIGN.md 5ซ). */
+    private fun setFull(on: Boolean) {
+        if (fill == on) return
+        fill = on
+        frame?.fill = on && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
+        applyOrientation()
+        refresh()
+    }
+
     /** A touch keeps the controls up for another 4 s. */
     private fun poke() {
         handler.removeCallbacks(hide)
@@ -480,6 +554,11 @@ class VideoActivity : Activity() {
         volumeView?.text = "${(VideoPlayer.volume * 100).toInt()}%"
         speedButton?.text = getString(R.string.video_speed, VideoRules.speedWord(VideoPlayer.speed))
         fillButton?.text = getString(if (fill) R.string.video_fill_on else R.string.video_fill_off)
+        lockButton?.text = getString(if (rotationLocked) R.string.video_rotation_locked else R.string.video_rotation_free)
+        lockButton?.contentDescription = getString(if (rotationLocked) R.string.video_rotation_locked_words else R.string.video_rotation_free_words)
+        lockButton?.alpha = if (fill) 1f else 0.5f
+        // The video ended or was stopped: full screen ends, and portrait with it.
+        if (fill && !VideoPlayer.hasMedia && VideoPlayer.state == VideoPlayer.State.STOPPED) setFull(false)
         val size = VideoPlayer.player?.videoSize
         if (size != null && size.width > 0) frame?.ratio = size.width * size.pixelWidthHeightRatio / size.height
         lcdFacts?.text = listOfNotNull(size?.takeIf { it.height > 0 }?.let { "${minOf(it.width, it.height)}p" },
@@ -626,6 +705,9 @@ class VideoActivity : Activity() {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         private const val HIDE_MS = 4_000L
+
+        /** Debug builds' adb switch (TEST_VIDEO_ROTATE) reaches the screen in front through this. */
+        @Volatile var debugTurn: ((Boolean) -> Unit)? = null
     }
 }
 

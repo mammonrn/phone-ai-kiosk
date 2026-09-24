@@ -21,7 +21,7 @@ from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dash
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile, maps_rescue, music)
+               auth_reset, local_facts, envfile, maps_rescue, music, video)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -644,6 +644,13 @@ def handle_chat(
         log_intent("skipped")
         action, reply = music.action_and_reply(heard_music)
         return answer_in_code(reply, action, f"music:{heard_music['command']}")
+
+    # ---- video (0.57.0): the same, for the video player (media/VideoVoice) --
+    heard_video = video.match(text) if not is_camera and alarm is None else None
+    if heard_video is not None:
+        log_intent("skipped")
+        action, reply = video.action_and_reply(heard_video)
+        return answer_in_code(reply, action, f"video:{heard_video['command']}")
 
     private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:

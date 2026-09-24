@@ -84,6 +84,13 @@ class Broker(private val baseUrl: String, private val token: String) {
                     if (command !in com.mammonrn.phoneaikiosk.media.MusicVoice.COMMANDS || query.length > 60) null
                     else KioskAction(type, "", mapOf("command" to command, "query" to query))
                 }
+                // 0.57.0: one of VideoVoice's commands, and a bounded name.
+                KioskAction.VIDEO -> {
+                    val command = json.optString("command")
+                    val query = json.optString("query").trim()
+                    if (command !in com.mammonrn.phoneaikiosk.media.VideoVoice.COMMANDS || query.length > 60) null
+                    else KioskAction(type, "", mapOf("command" to command, "query" to query))
+                }
                 else -> null
             }
         }

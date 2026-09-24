@@ -21,7 +21,7 @@ HOW IT DECIDES — every rule is here, and every answer carries its reason:
                      button too — a press is deliberate, noise is not.
   3. command         The camera phrase (actions.camera_match), an alarm command
                      (alarms.alarm_command), a Maps request or a music command
-                     (music.match, 0.53.0).
+                     (music.match, 0.53.0) or a video command (video.match, 0.57.0).
                      Always passes: these are the kiosk's own commands.
   4. button          Started with the Jarvis button, not the wake word. A press
                      is deliberate, so only rules 1-2 apply.
@@ -53,7 +53,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import actions, alarms, music
+from . import actions, alarms, music, video
 
 #: Wake scores under this are "weak": within 0.05 of Poom's 0.40 threshold.
 WEAK_WAKE = 0.45
@@ -166,7 +166,8 @@ def judge(text: str, *, no_speech_prob: float | None = None,
     if seconds and seconds > 0 and len(squashed) / seconds > MAX_CHARS_PER_SECOND:
         return Verdict(False, "too-much-text")
     if (actions.camera_request(text) or alarms.alarm_command(text) is not None
-            or any(word in squashed for word in _MAPS_WORDS) or music.match(text) is not None):
+            or any(word in squashed for word in _MAPS_WORDS) or music.match(text) is not None
+            or video.match(text) is not None):
         return Verdict(True, "command")
     if source == "button":
         return Verdict(True, "button")

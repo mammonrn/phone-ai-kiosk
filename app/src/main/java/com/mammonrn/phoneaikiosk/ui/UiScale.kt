@@ -100,6 +100,9 @@ object UiScale {
     /** The ring: play in its middle (45% of it, 58dp), the skips and the drag round it. */
     const val VIDEO_RING = 128
 
+    /** Sideways, the floating panel keeps about a phone's width, centred. */
+    const val VIDEO_PANEL_W = 480
+
     /** Subtitles sit above the floating panel. */
     const val VIDEO_CUE_BOTTOM = 232
 

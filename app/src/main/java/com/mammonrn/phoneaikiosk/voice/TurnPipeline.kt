@@ -227,7 +227,7 @@ class TurnPipeline(
  * thing with it.
  */
 /** Actions on the phone's own state: done before the reply is said (TurnPipeline). */
-val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC)
+val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC, KioskAction.VIDEO)
 
 class KioskAction(
     val type: String,
@@ -272,6 +272,9 @@ class KioskAction(
          * song not found is said as not found (media/MusicVoice).
          */
         const val MUSIC = "music"
+
+        /** 0.57.0: a video command, {command, query}, done before speaking like the music (media/VideoVoice). */
+        const val VIDEO = "video"
     }
 }
 

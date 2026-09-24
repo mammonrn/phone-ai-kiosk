@@ -53,6 +53,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_AUDIO_SOURCE" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_FX" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_VIDEO_ROTATE" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_HOME_CARD" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE" />
             </intent-filter>

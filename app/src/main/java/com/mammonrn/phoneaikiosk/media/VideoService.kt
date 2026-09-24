@@ -34,9 +34,6 @@ import com.mammonrn.phoneaikiosk.voice.WakePause
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 
-/** One video: a [Track] (its id says local or NAS) and what the phone's index knows of its picture. */
-data class Video(val track: Track, val width: Int = 0, val height: Int = 0, val mime: String? = null)
-
 /**
  * The phone's heat, for both players (0.56.0): Android's thermal status goes
  * through [HeatLadder]; each step's actions are taken by whoever is playing.
@@ -149,7 +146,8 @@ object VideoPlayer {
         MusicPlayer.quietForVideo(context)
         if (s.loaded) s.player.play() else current?.let { s.load(it, true) }
     }
-    fun pause(context: Context) = run(context) { it.player.pause() }
+    /** Paused on purpose (a button, a spoken "หยุด"): not started again when a question ends. */
+    fun pause(context: Context) = run(context) { it.pauseOnPurpose() }
     fun toggle(context: Context) = if (state == State.PLAYING) pause(context) else resume(context)
     fun stop(context: Context) = run(context) { it.stopAll() }
 
@@ -440,6 +438,18 @@ class VideoService : Service(), WakePause.Media {
         hold?.let { WakePause.release(it) }
         hold = null
         handler.removeCallbacks(renew)
+    }
+
+    /**
+     * A pause somebody asked for. Quieted for a question, the player keeps its
+     * hold so it can play on after the answer; asked to pause, it lets go, and
+     * WakePause.turnEnded leaves a released player alone (0.57.0: "หยุดวิดีโอ"
+     * said through the button would otherwise start again after the reply).
+     */
+    fun pauseOnPurpose() {
+        quieted = false
+        player.pause()
+        update()
     }
 
     override fun quietForJarvis() {
