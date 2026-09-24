@@ -90,13 +90,19 @@ class TestTriggerReceiver : BroadcastReceiver() {
                         mp.fx.tap.at(mp.positionMs * 1000)?.let { s ->
                             val b = com.mammonrn.phoneaikiosk.media.fx.Spectrum.bars(s, mp.fx.tap.sampleRate)
                             for (i in b.indices) sums[i] += b[i]
-                            for ((k, f) in tones.withIndex()) {
+                            // 8192 samples (Hann): eleven cycles of 60 Hz, and the tones do not leak into each other.
+                            val long = if (tones.isEmpty()) null else mp.fx.tap.at(mp.positionMs * 1000, 8192)
+                            if (long != null) for ((k, f) in tones.withIndex()) {
                                 val w = 2 * Math.PI * f / mp.fx.tap.sampleRate
                                 val c = 2 * Math.cos(w)
                                 var s1 = 0.0; var s2 = 0.0
-                                for (x in s) { val s0 = x + c * s1 - s2; s2 = s1; s1 = s0 }
+                                val m = long.size
+                                for (i in 0 until m) {
+                                    val x = long[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (m - 1)))
+                                    val s0 = x + c * s1 - s2; s2 = s1; s1 = s0
+                                }
                                 val power = s1 * s1 + s2 * s2 - c * s1 * s2
-                                toneSums[k] += 20 * Math.log10(Math.sqrt(power.coerceAtLeast(1e-18)) * 2 / s.size)
+                                toneSums[k] += 20 * Math.log10(Math.sqrt(power.coerceAtLeast(1e-18)) * 4 / m)
                             }
                             n += 1
                         }
