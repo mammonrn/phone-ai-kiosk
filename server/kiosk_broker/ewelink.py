@@ -74,6 +74,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -459,8 +460,18 @@ def call(app: App, region: str, method: str, path: str, *, conn: sqlite3.Connect
 
 # ------------------------------------------------------------------ reads
 
+#: Homes and rooms change when somebody edits them in the app, not by the
+#: minute: kept an hour, so a read of the house is one call per home (0.53.3).
+FAMILY_TTL = 3600
+_family_cache: dict = {}
+
+
+def forget_family() -> None:
+    _family_cache.clear()
+
+
 def read_home(app: App, *, key_path: Path, token_path: Path, conn: sqlite3.Connection,
-              transport=None, now: float | None = None) -> dict:
+              transport=None, now: float | None = None, raw: list | None = None) -> dict:
     """Homes, rooms and devices, reduced to what a person needs. Read only.
 
     One GET /v2/family, then one GET /v2/device/thing per home — the thing
@@ -484,7 +495,13 @@ def read_home(app: App, *, key_path: Path, token_path: Path, conn: sqlite3.Conne
             return call(app, record["region"], "GET", path, query=query, bearer=record["at"],
                         conn=conn, transport=transport, now=now)
 
-    family = get("/v2/family", {"lang": "en"})
+    moment = time.time() if now is None else now
+    cached_family = _family_cache.get("family")
+    if cached_family and moment - cached_family[0] < FAMILY_TTL:
+        family = cached_family[1]
+    else:
+        family = get("/v2/family", {"lang": "en"})
+        _family_cache["family"] = (moment, family)
     homes = []
     rooms: dict[str, str] = {}
     for row in family.get("familyList") or []:
@@ -510,6 +527,10 @@ def read_home(app: App, *, key_path: Path, token_path: Path, conn: sqlite3.Conne
             if item.get("itemType") not in (1, 2):
                 groups += 1
                 continue
+            # `ewelink-raw` only: the thing as eWeLink sent it, for Poom to
+            # see which fields exist. Never stored, never logged.
+            if raw is not None:
+                raw.append(item.get("itemData") or {})
             reduced = reduce_thing(item.get("itemData") or {}, rooms, home["name"])
             if reduced and all(d["id"] != reduced["id"] for d in devices):
                 devices.append(reduced)
@@ -561,7 +582,89 @@ def reduce_thing(data: dict, rooms: dict[str, str], home: str) -> dict | None:
         "room": rooms.get(str(family.get("roomid") or ""), ""),
         "home": home,
         "shared": bool(data.get("sharedBy")),
+        # 0.53.3: the schedules set in the eWeLink app, IF the device reports
+        # them in its params. Used to read the house again the moment one is
+        # due; the format is not in CoolKit's free docs (see parse_timers).
+        "timers": parse_timers(params),
     }
+
+
+# ------------------------------------------------------- schedules (0.53.3)
+
+def parse_timers(params: dict) -> list[dict]:
+    """The device's own schedules from `params.timers`, as far as they can be
+    read: [{"type", "at", "enabled", "on", "outlet"}].
+
+    NOT IN COOLKIT'S FREE DOCUMENTATION: the device protocol document is for
+    paid App IDs (UIIDProtocol.md says so). The shape read here is the one
+    community integrations (homebridge-ewelink, SonoffLAN) work with:
+    {"type": "once", "at": "2026-09-24T10:00:00.000Z"} or {"type": "repeat",
+    "at": "0 10 * * 0,1,2,3,4,5,6"} (cron: minute hour * * weekdays, UTC),
+    "enabled": 1, "do": {"switch": "on"} or {"switches": [{"switch", "outlet"}]}.
+    Anything else is skipped, never guessed. `ewelink-raw` shows what the
+    house's devices really send."""
+    out = []
+    raw = params.get("timers") if isinstance(params, dict) else None
+    if not isinstance(raw, list):
+        return out
+    for t in raw:
+        if not isinstance(t, dict):
+            continue
+        kind, at = str(t.get("type") or t.get("coolkit_timer_type") or ""), str(t.get("at") or "")
+        if kind not in ("once", "repeat") or not at:
+            continue
+        do = t.get("do") if isinstance(t.get("do"), dict) else {}
+        on, outlet = None, None
+        if do.get("switch") in ("on", "off"):
+            on = do["switch"] == "on"
+        elif isinstance(do.get("switches"), list) and do["switches"] and isinstance(do["switches"][0], dict):
+            first = do["switches"][0]
+            on = first.get("switch") == "on" if first.get("switch") in ("on", "off") else None
+            outlet = first.get("outlet") if isinstance(first.get("outlet"), int) else None
+        out.append({"type": kind, "at": at[:40], "enabled": bool(t.get("enabled", 1)),
+                    "on": on, "outlet": outlet})
+    return out
+
+
+def _cron_matches(at: str, moment: datetime) -> bool:
+    """"m h * * dow" (UTC) against a whole minute. Numbers, "*" and comma lists."""
+    fields = at.split()
+    if len(fields) != 5:
+        return False
+
+    def ok(field: str, value: int) -> bool:
+        if field == "*":
+            return True
+        try:
+            return value in {int(x) for x in field.split(",")}
+        except ValueError:
+            return False
+    weekday = (moment.weekday() + 1) % 7                  # cron: 0 = Sunday
+    return (ok(fields[0], moment.minute) and ok(fields[1], moment.hour) and ok(fields[2], moment.day)
+            and ok(fields[3], moment.month) and ok(fields[4], weekday))
+
+
+def timer_due_between(timer: dict, start: float, end: float) -> bool:
+    """Whether [timer] fired in (start, end] (epoch seconds). At most a day is
+    looked through: a cache older than that is stale by its age anyway."""
+    if not timer.get("enabled") or end <= start:
+        return False
+    if timer["type"] == "once":
+        try:
+            when = datetime.fromisoformat(timer["at"].replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return False
+        return start < when <= end
+    first = int(max(start, end - 86_400) // 60 + 1) * 60
+    for minute in range(first, int(end) + 1, 60):
+        if _cron_matches(timer["at"], datetime.fromtimestamp(minute, timezone.utc)):
+            return True
+    return False
+
+
+def timers_due(devices: list[dict], start: float, end: float) -> bool:
+    """Any device's schedule fired since [start]: the house must be read again."""
+    return any(timer_due_between(t, start, end) for d in devices for t in d.get("timers") or [])
 
 
 def channel_names(tags: dict, count: int) -> list[str]:

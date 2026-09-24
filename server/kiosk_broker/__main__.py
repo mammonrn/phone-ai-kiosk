@@ -627,6 +627,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("ewelink-connect", help="eWeLink: print a one-time sign-in link (read only this round)")
     sub.add_parser("ewelink-status", help="eWeLink: keys present, connected, region, days left — no secrets")
     sub.add_parser("ewelink-devices", help="eWeLink: homes, rooms, devices, type, on/off. Read only")
+    sub.add_parser("ewelink-raw", help="eWeLink: every field each device reports, by name; state, energy "
+                                       "and schedule values. Ids masked, no keys. Read only")
     sub.add_parser("ewelink-refresh", help="eWeLink: refresh the tokens now (the broker also does it itself)")
     sub.add_parser("ewelink-disconnect", help="eWeLink: unbind the account and delete the token file now")
     p = sub.add_parser("ewelink-allow", help="eWeLink: allow a device to be switched (id's last 4+ chars)")

@@ -61,7 +61,12 @@ PER_MINUTE = 10
 PER_DAY = 300
 
 #: The house as last read, and how long it is trusted for the card.
-HOME_TTL = 600
+#: 0.53.3: 600 -> 120 s. A light switched by eWeLink's own schedule showed
+#: "ปิด" on the card for up to ten minutes. With the homes list cached for an
+#: hour (ewelink.FAMILY_TTL), a read is one call per home, so a phone asking
+#: every minute costs at most 720 calls a day, ~21,600 a month — under the
+#: broker's own stop of 40,000 (ewelink.MONTHLY_STOP) with room for commands.
+HOME_TTL = 120
 FAILURE_BACKOFF = 300
 
 SCHEMA = """
@@ -233,6 +238,7 @@ _cache: dict = {}
 def forget() -> None:
     with _lock:
         _cache.clear()
+    ewelink.forget_family()
 
 
 def read(ctx: Context, *, now: float | None = None, force: bool = False,
@@ -248,7 +254,10 @@ def read(ctx: Context, *, now: float | None = None, force: bool = False,
     with _lock:
         cached = _cache.get("home")
         failed = _cache.get("failed")
-        if cached and not force and now - cached[0] < ttl:
+        # A device schedule due since the last read makes that read stale,
+        # whatever its age (0.53.3): the card follows the 17:00 timer at once.
+        if (cached and not force and now - cached[0] < ttl
+                and not ewelink.timers_due(cached[1].get("devices", []), cached[0], now)):
             return cached[1], int(now - cached[0]), ""
         if failed and not force and now - failed[0] < FAILURE_BACKOFF:
             return (cached[1], int(now - cached[0]), failed[1]) if cached else (None, 0, failed[1])

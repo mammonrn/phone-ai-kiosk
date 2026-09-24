@@ -12,6 +12,7 @@ kiosk's own domain instead.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 import time
@@ -123,6 +124,54 @@ def devices(conn: sqlite3.Connection, cfg, secret, out=sys.stdout) -> int:
               f"{len(home['devices']) + home['groups']}: this kind of App ID only sees Sonoff and", file=out)
         print("CoolKit brand devices. Other brands need CoolKit's authorisation (bd@coolkit.cn).", file=out)
     print(f"\ncalls this month: {ewelink.calls_this_month(conn)}", file=out)
+    return 0
+
+
+#: Values safe to print as they are: state, signal, energy, firmware — and
+#: the schedules. Every other field is shown by NAME only (0.53.3).
+RAW_VALUES = ("switch", "switches", "state", "startup", "pulse", "pulseWidth", "rssi", "power", "voltage",
+              "current", "dayKwh", "monthKwh", "fwVersion", "sledOnline", "timers", "configure")
+
+
+def raw(conn: sqlite3.Connection, cfg, secret, out=sys.stdout) -> int:
+    """`ewelink-raw`: what eWeLink really sends for each device — every field
+    by name, and the values of state, signal, energy and schedule fields.
+    Ids are masked; keys, MACs, addresses and share lists are never printed.
+    For Poom to see what the API holds (0.53.3); nothing is stored or logged."""
+    print("eWeLink — the fields each device reports (read only, no command is sent)", file=out)
+    if not ewelink.connected(cfg.ewelink_token_path):
+        print("  not connected (run ewelink-connect)", file=out)
+        return 1
+    things: list = []
+    ewelink.read_home(ewelink.load_app(secret), key_path=cfg.vault_key_path,
+                      token_path=cfg.ewelink_token_path, conn=conn, raw=things)
+    for data in things:
+        if not isinstance(data, dict):
+            continue
+        extra = data.get("extra") if isinstance(data.get("extra"), dict) else {}
+        print(file=out)
+        print(f"{str(data.get('name') or '')[:24]}  {ewelink.mask_id(str(data.get('deviceid') or ''))}  "
+              f"uiid {extra.get('uiid', '?')}  model {str(data.get('productModel') or '')[:20]}  "
+              f"online {bool(data.get('online'))}", file=out)
+        top = sorted(k for k in data if k not in ("params",))
+        print(f"  fields: {', '.join(top)}", file=out)
+        params = data.get("params") if isinstance(data.get("params"), dict) else {}
+        print(f"  params ({len(params)}): {', '.join(sorted(params))}", file=out)
+        for key in RAW_VALUES:
+            if key in params:
+                value = json.dumps(params[key], ensure_ascii=False)
+                print(f"    {key} = {value[:600]}{' …' if len(value) > 600 else ''}", file=out)
+        timers = ewelink.parse_timers(params)
+        if "timers" in params:
+            sent = len(params["timers"]) if isinstance(params["timers"], list) else "?"
+            print(f"  schedules read: {len(timers)} of {sent}", file=out)
+        for t in timers:
+            state = {True: "on", False: "off", None: "?"}[t["on"]]
+            channel = "" if t["outlet"] is None else f" (channel {t['outlet'] + 1})"
+            disabled = "" if t["enabled"] else "  (disabled)"
+            print(f"    {t['type']:<6} at {t['at']:<28} -> {state}{channel}{disabled}", file=out)
+    print(file=out)
+    print(f"calls this month: {ewelink.calls_this_month(conn)}", file=out)
     return 0
 
 
@@ -303,6 +352,7 @@ COMMANDS = {
     "ewelink-connect": connect,
     "ewelink-status": status,
     "ewelink-devices": devices,
+    "ewelink-raw": raw,
     "ewelink-refresh": refresh,
     "ewelink-disconnect": disconnect,
 }

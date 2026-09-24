@@ -335,6 +335,8 @@ def awaiting(who: str, now: float | None = None) -> bool:
 
 NOT_CONNECTED_REPLY = "ยังไม่ได้เชื่อมต่อระบบไฟบ้านครับ"
 UNREACHABLE_REPLY = "ตอนนี้ติดต่อระบบไฟบ้านไม่ได้ครับ ลองใหม่อีกทีนะครับ"
+#: A state question when the house cannot be read now: never the old state.
+STATE_UNKNOWN_REPLY = "ตอนนี้อ่านสถานะไฟไม่ได้ครับ ลองถามใหม่อีกทีนะครับ"
 NOT_FOUND_REPLY = "ไม่พบไฟชื่อนั้นครับ พูดชื่อไฟหรือชื่อห้องอีกทีนะครับ"
 BOTH_REPLY = "กรุณาสั่งเปิดหรือปิดทีละอย่างครับ"
 CANCELLED_REPLY = "ยกเลิกแล้วครับ ไม่ได้สั่งไฟ"
@@ -460,6 +462,13 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
                        UNREACHABLE_REPLY, False, f"lights:{error or 'none'}")
 
     if intent.on is None:                       # a question
+        # 0.53.3: the state AS IT IS NOW, like a command. A light switched by
+        # eWeLink's own schedule at 17:00 was answered "ปิดอยู่" from the card's
+        # cache; an answer that cannot be read fresh says so, never an old one.
+        fresh, age, fresh_error = home_control.targets(ctx, now=now, max_age=FRESH_SECONDS)
+        if fresh_error or age > FRESH_SECONDS:
+            return Handled(STATE_UNKNOWN_REPLY, False, "lights:state-unreadable")
+        found = fresh
         answer = find(Intent(None, intent.all, intent.text), found)
         chosen = answer.chosen or (answer.ask if answer.by in ("room", "device", "none") else [])
         return Handled(state_reply(chosen) if chosen else NOT_FOUND_REPLY, False, "lights:state")
