@@ -27,9 +27,10 @@ jobs:
 
       - name: Build inside VideoLAN's image
         run: |
-          mkdir -p work
+          mkdir -p work/home
           cp tools/libvlc/build-lgpl.sh work/
-          docker run --rm -v "$PWD/work:/work" \
+          # The runner's own user, so /work is writable; HOME for git and Gradle.
+          docker run --rm -v "$PWD/work:/work" -u "$(id -u):$(id -g)" -e HOME=/work/home \
             registry.videolan.org/vlc-debian-android-3.0:20260701183656 \
             bash /work/build-lgpl.sh 2>&1 | tee work/build.log
           test -f work/out/SHA256SUMS
