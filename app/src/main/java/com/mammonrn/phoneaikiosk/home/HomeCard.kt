@@ -149,9 +149,12 @@ object HomeCard {
         // 0.51.1: at most 70 characters with the longest name allowed (40),
         // Poom's rule for everything Jarvis says. See HomeCardTest.
         !device.online || device.reason == "offline" -> "${device.name} ออฟไลน์อยู่ครับ สั่งไม่ได้"
-        device.reason == "not-allowed" -> "${device.name} ยังไม่อนุญาตครับ ตั้งที่แผงควบคุม"
+        device.reason == "not-allowed" ->
+            "${device.name} ยังไม่อนุญาตครับ ตั้งที่แผงควบคุม".takeIf { it.length <= 70 }
+                ?: "${device.name} ยังไม่อนุญาตให้สั่งครับ"
         device.reason == "stopped" -> "ตอนนี้ปิดการสั่งไฟไว้ครับ"
-        else -> "ไม่ทราบสถานะของ ${device.name} ครับ สั่งไม่ได้"
+        else -> "ไม่ทราบสถานะของ ${device.name} ครับ สั่งไม่ได้".takeIf { it.length <= 70 }
+            ?: "ไม่ทราบสถานะของ ${device.name} ครับ"
     }
 
     /** The broker's answer to POST /v1/home/switch; a refusal's message is shown as it is. */
