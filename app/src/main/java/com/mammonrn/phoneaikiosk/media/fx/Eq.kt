@@ -64,7 +64,10 @@ object Eq {
         "Jazz" to listOf(3f, 2f, 1f, 2f, -1f, -1f, 0f, 1f, 2f, 3f),
         "Classical" to listOf(0f, 0f, 0f, 0f, 0f, 0f, -2f, -3f, -3f, -4f),
         "เสียงร้อง" to listOf(-2f, -2f, -1f, 2f, 4f, 4f, 3f, 1f, 0f, -1f),
-        "เบสหนัก" to listOf(7f, 6f, 4f, 2f, 0f, 0f, 0f, 0f, 0f, 0f),
+        // 0.57.0: measured on the A07 with pink noise, the old 7/6/4/2 lifted
+        // 170-300 Hz as much as 60 Hz (the bands overlap) — more boom than bass.
+        // Now +9 dB at 60, +6 at 170, and nothing from 450 Hz up.
+        "เบสหนัก" to listOf(9f, 5f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
     )
 
     fun preset(name: String, on: Boolean = true): Settings =

@@ -46,6 +46,16 @@ class EqAndSpectrumTest {
     }
 
     @Test
+    fun `the bass preset lifts the bass most and leaves the voice alone`() {
+        val s = Eq.preset("เบสหนัก")
+        val at60 = Eq.totalDb(s, 60.0)
+        assertTrue("60 Hz only $at60", at60 > 8.5)
+        assertTrue(at60 > Eq.totalDb(s, 230.0) + 5)       // not the low-mid boom of 0.56.0
+        assertTrue(abs(Eq.totalDb(s, 1000.0)) < 0.5)
+        assertTrue(abs(Eq.totalDb(s, 3000.0)) < 0.5)
+    }
+
+    @Test
     fun `off, or flat, leaves every sample as it was`() {
         val x = tone(440.0, n = 4410)
         for (s in listOf(Eq.preset("Rock", on = false), Eq.preset("Flat"))) {
