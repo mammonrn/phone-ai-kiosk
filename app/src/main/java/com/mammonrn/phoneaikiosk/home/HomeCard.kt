@@ -146,11 +146,12 @@ object HomeCard {
     /** Why a cell cannot be tapped, in words (shown in the Jarvis window). "" when it can. */
     fun whyNot(device: Device): String = when {
         canTap(device) -> ""
-        !device.online || device.reason == "offline" -> "${device.name} ออฟไลน์อยู่ครับ จึงสั่งไม่ได้"
-        device.reason == "not-allowed" ->
-            "${device.name} ยังไม่ได้รับอนุญาตให้สั่งครับ ตั้งได้ที่แผงควบคุม › ไฟในบ้าน"
+        // 0.51.1: at most 70 characters with the longest name allowed (40),
+        // Poom's rule for everything Jarvis says. See HomeCardTest.
+        !device.online || device.reason == "offline" -> "${device.name} ออฟไลน์อยู่ครับ สั่งไม่ได้"
+        device.reason == "not-allowed" -> "${device.name} ยังไม่อนุญาตครับ ตั้งที่แผงควบคุม"
         device.reason == "stopped" -> "ตอนนี้ปิดการสั่งไฟไว้ครับ"
-        else -> "ไม่ทราบสถานะของ ${device.name} ครับ จึงยังสั่งไม่ได้"
+        else -> "ไม่ทราบสถานะของ ${device.name} ครับ สั่งไม่ได้"
     }
 
     /** The broker's answer to POST /v1/home/switch; a refusal's message is shown as it is. */

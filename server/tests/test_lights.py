@@ -142,7 +142,7 @@ def test_a_failure_is_said_as_not_done(house):
 def test_a_room_with_several_lights_is_asked_back_and_the_answer_switches_one(house):
     ctx, cloud = house
     asked = say(ctx, "เปิดไฟห้องนั่งเล่น")
-    assert asked.reply.startswith("มีไฟ 5 ดวงครับ") and "ดวงไหน" in asked.reply
+    assert asked.reply.startswith("จะเปิดดวงไหนครับ มี 5 ดวง") and len(asked.reply) <= 70
     assert not cloud.commands() and not asked.changed
     got = say(ctx, "ไฟเพดาน", now=NOW + 70)
     assert got.reply == "เปิดไฟเพดานแล้วครับ"
@@ -157,7 +157,7 @@ def test_the_question_can_be_answered_all_or_cancelled_and_expires(house):
     assert not cloud.commands()
     say(ctx, "เปิดไฟห้องนั่งเล่น", now=NOW + 66)
     got = say(ctx, "ทั้งหมด", now=NOW + 70)
-    assert got.reply == "เปิด 5 ดวงแล้วครับ" and len(cloud.commands()) == 2   # Light1, and Switch1 merged
+    assert got.reply == "เปิดไฟ 5 ดวงแล้วครับ" and len(cloud.commands()) == 2   # Light1, and Switch1 merged
     say(ctx, "ปิดไฟห้องนั่งเล่น", now=NOW + 80)
     assert say(ctx, "ไฟเพดาน", now=NOW + 80 + lights.PENDING_SECONDS + 1) is None   # expired
 
@@ -165,7 +165,7 @@ def test_the_question_can_be_answered_all_or_cancelled_and_expires(house):
 def test_all_in_a_room_and_all_in_the_house(house):
     ctx, cloud = house
     got = say(ctx, "เปิดไฟห้องนั่งเล่นทั้งหมด")
-    assert got.reply == "เปิด 5 ดวงแล้วครับ"
+    assert got.reply == "เปิดไฟ 5 ดวงแล้วครับ"
     merged = next(c for c in cloud.commands() if c["id"] == "10003ccc03")
     assert [s["outlet"] for s in merged["params"]["switches"]] == [0, 1, 2, 3]
     got = say(ctx, "ปิดไฟทั้งหมด", now=NOW + 61)
@@ -346,7 +346,7 @@ def test_the_production_case_is_asked_back_and_never_switched_silently(house):
     ctx, cloud = house
     _state(cloud, porch=False)
     got = say(ctx, "ปิดหน้าบ้าน")                      # what the transcriber wrote for "เปิดไฟหน้าบ้าน"
-    assert got.reply == "ไฟหน้าบ้านปิดอยู่แล้วครับ ต้องการเปิดไฟหน้าบ้านใช่ไหมครับ"
+    assert got.reply == "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ"      # Poom's wording, 0.51.1
     assert not got.changed and not cloud.commands()
     # One word puts it right: the OTHER state, the one that was meant.
     got = say(ctx, "ใช่ครับ", now=NOW + 65)
@@ -412,7 +412,7 @@ def test_all_skips_the_lights_already_there_and_says_so(house):
         cloud.things["thingList"][2]["itemData"]["params"]["switches"][i]["switch"] = "off"
     sent = len(cloud.commands())
     got = say(ctx, "ปิดไฟทั้งหมด", now=NOW + 61)                 # all already off: asked back
-    assert "ปิดอยู่แล้วครับ ต้องการเปิด" in got.reply and "ส่วน Light2 ออฟไลน์อยู่" in got.reply
+    assert "ปิดอยู่ครับ จะเปิดไหมครับ" in got.reply and "ส่วน Light2 ออฟไลน์อยู่" in got.reply
     assert not got.changed and len(cloud.commands()) == sent
 
 
@@ -525,3 +525,15 @@ def test_the_wake_word_that_came_with_the_pre_roll_is_cut(heard, left):
 def test_anything_else_is_left_as_it_was(heard):
     from kiosk_broker import speech_gate
     assert speech_gate.strip_wake(heard) == (heard, False)
+
+
+def test_a_bare_verb_answers_the_ask_back(house):
+    """0.51.1: the question ends "จะเปิดไหมครับ", so "เปิด" is a yes and "ปิด" a no."""
+    ctx, cloud = house
+    _state(cloud, porch=False)
+    assert say(ctx, "ปิดหน้าบ้าน").reply == "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ"
+    assert say(ctx, "ปิด", now=NOW + 62).reply == lights.CANCELLED_REPLY
+    assert not cloud.commands()
+    say(ctx, "ปิดหน้าบ้าน", now=NOW + 63)
+    got = say(ctx, "เปิดเลยครับ", now=NOW + 64)
+    assert got.reply == "เปิดไฟหน้าบ้านแล้วครับ" and got.changed

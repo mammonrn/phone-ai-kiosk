@@ -275,7 +275,7 @@ _NOT_A_CLAIM = re.compile(r"ไหม|มั้ย|หรือเปล่า|�
 
 #: What Jarvis says instead when it was about to say the map is opening and no
 #: map will open. Never say what is not being done (Poom, 2026-09-23).
-MAPS_FAILED_REPLY = "ขอโทษครับ เปิดแผนที่ไม่สำเร็จ ลองพูดชื่อสถานที่อีกครั้งนะครับ"
+MAPS_FAILED_REPLY = "เปิดแผนที่ไม่สำเร็จครับ ลองพูดชื่อสถานที่อีกทีนะครับ"
 
 
 def claims_maps(reply: str) -> bool:

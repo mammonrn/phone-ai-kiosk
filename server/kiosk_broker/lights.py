@@ -195,9 +195,28 @@ def find(intent: Intent, targets: list[Target]) -> Found:
 
 # ------------------------------------------------------------- the words said back
 
+#: Poom's rule for everything Jarvis says, the model's answers and these alike
+#: (persona.py, brevity.TARGET_CHARS): 1-2 sentences, at most 70 characters.
+#: A reply built with names that comes out longer says "ไฟ N ดวง" instead.
+#: 0.51.1: "…ปิดอยู่แล้วครับ ต้องการเปิดไฟหน้าบ้านใช่ไหมครับ" said the name
+#: twice and ran to 87 characters with two lights.
+MAX_REPLY_CHARS = 70
+
+
+def _fit(*replies: str) -> str:
+    """The first reply that keeps to MAX_REPLY_CHARS; the last one otherwise."""
+    for reply in replies:
+        if len(reply) <= MAX_REPLY_CHARS:
+            return reply
+    return replies[-1]
+
+
+def _count(names: list[str]) -> str:
+    return f"ไฟ {len(names)} ดวง"
+
 def _join(names: list[str]) -> str:
     if len(names) > 3:
-        return f"{len(names)} ดวง"
+        return f"ไฟ {len(names)} ดวง"
     return names[0] if len(names) == 1 else " ".join(names[:-1]) + " และ " + names[-1]
 
 
@@ -210,11 +229,26 @@ def _glue(before: str, name: str, after: str = "") -> str:
 
 def outcome_reply(outcome: Outcome, on: bool) -> str:
     """Only what eWeLink confirmed is said as done (the map lesson)."""
+    return _fit(_outcome_reply(outcome, on, _join), _outcome_reply(outcome, on, _count),
+                _outcome_summary(outcome, on))
+
+
+def _outcome_summary(outcome: Outcome, on: bool) -> str:
+    """The last resort: how many were done and how many were not."""
+    done, rest = len(outcome.done), len(outcome.results) - len(outcome.done)
+    if done and rest:
+        return f"{'เปิด' if on else 'ปิด'}ไฟ {done} ดวงแล้วครับ อีก {rest} ดวงยังสั่งไม่ได้"
+    if done:
+        return f"{'เปิด' if on else 'ปิด'}ไฟ {done} ดวงแล้วครับ"
+    return f"ยังสั่งไฟ {rest} ดวงไม่ได้ครับ ดูสถานะที่การ์ดไฟ"
+
+
+def _outcome_reply(outcome: Outcome, on: bool, _join) -> str:
     verb = "เปิด" if on else "ปิด"
     if outcome.stopped:
         return "ตอนนี้ปิดการสั่งไฟไว้ครับ"
     if outcome.limited:
-        return "สั่งไฟถี่เกินไปครับ กรุณารอสักครู่แล้วลองใหม่"
+        return "สั่งไฟถี่เกินไปครับ รอสักครู่แล้วลองใหม่"
     done = [t.name for t in outcome.done]
     offline = [t.name for t in outcome.offline]
     refused = [t for t, r in outcome.results if r.startswith("refused:")]
@@ -229,29 +263,41 @@ def outcome_reply(outcome: Outcome, on: bool) -> str:
         parts.append(("และ" if parts else "") + _glue("สั่ง", _join(failed), "ไม่สำเร็จ") +
                      ("" if parts else "ครับ กรุณาลองใหม่อีกครั้ง"))
     if refused:
-        parts.append(not_allowed_reply(refused))
+        parts.append(_glue("", _join([t.name for t in refused]), "ยังไม่ได้รับอนุญาตให้สั่งครับ"))
     return " ".join(parts) if parts else "ยังไม่ได้สั่งไฟครับ"
 
 
 def not_allowed_reply(refused: list[Target]) -> str:
-    return _glue("", _join([t.name for t in refused]), "ยังไม่ได้รับอนุญาตให้สั่งครับ")
+    names = [t.name for t in refused]
+    return _fit(*(_glue("", label, "ยังไม่ได้รับอนุญาตให้สั่งครับ")
+                  for label in (_join(names), _count(names))))
 
 
 def ask_reply(candidates: list[Target], on: bool) -> str:
+    """"จะเปิดไฟหน้าบ้าน หรือ ไฟด้านหน้า หรือทั้งหมดครับ": the verb and every
+    name when they fit; else as many names as fit; else only how many."""
+    verb = "เปิด" if on else "ปิด"
     names = [t.name for t in candidates]
-    shown = ", ".join(names[:4]) + (f" และอีก {len(names) - 4} ดวง" if len(names) > 4 else "")
-    return f"มีไฟ {len(names)} ดวงครับ: {shown} ต้องการ{'เปิด' if on else 'ปิด'}ดวงไหน หรือพูดว่าทั้งหมด"
+    tries = [_glue(f"จะ{verb}", " หรือ ".join(names), " หรือทั้งหมดครับ")]
+    for shown in range(min(len(names) - 1, 3), 0, -1):
+        tries.append(f"จะ{verb}ดวงไหนครับ มี {len(names)} ดวง เช่น {', '.join(names[:shown])}")
+    tries.append(f"จะ{verb}ดวงไหนครับ มี {len(names)} ดวง หรือพูดว่าทั้งหมด")
+    return _fit(*tries)
 
 
 def state_reply(chosen: list[Target]) -> str:
-    if len(chosen) == 1:
-        t = chosen[0]
-        word = "ออฟไลน์อยู่" if not t.online else "เปิดอยู่" if t.on else "ปิดอยู่" if t.on is False else ""
-        return _glue("", t.name, f"{word}ครับ") if word else _glue("ไม่ทราบสถานะของ", t.name, "ครับ")
+    if len(chosen) != 1:
+        return _fit(_state_many(chosen, True), _state_many(chosen, False))
+    t = chosen[0]
+    word = "ออฟไลน์อยู่" if not t.online else "เปิดอยู่" if t.on else "ปิดอยู่" if t.on is False else ""
+    return _glue("", t.name, f"{word}ครับ") if word else _glue("ไม่ทราบสถานะของ", t.name, "ครับ")
+
+
+def _state_many(chosen: list[Target], named: bool) -> str:
     lit = [t.name for t in chosen if t.online and t.on]
     off = sum(1 for t in chosen if not t.online)
     line = f"เปิดอยู่ {len(lit)} จาก {len(chosen)} ดวงครับ"
-    if lit and len(lit) <= 3:
+    if named and lit and len(lit) <= 3:
         line += ": " + ", ".join(lit)
     if off:
         line += f" ออฟไลน์ {off} ดวง"
@@ -263,14 +309,16 @@ def already_reply(same: list[Target], on: bool) -> str:
     "เปิด" and "ปิด" differ by one vowel, and a command for the state a light
     is already in is how a mishearing shows (2026-09-24: "เปิดไฟหน้าบ้าน" came
     through as "ปิดหน้าบ้าน" twice, and the porch light was switched off)."""
-    names = _join([t.name for t in same])
+    names = [t.name for t in same]
     now_word, other = ("เปิด", "ปิด") if on else ("ปิด", "เปิด")
-    return (_glue("", names, f"{now_word}อยู่แล้วครับ ") +
-            _glue(f"ต้องการ{other}", names, "ใช่ไหมครับ"))
+    # 0.51.1 (Poom): the name once, the state, and the one word that differs —
+    # "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ". Still says which light and which way.
+    return _fit(*(_glue("", label, f"{now_word}อยู่ครับ จะ{other}ไหมครับ")
+                  for label in (_join(names), _count(names))))
 
 
 UNDONE_PREFIX = "ขอโทษครับ "
-UNCLEAR_REPLY = "ผมได้ยินไม่ชัดครับ ยังไม่ได้สั่งไฟ กรุณาพูดใหม่อีกครั้ง"
+UNCLEAR_REPLY = "ได้ยินไม่ชัดครับ ยังไม่ได้สั่งไฟ พูดอีกทีนะครับ"
 
 
 def awaiting(who: str, now: float | None = None) -> bool:
@@ -283,11 +331,12 @@ def awaiting(who: str, now: float | None = None) -> bool:
         return bool(pending and pending.expires >= now)
 
 NOT_CONNECTED_REPLY = "ยังไม่ได้เชื่อมต่อระบบไฟบ้านครับ"
-NOT_FOUND_REPLY = "ไม่พบไฟชื่อนั้นครับ กรุณาพูดชื่อไฟหรือชื่อห้องอีกครั้ง"
+UNREACHABLE_REPLY = "ตอนนี้ติดต่อระบบไฟบ้านไม่ได้ครับ ลองใหม่อีกทีนะครับ"
+NOT_FOUND_REPLY = "ไม่พบไฟชื่อนั้นครับ พูดชื่อไฟหรือชื่อห้องอีกทีนะครับ"
 BOTH_REPLY = "กรุณาสั่งเปิดหรือปิดทีละอย่างครับ"
 CANCELLED_REPLY = "ยกเลิกแล้วครับ ไม่ได้สั่งไฟ"
 #: When the model, not this module, says a light was switched: it was not.
-NOT_DONE_REPLY = "ผมยังไม่ได้สั่งไฟครับ กรุณาพูดว่าเปิดไฟหรือปิดไฟ ตามด้วยชื่อไฟหรือชื่อห้อง"
+NOT_DONE_REPLY = "ยังไม่ได้สั่งไฟครับ พูดว่าเปิดหรือปิดไฟ ตามด้วยชื่อไฟ"
 
 _CLAIM = re.compile(r"(เปิด|ปิด|ดับ)\s*ไฟ.{0,40}(แล้ว|ให้|เรียบร้อย)|กำลัง\s*(เปิด|ปิด|ดับ)\s*ไฟ")
 _NOT_A_CLAIM = re.compile(r"ไหม|มั้ย|หรือเปล่า|ไม่ได้|ไม่สามารถ|\?|ยังไม่")
@@ -349,13 +398,24 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
             found, _, _ = home_control.targets(ctx, now=now)
             back = [x for x in found if x.key in pending.keys]
             handled = _switch(ctx, back, pending.on, now, who=who, checked=True)
-            return Handled(UNDONE_PREFIX + handled.reply, handled.changed, "lights:undone")
+            return Handled(_fit(UNDONE_PREFIX + handled.reply, handled.reply), handled.changed,
+                           "lights:undone")
         with _pending_lock:
             _pending.pop(who, None)
         pending = None
 
-    # An answer to "…ปิดอยู่แล้วครับ ต้องการเปิดใช่ไหมครับ": yes switches to
-    # the OTHER state, no leaves it; a new command is handled as one.
+    # An answer to "ไฟหน้าบ้านปิดอยู่ครับ จะเปิดไหมครับ": yes switches to the
+    # OTHER state, no leaves it; a new command is handled as one. Since 0.51.1
+    # the question ends "จะเปิดไหมครับ", so a bare verb is an answer too:
+    # "เปิด"/"เปิดเลย" is yes, "ปิด" is no — as long as it names no light.
+    if pending and pending.kind == "confirm" and intent is not None and intent.on is not None             and not intent.all and not _names_a_light(ctx, intent, now):
+        with _pending_lock:
+            _pending.pop(who, None)
+        if intent.on != pending.on:
+            return Handled(CANCELLED_REPLY, False, "lights:cancelled")
+        found, _, _ = home_control.targets(ctx, now=now)
+        return _switch(ctx, [x for x in found if x.key in pending.keys], pending.on, now,
+                       who=who, checked=True)
     if pending and pending.kind == "confirm" and (intent is None or intent.on is None):
         t = normalize(text)
         with _pending_lock:
@@ -400,7 +460,7 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
     found, _, error = home_control.targets(ctx, now=now)
     if not found:
         return Handled(NOT_CONNECTED_REPLY if error in ("not-connected", "") else
-                       "ตอนนี้ติดต่อระบบไฟบ้านไม่ได้ครับ กรุณาลองใหม่อีกครั้ง", False, f"lights:{error or 'none'}")
+                       UNREACHABLE_REPLY, False, f"lights:{error or 'none'}")
 
     if intent.on is None:                       # a question
         answer = find(Intent(None, intent.all, intent.text), found)
@@ -421,6 +481,12 @@ def handle(ctx: Context, text: str, who: str, *, now: float | None = None) -> Ha
     if not answer.chosen:
         return Handled(NOT_FOUND_REPLY, False, "lights:not-found")
     return _switch(ctx, answer.chosen, intent.on, now, who=who)
+
+
+def _names_a_light(ctx: Context, intent: Intent, now: float) -> bool:
+    """Whether a command says which light or room it means."""
+    found, _, _ = home_control.targets(ctx, now=now)
+    return find(intent, found).by in ("name", "device", "room")
 
 
 def _switch(ctx: Context, chosen: list[Target], on: bool, now: float, *, who: str = "",
@@ -447,14 +513,16 @@ def _switch(ctx: Context, chosen: list[Target], on: bool, now: float, *, who: st
             _pending[who] = Pending(not on, [t.key for t in same], now + PENDING_SECONDS, "confirm")
         gone = [t.name for t in todo if not t.online]
         tail = (" " + _glue("ส่วน", _join(gone), "ออฟไลน์อยู่")) if gone else ""
-        return Handled(already_reply(same, on) + tail, False, "lights:already")
+        return Handled(_fit(already_reply(same, on) + tail, already_reply(same, on)), False,
+                       "lights:already")
     if not todo:
         return Handled(_glue("", _join([t.name for t in same]), f"{'เปิด' if on else 'ปิด'}อยู่แล้วครับ"),
                        False, "lights:already")
     outcome = home_control.switch(ctx, todo, on, via="voice", now=now)
     reply = outcome_reply(outcome, on)
     if same and outcome.done:
-        reply += " " + _glue("ส่วน", _join([t.name for t in same]), f"{'เปิด' if on else 'ปิด'}อยู่แล้ว")
+        reply = _fit(reply + " " + _glue("ส่วน", _join([t.name for t in same]),
+                                         f"{'เปิด' if on else 'ปิด'}อยู่แล้ว"), reply)
     if outcome.done and who:
         with _pending_lock:
             _pending[who] = Pending(not on, [t.key for t in outcome.done], now + UNDO_SECONDS, "undo")

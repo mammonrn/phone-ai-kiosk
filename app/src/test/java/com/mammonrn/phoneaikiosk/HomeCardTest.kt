@@ -111,11 +111,22 @@ class HomeCardTest {
         val d = HomeCard.parse(tappable)!!.systems.single().devices
         assertEquals(listOf(true, false, false, false, false), d.map(HomeCard::canTap))
         assertEquals("", HomeCard.whyNot(d[0]))
-        assertEquals("Light2 ออฟไลน์อยู่ครับ จึงสั่งไม่ได้", HomeCard.whyNot(d[1]))
-        assertTrue("แผงควบคุม › ไฟในบ้าน" in HomeCard.whyNot(d[2]))
+        assertEquals("Light2 ออฟไลน์อยู่ครับ สั่งไม่ได้", HomeCard.whyNot(d[1]))
+        assertTrue("แผงควบคุม" in HomeCard.whyNot(d[2]))
         assertEquals("ตอนนี้ปิดการสั่งไฟไว้ครับ", HomeCard.whyNot(d[3]))
         // Icons: as chosen, by kind when none, and nothing that is not ours.
         assertEquals(listOf("bulb", "fan", "switch", "bulb", "bulb"), d.map { it.icon })
+    }
+
+    @Test
+    fun `why a light cannot be tapped keeps to 70 characters with the longest name`() {
+        val long = "ก".repeat(40)                          // home_settings.MAX_NAME on the broker
+        val json = tappable.replace("\"Light2\"", "\"$long\"").replace("\"ไฟเพดาน\"", "\"$long\"")
+            .replace("\"แปลก\"", "\"$long\"")
+        for (device in HomeCard.parse(json)!!.systems.single().devices) {
+            val why = HomeCard.whyNot(device)
+            assertTrue("${why.length}: $why", why.length <= 70)
+        }
     }
 
     @Test
