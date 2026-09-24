@@ -6,8 +6,9 @@ name: Build LibVLC (LGPL, arm64) - once
 # SHA-256. The app's build downloads that asset and refuses it if the checksum
 # differs (app/build.gradle.kts). No large .so ever goes into git.
 #
-# Build and pins: tools/libvlc/build-lgpl.sh. The image is VideoLAN's own for
-# VLC 3.0 on Android, the one vlc-android's CI uses for libvlc-3.7.6.
+# Build and pins: tools/libvlc/build-lgpl.sh. The image is VideoLAN's own, the
+# one vlc-android's CI builds arm64 with at libvlc-3.7.6 (VLC_ANDROID_IMAGE_40:
+# NDK 27/28; the "-3.0" image carries NDK 21, which is only for 32-bit ARM).
 on:
   workflow_dispatch:
 
@@ -31,7 +32,7 @@ jobs:
           cp tools/libvlc/build-lgpl.sh work/
           # The runner's own user, so /work is writable; HOME for git and Gradle.
           docker run --rm -v "$PWD/work:/work" -u "$(id -u):$(id -g)" -e HOME=/work/home \
-            registry.videolan.org/vlc-debian-android-3.0:20260701183656 \
+            registry.videolan.org/vlc-debian-android:20260610055743 \
             bash /work/build-lgpl.sh 2>&1 | tee work/build.log
           test -f work/out/SHA256SUMS
 
