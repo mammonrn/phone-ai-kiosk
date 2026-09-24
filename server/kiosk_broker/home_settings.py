@@ -81,6 +81,7 @@ def _entries(home: dict, allow: dict, own: dict) -> list[dict]:
                     "allowed": allowed is None or (isinstance(allowed, set) and i in allowed),
                 })
         out.append({"id": d["id"], "name": name, "own_name": own_name, "ewelink_name": api_name,
+                    "rssi": d.get("rssi"),
                     "room": d.get("room", ""), "kind": d["kind"], "online": bool(d.get("online")),
                     "on": d.get("on") if d.get("online") else None,
                     "allowed": allowed != "absent" if not channels else any(c["allowed"] for c in channels),
@@ -143,6 +144,8 @@ def view(ctx: home_control.Context, *, now: float | None = None) -> tuple[int, d
             "key": device_key(secret_key, e["id"]), "name": e["name"], "own_name": e["own_name"],
             "ewelink_name": e["ewelink_name"], "room": e["room"], "kind": e["kind"],
             "online": e["online"], "on": e["on"], "allowed": e["allowed"],
+            # 0.53.4: the WiFi signal in dBm and in words (ewelink.signal_word).
+            "rssi": e["rssi"], "signal": ewelink.signal_word(e["rssi"]),
             "clash": clash_with((e["id"], None)),
             # A name voice cannot use ("ไฟ" alone): shown as a warning.
             "voice": bool(lights._keys(e["name"])),

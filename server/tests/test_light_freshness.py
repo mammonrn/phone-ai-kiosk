@@ -1,12 +1,14 @@
 """0.53.3: a light switched from OUTSIDE the kiosk — by eWeLink's own
 schedule at 17:00 — while the broker held the old state. The card showed
-"ปิด" for up to ten minutes, and a state question answered from that cache."""
+"ปิด" for up to ten minutes, and a state question answered from that cache.
+0.53.4: each device's WiFi signal, in words."""
 
 from __future__ import annotations
 
 import logging
 import urllib.parse
-from datetime import datetime, timezone
+
+import pytest
 
 from kiosk_broker import ewelink, ewelink_cli, home_control, lights
 
@@ -87,45 +89,47 @@ def test_homes_are_read_once_an_hour_so_a_read_is_one_call(house):
     assert _reads(cloud, "/v2/family") == 1
 
 
-# ------------------------------------------------------------ schedules
+# ------------------------------------------------------------ WiFi signal (0.53.4)
 
-def test_schedules_are_read_in_both_shapes_and_nothing_else_is_guessed():
-    params = {"timers": [
-        {"type": "repeat", "at": "0 10 * * 0,1,2,3,4,5,6", "enabled": 1, "mId": "x", "do": {"switch": "on"}},
-        {"type": "once", "at": "2026-09-24T12:30:00.000Z", "enabled": 0,
-         "do": {"switches": [{"switch": "off", "outlet": 1}]}},
-        {"type": "duration", "at": "2026-09-24T01:00:00.000Z 60", "enabled": 1},    # skipped
-        "garbage",
-    ]}
-    assert ewelink.parse_timers(params) == [
-        {"type": "repeat", "at": "0 10 * * 0,1,2,3,4,5,6", "enabled": True, "on": True, "outlet": None},
-        {"type": "once", "at": "2026-09-24T12:30:00.000Z", "enabled": False, "on": False, "outlet": 1},
-    ]
-    assert ewelink.parse_timers({}) == [] and ewelink.parse_timers({"timers": "x"}) == []
+@pytest.mark.parametrize("rssi, word", [
+    (-30, "ดี"), (-52, "ดี"), (-67, "ดี"),           # Switch1 read -52 on production
+    (-68, "พอใช้"), (-69, "พอใช้"), (-70, "พอใช้"),     # Light1 -69, Light2 -70
+    (-71, "อ่อน"), (-80, "อ่อน"), (-81, "อ่อนมาก"), (-95, "อ่อนมาก"),
+    (None, ""),
+])
+def test_the_signal_in_words_by_metageeks_thresholds(rssi, word):
+    assert ewelink.signal_word(rssi) == word
 
 
-def test_a_schedule_due_since_the_last_read_makes_the_card_read_again(house):
+def test_only_a_plausible_reading_is_a_signal():
+    assert ewelink.rssi_of({"rssi": -61}) == -61
+    for bad in ({"rssi": "x"}, {"rssi": 5}, {"rssi": -500}, {"rssi": True}, {}):
+        assert ewelink.rssi_of(bad) is None
+
+
+def test_the_lights_page_carries_the_signal_of_each_device(house):
+    from kiosk_broker import home_settings
+
     ctx, cloud = house
-    # 17:00 in Bangkok is 10:00 UTC; the device's timer, as the app writes it.
-    five_pm = datetime(2026, 9, 24, 10, 0, tzinfo=timezone.utc).timestamp()
-    thing = cloud.things["thingList"][2]["itemData"]
-    thing["params"]["timers"] = [{"type": "repeat", "at": "0 10 * * 0,1,2,3,4,5,6", "enabled": 1,
-                                  "do": {"switches": [{"switch": "on", "outlet": 0}]}}]
-    _porch(cloud, False)
+    for item, value in zip(cloud.things["thingList"], (-69, -70, -52)):
+        item["itemData"]["params"]["rssi"] = value
     home_control.forget()
-    home_control.read(ctx, now=five_pm - 30)                 # read at 16:59:30
-    _porch(cloud, True)                                      # the timer fires
-    before = _reads(cloud)
-    home, age, _ = home_control.read(ctx, now=five_pm + 5)   # 35 s later: inside the TTL…
-    assert _reads(cloud) == before + 1 and age == 0          # …but read again
-    assert ewelink.timers_due(home["devices"], five_pm - 30, five_pm + 5)
-    assert not ewelink.timers_due(home["devices"], five_pm + 5, five_pm + 60)
+    status, body = home_settings.view(ctx, now=NOW)
+    assert status == 200
+    signals = sorted((d["rssi"], d["signal"]) for d in body["devices"])
+    assert signals == [(-70, "พอใช้"), (-69, "พอใช้"), (-52, "ดี")]
+    assert all("id" not in d for d in body["devices"])
+
+
+def test_no_schedule_code_is_left():
+    """Production (2026-09-24): no device reports a schedule. Poom: drop it."""
+    for name in ("parse_timers", "timers_due", "timer_due_between"):
+        assert not hasattr(ewelink, name)
 
 
 def test_ewelink_raw_shows_fields_and_schedules_but_no_ids_or_keys(house, cfg, capsys, caplog):
     ctx, cloud = house
     thing = cloud.things["thingList"][2]["itemData"]
-    thing["params"]["timers"] = [{"type": "repeat", "at": "0 10 * * 1", "enabled": 1, "do": {"switch": "on"}}]
     thing["params"]["rssi"] = -61
     thing["apikey"] = "USER-APIKEY-SECRET"
     thing["devicekey"] = "DEVICE-KEY-SECRET"
@@ -147,7 +151,7 @@ def test_ewelink_raw_shows_fields_and_schedules_but_no_ids_or_keys(house, cfg, c
     finally:
         ewelink.call = original
     text = out.getvalue()
-    assert "rssi = -61" in text and "repeat at 0 10 * * 1" in text and "-> on" in text
+    assert "rssi = -61" in text and "WiFi signal: -61 dBm — ดี" in text
     assert "apikey" in text                                  # the field's NAME is shown…
     for secret_value in ("USER-APIKEY-SECRET", "DEVICE-KEY-SECRET", "10003ccc03"):
         assert secret_value not in text and secret_value not in caplog.text   # …never its value

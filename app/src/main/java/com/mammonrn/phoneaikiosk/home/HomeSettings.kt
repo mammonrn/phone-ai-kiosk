@@ -26,7 +26,9 @@ object HomeSettings {
     data class Device(val key: String, val name: String, val ownName: String, val ewelinkName: String,
                       val room: String, val kind: String, val online: Boolean, val on: Boolean?,
                       val allowed: Boolean, val clash: List<String>, val channels: List<Channel>,
-                      val icon: String = "bulb", val iconChosen: Boolean = false, val voice: Boolean = true)
+                      val icon: String = "bulb", val iconChosen: Boolean = false, val voice: Boolean = true,
+                      /** 0.53.4: WiFi signal, dBm, and the broker's word for it; null/"" when not sent. */
+                      val rssi: Int? = null, val signal: String = "")
 
     /** A name voice cannot use ("ไฟ" alone). "" when it can. */
     const val NOT_FOR_VOICE = "ชื่อนี้กว้างเกินไป จาร์วิสจะสั่งผิดดวง กรุณาตั้งชื่อที่บอกว่าดวงไหน"
@@ -75,7 +77,9 @@ object HomeSettings {
                               d.optString("room"), kind, d.optBoolean("online"), bool(d, "on"),
                               d.optBoolean("allowed"), strings(d, "clash"), channels,
                               icon(d, HomeCard.defaultIcon(kind)), d.optBoolean("icon_chosen"),
-                              d.optBoolean("voice", true))
+                              d.optBoolean("voice", true),
+                              if (d.has("rssi") && !d.isNull("rssi")) d.optInt("rssi") else null,
+                              d.optString("signal").take(12))
         }
         val error = when {
             json.optString("error") == "not-connected" -> "not-connected"
@@ -109,6 +113,17 @@ object HomeSettings {
         device.room.ifEmpty { null },
         if (device.online) "ออนไลน์" else "ออฟไลน์",
     ).joinToString(" · ")
+
+    /**
+     * "สัญญาณ WiFi: อ่อน (-74 dBm)", or "" with no reading. Offline, it is the
+     * last value the device reported, and says so. Thresholds are the broker's
+     * (ewelink.signal_word, MetaGeek's table).
+     */
+    fun signalLine(device: Device): String {
+        val rssi = device.rssi ?: return ""
+        val word = device.signal.ifEmpty { return "" }
+        return "สัญญาณ WiFi: $word ($rssi dBm)" + if (device.online) "" else " · ค่าล่าสุดก่อนออฟไลน์"
+    }
 
     /** The state in words, never a colour alone. */
     fun state(online: Boolean, on: Boolean?): String = when {

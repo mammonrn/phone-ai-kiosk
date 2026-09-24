@@ -254,10 +254,7 @@ def read(ctx: Context, *, now: float | None = None, force: bool = False,
     with _lock:
         cached = _cache.get("home")
         failed = _cache.get("failed")
-        # A device schedule due since the last read makes that read stale,
-        # whatever its age (0.53.3): the card follows the 17:00 timer at once.
-        if (cached and not force and now - cached[0] < ttl
-                and not ewelink.timers_due(cached[1].get("devices", []), cached[0], now)):
+        if cached and not force and now - cached[0] < ttl:
             return cached[1], int(now - cached[0]), ""
         if failed and not force and now - failed[0] < FAILURE_BACKOFF:
             return (cached[1], int(now - cached[0]), failed[1]) if cached else (None, 0, failed[1])

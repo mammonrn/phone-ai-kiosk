@@ -154,6 +154,10 @@ internal class LightsPage(private val a: SettingsActivity) {
             setPadding(a.dp(8), a.dp(8), a.dp(8), a.dp(8))
         }
         box.addView(a.text(HomeSettings.describe(device), 13f, dim = true))
+        // 0.53.4: where the device sits in the WiFi, for deciding where to move it.
+        HomeSettings.signalLine(device).takeIf { it.isNotEmpty() }?.let {
+            box.addView(a.text(it, 13f, dim = true))
+        }
         if (device.channels.isEmpty()) {
             box.addView(item(device, null, device.name, device.ownName, device.ewelinkName, device.online,
                              device.on, device.allowed, active = true, clash = device.clash,

@@ -127,10 +127,11 @@ def devices(conn: sqlite3.Connection, cfg, secret, out=sys.stdout) -> int:
     return 0
 
 
-#: Values safe to print as they are: state, signal, energy, firmware — and
-#: the schedules. Every other field is shown by NAME only (0.53.3).
+#: Values safe to print as they are: state, signal, energy, firmware. Every
+#: other field is shown by NAME only (0.53.3). On production (2026-09-24) no
+#: device reported a schedule: eWeLink keeps them in its cloud.
 RAW_VALUES = ("switch", "switches", "state", "startup", "pulse", "pulseWidth", "rssi", "power", "voltage",
-              "current", "dayKwh", "monthKwh", "fwVersion", "sledOnline", "timers", "configure")
+              "current", "dayKwh", "monthKwh", "fwVersion", "sledOnline", "configure")
 
 
 def raw(conn: sqlite3.Connection, cfg, secret, out=sys.stdout) -> int:
@@ -161,15 +162,9 @@ def raw(conn: sqlite3.Connection, cfg, secret, out=sys.stdout) -> int:
             if key in params:
                 value = json.dumps(params[key], ensure_ascii=False)
                 print(f"    {key} = {value[:600]}{' …' if len(value) > 600 else ''}", file=out)
-        timers = ewelink.parse_timers(params)
-        if "timers" in params:
-            sent = len(params["timers"]) if isinstance(params["timers"], list) else "?"
-            print(f"  schedules read: {len(timers)} of {sent}", file=out)
-        for t in timers:
-            state = {True: "on", False: "off", None: "?"}[t["on"]]
-            channel = "" if t["outlet"] is None else f" (channel {t['outlet'] + 1})"
-            disabled = "" if t["enabled"] else "  (disabled)"
-            print(f"    {t['type']:<6} at {t['at']:<28} -> {state}{channel}{disabled}", file=out)
+        rssi = ewelink.rssi_of(params)
+        if rssi is not None:
+            print(f"  WiFi signal: {rssi} dBm — {ewelink.signal_word(rssi)}", file=out)
     print(file=out)
     print(f"calls this month: {ewelink.calls_this_month(conn)}", file=out)
     return 0

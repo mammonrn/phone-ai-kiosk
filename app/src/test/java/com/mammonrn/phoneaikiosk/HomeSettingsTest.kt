@@ -19,10 +19,10 @@ class HomeSettingsTest {
     private val house = """{"ok": true, "age_seconds": 0, "control": true, "devices": [
         {"key": "a1b2c3d4e5f60708", "name": "Light2", "own_name": "", "ewelink_name": "Light2",
          "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "allowed": true, "clash": [],
-         "channels": []},
+         "rssi": -70, "signal": "พอใช้", "channels": []},
         {"key": "0f1e2d3c4b5a6978", "name": "Switch1", "own_name": "", "ewelink_name": "Switch1",
          "room": "Livingroom", "kind": "switch", "online": true, "on": true, "allowed": true, "clash": [],
-         "channels": [
+         "rssi": -52, "signal": "ดี", "channels": [
            {"channel": 0, "name": "ไฟหน้าบ้าน", "own_name": "ไฟหน้าบ้าน", "ewelink_name": "", "on": true,
             "allowed": true, "active": true, "clash": [], "icon": "fan", "icon_chosen": true},
            {"channel": 1, "name": "Switch1 ช่อง 2", "own_name": "", "ewelink_name": "", "on": false,
@@ -102,4 +102,16 @@ class HomeSettingsTest {
 
     private fun file(path: String): String =
         listOf(File(path), File("app/$path")).first { it.exists() }.readText()
+
+    @Test
+    fun `each device says its WiFi signal in words and dBm, and when it is only the last reading`() {
+        val page = HomeSettings.parse(house)
+        val light2 = page.devices.first { it.name == "Light2" }
+        val switch1 = page.devices.first { it.name == "Switch1" }
+        assertEquals("สัญญาณ WiFi: พอใช้ (-70 dBm) · ค่าล่าสุดก่อนออฟไลน์", HomeSettings.signalLine(light2))
+        assertEquals("สัญญาณ WiFi: ดี (-52 dBm)", HomeSettings.signalLine(switch1))
+        // An older broker sends neither: no line at all.
+        val old = HomeSettings.parse(house.replace("\"rssi\": -52, \"signal\": \"ดี\", ", ""))
+        assertEquals("", HomeSettings.signalLine(old.devices.first { it.name == "Switch1" }))
+    }
 }
