@@ -214,6 +214,7 @@ class MediaPicker(
     private val main = Handler(Looper.getMainLooper())
     private val browser = FolderBrowser(r, worker, this).apply {
         ticking = true
+        showHidden = false
         showFile = if (kind == Playlist.Kind.MUSIC) MediaKinds::isAudio else MediaKinds::isVideo
         emptyWords = r.activity.getString(if (kind == Playlist.Kind.MUSIC) R.string.picker_empty_music else R.string.picker_empty_video)
     }
@@ -222,14 +223,12 @@ class MediaPicker(
     private var toQueue = false
     private var sourceKey = "phone"
     private val confirm = r.button("", big = true) { addTicked() }
-    private val note = r.text("", UiScale.TEXT_NOTE, dim = true)
-    private val sources = r.row()
+    private val note = r.text("", UiScale.TEXT_NOTE, dim = true).apply { visibility = View.GONE }
     private val titleView = r.bold("", UiScale.TEXT_BASE).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
     private var busy = false
 
     val view: LinearLayout = r.column().apply {
         addView(titleView)
-        addView(sources, LinearLayout.LayoutParams(Retro.MATCH, r.dp(UiScale.TOUCH)))
         addView(browser.view, LinearLayout.LayoutParams(Retro.MATCH, 0, 1f))
         addView(note, LinearLayout.LayoutParams(Retro.MATCH, Retro.WRAP))
         addView(r.pair(r.activity.getString(R.string.picker_add_folder), { addFolder() },
@@ -246,7 +245,7 @@ class MediaPicker(
         titleView.text = if (list != null) a.getString(if (kind == Playlist.Kind.MUSIC) R.string.picker_title_music else R.string.picker_title_video, list.name)
                          else a.getString(R.string.picker_title_queue)
         browser.ticked.clear()
-        note.text = ""
+        say(null)
         busy = false
         drawSources()
         open(sourceKey)
@@ -261,15 +260,21 @@ class MediaPicker(
         return list
     }
 
+    /** Where from — ● เครื่อง ○ การ์ด SD ○ NAS — a flat option row in the browser's tool row, after "ขึ้นหนึ่งชั้น". */
     private fun drawSources() {
         val a = r.activity
-        sources.removeAllViews()
-        sources.addView(r.label(a.getString(R.string.picker_from)))
-        fun add(key: String, word: String) = sources.addView(r.option(word, sourceKey == key) { sourceKey = key; drawSources(); open(key) },
-            LinearLayout.LayoutParams(Retro.WRAP, r.dp(UiScale.TOUCH)).apply { marginStart = r.dp(UiScale.SPACE_XS) })
+        val views = ArrayList<View>()
+        views += r.label(a.getString(R.string.picker_from)).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        fun add(key: String, word: String) { views += r.option(word, sourceKey == key) { sourceKey = key; drawSources(); open(key) } }
         add("phone", a.getString(R.string.folder_crumb_phone))
         if (roots().size > 1) add("sd", a.getString(R.string.folder_crumb_sd))
         if (NasStore.load(a) != null) add("nas", a.getString(R.string.music_nas))
+        browser.setExtras(views)
+    }
+
+    private fun say(words: String?) {
+        note.text = words.orEmpty()
+        note.visibility = if (words == null) View.GONE else View.VISIBLE
     }
 
     private fun open(key: String) {
@@ -315,7 +320,7 @@ class MediaPicker(
         if (busy) return
         busy = true
         onChanged()
-        note.text = r.activity.getString(R.string.picker_reading)
+        say(r.activity.getString(R.string.picker_reading))
         val path = browser.path
         val accept: (String) -> Boolean = if (kind == Playlist.Kind.MUSIC) MediaKinds::isAudio else MediaKinds::isVideo
         worker.execute {
@@ -324,9 +329,9 @@ class MediaPicker(
                 found.onSuccess { entries ->
                     if (entries.isEmpty()) {
                         busy = false; onChanged()
-                        note.text = r.activity.getString(if (kind == Playlist.Kind.MUSIC) R.string.picker_folder_no_music else R.string.picker_folder_no_video)
+                        say(r.activity.getString(if (kind == Playlist.Kind.MUSIC) R.string.picker_folder_no_music else R.string.picker_folder_no_video))
                     } else add(source, entries)
-                }.onFailure { busy = false; onChanged(); note.text = r.activity.getString(R.string.music_nas_failed) }
+                }.onFailure { busy = false; onChanged(); say(r.activity.getString(R.string.music_nas_failed)) }
             }
         }
     }

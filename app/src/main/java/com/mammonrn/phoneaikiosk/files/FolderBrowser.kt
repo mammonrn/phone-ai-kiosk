@@ -66,6 +66,8 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
 
     /** Which files show; folders always do. */
     var showFile: (String) -> Boolean = { true }
+    /** Names starting with a dot (".thumbnails"): the file manager shows them, the players' picker does not. */
+    var showHidden = true
     /** Files have tick boxes; a tap chooses instead of opening. */
     var ticking = false
         set(value) { field = value; if (!value) ticked.clear(); drawTicks(); adapter.notifyDataSetChanged() }
@@ -171,7 +173,7 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
                 if (asked != generation) return@post
                 result.onSuccess { listed ->
                     if (listed == null) { say(r.activity.getString(R.string.folder_blocked)); return@onSuccess }
-                    rows = listed.filter { it.folder || showFile(it.name) }
+                    rows = listed.filter { (showHidden || !it.name.startsWith(".")) && (it.folder || showFile(it.name)) }
                     Log.i(TAG, "listed rows=${rows.size}")
                     adapter.notifyDataSetChanged()
                     list.setSelection(0)
@@ -271,7 +273,7 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
         val a = r.activity
         val space = spaceKnown
         statusSpace.text = when {
-            space != null -> a.getString(R.string.folder_space, FileOps.formatSize(space.first), FileOps.formatSize(space.second))
+            space != null -> spaceWords(space.first, space.second)
             source?.readOnly == true -> a.getString(R.string.folder_read_only)
             else -> "—"
         }
@@ -279,6 +281,16 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
         val bytes = ticked.values.sumOf { it.size }
         statusTicked.text = if (ticked.isEmpty()) a.getString(R.string.folder_ticked_short, 0)
                             else a.getString(R.string.folder_ticked_bytes, ticked.size, FileOps.formatSize(bytes))
+    }
+
+    /** "ว่าง 39.7 จาก 49.5 GB": one unit when both share it, so it fits its box (seen cut short on the A07). */
+    private fun spaceWords(free: Long, total: Long): String {
+        val f = FileOps.formatSize(free)
+        val t = FileOps.formatSize(total)
+        val unit = t.substringAfter(' ')
+        return if (f.substringAfter(' ') == unit)
+            r.activity.getString(R.string.folder_space_one_unit, f.substringBefore(' '), t.substringBefore(' '), unit)
+        else r.activity.getString(R.string.folder_space, f, t)
     }
 
     // ------------------------------------------------------------ the columns
@@ -322,7 +334,8 @@ class FolderBrowser(private val r: Retro, private val worker: ExecutorService, p
     }
 
     private fun rowView(): LinearLayout = r.row().apply {
-        minimumHeight = r.dp(UiScale.ROW)
+        // One line a row, 48dp: a finger's height, and more of the folder on the screen.
+        minimumHeight = r.dp(UiScale.TOUCH)
         setPadding(r.dp(UiScale.SPACE_S), r.dp(UiScale.SPACE_XS), r.dp(UiScale.SPACE_S), r.dp(UiScale.SPACE_XS))
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), ColorDrawable(r.color(R.color.retro_face)))
