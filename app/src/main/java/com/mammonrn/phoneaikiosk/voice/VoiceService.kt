@@ -708,14 +708,17 @@ class VoiceService : Service() {
         val deck = object : com.mammonrn.phoneaikiosk.media.VideoVoice.Deck {
             override val hasMedia get() = player.hasMedia
             override val playing get() = player.state == com.mammonrn.phoneaikiosk.media.VideoPlayer.State.PLAYING
+            override val hasLast get() = player.current != null
+            private fun openScreen() = runCatching {
+                startActivity(Intent(context, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { Log.w(TAG, "video screen not opened: ${it.javaClass.simpleName}") }
             override fun play(videos: List<com.mammonrn.phoneaikiosk.media.Video>, start: Int) {
                 player.play(context, videos, start)
-                runCatching {
-                    startActivity(Intent(context, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.onFailure { Log.w(TAG, "video screen not opened: ${it.javaClass.simpleName}") }
+                openScreen()
             }
-            override fun resume() = player.resume(context)
+            // 0.58.0: a video plays only on its screen, so going on opens it again.
+            override fun resume() { player.resume(context); openScreen() }
             override fun pause() = player.pause(context)
             override fun stop() = player.stop(context)
         }

@@ -11,7 +11,8 @@ import org.junit.Test
 /** 0.57.0: "เปิดวิดีโอ / หยุดวิดีโอ" on the phone — found, not found, nothing playing. */
 class VideoVoiceTest {
 
-    private class FakeDeck(override var hasMedia: Boolean = false, override var playing: Boolean = false) : VideoVoice.Deck {
+    private class FakeDeck(override var hasMedia: Boolean = false, override var playing: Boolean = false,
+                           override var hasLast: Boolean = false) : VideoVoice.Deck {
         val did = ArrayList<String>()
         override fun play(videos: List<Video>, start: Int) { did += "play:${videos[start].track.title}"; hasMedia = true; playing = true }
         override fun resume() { did += "resume"; playing = true }
@@ -41,7 +42,8 @@ class VideoVoiceTest {
 
     @Test
     fun `pause and stop need a video, and do not claim one`() {
-        assertEquals(VideoVoice.NOTHING_PLAYING, VideoVoice.perform("pause", "", { library }, FakeDeck()))
+        // 0.58.0: a question closes the player, which stops it — so this is true, and said.
+        assertEquals(VideoVoice.ALREADY_STOPPED, VideoVoice.perform("pause", "", { library }, FakeDeck()))
         val deck = FakeDeck(hasMedia = true, playing = true)
         assertNull(VideoVoice.perform("pause", "", { library }, deck))
         assertNull(VideoVoice.perform("stop", "", { library }, deck))
@@ -55,11 +57,15 @@ class VideoVoiceTest {
         assertEquals(listOf("resume"), paused.did)
         assertEquals(VideoVoice.WHICH_ONE, VideoVoice.perform("play", "", { library }, FakeDeck()))
         assertEquals(VideoVoice.NOTHING_LEFT, VideoVoice.perform("resume", "", { library }, FakeDeck()))
+        // The last video, stopped by leaving its screen, opens again from its place.
+        val last = FakeDeck(hasLast = true)
+        assertNull(VideoVoice.perform("resume", "", { library }, last))
+        assertEquals(listOf("resume"), last.did)
     }
 
     @Test
     fun `every reply fits the 70-character rule`() {
-        for (r in listOf(VideoVoice.NO_VIDEOS, VideoVoice.NOTHING_PLAYING, VideoVoice.NOTHING_LEFT,
+        for (r in listOf(VideoVoice.NO_VIDEOS, VideoVoice.ALREADY_STOPPED, VideoVoice.NOTHING_LEFT,
                          VideoVoice.WHICH_ONE, VideoVoice.NOT_UNDERSTOOD, VideoVoice.notFound("ก".repeat(60)))) {
             assertTrue(r, r.length <= 70)
         }

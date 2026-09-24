@@ -526,7 +526,6 @@
     <string name="video_local_empty">ไม่พบวิดีโอในเครื่อง รองรับ MP4, MKV, WebM, 3GP และ MOV ไม่เกิน 720p</string>
     <string name="video_too_big">เกินขีดจำกัด (%1$s)</string>
     <string name="video_left_at">ดูถึง %1$s</string>
-    <string name="video_back_to_player">กลับไปที่ %1$s</string>
     <string name="video_to_list">◄ รายการ</string>
     <string name="video_open">เปิดไฟล์</string>
     <string name="video_louder">เพิ่มเสียง</string>
@@ -543,7 +542,6 @@
     <string name="video_rotation_locked">หมุนจอ\nล็อก</string>
     <string name="video_rotation_free_words">หมุนจอตามเครื่องได้ แตะเพื่อล็อกไว้ที่ทิศนี้ ใช้เมื่อเปิดเต็มจอ</string>
     <string name="video_rotation_locked_words">ล็อกการหมุนจออยู่ แตะเพื่อให้หมุนตามเครื่อง ใช้เมื่อเปิดเต็มจอ</string>
-    <string name="video_ask_jarvis">จาร์วิส</string>
     <string name="video_ring">วงแหวนควบคุม แตะกลางเพื่อเล่น แตะซ้ายหรือขวาเพื่อถอยหรือข้าม 10 วินาที ลากรอบวงเพื่อเลื่อนตำแหน่ง</string>
     <string name="video_ring_playing">วงแหวนควบคุม แตะกลางเพื่อหยุดชั่วคราว แตะซ้ายหรือขวาเพื่อถอยหรือข้าม 10 วินาที ลากรอบวงเพื่อเลื่อนตำแหน่ง</string>
     <string name="video_lcd_index">ไฟล์ %1$02d/%2$02d</string>

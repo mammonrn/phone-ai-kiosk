@@ -503,20 +503,17 @@ class MainActivity : Activity() {
         // something is loaded (showMusic), hidden when nothing is.
         card("music", R.id.card_music, R.id.music_body, R.id.music_badge, R.id.music_titlebar,
              0f, 60 * minute)
-        // 0.56.0: the same window for a video — whichever player the card shows (cardIsVideo).
+        // 0.58.0: music only — a video never plays behind the home screen (Poom).
         val openPlayer = android.view.View.OnClickListener {
-            startActivity(Intent(this, if (cardIsVideo) com.mammonrn.phoneaikiosk.media.VideoActivity::class.java
-                                       else com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
+            startActivity(Intent(this, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
         }
         findViewById<android.view.View>(R.id.music_titlebar).setOnClickListener(openPlayer)
         findViewById<android.view.View>(R.id.music_song).setOnClickListener(openPlayer)
         findViewById<android.view.View>(R.id.music_toggle).setOnClickListener {
-            if (cardIsVideo) com.mammonrn.phoneaikiosk.media.VideoPlayer.toggle(this)
-            else com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
         }
         findViewById<android.view.View>(R.id.music_next).setOnClickListener {
-            if (cardIsVideo) com.mammonrn.phoneaikiosk.media.VideoPlayer.next(this)
-            else com.mammonrn.phoneaikiosk.media.MusicPlayer.next(this)
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.next(this)
         }
         alarmStop.setOnClickListener {
             VoiceService.start(this, VoiceService.ACTION_ALARM_STOP)
@@ -534,8 +531,7 @@ class MainActivity : Activity() {
         // it comes back by itself the day the broker has devices to show).
         fun hidden(id: String) = (id == "alarms" && !alarmsVisible) ||
             (id == "home" && homeCard == null) ||
-            (id == "music" && !com.mammonrn.phoneaikiosk.media.MusicPlayer.hasMedia &&
-                !com.mammonrn.phoneaikiosk.media.VideoPlayer.hasMedia)
+            (id == "music" && !com.mammonrn.phoneaikiosk.media.MusicPlayer.hasMedia)
         val slots = fitToStack(board.layout(nowMs).filterNot { hidden(it.id) }, nowMs)
         val ids = slots.map { it.id }
         if (ids != shownOrder) {
@@ -641,38 +637,11 @@ class MainActivity : Activity() {
      * Held open while music is loaded, so the windows above fold for it, never
      * Jarvis. Touches a view only when its text changes.
      */
-    /** The music window shows the video (0.56.0) when a video is loaded and the music is not playing. */
-    private var cardIsVideo = false
-
     private fun showMusic(nowMs: Long) {
         val player = com.mammonrn.phoneaikiosk.media.MusicPlayer
-        val video = com.mammonrn.phoneaikiosk.media.VideoPlayer
-        val has = player.hasMedia || video.hasMedia
+        val has = player.hasMedia
         board.holdOpen("music", has)
         if (!has) return
-        cardIsVideo = video.hasMedia &&
-            (!player.hasMedia || video.state == com.mammonrn.phoneaikiosk.media.VideoPlayer.State.PLAYING)
-        val titleView = findViewById<android.widget.TextView>(R.id.music_title)
-        val title = getString(if (cardIsVideo) R.string.window_video else R.string.window_music)
-        if (titleView.text.toString() != title) {
-            titleView.text = title
-            findViewById<android.widget.ImageView>(R.id.music_icon).apply {
-                setImageResource(if (cardIsVideo) R.drawable.ic_pixel_video_light else R.drawable.ic_pixel_music_light)
-                contentDescription = title
-            }
-        }
-        if (cardIsVideo) {
-            val v = video.current ?: return
-            val playing = video.state == com.mammonrn.phoneaikiosk.media.VideoPlayer.State.PLAYING
-            val toggle = getString(if (playing) R.string.music_pause else R.string.music_resume)
-            val songView = findViewById<android.widget.TextView>(R.id.music_song)
-            val toggleView = findViewById<android.widget.TextView>(R.id.music_toggle)
-            if (songView.text.toString() != v.track.title) songView.text = v.track.title
-            if (toggleView.text.toString() != toggle) toggleView.text = toggle
-            summaries["music"] = getString(if (playing) R.string.music_playing else R.string.music_paused)
-            board.report("music", v.track.id, nowMs)
-            return
-        }
         val track = player.queue.current ?: return
         val song = if (track.artist.isEmpty()) track.title else "${track.title} · ${track.artist}"
         val playing = player.state == com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING

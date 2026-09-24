@@ -7,11 +7,10 @@ package com.mammonrn.phoneaikiosk.media
  * phone can say whether one was found. Done before any word is said, as the
  * music (MusicVoice): when it cannot be done, the reply IS the reason.
  *
- * HOW "หยุดวิดีโอ" ARRIVES: while a video plays the wake word is off
- * (WakePause, unchanged), so it comes by the Jarvis button — the taskbar's, or
- * "ถามจาร์วิส" on the video's panel. The question pauses the video; this
- * command then pauses it for good (the player lets go of its hold), so it is
- * not started again when the answer ends.
+ * 0.58.0: a video plays only on its screen, and leaving the screen stops it
+ * (Poom). A question closes the screen, so by the time "หยุดวิดีโอ" is heard
+ * the video has already stopped: the reply says so ([ALREADY_STOPPED]).
+ * "เล่นวิดีโอต่อ" opens the last video again, from where it was left.
  *
  * Plain Kotlin behind [Deck]; VideoVoiceTest drives every case.
  */
@@ -26,6 +25,8 @@ object VideoVoice {
     interface Deck {
         val hasMedia: Boolean
         val playing: Boolean
+        /** A video was watched and can be opened again from its place. */
+        val hasLast: Boolean
         fun play(videos: List<Video>, start: Int)
         fun resume()
         fun pause()
@@ -35,8 +36,8 @@ object VideoVoice {
     /** Null when done (the broker's words stand), else the words to say instead. */
     fun perform(command: String, query: String, library: () -> List<Video>, deck: Deck): String? = when (command) {
         PLAY -> if (query.isNotBlank()) playFound(query.trim(), library(), deck) else playAny(library, deck)
-        RESUME -> if (deck.hasMedia) { if (!deck.playing) deck.resume(); null } else NOTHING_LEFT
-        PAUSE, STOP -> if (!deck.hasMedia) NOTHING_PLAYING else { if (command == PAUSE) deck.pause() else deck.stop(); null }
+        RESUME -> if (deck.hasMedia || deck.hasLast) { if (!deck.playing) deck.resume(); null } else NOTHING_LEFT
+        PAUSE, STOP -> if (!deck.hasMedia) ALREADY_STOPPED else { if (command == PAUSE) deck.pause() else deck.stop(); null }
         else -> NOT_UNDERSTOOD
     }
 
@@ -51,7 +52,7 @@ object VideoVoice {
     /** "เปิดวิดีโอ" alone: go on with the one left paused, or say there is none to pick. */
     private fun playAny(library: () -> List<Video>, deck: Deck): String? {
         if (deck.playing) return null
-        if (deck.hasMedia) { deck.resume(); return null }
+        if (deck.hasMedia || deck.hasLast) { deck.resume(); return null }
         return if (library().isEmpty()) NO_VIDEOS else WHICH_ONE
     }
 
@@ -61,7 +62,7 @@ object VideoVoice {
     }
 
     const val NO_VIDEOS = "ยังไม่มีวิดีโอในเครื่องครับ"
-    const val NOTHING_PLAYING = "ตอนนี้ไม่มีวิดีโอเล่นอยู่ครับ"
+    const val ALREADY_STOPPED = "วิดีโอหยุดอยู่แล้วครับ"
     const val NOTHING_LEFT = "ไม่มีวิดีโอที่ค้างไว้ครับ บอกชื่อวิดีโอที่จะดูได้เลยครับ"
     const val WHICH_ONE = "จะดูวิดีโอเรื่องไหนครับ บอกชื่อได้เลยครับ"
     const val NOT_UNDERSTOOD = "ผมไม่เข้าใจคำสั่งวิดีโอนี้ครับ"

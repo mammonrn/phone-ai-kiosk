@@ -139,8 +139,11 @@ class VideoActivity : Activity() {
     override fun onPause() {
         super.onPause()
         debugTurn = null
-        // Leaving the player (Back, X, Hey Jarvis, the home screen): portrait again.
-        if (isFinishing) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        // Leaving the player (Back, X, Hey Jarvis, the home screen): the video stops, portrait again.
+        if (isFinishing) {
+            stopForLeaving("closed")
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         VideoPlayer.listeners.remove(listener)
         HeatWatch.listeners.remove(heat)
         handler.removeCallbacks(tick)
@@ -161,10 +164,19 @@ class VideoActivity : Activity() {
 
     /** Portrait, unless full screen: then the phone's turning, or held where it is when locked. */
     private fun applyOrientation() {
-        requestedOrientation = when {
+        val wanted = when {
             page != Page.PLAYER || !fill -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             rotationLocked -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
             else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        }
+        if (requestedOrientation != wanted) {
+            requestedOrientation = wanted
+            // 0.58.0: said in the log, so a turn that does not happen can be traced to what was asked.
+            Log.i(VideoService.TAG, "orientation asked=" + when (wanted) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR -> "sensor"
+                ActivityInfo.SCREEN_ORIENTATION_LOCKED -> "locked"
+                else -> "portrait"
+            } + " page=${page.name.lowercase()} full=$fill")
         }
     }
 
@@ -187,6 +199,26 @@ class VideoActivity : Activity() {
         }
     }
 
+    /** The screen went off (or something covered it) while the video played: paused, the place kept. */
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing && !isChangingConfigurations && VideoPlayer.state == VideoPlayer.State.PLAYING) {
+            VideoPlayer.pause(this)
+            Log.i(VideoService.TAG, "paused: screen off")
+        }
+    }
+
+    /**
+     * 0.58.0 (Poom): no video in the background. Leaving the player — X, Back to the
+     * list, closed by a question — stops it; the place it was left is kept
+     * (VideoService.stopAll saves it) and the wake word comes back at once.
+     */
+    private fun stopForLeaving(why: String) {
+        if (!VideoPlayer.hasMedia) return
+        VideoPlayer.stop(this)
+        Log.i(VideoService.TAG, "stopped: left the player ($why)")
+    }
+
     override fun onDestroy() {
         worker.shutdownNow()
         super.onDestroy()
@@ -206,6 +238,7 @@ class VideoActivity : Activity() {
     }
 
     private fun goHome() {
+        stopForLeaving("home")
         KioskScreens.leaveAllButHome("video-home")
         startActivity(Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
@@ -215,6 +248,8 @@ class VideoActivity : Activity() {
     // ------------------------------------------------------------ the list
 
     private fun showList() {
+        // Back to the list stops the video: nothing plays where it cannot be seen (0.58.0).
+        stopForLeaving("list")
         page = Page.LIST
         generation += 1
         applyOrientation()
@@ -238,10 +273,6 @@ class VideoActivity : Activity() {
         val body = column()
         window.addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dp(UiScale.WINDOW_INSET) })
 
-        if (VideoPlayer.hasMedia) {
-            body.addView(button(getString(R.string.video_back_to_player, VideoPlayer.current?.track?.title.orEmpty())) { showPlayer() },
-                         LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { bottomMargin = dp(UiScale.SPACE_S) })
-        }
         VideoPlayer.error?.let {
             body.addView(text(it, UiScale.TEXT_BASE).apply { setTextColor(color(R.color.retro_bad)) },
                          LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
@@ -358,6 +389,10 @@ class VideoActivity : Activity() {
     private fun showPlayer() {
         page = Page.PLAYER
         generation += 1
+        // 0.58.0, the bug Poom met: full screen stayed on (the button said เปิด) while
+        // another video was chosen, and this page never asked for the sensor again —
+        // the phone was turned and the app was still asking for portrait (A07 log, 20:58).
+        applyOrientation()
         root.removeAllViews()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -391,12 +426,6 @@ class VideoActivity : Activity() {
                 maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
             }
             addView(titleView, LinearLayout.LayoutParams(0, WRAP, 1f))
-            // 0.57.0: the way to say "หยุดวิดีโอ" while the wake word rests — the same
-            // as the taskbar's Jarvis button (the question ends on the home screen, DESIGN.md 11).
-            addView(dvdButton(getString(R.string.video_ask_jarvis)) {
-                com.mammonrn.phoneaikiosk.voice.VoiceService.start(this@VideoActivity,
-                    com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_BUTTON_LISTEN)
-            }, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginEnd = dp(UiScale.SPACE_S) })
             addView(FrameLayout(context).apply {
                 background = DvdSkin.button(context); isClickable = true
                 contentDescription = getString(R.string.settings_home)
@@ -528,6 +557,7 @@ class VideoActivity : Activity() {
     private fun setFull(on: Boolean) {
         if (fill == on) return
         fill = on
+        Log.i(VideoService.TAG, "full screen ${if (on) "on" else "off"}")
         frame?.fill = on && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
         applyOrientation()
         refresh()
