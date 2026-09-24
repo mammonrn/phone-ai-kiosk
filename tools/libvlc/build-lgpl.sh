@@ -30,6 +30,10 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 cd /work
 echo "== environment"; env | grep -E '^ANDROID_(SDK|NDK)=' || true; nproc; df -h /work | tail -1
 
+# get-vlc.sh applies VideoLAN's patches with "git am", which needs a committer.
+git config --global user.email "build@phone-ai-kiosk.invalid"
+git config --global user.name "phone-ai-kiosk build"
+
 rm -rf vlc-android
 git clone "$VLC_ANDROID_REPO" vlc-android
 cd vlc-android
