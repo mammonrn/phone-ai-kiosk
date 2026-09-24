@@ -58,7 +58,13 @@ class VlcDeck(context: Context, private val events: Events) {
                 MediaPlayer.Event.Playing -> { playing = true; startWhereAsked(); events.onPlaying() }
                 MediaPlayer.Event.SeekableChanged -> if (e.seekable) startWhereAsked()
                 MediaPlayer.Event.Paused -> { playing = false; events.onPaused() }
-                MediaPlayer.Event.TimeChanged -> lastTimeMs = e.timeChanged
+                MediaPlayer.Event.TimeChanged -> {
+                    lastTimeMs = e.timeChanged
+                    if (startAtMs > 0) {
+                        if (e.timeChanged >= startAtMs - START_NEAR_MS) { startAtMs = 0; Log.i(TAG, "vlc: started where asked") }
+                        else startWhereAsked()
+                    }
+                }
                 MediaPlayer.Event.LengthChanged -> if (e.lengthChanged > 0) lengthMs = e.lengthChanged
                 MediaPlayer.Event.EndReached -> {
                     playing = false
@@ -85,11 +91,23 @@ class VlcDeck(context: Context, private val events: Events) {
      * file is sought to once it plays and can seek.
      */
     private var startAtMs = 0L
+    /**
+     * A seek asked as the file opens can be lost (0.60.0: the VCD went on from
+     * 0:00 after a rescue), so it is asked again until VLC's time shows it
+     * took, a few times at most.
+     */
+    private var seekTries = 0
+    private var lastTryAt = 0L
 
     private fun startWhereAsked() {
         val at = startAtMs
         if (at <= 0 || !player.isSeekable) return
-        startAtMs = 0
+        // A seek takes a moment to show in VLC's time: asked again only after a second.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (seekTries > 0 && now - lastTryAt < 1_000) return
+        lastTryAt = now
+        if (seekTries >= MAX_SEEK_TRIES) { startAtMs = 0; Log.w(TAG, "vlc: could not start where asked"); return }
+        seekTries++
         player.time = at
     }
 
@@ -118,6 +136,7 @@ class VlcDeck(context: Context, private val events: Events) {
         lastTimeMs = startMs
         lengthMs = 0
         startAtMs = startMs
+        seekTries = 0
         val m = if (track.onNas) nasMedia(track) else Media(lib(app), Uri.fromFile(java.io.File(track.path)))
         // Kept (and released at stop): the player's getMedia() would take a reference each time it is asked.
         media = m
@@ -160,7 +179,7 @@ class VlcDeck(context: Context, private val events: Events) {
     fun seekTo(ms: Long) {
         if (!loaded) return
         // Before it can seek, the place is kept for when it can.
-        if (startAtMs > 0 || !player.isSeekable) startAtMs = ms.coerceAtLeast(0) else player.time = ms.coerceAtLeast(0)
+        if (startAtMs > 0 || !player.isSeekable) { startAtMs = ms.coerceAtLeast(0); seekTries = 0 } else player.time = ms.coerceAtLeast(0)
     }
 
     /** 0..1, as the players' own volume. */
@@ -272,6 +291,9 @@ class VlcDeck(context: Context, private val events: Events) {
 
     companion object {
         private const val TAG = "KioskVlc"
+        /** A start this close to where it was asked counts as there. */
+        private const val START_NEAR_MS = 3_000L
+        private const val MAX_SEEK_TRIES = 5
 
         @Volatile private var shared: LibVLC? = null
 
