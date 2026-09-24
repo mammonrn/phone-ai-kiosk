@@ -445,6 +445,7 @@
     <string name="music_queue_empty">ยังไม่มีเพลงในรายการ กรุณาเลือกเพลงจากแท็บคลังเพลง หรือกดปุ่มจาร์วิสแล้วพูดว่า "เปิดเพลง" ตามด้วยชื่อเพลงหรือศิลปิน</string>
     <string name="music_go_library">ไปที่คลังเพลง</string>
     <string name="music_error_track">เล่นเพลง "%1$s" ไม่ได้ ไฟล์อาจเสียหรือเป็นรูปแบบที่ไม่รองรับ</string>
+    <string name="music_no_decoder">เล่นเพลง "%1$s" ไม่ได้ เพราะเครื่องนี้ไม่มีตัวถอดรหัส %2$s จึงข้ามไปเพลงถัดไป</string>
     <string name="music_local">ในเครื่อง</string>
     <string name="music_nas">NAS</string>
     <string name="music_source">แหล่งเพลง</string>

@@ -78,6 +78,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }
                 val sums = FloatArray(com.mammonrn.phoneaikiosk.media.fx.Spectrum.BARS)
                 var n = 0
+                var tries = 0
                 val main = android.os.Handler(android.os.Looper.getMainLooper())
                 val pending = goAsync()
                 val sample = object : Runnable {
@@ -87,7 +88,10 @@ class TestTriggerReceiver : BroadcastReceiver() {
                             for (i in b.indices) sums[i] += b[i]
                             n += 1
                         }
-                        if (n < 30 && mp.hasMedia) { main.postDelayed(this, 100); return }
+                        // At most 5 s: a song with no samples (one the phone cannot decode) held
+                        // the broadcast open past Android's limit once — an ANR on the A07.
+                        tries += 1
+                        if (n < 30 && mp.hasMedia && tries < 50) { main.postDelayed(this, 100); return }
                         val info = mp.fileInfo()
                         android.util.Log.i("KioskMusic", "fx bars eq=${mp.eq.on}/${mp.eq.preset} working=${mp.fx.working} " +
                             "kbps=${info.kbps} khz=${info.khz} ch=${info.channels} n=$n " +

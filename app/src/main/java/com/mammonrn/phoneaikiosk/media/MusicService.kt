@@ -343,6 +343,21 @@ class MusicService : Service(), WakePause.Media {
         player.addListener(object : Player.Listener {
             override fun onEvents(p: Player, events: Player.Events) = update()
 
+            // A song whose sound the phone cannot decode — ALAC on the A07, which has
+            // no ALAC decoder — would otherwise "play" in silence with the clock
+            // running. Said in words, and the next song plays.
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                if (audio.isEmpty() || audio.any { g -> (0 until g.length).any { g.isTrackSupported(it) } }) return
+                val mime = audio.first().getTrackFormat(0).sampleMimeType.orEmpty()
+                val kind = mime.substringAfter('/').uppercase().ifEmpty { "?" }
+                Log.w(TAG, "no decoder for $mime")
+                MusicPlayer.error = getString(R.string.music_no_decoder, MusicPlayer.queue.current?.title.orEmpty(), kind)
+                failures += 1
+                val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
+                handler.post { if (next != null) load(next, true) else stopAll() }
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) {
                     failures = 0
