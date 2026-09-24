@@ -138,8 +138,8 @@ if (hasGoogleHomeSdk) {
 // fetched here by that pinned release and REFUSED if its SHA-256 differs; it
 // never goes into git (.gitignore). The source, the patches and the way to build
 // it again are in licenses/LIBVLC.md.
-val libvlcRelease = "libvlc-lgpl-3.7.6-arm64-5"
-val libvlcSha256 = "e8c58f5e4d64cddba1199b13e0aa2567112412261f25e13c8acd195e67f5cb93"
+val libvlcRelease = "libvlc-lgpl-3.7.6-arm64-6"
+val libvlcSha256 = "e7d38518cb7b88250100b286eb465adf0fcccf5da4c7a11a28b5211c000dcc30"
 val libvlcAar = file("libs/libvlc-lgpl-3.7.6-arm64.aar")
 // For a compile check on a developer's machine only: another AAR of the same
 // API. Never set in CI, so what ships is always the checked one.

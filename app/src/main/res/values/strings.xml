@@ -297,7 +297,7 @@
         <item>ราคาทอง|สมาคมค้าทองคำ ผ่าน chnwt.dev</item>
         <item>ราคาน้ำมัน|ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev</item>
         <item>คริปโต|ราคาจาก Binance อันดับจาก CoinGecko</item>
-        <item>ตัวเล่นสำรอง LibVLC|LibVLC 3.7.6 จาก VideoLAN สัญญาอนุญาต GNU LGPL 2.1 ขึ้นไป build เองแบบ LGPL เท่านั้น ไม่มีส่วน GPL ใช้เล่นไฟล์ที่ Media3 เล่นไม่ได้ ข้อความสัญญาอนุญาตเต็ม ซอร์ส และวิธี build ซ้ำ อยู่ที่ github.com/mammonrn/phone-ai-kiosk โฟลเดอร์ licenses (ไฟล์ LIBVLC.md และ LGPL-2.1.txt)</item>
+        <item>ตัวเล่นสำรอง LibVLC|LibVLC 3.7.6 จาก VideoLAN สัญญาอนุญาต GNU LGPL 2.1 ขึ้นไป build เองแบบ LGPL เท่านั้น ไม่มีส่วน GPL ใช้เล่นไฟล์ที่ Media3 เล่นไม่ได้ ข้อความสัญญาอนุญาตเต็ม ซอร์ส และวิธี build ซ้ำ อยู่ที่ github.com/mammonrn/phone-ai-kiosk โฟลเดอร์ licenses (ไฟล์ LIBVLC.md และ LGPL-2.1.txt) ส่วนหนึ่งของซอฟต์แวร์นี้ © The FreeType Project (www.freetype.org)</item>
     </string-array>
     <!-- Identity check (0.37.0): face with a blink, pattern as the fallback.
          DESIGN.md, "ยืนยันตัวตน". Formal written Thai, as every screen. -->
