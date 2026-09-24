@@ -26,4 +26,23 @@
     <!-- The music player's read-out (0.53.0): a 1990s LCD, green on black. -->
     <color name="retro_lcd">#FF00E000</color>
     <color name="retro_lcd_dim">#FF00A000</color>
+    <!-- 0.55.0: the music player's own skin — our colours, in the mood of a
+         late-90s player: dark metal, a green read-out, gold sliders. DESIGN.md 2. -->
+    <color name="amp_body">#FF2C2F40</color>
+    <color name="amp_face">#FF3C4058</color>
+    <color name="amp_light">#FF7478A0</color>
+    <color name="amp_dark">#FF0C0D14</color>
+    <color name="amp_text">#FFDCE0EE</color>
+    <color name="amp_lcd_bg">#FF000000</color>
+    <color name="amp_led_off">#FF1C3A1C</color>
+    <color name="amp_gold">#FFD8B800</color>
+    <color name="amp_bar_mid">#FFD8D800</color>
+    <color name="amp_bar_high">#FFE05000</color>
+    <color name="amp_select">#FF1E3A8C</color>
+    <!-- 0.56.0: the video player's panel — brushed silver and a teal read-out. -->
+    <color name="dvd_silver">#FFC8CCD4</color>
+    <color name="dvd_silver_light">#FFF2F4F8</color>
+    <color name="dvd_silver_dark">#FF7C828E</color>
+    <color name="dvd_lcd_bg">#FF0E6E86</color>
+    <color name="dvd_lcd_text">#FFB8F4FF</color>
 </resources>

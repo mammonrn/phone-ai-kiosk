@@ -67,6 +67,37 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskHome", "sample home card ${if (com.mammonrn.phoneaikiosk.home.HomeCard.override != null) "on" else "off"}")
             }
 
+            ACTION_FX -> {
+                // 0.55.0: checks the equalizer on the phone, in numbers. --es preset Rock|Flat|…
+                // sets it (--ez on false turns it off); then the bars are averaged over 3 s of
+                // what is playing and logged (KioskMusic "fx bars"), with the file's format.
+                // Never a title or a path.
+                val mp = com.mammonrn.phoneaikiosk.media.MusicPlayer
+                intent.getStringExtra("preset")?.let { name ->
+                    mp.setEq(context, com.mammonrn.phoneaikiosk.media.fx.Eq.preset(name, intent.getBooleanExtra("on", true)))
+                }
+                val sums = FloatArray(com.mammonrn.phoneaikiosk.media.fx.Spectrum.BARS)
+                var n = 0
+                val main = android.os.Handler(android.os.Looper.getMainLooper())
+                val pending = goAsync()
+                val sample = object : Runnable {
+                    override fun run() {
+                        mp.fx.tap.at(mp.positionMs * 1000)?.let { s ->
+                            val b = com.mammonrn.phoneaikiosk.media.fx.Spectrum.bars(s, mp.fx.tap.sampleRate)
+                            for (i in b.indices) sums[i] += b[i]
+                            n += 1
+                        }
+                        if (n < 30 && mp.hasMedia) { main.postDelayed(this, 100); return }
+                        val info = mp.fileInfo()
+                        android.util.Log.i("KioskMusic", "fx bars eq=${mp.eq.on}/${mp.eq.preset} working=${mp.fx.working} " +
+                            "kbps=${info.kbps} khz=${info.khz} ch=${info.channels} n=$n " +
+                            sums.joinToString(" ") { "%.2f".format(if (n == 0) 0f else it / n) })
+                        pending.finish()
+                    }
+                }
+                main.postDelayed(sample, 1000)
+            }
+
             ACTION_MEDIA_HOLD -> {
                 // Pretends music is playing, for the Jarvis card's "resting"
                 // state and the button-during-media path, before a real player
@@ -293,6 +324,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK"
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
         const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
+        const val ACTION_FX = "com.mammonrn.phoneaikiosk.TEST_FX"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
         const val ACTION_LIGHTS_PAGE = "com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE"
 

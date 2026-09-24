@@ -20,9 +20,14 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.mammonrn.phoneaikiosk.R
+import com.mammonrn.phoneaikiosk.media.fx.AudioFx
+import com.mammonrn.phoneaikiosk.media.fx.Eq
 import com.mammonrn.phoneaikiosk.voice.WakePause
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -84,10 +89,11 @@ object MusicPlayer {
 
     fun play(context: Context, tracks: List<Track>, start: Int = 0) = run(context) {
         queue.set(tracks, start)
+        resumeAtMs = 0
         it.load(queue.current, play = true)
     }
 
-    fun jumpTo(context: Context, index: Int) = run(context) { s -> queue.jumpTo(index)?.let { s.load(it, true) } }
+    fun jumpTo(context: Context, index: Int) = run(context) { s -> resumeAtMs = 0; queue.jumpTo(index)?.let { s.load(it, true) } }
 
     /** Plays on from where it is, or starts the queue again after a stop. */
     fun resume(context: Context) = run(context) { s -> if (s.loaded) s.player.play() else s.load(queue.current, true) }
@@ -115,12 +121,131 @@ object MusicPlayer {
         changed()
     }
 
-    fun setShuffle(on: Boolean) { queue.setShuffle(on); changed() }
+    fun setShuffle(context: Context, on: Boolean) { queue.setShuffle(on); saved(context); changed() }
 
-    fun cycleRepeat() { queue.cycleRepeat(); changed() }
+    fun cycleRepeat(context: Context) { queue.cycleRepeat(); saved(context); changed() }
 
     internal fun loadVolume(context: Context) {
-        volume = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getFloat("volume", 0.8f)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        volume = prefs.getFloat("volume", 0.8f)
+        fx.balance = prefs.getFloat("balance", 0f)
+        fx.settings = readEq(prefs)
+    }
+
+    // ------------------------------------------------------------ 0.55.0: the equalizer and the balance
+
+    /** In the player's audio path (MusicService's sink): the equalizer, the balance and the bars' samples. */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    val fx = AudioFx()
+
+    val eq: Eq.Settings get() = fx.settings
+    val balance: Float get() = fx.balance
+
+    fun setEq(context: Context, settings: Eq.Settings) {
+        fx.settings = settings
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("eq_on", settings.on).putFloat("eq_pre", settings.preampDb)
+            .putString("eq_gains", settings.gainsDb.joinToString(",")).putString("eq_preset", settings.preset).apply()
+        changed()
+    }
+
+    /** −1 left … +1 right; near the centre it snaps to the centre. */
+    fun setBalance(context: Context, value: Float) {
+        fx.balance = if (kotlin.math.abs(value) < 0.06f) 0f else value.coerceIn(-1f, 1f)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putFloat("balance", fx.balance).apply()
+        changed()
+    }
+
+    private fun readEq(prefs: android.content.SharedPreferences): Eq.Settings {
+        val gains = prefs.getString("eq_gains", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }
+            ?.takeIf { it.size == Eq.BANDS.size } ?: return Eq.Settings()
+        return Eq.Settings(prefs.getBoolean("eq_on", true), prefs.getFloat("eq_pre", 0f), gains.map(Eq::clamp),
+                           prefs.getString("eq_preset", "").orEmpty())
+    }
+
+    // ------------------------------------------------------------ 0.55.0: what the file is
+
+    /** What the file says it is: kbps, kHz, channels — null for each the file does not say. */
+    data class FileInfo(val kbps: Int?, val khz: Int?, val channels: Int?)
+
+    fun fileInfo(): FileInfo {
+        val p = service?.player ?: return FileInfo(null, null, null)
+        val f = p.audioFormat ?: return FileInfo(null, null, null)
+        var bitrate = f.bitrate.takeIf { it > 0 }
+        // FLAC, WAV and ALAC seldom carry a bitrate: the average is the file's size over its length.
+        val track = queue.current
+        if (bitrate == null && track != null && !track.onNas && durationMs > 0) {
+            val bytes = java.io.File(track.path).length()
+            if (bytes > 0) bitrate = (bytes * 8_000 / durationMs).toInt()
+        }
+        return FileInfo(bitrate?.let { (it + 500) / 1000 }, f.sampleRate.takeIf { it > 0 }?.let { (it + 500) / 1000 },
+                        f.channelCount.takeIf { it > 0 })
+    }
+
+    /** The song's own tags, read from the file by the player: title, artist, album, cover. */
+    val tags: androidx.media3.common.MediaMetadata? get() = service?.player?.mediaMetadata
+
+    // ------------------------------------------------------------ 0.55.0: editing the list
+
+    fun add(context: Context, tracks: List<Track>) {
+        val wasEmpty = queue.isEmpty
+        queue.add(tracks)
+        if (wasEmpty) run(context) { it.load(queue.current, play = false) }
+        saved(context); changed()
+    }
+
+    fun remove(context: Context, indices: Set<Int>) {
+        val playing = state == State.PLAYING
+        val removedCurrent = queue.remove(indices)
+        if (queue.isEmpty) stop(context)
+        else if (removedCurrent) run(context) { it.load(queue.current, play = playing) }
+        saved(context); changed()
+    }
+
+    fun clear(context: Context) {
+        queue.clear()
+        stop(context)
+        saved(context); changed()
+    }
+
+    fun sort(context: Context, by: Comparator<Track>) {
+        queue.sort(by)
+        saved(context); changed()
+    }
+
+    // ------------------------------------------------------------ 0.55.0: back where it was
+
+    private var restored = false
+    /** Where the saved song was, used once when it is played again. */
+    internal var resumeAtMs = 0L
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "kiosk-session") }
+
+    private fun sessionFile(context: Context) = java.io.File(context.filesDir, "music_session.txt")
+
+    /** The list and the place in it, as last saved — once per run, and only into an empty list. */
+    fun restore(context: Context) {
+        if (restored) return
+        restored = true
+        if (!queue.isEmpty) return
+        val s = runCatching { Session.decode(sessionFile(context).readText()) }.getOrNull() ?: return
+        queue.restore(s.tracks, s.index, s.shuffle, s.repeat)
+        resumeAtMs = s.positionMs
+        changed()
+    }
+
+    /** Saves the list and the place in it (off the main thread; the song's name never goes to a log). */
+    internal fun saved(context: Context) {
+        val app = context.applicationContext
+        val s = Session(queue.tracks, queue.currentIndex, if (hasMedia) positionMs else resumeAtMs,
+                        queue.shuffle, queue.repeat)
+        writer.execute {
+            runCatching {
+                val file = sessionFile(app)
+                val tmp = java.io.File(file.path + ".tmp")
+                tmp.writeText(s.encode())
+                tmp.renameTo(file)
+            }
+        }
     }
 
     private const val PREFS = "music"
@@ -155,6 +280,22 @@ class MusicService : Service(), WakePause.Media {
     /** A track is in the player (not stopped). */
     val loaded: Boolean get() = player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE
 
+    /** Every few seconds while it plays, the place is saved: an unplugged phone comes back near it. */
+    private val saver = object : Runnable {
+        override fun run() {
+            if (MusicPlayer.state == MusicPlayer.State.PLAYING) MusicPlayer.saved(this@MusicService)
+            handler.postDelayed(this, SAVE_MS)
+        }
+    }
+
+    /** A NAS song's length is known once it plays: the list shows it from then on. */
+    private fun learnDuration() {
+        val ms = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        val i = MusicPlayer.queue.currentIndex
+        val t = MusicPlayer.queue.current ?: return
+        if (t.durationMs == 0L) MusicPlayer.queue.replace(i, t.copy(durationMs = ms))
+    }
+
     private val renew = object : Runnable {
         override fun run() {
             hold?.let { if (!WakePause.renew(it)) hold = null }
@@ -165,7 +306,19 @@ class MusicService : Service(), WakePause.Media {
     override fun onCreate() {
         super.onCreate()
         MusicPlayer.loadVolume(this)
-        player = ExoPlayer.Builder(this)
+        MusicPlayer.restore(this)
+        // 0.55.0: our processor in the audio path — the equalizer, the balance and
+        // the bars' samples. 16-bit output (no float), the format it takes.
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+                                        enableAudioOutputPlaybackParams: Boolean): AudioSink =
+                DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                    .setAudioProcessors(arrayOf(MusicPlayer.fx))
+                    .build()
+        }
+        player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(MediaSources.factory(this)))
             // Audio focus handled by ExoPlayer: another app's sound pauses it.
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
@@ -177,7 +330,10 @@ class MusicService : Service(), WakePause.Media {
             override fun onEvents(p: Player, events: Player.Events) = update()
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) failures = 0
+                if (state == Player.STATE_READY) {
+                    failures = 0
+                    learnDuration()
+                }
                 if (state == Player.STATE_ENDED) {
                     val next = MusicPlayer.queue.next(auto = true)
                     if (next != null) load(next, true) else stopAll()
@@ -193,6 +349,7 @@ class MusicService : Service(), WakePause.Media {
             }
         })
         startInForeground()
+        handler.postDelayed(saver, SAVE_MS)
         MusicPlayer.attach(this)
         Log.i(TAG, "music service up")
     }
@@ -205,6 +362,7 @@ class MusicService : Service(), WakePause.Media {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        MusicPlayer.saved(this)
         releaseHold()
         handler.removeCallbacksAndMessages(null)
         MusicPlayer.detach(this)
@@ -220,7 +378,10 @@ class MusicService : Service(), WakePause.Media {
     fun load(track: Track?, play: Boolean) {
         if (track == null) return stopAll()
         MusicPlayer.error = null
-        player.setMediaItem(MediaItem.fromUri(MediaSources.uriOf(track)))
+        // Back where it was left (0.55.0): the saved place, once, for the saved song.
+        val at = MusicPlayer.resumeAtMs
+        MusicPlayer.resumeAtMs = 0
+        player.setMediaItem(MediaItem.fromUri(MediaSources.uriOf(track)), at)
         player.prepare()
         player.playWhenReady = play
         startInForeground()
@@ -229,6 +390,8 @@ class MusicService : Service(), WakePause.Media {
 
     /** Stop, forget the loaded track (the queue stays), and let the wake word back. */
     fun stopAll() {
+        // Stopped is stopped: next time the song starts from its beginning (the list stays).
+        MusicPlayer.resumeAtMs = 0
         player.stop()
         player.clearMediaItems()
         quieted = false
@@ -251,6 +414,7 @@ class MusicService : Service(), WakePause.Media {
         }
         if (meant || quieted) takeHold() else releaseHold()
         if (newState != MusicPlayer.state) {
+            if (MusicPlayer.state == MusicPlayer.State.PLAYING) MusicPlayer.saved(this)
             MusicPlayer.state = newState
             Log.i(TAG, "state ${newState.name.lowercase()}")
         }
@@ -318,5 +482,6 @@ class MusicService : Service(), WakePause.Media {
         const val TAG = "KioskMusic"
         private const val CHANNEL = "music"
         private const val NOTIFICATION_ID = 53
+        private const val SAVE_MS = 5_000L
     }
 }

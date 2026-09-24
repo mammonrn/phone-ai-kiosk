@@ -88,6 +88,78 @@ class PlayQueue(private val random: Random = Random.Default) {
         return repeat
     }
 
+    // ------------------------------------------------------------ editing the list (0.55.0)
+    //
+    // The track playing stays the track playing through every edit below, so
+    // editing the list never changes what is heard — unless it is removed.
+
+    /** Adds [more] to the end; in shuffle they join the order after what is left to play. */
+    fun add(more: List<Track>) {
+        if (more.isEmpty()) return
+        val from = tracks.size
+        tracks = tracks + more
+        val added = (from until tracks.size).toList().let { if (shuffle) it.shuffled(random) else it }
+        order = order + added.toIntArray()
+        if (pos < 0) pos = order.indexOf(from)
+    }
+
+    /**
+     * Removes the tracks at [indices] (in [tracks]). Returns true when the one
+     * playing was among them: the caller then loads [current], which is the
+     * next one still in the list (or null when the list is empty).
+     */
+    fun remove(indices: Set<Int>): Boolean {
+        val gone = indices.filter { it in tracks.indices }.toSet()
+        if (gone.isEmpty()) return false
+        val playing = currentIndex
+        val removedPlaying = playing in gone
+        // What plays after: the playing track, or the first one after it in the order that stays.
+        val keep = if (!removedPlaying) playing
+                   else order.drop(pos.coerceAtLeast(0)).firstOrNull { it !in gone } ?: -1
+        val newIndex = IntArray(tracks.size) { -1 }
+        var n = 0
+        for (i in tracks.indices) if (i !in gone) newIndex[i] = n++
+        tracks = tracks.filterIndexed { i, _ -> i !in gone }
+        order = order.filter { it !in gone }.map { newIndex[it] }.toIntArray()
+        // Nothing after it: back to the first (or nothing, when the list is empty).
+        pos = when {
+            keep >= 0 -> order.indexOf(newIndex[keep])
+            order.isEmpty() -> -1
+            playing < 0 -> -1
+            else -> 0
+        }
+        return removedPlaying
+    }
+
+    /** The same track with something learned (its length), in its place. */
+    fun replace(index: Int, track: Track) {
+        if (index in tracks.indices) tracks = tracks.toMutableList().also { it[index] = track }
+    }
+
+    fun clear() {
+        tracks = emptyList(); order = IntArray(0); pos = -1
+    }
+
+    /** Sorts the list shown by [by]; the order played follows unless shuffle is on. */
+    fun sort(by: Comparator<Track>) {
+        if (tracks.isEmpty()) return
+        val playing = current
+        val sorted = tracks.withIndex().sortedWith { a, b -> by.compare(a.value, b.value) }
+        val newIndex = IntArray(tracks.size).also { m -> sorted.forEachIndexed { n, iv -> m[iv.index] = n } }
+        tracks = sorted.map { it.value }
+        order = if (shuffle) order.map { newIndex[it] }.toIntArray() else IntArray(tracks.size) { it }
+        pos = if (playing == null) pos else order.indexOf(tracks.indexOf(playing))
+    }
+
+    /** Back as it was saved: the list, the track, shuffle and repeat. */
+    fun restore(list: List<Track>, index: Int, shuffleOn: Boolean, repeatMode: Repeat) {
+        shuffle = false
+        repeat = repeatMode
+        set(list, index)
+        if (list.isEmpty()) return
+        if (shuffleOn) setShuffle(true)
+    }
+
     /** The play order from the current track on, for the list on screen. */
     fun upcoming(): List<Track> = if (pos < 0) emptyList() else order.drop(pos).map { tracks[it] }
 

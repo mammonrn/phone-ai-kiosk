@@ -78,6 +78,23 @@ object UiScale {
     /** "ระดับเสียง 100%": fixed, so the slider beside it does not move as the number changes. */
     const val VOLUME_LABEL = 112
 
+    // ------------------------------------------------ the music player's skin (0.55.0)
+
+    /** The read-out at the left: the time and the bars. "-12:34" at [AMP_TIME] fits it. */
+    const val AMP_LCD_W = 150
+
+    /** The bars under the time. */
+    const val SPECTRUM_H = 36
+
+    /** A line of the read-out at the right: the scrolling title, the kbps and kHz boxes. Read, not tapped. */
+    const val AMP_LINE = 28
+
+    /** A kbps or kHz box: three digits. */
+    const val AMP_FACT_W = 40
+
+    /** The equalizer's eleven sliders with their names under them. */
+    const val EQ_H = 176
+
     /** A progress bar that is read, not dragged. */
     const val PROGRESS = 24
 
@@ -104,6 +121,9 @@ object UiScale {
 
     /** 6. Notes, hints, the second line of an item, a section's label. THE FLOOR: nothing smaller. */
     const val TEXT_NOTE = 13f
+
+    /** The music player's time, Press Start 2P: six characters in [AMP_LCD_W]. */
+    const val AMP_TIME = 22f
 
     // ------------------------------------------------ the calculator's keys (Press Start 2P, sp)
 

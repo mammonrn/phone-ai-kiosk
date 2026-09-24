@@ -22,7 +22,7 @@ class UiScaleTest {
     private val screens: List<File> by lazy {
         file("$src/settings").listFiles()!!.filter { it.name.endsWith(".kt") } +
             listOf("files/FilesActivity.kt", "calc/CalculatorActivity.kt", "calc/ElectricalPages.kt",
-                   "media/MusicActivity.kt", "auth/VerifyActivity.kt").map { file("$src/$it") }
+                   "media/MusicActivity.kt", "media/AmpViews.kt", "auth/VerifyActivity.kt").map { file("$src/$it") }
     }
 
     @Test
@@ -45,7 +45,9 @@ class UiScaleTest {
     fun `a height given to a view is a control's, an icon's or a fixed part's - never a gap`() {
         val height = Regex("""LayoutParams\([^,()]+(?:\([^()]*\))?,\s*(?:a\.)?dp\(UiScale\.(\w+)\)""")
         val allowed = setOf("TOUCH", "PRIMARY", "ICON_BUTTON", "ROW", "ICON_S", "ICON_M", "ICON_L", "ICON_XL",
-                            "CAMERA_H", "PATTERN_PAD", "PROGRESS", "DISPLAY_LINE")
+                            "CAMERA_H", "PATTERN_PAD", "PROGRESS", "DISPLAY_LINE",
+                            // the music player's read-outs (0.55.0): read, never tapped
+                            "SPECTRUM_H", "AMP_LINE", "EQ_H")
         val bad = screens.flatMap { screen ->
             height.findAll(screen.readText()).map { it.groupValues[1] }.filter { it !in allowed }.map { "${screen.name}: $it" }
         }
@@ -70,6 +72,8 @@ class UiScaleTest {
         assertTrue(text.zipWithNext().all { (a, b) -> a > b })
         assertTrue(UiScale.TEXT_NOTE >= 13f)
         assertTrue(listOf(UiScale.KEY_TEXT, UiScale.KEY_WORD, UiScale.KEY_SYMBOL, UiScale.KEY_EQUALS).all { it >= 13f })
+        // The music player's time fits its read-out: six Press Start 2P characters (about 1em each).
+        assertTrue(UiScale.AMP_TIME >= UiScale.TEXT_VALUE && UiScale.AMP_TIME * 6 <= UiScale.AMP_LCD_W - 2 * UiScale.SPACE_S)
     }
 
     @Test
