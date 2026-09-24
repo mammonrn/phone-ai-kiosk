@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.SurfaceView
 import com.mammonrn.phoneaikiosk.files.NasStore
 import com.mammonrn.phoneaikiosk.media.fx.Eq
@@ -56,7 +57,13 @@ class VlcDeck(context: Context, private val events: Events) {
             when (e.type) {
                 MediaPlayer.Event.Playing -> { playing = true; events.onPlaying() }
                 MediaPlayer.Event.Paused -> { playing = false; events.onPaused() }
-                MediaPlayer.Event.EndReached -> { playing = false; main.post { events.onEnded() } }
+                MediaPlayer.Event.TimeChanged -> lastTimeMs = e.timeChanged
+                MediaPlayer.Event.LengthChanged -> if (e.lengthChanged > 0) lengthMs = e.lengthChanged
+                MediaPlayer.Event.EndReached -> {
+                    playing = false
+                    val at = lastTimeMs
+                    main.post { if (!rescue(at)) events.onEnded() }
+                }
                 MediaPlayer.Event.EncounteredError -> { playing = false; main.post { events.onError() } }
                 MediaPlayer.Event.Vout -> if (e.voutCount > 0) videoSize()?.let { (w, h) -> events.onVideo(w, h) }
                 MediaPlayer.Event.ESAdded -> videoSize()?.let { (w, h) -> events.onVideo(w, h) }
@@ -64,9 +71,40 @@ class VlcDeck(context: Context, private val events: Events) {
         }
     }
 
+    /** Where the file is, as VLC last said, and its length: kept for an end that comes too early. */
+    private var lastTimeMs = 0L
+    private var lengthMs = 0L
+    private var track: Track? = null
+    private var rescues = 0
+
     /** Opens [track] at [startMs]; plays when [play]. */
     fun load(track: Track, startMs: Long, play: Boolean) {
+        rescues = 0
+        open(track, startMs, play)
+    }
+
+    /**
+     * A damaged spot in a file (a VCD copied from a scratched disc: 0.60.0,
+     * Poom's คู่โจร1 stops at 4:07 of 1:05:07) makes VLC's demuxer give up
+     * and say the file ended. An end that comes well before the length is not
+     * the end: the file is opened again a little past the spot and plays on.
+     * A few times per file at most, so a file that is broken to the end still ends.
+     */
+    private fun rescue(atMs: Long): Boolean {
+        val t = track ?: return false
+        val length = lengthMs.takeIf { it > 0 } ?: player.length
+        if (!loaded || length <= 0 || atMs <= 0 || atMs >= length - EARLY_END_MS || rescues >= MAX_RESCUES) return false
+        rescues++
+        Log.w(TAG, "vlc: early end, going on past it ($rescues)")
+        open(t, atMs + SKIP_MS, play = true)
+        return true
+    }
+
+    private fun open(track: Track, startMs: Long, play: Boolean) {
         stop()
+        this.track = track
+        lastTimeMs = startMs
+        lengthMs = 0
         val m = if (track.onNas) nasMedia(track) else Media(lib(app), Uri.fromFile(java.io.File(track.path)))
         if (startMs > 0) m.addOption(":start-time=" + String.format(java.util.Locale.US, "%.3f", startMs / 1000.0))
         // Kept (and released at stop): the player's getMedia() would take a reference each time it is asked.
@@ -216,6 +254,13 @@ class VlcDeck(context: Context, private val events: Events) {
     }
 
     companion object {
+        private const val TAG = "KioskVlc"
+        /** An end this far or more before the length is taken as a damaged spot, not the end. */
+        const val EARLY_END_MS = 10_000L
+        /** How far past the damaged spot the file is opened again. */
+        const val SKIP_MS = 2_000L
+        const val MAX_RESCUES = 10
+
         @Volatile private var shared: LibVLC? = null
 
         /** The app's one LibVLC. Subtitles next to a video are picked up; nothing is recorded or streamed out. */
