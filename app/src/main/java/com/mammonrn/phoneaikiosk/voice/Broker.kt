@@ -219,7 +219,11 @@ class Broker(private val baseUrl: String, private val token: String) {
                     JSONObject().put("target", target).put("on", on).toString().toByteArray(Charsets.UTF_8),
                     "application/json; charset=utf-8").bytes, Charsets.UTF_8)
     } catch (e: Failure) {
-        JSONObject().put("ok", false).put("message", e.message).toString()
+        // A broker message is shown as it is; a bare HTTP error (an older
+        // broker without the route, nginx) gets HomeCard's formal line, not
+        // the spoken fallback in failure().
+        JSONObject().put("ok", false)
+            .put("message", if (e.code.startsWith("http_")) "" else e.message).toString()
     }
 
     /** Text in, audio out, ready to play — with where the time went. */
