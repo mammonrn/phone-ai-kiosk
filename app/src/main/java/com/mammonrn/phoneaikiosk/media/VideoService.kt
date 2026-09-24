@@ -290,8 +290,14 @@ class VideoService : Service(), WakePause.Media {
                                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .build()
+        // Subtitles on when the file has them: Thai first, then English, then any
+        // (the player shows none unless told a language, seen on the A07).
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setMaxVideoSize(VideoRules.MAX_W, VideoRules.MAX_H).build()
+            .setMaxVideoSize(VideoRules.MAX_W, VideoRules.MAX_H)
+            .setPreferredTextLanguages("th", "en")
+            .setSelectUndeterminedTextLanguage(true)
+            .setPreferredAudioLanguages("th", "en")
+            .build()
         player.addListener(object : Player.Listener {
             override fun onEvents(p: Player, events: Player.Events) = update()
             override fun onTracksChanged(tracks: Tracks) = checkLimits(tracks)

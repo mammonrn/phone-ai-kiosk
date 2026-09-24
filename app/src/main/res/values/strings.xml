@@ -533,9 +533,9 @@
     <string name="video_subtitles_off">ปิดคำบรรยาย</string>
     <string name="video_no_subtitles">ไฟล์นี้ไม่มีคำบรรยาย</string>
     <string name="video_no_audio_tracks">ไฟล์นี้ไม่มีแทร็กเสียงให้เลือก</string>
-    <string name="video_speed">ความเร็ว %1$s</string>
-    <string name="video_fill_on">เต็มจอ: เปิด</string>
-    <string name="video_fill_off">เต็มจอ: ปิด</string>
+    <string name="video_speed">ความเร็ว\n%1$s</string>
+    <string name="video_fill_on">เต็มจอ\nเปิด</string>
+    <string name="video_fill_off">เต็มจอ\nปิด</string>
     <string name="video_ring">วงแหวนควบคุม แตะกลางเพื่อเล่น แตะซ้ายหรือขวาเพื่อถอยหรือข้าม 10 วินาที ลากรอบวงเพื่อเลื่อนตำแหน่ง</string>
     <string name="video_ring_playing">วงแหวนควบคุม แตะกลางเพื่อหยุดชั่วคราว แตะซ้ายหรือขวาเพื่อถอยหรือข้าม 10 วินาที ลากรอบวงเพื่อเลื่อนตำแหน่ง</string>
     <string name="video_lcd_index">ไฟล์ %1$02d/%2$02d</string>

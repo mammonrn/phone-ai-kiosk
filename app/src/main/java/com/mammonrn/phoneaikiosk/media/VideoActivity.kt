@@ -127,6 +127,7 @@ class VideoActivity : Activity() {
         HeatWatch.listeners.remove(heat)
         handler.removeCallbacks(tick)
         surface?.let { VideoPlayer.detachSurface(it) }
+        attachedTo = null
     }
 
     override fun onDestroy() {
@@ -161,6 +162,7 @@ class VideoActivity : Activity() {
         generation += 1
         surface?.let { VideoPlayer.detachSurface(it) }
         surface = null
+        attachedTo = null
         root.removeAllViews()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val shell = LinearLayout(this).apply {
@@ -407,13 +409,13 @@ class VideoActivity : Activity() {
 
         // The row of settings.
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        speedButton = dvdButton("") { VideoPlayer.cycleSpeed(this); poke() }
+        speedButton = dvdButton("", small = true) { VideoPlayer.cycleSpeed(this); poke() }
         row.addView(speedButton, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
-        row.addView(dvdButton(getString(R.string.video_audio)) { chooseTrack(C.TRACK_TYPE_AUDIO, it) },
+        row.addView(dvdButton(getString(R.string.video_audio), small = true) { chooseTrack(C.TRACK_TYPE_AUDIO, it) },
                     LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
-        row.addView(dvdButton(getString(R.string.video_subtitles)) { chooseTrack(C.TRACK_TYPE_TEXT, it) },
+        row.addView(dvdButton(getString(R.string.video_subtitles), small = true) { chooseTrack(C.TRACK_TYPE_TEXT, it) },
                     LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
-        fillButton = dvdButton("") { fill = !fill; frame?.fill = fill; refresh(); poke() }
+        fillButton = dvdButton("", small = true) { fill = !fill; frame?.fill = fill; refresh(); poke() }
         row.addView(fillButton, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         return body
@@ -442,8 +444,15 @@ class VideoActivity : Activity() {
         menu.show()
     }
 
+    /** The player this screen's picture is attached to: the service may start after the screen. */
+    private var attachedTo: Any? = null
+
     private fun attach() {
-        surface?.let { VideoPlayer.attachSurface(it) }
+        val s = surface ?: return
+        val p = VideoPlayer.player ?: return
+        if (attachedTo === p) return
+        VideoPlayer.attachSurface(s)
+        attachedTo = p
     }
 
     /** A touch keeps the controls up for another 4 s. */
@@ -460,6 +469,7 @@ class VideoActivity : Activity() {
     }
 
     private fun refresh() {
+        attach()
         val v = VideoPlayer.current
         titleView?.text = v?.track?.title ?: getString(R.string.window_video)
         val playing = VideoPlayer.state == VideoPlayer.State.PLAYING
@@ -535,9 +545,9 @@ class VideoActivity : Activity() {
         setTextColor(color(R.color.dvd_lcd_text)); maxLines = 1
     }
 
-    private fun dvdButton(value: String, onClick: (View) -> Unit) = TextView(this).apply {
-        text = value; typeface = Typeface.create(thai, Typeface.BOLD); textSize = UiScale.TEXT_BASE
-        setTextColor(color(R.color.retro_text)); gravity = Gravity.CENTER; maxLines = 1
+    private fun dvdButton(value: String, small: Boolean = false, onClick: (View) -> Unit) = TextView(this).apply {
+        text = value; typeface = Typeface.create(thai, Typeface.BOLD); textSize = if (small) UiScale.TEXT_NOTE else UiScale.TEXT_BASE
+        setTextColor(color(R.color.retro_text)); gravity = Gravity.CENTER; maxLines = if (small) 2 else 1
         background = DvdSkin.button(this@VideoActivity)
         setPadding(dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_XS), 0)
         minWidth = dp(UiScale.TOUCH)
