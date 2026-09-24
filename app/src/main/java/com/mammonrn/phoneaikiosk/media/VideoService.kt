@@ -234,8 +234,12 @@ object VideoPlayer {
     }
 
     /** The screen's picture: the service draws on it with whichever engine plays (and again after a change of engine). */
-    fun attachSurface(view: SurfaceView) { service?.attachView(view) }
-    fun detachSurface(view: SurfaceView) { service?.detachView(view) }
+    fun attachSurface(view: SurfaceView) { surfaceView = view; service?.attachView(view) }
+    fun detachSurface(view: SurfaceView) { if (surfaceView === view) surfaceView = null; service?.detachView(view) }
+
+    /** The screen's picture, remembered: a service that starts after the screen still draws on it (0.60.0). */
+    internal var surfaceView: SurfaceView? = null
+        private set
     /** The picture was laid out again: LibVLC draws to the new size (Media3 follows the surface itself). */
     fun surfaceResized(width: Int, height: Int) { service?.vlcResized(width, height) }
 
@@ -327,8 +331,14 @@ class VideoService : Service(), WakePause.Media {
         ?.let { (it.width * it.pixelWidthHeightRatio).toInt() to it.height }
 
     fun attachView(v: SurfaceView) {
+        val fresh = view !== v
         view = v
-        if (usingVlc) { player.clearVideoSurfaceView(v); vlc?.attach(v) } else { vlc?.attach(null); player.setVideoSurfaceView(v) }
+        if (usingVlc) {
+            player.clearVideoSurfaceView(v)
+            vlc?.attach(v)
+            // A picture that arrives after VLC started: its video output is opened again on it.
+            if (fresh) vlc?.reopenVideo()
+        } else { vlc?.attach(null); player.setVideoSurfaceView(v) }
     }
 
     fun detachView(v: SurfaceView) {
@@ -431,6 +441,7 @@ class VideoService : Service(), WakePause.Media {
         applyHeat(HeatWatch.step)
         startInForeground()
         handler.postDelayed(saver, 5_000)
+        view = VideoPlayer.surfaceView
         VideoPlayer.attach(this)
         Log.i(TAG, "video service up")
     }

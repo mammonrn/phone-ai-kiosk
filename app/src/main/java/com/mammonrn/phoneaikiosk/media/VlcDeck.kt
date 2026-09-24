@@ -141,11 +141,24 @@ class VlcDeck(context: Context, private val events: Events) {
         if (viewAttached) { vout.detachViews(); viewAttached = false }
         view = surface
         if (surface != null) {
+            // The order that showed a picture on the A07 (codecprobe): the view, its size AT ONCE,
+            // then attach — VLC opens no picture before it knows the size (0.60.0: a size posted
+            // for later left the VCD black with its sound playing).
             vout.setVideoView(surface)
+            val m = surface.resources.displayMetrics
+            vout.setWindowSize(if (surface.width > 0) surface.width else m.widthPixels,
+                               if (surface.height > 0) surface.height else m.widthPixels * 9 / 16)
             vout.attachViews()
             viewAttached = true
-            surface.post { if (surface.width > 0) vout.setWindowSize(surface.width, surface.height) }
         }
+    }
+
+    /** The picture's output opened again (a surface given after the video started had none). */
+    fun reopenVideo() {
+        if (!loaded) return
+        val t = player.videoTrack.takeIf { it >= 0 } ?: player.videoTracks?.firstOrNull { it.id >= 0 }?.id ?: return
+        player.setVideoTrack(-1)
+        player.setVideoTrack(t)
     }
 
     /** The surface was laid out again (turned, full screen): VLC draws to its new size. */
