@@ -1,11 +1,7 @@
 package com.mammonrn.phoneaikiosk.ui
 
 import android.content.Context
-import android.graphics.Typeface
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.BackgroundColorSpan
-import android.text.style.ForegroundColorSpan
+import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
@@ -21,12 +17,20 @@ import com.mammonrn.phoneaikiosk.R
 import kotlin.math.abs
 
 /**
- * A card's content in pages, one showing at a time, with a row of 1995
- * property-sheet tabs above it (DESIGN.md, "การ์ดหลายหน้า"). Only the content
- * pages; the card's title bar, frame and place in the stack do not move.
+ * A card's content in pages, one showing at a time, turned by a SIDEWAYS
+ * SWIPE (DESIGN.md, "การ์ดหลายหน้า"). Only the content pages move; the card's
+ * title bar, frame and place in the stack do not.
  *
- * MAKING A CARD PAGED is layout only: wrap the pages in a PagedPanel and give
- * each page `android:tag="id|ชื่อแท็บ"`:
+ * NO TABS (0.53.2, Poom: "สั่งไว้ตั้งแต่แรกว่าให้ทำเป็นแบบสไลด์"). The row of
+ * 1995 property-sheet tabs took 44dp of height on the gold card — height that
+ * came out of Jarvis. Now the only sign of pages is a row of small squares in
+ * the card's own title bar ([attachIndicator]): ■ the page showing, □ the
+ * others, and "ใหม่" after a page with news not yet seen. Nothing is added to
+ * the card's height.
+ *
+ * MAKING A CARD PAGED is layout plus one call: wrap the pages in a PagedPanel,
+ * give each page `android:tag="id|ชื่อหน้า"`, put an empty LinearLayout in the
+ * card's title bar, and hand it to [attachIndicator]:
  *
  *     <com.mammonrn.phoneaikiosk.ui.PagedPanel ...>
  *         <LinearLayout android:tag="gold|ทอง" .../>
@@ -36,13 +40,14 @@ import kotlin.math.abs
  * A third page is a third child. The rules of which page shows are in [Pages].
  *
  * WHAT THE SCREEN PROMISES:
- *  * how many pages and which is showing, at a glance: one tab per page, the
- *    shown one raised and bold; with one page there are no tabs at all;
+ *  * how many pages and which is showing, at a glance, from the squares; with
+ *    one page there are none;
  *  * the card never changes height when the page changes: pages not shown are
  *    INVISIBLE, so the content keeps the tallest page's height;
- *  * a page with news not yet seen says so on its tab ("ใหม่");
- *  * tabs are the whole width and 40dp tall; a sideways swipe on the content
- *    turns the page too. Nothing else on the dashboard swipes sideways.
+ *  * a page with news not yet seen says "ใหม่" after its square — a word, not
+ *    only a colour;
+ *  * a sideways swipe on the content turns the page; a tap on the squares
+ *    turns to the next one. Nothing else on the dashboard swipes sideways.
  */
 class PagedPanel @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
@@ -57,9 +62,8 @@ class PagedPanel @JvmOverloads constructor(
     private val views = LinkedHashMap<String, View>()
     private val titles = HashMap<String, String>()
     private val hidden = HashSet<String>()
-    private val tabs = LinearLayout(context).apply { orientation = HORIZONTAL }
     private val content = FrameLayout(context)
-    private val tabViews = HashMap<String, TextView>()
+    private var indicator: LinearLayout? = null
 
     private val density = resources.displayMetrics.density
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -84,19 +88,33 @@ class PagedPanel @JvmOverloads constructor(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
         pages = Pages(views.keys.toList())
-        addView(tabs, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-            .apply { topMargin = dp(4) })
-        buildTabs()
+        addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         render()
     }
 
-    /** A page with nothing to show (an older broker, no data) leaves the tabs. */
+    /**
+     * Where the page squares go: an empty LinearLayout in the card's title bar,
+     * so showing the pages costs no height. Tapping them turns to the next page.
+     */
+    fun attachIndicator(host: LinearLayout) {
+        indicator = host.apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            setPadding(dp(4), 0, dp(4), 0)
+            setOnClickListener {
+                val shown = visible()
+                if (shown.size > 1) turnTo(shown[(shown.indexOf(pages.current) + 1) % shown.size])
+            }
+        }
+        render()
+    }
+
+    /** A page with nothing to show (an older broker, no data) leaves the squares. */
     fun setPageAvailable(id: String, available: Boolean) {
         val changed = if (available) hidden.remove(id) else hidden.add(id)
         if (!changed) return
         if (!available && pages.current == id) visible().firstOrNull()?.let { pages.show(it) }
-        buildTabs()
         render()
     }
 
@@ -106,24 +124,6 @@ class PagedPanel @JvmOverloads constructor(
     }
 
     private fun visible() = pages.ids.filterNot { it in hidden }
-
-    private fun buildTabs() {
-        tabs.removeAllViews()
-        tabViews.clear()
-        val shown = visible()
-        tabs.visibility = if (shown.size > 1) VISIBLE else GONE
-        for ((index, id) in shown.withIndex()) {
-            val tab = TextView(context).apply {
-                gravity = Gravity.CENTER
-                typeface = Typeface.create(ResourcesCompat.getFont(context, R.font.plex_thai), Typeface.BOLD)
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_minor))
-                isClickable = true
-                setOnClickListener { turnTo(id) }
-            }
-            tabViews[id] = tab
-            tabs.addView(tab, LayoutParams(0, dp(40), 1f).apply { if (index > 0) marginStart = dp(4) })
-        }
-    }
 
     private fun turnTo(id: String) {
         val now = android.os.SystemClock.elapsedRealtime()
@@ -143,28 +143,32 @@ class PagedPanel @JvmOverloads constructor(
                 else -> INVISIBLE
             }
         }
+        val host = indicator ?: return
+        host.removeAllViews()
+        host.visibility = if (shown.size > 1) VISIBLE else GONE
+        if (shown.size <= 1) return
+        val said = ArrayList<String>()
         for ((index, id) in shown.withIndex()) {
-            val tab = tabViews[id] ?: continue
             val selected = id == pages.current
-            val label = SpannableStringBuilder(titles[id])
-            if (pages.hasUnseen(id)) {
-                label.append("  ")
-                val start = label.length
-                label.append(" ใหม่ ")
-                label.setSpan(BackgroundColorSpan(color(R.color.retro_title)), start, label.length,
-                              Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                label.setSpan(ForegroundColorSpan(color(R.color.retro_title_text)), start, label.length,
-                              Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            tab.text = label
-            tab.setTextColor(color(if (selected) R.color.retro_text else R.color.retro_dim))
-            tab.setBackgroundResource(if (selected) R.drawable.retro_raised else R.drawable.retro_button)
-            tab.isSelected = selected
-            tab.contentDescription = "หน้า ${index + 1} จาก ${shown.size} ${titles[id]}" +
-                (if (selected) " กำลังแสดง" else "") + (if (pages.hasUnseen(id)) " มีข้อมูลใหม่" else "")
-            // The shown tab stands 3dp taller, as a 1995 property sheet's does.
-            tab.translationY = if (selected) 0f else dp(3).toFloat()
+            host.addView(View(context).apply {
+                background = GradientDrawable().apply {
+                    // ■ the page showing, □ the others: a shape, not only a colour.
+                    if (selected) setColor(color(R.color.retro_title_text))
+                    setStroke(dp(1), color(R.color.retro_title_text))
+                }
+            }, LayoutParams(dp(SQUARE_DP), dp(SQUARE_DP)).apply { if (index > 0) marginStart = dp(4) })
+            val fresh = pages.hasUnseen(id)
+            if (fresh) host.addView(TextView(context).apply {
+                text = "ใหม่"
+                typeface = ResourcesCompat.getFont(context, R.font.plex_thai)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                setTextColor(color(R.color.retro_badge))
+                setPadding(dp(2), 0, 0, 0)
+            })
+            said.add(titles[id] + (if (selected) " กำลังแสดง" else "") + (if (fresh) " มีข้อมูลใหม่" else ""))
         }
+        host.contentDescription = "หน้า ${shown.indexOf(pages.current) + 1} จาก ${shown.size}: " +
+            said.joinToString(", ") + " แตะเพื่อเปลี่ยนหน้า หรือปัดซ้ายขวา"
     }
 
     // A sideways swipe over the content turns the page. Taken only once the
@@ -207,4 +211,9 @@ class PagedPanel @JvmOverloads constructor(
     private fun dp(value: Int): Int = (value * density).toInt()
 
     private fun color(id: Int): Int = ContextCompat.getColor(context, id)
+
+    companion object {
+        /** A page square's side: small enough for the title bar's one 11sp line. */
+        const val SQUARE_DP = 7
+    }
 }

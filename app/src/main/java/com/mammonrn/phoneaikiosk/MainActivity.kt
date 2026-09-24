@@ -1050,6 +1050,7 @@ class MainActivity : Activity() {
         batteryIcon = findViewById(R.id.battery_icon)
         batteryText = findViewById(R.id.battery_text)
         homePages = findViewById(R.id.home_pages)
+        homePages.attachIndicator(findViewById(R.id.home_pages_dots))
         homePage = findViewById(R.id.home_page_ewelink)
         weatherTitle = findViewById(R.id.weather_title)
         weatherBody = findViewById(R.id.weather_body)
@@ -1071,6 +1072,8 @@ class MainActivity : Activity() {
         weatherOutlook = findViewById(R.id.weather_outlook)
         cardStack = findViewById(R.id.card_stack)
         commodityPages = findViewById(R.id.commodity_pages)
+        // 0.53.2: swipe, and the page squares in the title bar — no tab row.
+        commodityPages.attachIndicator(findViewById(R.id.gold_pages_dots))
         // Turning a page is a touch on the card: it stays open two minutes and
         // CardBoard.fit will not fold it under the finger.
         commodityPages.onTurned = { board.touch("gold", SystemClock.elapsedRealtime()) }
