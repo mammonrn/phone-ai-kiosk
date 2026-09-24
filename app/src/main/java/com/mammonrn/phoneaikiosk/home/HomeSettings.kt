@@ -34,6 +34,13 @@ object HomeSettings {
 
     private val KEY = Regex("^[A-Za-z0-9_-]{1,64}$")
 
+    /**
+     * Debug builds only (TEST_LIGHTS_PAGE over adb): a sample list, so the page
+     * can be seen on the A07 before the VPS has the route. Null in release;
+     * nothing in main code sets it.
+     */
+    @Volatile var override: String? = null
+
     fun parse(body: String): Page = try {
         parse(JSONObject(body))
     } catch (e: Exception) {

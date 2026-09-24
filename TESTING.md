@@ -1753,6 +1753,13 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME_CARD --ez on true 
 adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME_CARD --ez on false -p com.mammonrn.phoneaikiosk.debug
 ```
 
+**หน้า "ไฟในบ้าน" ตัวอย่าง** (debug build เท่านั้น ใช้ตอน VPS ยังไม่ได้ deploy เปิดหน้านั้นใหม่หลังส่ง):
+
+```
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE --ez on true  -p com.mammonrn.phoneaikiosk.debug
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE --ez on false -p com.mammonrn.phoneaikiosk.debug
+```
+
 log ของหน้า "ไฟในบ้าน": `adb logcat -s KioskHome:I` → `lights page devices=3 error=none` และ `lights change ok=true`
 (ไม่มีชื่อ ไม่มี key)
 

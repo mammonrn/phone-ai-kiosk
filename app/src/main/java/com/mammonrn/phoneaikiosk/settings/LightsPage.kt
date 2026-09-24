@@ -55,6 +55,11 @@ internal class LightsPage(private val a: SettingsActivity) {
     }
 
     private fun load() {
+        HomeSettings.override?.let { sample ->
+            page = HomeSettings.parse(sample)
+            showList()
+            return
+        }
         val broker = broker() ?: run {
             page = HomeSettings.Page(emptyList(), false, "no-token")
             showList()

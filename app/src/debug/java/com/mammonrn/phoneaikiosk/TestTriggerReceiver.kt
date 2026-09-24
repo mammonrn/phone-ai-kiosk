@@ -48,6 +48,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             }
 
+            ACTION_LIGHTS_PAGE -> {
+                // A sample "ไฟในบ้าน" page (0.47.0), to see it on the A07 before
+                // the VPS is deployed. --ez on true|false. Read the next time
+                // the page opens; a change made on it still goes to the broker.
+                com.mammonrn.phoneaikiosk.home.HomeSettings.override =
+                    if (intent.getBooleanExtra("on", true)) SAMPLE_LIGHTS else null
+                android.util.Log.i("KioskHome", "sample lights page ${if (com.mammonrn.phoneaikiosk.home.HomeSettings.override != null) "on" else "off"}")
+            }
+
             ACTION_HOME_CARD -> {
                 // A sample "อุปกรณ์ในบ้าน" panel, for seeing the card on the A07
                 // before an eWeLink account is connected (0.45.0). --ez on
@@ -276,6 +285,22 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
         const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
+        const val ACTION_LIGHTS_PAGE = "com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE"
+
+        /** Poom's house as home_settings.view would send it after naming one channel. */
+        private const val SAMPLE_LIGHTS = """{"ok": true, "age_seconds": 0, "control": true, "devices": [
+            {"key": "sample0000000002", "name": "Light2", "own_name": "", "ewelink_name": "Light2",
+             "room": "ห้องนอน", "kind": "plug", "online": false, "on": null, "allowed": true, "clash": [], "channels": []},
+            {"key": "sample0000000001", "name": "Light1", "own_name": "", "ewelink_name": "Light1",
+             "room": "ห้องนั่งเล่น", "kind": "plug", "online": true, "on": true, "allowed": true, "clash": [], "channels": []},
+            {"key": "sample0000000003", "name": "Switch1", "own_name": "", "ewelink_name": "Switch1",
+             "room": "ห้องนั่งเล่น", "kind": "switch", "online": true, "on": true, "allowed": true, "clash": [], "channels": [
+               {"channel": 0, "name": "ไฟหน้าบ้าน", "own_name": "ไฟหน้าบ้าน", "ewelink_name": "", "on": true,
+                "allowed": true, "active": true, "clash": []},
+               {"channel": 1, "name": "Switch1 ช่อง 2", "own_name": "", "ewelink_name": "", "on": false,
+                "allowed": true, "active": true, "clash": []},
+               {"channel": 2, "name": "Switch1 ช่อง 3", "own_name": "", "ewelink_name": "", "on": false,
+                "allowed": false, "active": true, "clash": []}]}]}"""
 
         /**
          * Made-up devices in the broker's `home` panel shape (home_control.card),
