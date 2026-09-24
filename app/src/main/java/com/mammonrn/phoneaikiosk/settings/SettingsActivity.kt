@@ -871,6 +871,10 @@ class SettingsActivity : Activity() {
             // the torch is a switch, and its label is its state.
             Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
             Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
+            // 0.44.0: the file manager, a screen of its own (files/FilesActivity).
+            Category(R.drawable.ic_pixel_files, { it.getString(R.string.window_files) }) {
+                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.files.FilesActivity::class.java))
+            },
         )
     }
 }

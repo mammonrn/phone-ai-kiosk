@@ -227,9 +227,15 @@ class MainActivity : Activity() {
             // Nothing asked (room noise the broker's gate stopped, or silence):
             // the short notice goes after a few seconds, not a minute.
             val noticeOnly = VoiceState.lastCancel.isNotEmpty() && VoiceState.heard.isEmpty()
+            // Media playing (WakePause): the wake word is off, so the
+            // invitation says what does work — the button — and why.
+            val resting = com.mammonrn.phoneaikiosk.voice.WakePause.reason()
             val line = recentTurn.visible(transcriptLine(), nowMs, busy,
                     if (noticeOnly) FadingLine.NOTICE_HOLD_MS else FadingLine.HOLD_MS)
-                .ifEmpty { getString(R.string.kiosk_prompt) }
+                .ifEmpty {
+                    if (resting != null) getString(R.string.kiosk_prompt_resting, resting.word)
+                    else getString(R.string.kiosk_prompt)
+                }
             if (line != shownTranscript) showTranscript(line)
             if (VoiceState.alarmsVersion != shownAlarmsVersion) showAlarms(nowMs)
             renderCards(nowMs)
@@ -240,6 +246,7 @@ class MainActivity : Activity() {
                 getString(R.string.jarvis_thinking),
                 getString(R.string.jarvis_speaking),
                 getString(R.string.jarvis_offline),
+                resting?.let { getString(R.string.jarvis_resting, it.word) },
             )
             handler.postDelayed(this, 1_000L)
         }
@@ -1175,6 +1182,17 @@ class MainActivity : Activity() {
      * If this silently fails, the service reports `mic=no-permission` rather
      * than crashing, and `adb shell pm grant` is the way in until it is fixed.
      */
+    /**
+     * The file manager's NAS (0.44.0): Android 16 gates the house's network
+     * behind NEARBY_WIFI_DEVICES while local network protection is opt-in,
+     * and API 37 names it ACCESS_LOCAL_NETWORK. Each is asked for only where
+     * the platform has it, so a phone without one records no refusal.
+     */
+    private fun localNetworkPermissions(): List<String> = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(android.Manifest.permission.NEARBY_WIFI_DEVICES)
+        if (Build.VERSION.SDK_INT >= 37) add("android.permission.ACCESS_LOCAL_NETWORK")
+    }
+
     private fun grantMicrophoneToSelf() {
         if (!isDeviceOwner) return
 
@@ -1195,7 +1213,7 @@ class MainActivity : Activity() {
             // 0.42.0: which mobile network — 4G or 5G — for the taskbar tray
             // (ui/NetworkWatch). Read for that word only; nothing is logged.
             android.Manifest.permission.READ_PHONE_STATE,
-        )
+        ) + localNetworkPermissions()
         for (permission in permissions) {
             try {
                 dpm.setPermissionGrantState(

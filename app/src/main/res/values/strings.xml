@@ -100,6 +100,156 @@
     <string name="jarvis_thinking">จาร์วิส · กำลังคิด</string>
     <string name="jarvis_speaking">จาร์วิส · กำลังพูด</string>
     <string name="jarvis_offline">จาร์วิส · ยังไม่พร้อม</string>
+    <!-- Jarvis resting while media plays (WakePause, Poom 2026-09-24). %1$s is
+         the source's word: เล่นเพลง / เล่นวิดีโอ. The title says it rests and
+         why; the card says what still works. -->
+    <string name="jarvis_resting">จาร์วิส · พักระหว่าง%1$s</string>
+    <string name="kiosk_prompt_resting">ระหว่าง%1$s จาร์วิสไม่ฟังคำปลุก กรุณากดปุ่มจาร์วิสด้านล่างเพื่อถาม</string>
+    <!-- File manager (0.44.0, Poom): a screen of this app, opened from the
+         Control Panel. Formal written Thai (ux-ui-design). DESIGN.md 5ค. -->
+    <string name="window_files">จัดการไฟล์</string>
+    <string name="files_this_phone">หน่วยความจำเครื่อง</string>
+    <string name="files_sd_card">การ์ด SD</string>
+    <string name="files_space">ว่าง %1$s จาก %2$s</string>
+    <string name="files_nas">NAS (อ่านอย่างเดียว)</string>
+    <string name="files_nas_set">โฟลเดอร์ที่แชร์ %1$s</string>
+    <string name="files_nas_not_set">ยังไม่ได้ตั้งค่า กรุณาแตะเพื่อตั้งค่า</string>
+    <string name="files_up">ขึ้นหนึ่งระดับ</string>
+    <string name="files_search">ค้นหา</string>
+    <string name="files_manage">จัดการ</string>
+    <string name="files_folder">โฟลเดอร์</string>
+    <string name="files_items">%1$d รายการ</string>
+    <string name="files_folder_items">โฟลเดอร์ · %1$d รายการ</string>
+    <string name="files_blocked_row">ระบบไม่อนุญาตให้เปิด</string>
+    <string name="files_empty">โฟลเดอร์นี้ว่าง</string>
+    <string name="files_empty_pick">โฟลเดอร์นี้ว่าง กรุณากด “วางที่นี่” เพื่อวางไฟล์ในโฟลเดอร์นี้</string>
+    <string name="files_loading">กำลังเปิดโฟลเดอร์…</string>
+    <string name="files_back_to_panel">กลับแผงควบคุม</string>
+
+    <string name="files_no_permission_title">ยังไม่ได้รับสิทธิ์เข้าถึงไฟล์</string>
+    <string name="files_no_permission">แอปยังไม่ได้รับสิทธิ์ “เข้าถึงไฟล์ทั้งหมด” สิทธิ์นี้ให้จากหน้าจอนี้ไม่ได้ ผู้ดูแลต้องให้สิทธิ์จากคอมพิวเตอร์ด้วยคำสั่งด้านล่าง แล้วเปิดหน้านี้ใหม่</string>
+    <string name="files_blocked_title">เปิดโฟลเดอร์นี้ไม่ได้</string>
+    <string name="files_blocked_app">โฟลเดอร์นี้เก็บข้อมูลของแอปแต่ละแอป ระบบ Android ไม่อนุญาตให้แอปอื่นเปิด ไม่ว่าจะให้สิทธิ์ใดก็ตาม ไฟล์ข้างในยังอยู่ครบ แต่เปิดได้จากแอปเจ้าของเท่านั้น</string>
+    <string name="files_blocked_other">ระบบไม่อนุญาตให้อ่านโฟลเดอร์นี้</string>
+    <string name="files_go_back">กลับ</string>
+
+    <string name="files_details_title">รายละเอียด</string>
+    <string name="files_name">ชื่อ</string>
+    <string name="files_type">ประเภท</string>
+    <string name="files_size">ขนาด</string>
+    <string name="files_modified">แก้ไขล่าสุด</string>
+    <string name="files_location">อยู่ที่</string>
+    <string name="files_inside">ข้างใน</string>
+    <string name="files_zip_inside">%1$d ไฟล์ · %2$s เมื่อแตกไฟล์</string>
+    <string name="files_zip_unreadable">อ่านรายการในไฟล์ zip ไม่ได้</string>
+    <string name="files_other_archive">ยังแตกไฟล์ประเภทนี้ไม่ได้ รองรับเฉพาะ zip</string>
+    <string-array name="files_kinds">
+        <item>โฟลเดอร์</item>
+        <item>ไฟล์ zip</item>
+        <item>ไฟล์บีบอัด</item>
+        <item>รูปภาพ</item>
+        <item>เสียง</item>
+        <item>วิดีโอ</item>
+        <item>เอกสาร</item>
+        <item>ไฟล์</item>
+    </string-array>
+
+    <string name="files_unzip">แตกไฟล์</string>
+    <string name="files_copy">คัดลอก</string>
+    <string name="files_move">ย้าย</string>
+    <string name="files_rename">เปลี่ยนชื่อ</string>
+    <string name="files_delete">ลบ</string>
+    <string name="files_download">คัดลอกลงเครื่อง</string>
+    <string name="files_delete_confirm_file">ลบ “%1$s” ใช่หรือไม่ เมื่อลบแล้วจะกู้คืนไม่ได้</string>
+    <string name="files_delete_confirm_folder">ลบโฟลเดอร์ “%1$s” และทุกอย่างข้างใน (%2$d รายการ) ใช่หรือไม่ เมื่อลบแล้วจะกู้คืนไม่ได้</string>
+    <string name="files_delete_yes">ลบถาวร</string>
+
+    <string name="files_pick_copy">เลือกโฟลเดอร์ปลายทางสำหรับคัดลอก “%1$s”</string>
+    <string name="files_pick_move">เลือกโฟลเดอร์ปลายทางสำหรับย้าย “%1$s”</string>
+    <string name="files_pick_download">เลือกโฟลเดอร์ในเครื่องสำหรับเก็บ “%1$s”</string>
+    <string name="files_pick_open_folder">กรุณาเปิดโฟลเดอร์ปลายทางก่อน</string>
+    <string name="files_paste_here">วางที่นี่</string>
+
+    <string name="files_new_name">ชื่อใหม่</string>
+
+    <string name="files_search_in">ค้นหาใน %1$s และโฟลเดอร์ย่อย</string>
+    <string name="files_search_hint">ชื่อไฟล์หรือบางส่วนของชื่อ</string>
+    <string name="files_searching">กำลังค้นหา… ตรวจแล้ว %1$d โฟลเดอร์</string>
+    <string name="files_search_none">ไม่พบไฟล์ที่ชื่อมีคำว่า “%1$s” กรุณาลองคำที่สั้นลง หรือค้นหาจากโฟลเดอร์ที่สูงขึ้น</string>
+    <string name="files_search_count">พบ %1$d รายการ</string>
+    <string name="files_search_more">แสดง %1$d รายการแรก กรุณาใช้คำที่เจาะจงขึ้นเพื่อดูผลที่เหลือ</string>
+    <string name="files_search_type">กรุณากรอกชื่อไฟล์ที่ต้องการค้นหา</string>
+
+    <string name="files_working_copy">กำลังคัดลอก “%1$s”</string>
+    <string name="files_working_move">กำลังย้าย “%1$s”</string>
+    <string name="files_working_delete">กำลังลบ “%1$s”</string>
+    <string name="files_working_unzip">กำลังแตกไฟล์ “%1$s”</string>
+    <string name="files_working_download">กำลังคัดลอก “%1$s” จาก NAS</string>
+    <string name="files_progress">%1$d จาก %2$d ไฟล์ · %3$s จาก %4$s</string>
+    <string name="files_progress_count">%1$d จาก %2$d รายการ</string>
+    <string name="files_cancel_work">หยุด</string>
+
+    <string name="files_done_copy">คัดลอกแล้ว: %1$s</string>
+    <string name="files_done_move">ย้ายแล้ว: %1$s</string>
+    <string name="files_done_rename">เปลี่ยนชื่อแล้ว: %1$s</string>
+    <string name="files_done_delete">ลบแล้ว: %1$s</string>
+    <string name="files_done_unzip">แตกไฟล์แล้ว ไฟล์อยู่ในโฟลเดอร์ “%1$s”</string>
+    <string name="files_done_download">คัดลอกลงเครื่องแล้ว: %1$s</string>
+    <string name="files_renamed_note">(ตั้งชื่อใหม่ เพราะมีชื่อเดิมอยู่แล้ว)</string>
+    <string name="files_stopped">หยุดแล้ว ส่วนที่ทำไม่เสร็จถูกลบออก ไฟล์ต้นฉบับไม่เปลี่ยน</string>
+    <string name="files_stopped_delete">หยุดแล้ว บางรายการอาจถูกลบไปแล้ว</string>
+    <string name="files_failed">ทำไม่สำเร็จ เพราะระบบไม่อนุญาตหรือไฟล์เสียหาย</string>
+
+    <string name="files_reason_into_itself">ย้ายหรือคัดลอกโฟลเดอร์ไปไว้ในตัวเองไม่ได้ กรุณาเลือกโฟลเดอร์อื่น</string>
+    <string name="files_reason_same_place">ไฟล์อยู่ในโฟลเดอร์นี้อยู่แล้ว</string>
+    <string name="files_reason_space">พื้นที่ในเครื่องไม่พอ กรุณาลบไฟล์ที่ไม่ใช้ก่อน</string>
+    <string name="files_reason_not_writable">ระบบไม่อนุญาตให้เปลี่ยนแปลงไฟล์ในโฟลเดอร์นี้</string>
+    <string name="files_reason_gone">ไม่พบไฟล์นี้แล้ว อาจถูกย้ายหรือลบไปก่อนหน้า</string>
+    <string name="files_reason_unsafe_zip">ไม่แตกไฟล์ เพราะไฟล์ zip นี้มีรายการที่จะเขียนออกนอกโฟลเดอร์ ซึ่งไม่ปลอดภัย</string>
+    <string name="files_reason_zip_password">ไฟล์ zip นี้ตั้งรหัสผ่านไว้ ซึ่งยังไม่รองรับ</string>
+    <string name="files_reason_zip_damaged">ไฟล์นี้เสียหายหรือไม่ใช่ไฟล์ zip</string>
+    <string name="files_reason_name_empty">กรุณากรอกชื่อ</string>
+    <string name="files_reason_name_slash">ชื่อห้ามมีเครื่องหมาย /</string>
+    <string name="files_reason_name_dots">ชื่อนี้ใช้ไม่ได้ กรุณาตั้งชื่ออื่น</string>
+    <string name="files_reason_name_long">ชื่อยาวเกินไป กรุณาตั้งชื่อให้สั้นลง</string>
+    <string name="files_reason_name_taken">มีไฟล์หรือโฟลเดอร์ชื่อนี้อยู่แล้วในโฟลเดอร์นี้</string>
+
+    <string name="nas_setup_title">ตั้งค่า NAS</string>
+    <string name="nas_setup_intro">เชื่อมต่อ NAS ในบ้านผ่าน SMB เพื่อเปิดดูและคัดลอกไฟล์ลงเครื่อง แอปจะไม่แก้ไขหรือลบไฟล์บน NAS</string>
+    <string name="nas_address">ที่อยู่ NAS</string>
+    <string name="nas_address_hint">เช่น 192.168.1.20 หรือ nas.local</string>
+    <string name="nas_share">ชื่อโฟลเดอร์ที่แชร์</string>
+    <string name="nas_share_hint">เช่น Media</string>
+    <string name="nas_user">ชื่อผู้ใช้</string>
+    <string name="nas_user_hint">ไม่จำเป็นต้องระบุ หากเปิดแบบผู้เยี่ยมชม</string>
+    <string name="nas_password">รหัสผ่าน</string>
+    <string name="nas_password_keep">เว้นว่างไว้เพื่อใช้รหัสผ่านเดิม</string>
+    <string name="nas_save_connect">บันทึกและเชื่อมต่อ</string>
+    <string name="nas_forget">ลบการตั้งค่า NAS</string>
+    <string name="nas_forget_confirm">ลบที่อยู่ ชื่อผู้ใช้ และรหัสผ่านของ NAS ออกจากเครื่องใช่หรือไม่</string>
+    <string name="nas_forgotten">ลบการตั้งค่า NAS แล้ว</string>
+    <string name="nas_privacy">รหัสผ่านถูกเข้ารหัสด้วยกุญแจใน Android Keystore ของเครื่องนี้ ไม่ถูกสำรองขึ้นคลาวด์ และไม่ถูกบันทึกลง log</string>
+    <string name="nas_edit">แก้ไขการตั้งค่า</string>
+    <string name="nas_retry">ลองใหม่</string>
+    <string name="nas_read_only">NAS เปิดได้แบบอ่านอย่างเดียว แอปจะไม่แก้ไขหรือลบไฟล์บน NAS</string>
+    <string name="nas_connecting">กำลังเชื่อมต่อ NAS…</string>
+    <string name="nas_form_no_address">กรุณากรอกที่อยู่ NAS</string>
+    <string name="nas_form_bad_address">ที่อยู่ไม่ถูกต้อง กรุณากรอกเป็นตัวเลข IP หรือชื่อเครื่อง เช่น 192.168.1.20</string>
+    <string name="nas_form_bad_port">หมายเลขพอร์ตไม่ถูกต้อง ต้องเป็นตัวเลข 1 ถึง 65535</string>
+    <string name="nas_form_no_share">กรุณากรอกชื่อโฟลเดอร์ที่แชร์บน NAS</string>
+
+    <string name="nas_problem_no_network">เครื่องยังไม่ได้เชื่อมต่อเครือข่าย กรุณาเชื่อมต่อ WiFi ที่บ้านก่อน</string>
+    <string name="nas_problem_local_network">แอปยังไม่ได้รับสิทธิ์เข้าถึงเครือข่ายในบ้าน กรุณาปิดแล้วเปิดแอปใหม่ หากยังไม่ได้ ผู้ดูแลต้องให้สิทธิ์ผ่าน adb</string>
+    <string name="nas_problem_host">ไม่พบเครื่อง NAS ตามที่อยู่นี้ กรุณาตรวจสอบที่อยู่</string>
+    <string name="nas_problem_no_answer">NAS ไม่ตอบ เครื่องอาจปิดอยู่ อยู่คนละเครือข่าย หรือไฟร์วอลล์ของ NAS ปิดกั้นไว้</string>
+    <string name="nas_problem_logon">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาแก้ไขการตั้งค่า</string>
+    <string name="nas_problem_account">บัญชีนี้ถูกปิด ถูกล็อก หรือรหัสผ่านหมดอายุ กรุณาตรวจสอบที่ NAS</string>
+    <string name="nas_problem_share">ไม่พบโฟลเดอร์ที่แชร์ชื่อนี้บน NAS กรุณาตรวจสอบชื่อ</string>
+    <string name="nas_problem_access">บัญชีนี้ไม่มีสิทธิ์เปิดโฟลเดอร์นี้บน NAS</string>
+    <string name="nas_problem_path">ไม่พบโฟลเดอร์หรือไฟล์นี้บน NAS แล้ว</string>
+    <string name="nas_problem_protocol">เชื่อมต่อได้ แต่ NAS ไม่ตอบด้วย SMB2 หรือ SMB3 หาก NAS เปิดเฉพาะ SMB1 กรุณาเปิด SMB2 ขึ้นไปที่ NAS</string>
+    <string name="nas_problem_other">เชื่อมต่อ NAS ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง</string>
+
     <!-- Control Panel: where the numbers come from (0.36.0). Open-Meteo's
          CC BY 4.0, CAMS/Copernicus and OpenStreetMap's ODbL ask for credit
          where the data is shown; this page is that credit, one tap away.

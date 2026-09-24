@@ -13,6 +13,13 @@ android {
     packaging {
         dex { useLegacyPackaging = true }
         jniLibs { useLegacyPackaging = true }
+        // 0.44.0: BouncyCastle (for smbj, the NAS) carries 1.2 MB of data files
+        // for post-quantum signatures (Picnic) and German certificate-path
+        // messages. SMB uses neither; the classes stay, only these files go.
+        resources {
+            excludes += "org/bouncycastle/pqc/**"
+            excludes += "org/bouncycastle/x509/*.properties"
+        }
     }
     namespace = "com.mammonrn.phoneaikiosk"
     compileSdk = 37
@@ -25,8 +32,8 @@ android {
         minSdk = 29
         targetSdk = 36
 
-        versionCode = 55
-        versionName = "0.43.1"
+        versionCode = 56
+        versionName = "0.44.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
@@ -137,6 +144,9 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.mlkit.face)
+
+    // The file manager's NAS, read only (0.44.0): SMB in pure Java, no .so.
+    implementation(libs.smbj)
 
     testImplementation(libs.junit)
     // Test classpath only — see the note in libs.versions.toml.

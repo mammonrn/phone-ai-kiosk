@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.44.0): a phone with a navy screen, for "this phone's
+     storage" in the file manager. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M4,1h8v14h-8z" />
+    <path android:fillColor="#808080" android:pathData="M5,2h6v12h-6z" />
+    <path android:fillColor="#000080" android:pathData="M6,3h4v8h-4z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M7,12h2v1h-2z" />
+</vector>

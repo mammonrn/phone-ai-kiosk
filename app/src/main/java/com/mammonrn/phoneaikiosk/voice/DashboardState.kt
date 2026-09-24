@@ -703,11 +703,16 @@ object DashboardState {
         thinking: String,
         speaking: String,
         offline: String,
+        // Jarvis resting while media plays (WakePause): shown where "ready"
+        // would be. A question asked with the button still reads listening /
+        // thinking / speaking, because that is what Jarvis is doing then.
+        resting: String? = null,
     ): String = when {
         mic == "no-permission" || mic == "error" -> offline
         tts == "speaking" || tts == "synthesising" || tts == "device-fallback" -> speaking
         chat == "asking" || stt == "sending" -> thinking
         stt == "recording" -> listening
+        resting != null -> resting
         else -> ready
     }
 }

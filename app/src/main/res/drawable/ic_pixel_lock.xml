@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.44.0): a padlock, for folders the system does not let
+     the file manager open (Android/data, Android/obb). Always beside words:
+     "ระบบไม่อนุญาต". 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M5,2h6v1h-6z M4,3h1v4h-1z M11,3h1v4h-1z" />
+    <path android:fillColor="#FFD700" android:pathData="M3,7h10v7h-10z" />
+    <path android:fillColor="#000000" android:pathData="M7,9h2v4h-2z" />
+    <path android:fillColor="#8B6914" android:pathData="M3,14h11v1h-11z M13,7h1v7h-1z" />
+</vector>

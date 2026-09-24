@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Talking to the broker, and nothing else. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -69,6 +70,31 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
+    <!--
+      THE FILE MANAGER (0.44.0, Poom).
+
+      MANAGE_EXTERNAL_STORAGE is "all files access": the whole of shared
+      storage, which a file manager needs and scoped storage does not give. It
+      is a SPECIAL permission, an app-op, not a runtime one: a Device Owner
+      cannot grant it and there is no dialog in lock task mode, so it is
+      granted once over adb when the phone is provisioned:
+          adb shell appops set, uid option, <package> MANAGE_EXTERNAL_STORAGE allow
+      (the exact line is in TESTING.md; an XML comment cannot hold two dashes)
+      Without it the file manager says so and shows that command. Even with it,
+      Android/data and Android/obb stay closed (files/StorageAreas).
+
+      THE NAS. Android 16 puts the house's local network behind a runtime
+      permission (NEARBY_WIFI_DEVICES while it is opt-in, ACCESS_LOCAL_NETWORK
+      from API 37). Both are runtime permissions the Device Owner grants itself
+      in MainActivity, like the microphone. neverForLocation: the app does not
+      learn where the phone is from WiFi scans, and says so.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!--
       WHY THIS BLOCK EXISTS, AND WHY IT IS ONE LINE LONG.
@@ -162,6 +188,14 @@
              not exported, so nothing but the kiosk opens it. -->
         <activity
             android:name=".settings.SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- The file manager (0.44.0), opened from the Control Panel. Our own
+             activity, so lock task mode allows it; not exported. -->
+        <activity
+            android:name=".files.FilesActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />

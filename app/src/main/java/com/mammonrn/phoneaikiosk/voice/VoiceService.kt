@@ -110,6 +110,14 @@ class VoiceService : Service() {
         Log.i(TAG, "created detector=${VoiceState.detector} ready=${detector.ready} " +
             "token=${VoiceState.hasToken}")
         alarmHandler.postDelayed(soakTick, SoakProbe.FIRST_MS)
+        // JARVIS RESTS WHILE MEDIA PLAYS (Poom, 2026-09-24): a new service is a
+        // new start — whatever held the pause before a restart is gone, so the
+        // wake word listens. Players quieted for a question are told on the
+        // main thread, which owns their controls.
+        WakePause.reset()
+        WakePause.clock = { android.os.SystemClock.elapsedRealtime() }
+        WakePause.post = { block -> alarmHandler.post(block) }
+        WakePause.log = { message -> Log.i(TAG, message) }
     }
 
     // ------------------------------------------------------------ soak test
@@ -201,7 +209,7 @@ class VoiceService : Service() {
             // so a second turn can never start on top of the first. The beep
             // and "heard" state come from the capture thread when the capture
             // actually starts (ackOnStart), exactly as the wake word's do.
-            if (!VoiceState.wakeOnly && machine.canStartByButton()) {
+            if (WakeGate.buttonMayStart(VoiceState.wakeOnly, machine.canStartByButton())) {
                 ackOnStart = true
                 machine.arm()
                 VoiceState.wake = "triggered"
@@ -266,8 +274,11 @@ class VoiceService : Service() {
                 val busy = machine.mode != CaptureMachine.Mode.LISTENING
                 // And while an alarm rings: the alarm tone is loud, close and
                 // looping, and must never be heard as the wake word.
-                val deaf = busy || VoiceState.alarmRinging.isNotEmpty() ||
-                    android.os.SystemClock.elapsedRealtime() < hearingFrom.get()
+                // And while music or a video plays (WakePause, Poom 2026-09-24):
+                // the wake word is off, the Jarvis button is not (WakeGate).
+                val deaf = WakeGate.deaf(busy, VoiceState.alarmRinging.isNotEmpty(),
+                    android.os.SystemClock.elapsedRealtime(), hearingFrom.get(),
+                    WakePause.paused())
 
                 // SILENCE, NOT NOTHING. This used to skip the detector entirely
                 // while deaf and then reset() it on the way back — and reset
@@ -347,6 +358,9 @@ class VoiceService : Service() {
 
                     CaptureMachine.Step.STARTED -> {
                         buffer.reset()
+                        // Music or a video playing: quiet it for the question
+                        // (and the answer); turnEnded lets it carry on.
+                        WakePause.turnStarted()
                         // Started by the Jarvis button: the beep, the screen
                         // and "ฟังอยู่ครับ" now, as a wake word would have.
                         if (ackOnStart) {
@@ -378,6 +392,7 @@ class VoiceService : Service() {
                         // not ask anything, or the room cleared the bar for a
                         // moment and then did not.
                         buffer.reset()
+                        WakePause.turnEnded()
                         VoiceState.stt = "idle"
                         VoiceState.lastCancel = machine.lastStopReason
                         if (machine.startedByWakeWord &&
@@ -492,6 +507,9 @@ class VoiceService : Service() {
             // back, or the kiosk goes deaf for good and looks like the wake
             // word stopped working.
             machine.turnFinished()
+            // The media quieted for this question carries on — on every path,
+            // for the same reason as the line above.
+            WakePause.turnEnded()
             // NO detector.reset() HERE. The detector was fed silence for the
             // whole turn, so it holds nothing of the answer that was just
             // spoken — and resetting would empty the window it needs, leaving
@@ -525,6 +543,7 @@ class VoiceService : Service() {
             writer.println("  battery      : ${level * 100 / scale.coerceAtLeast(1)}%  " +
                 "%.1f°C  plugged=%s".format(tenths / 10.0, plugged != 0))
         }
+        writer.println("  wake-pause   : ${WakePause.describe()}")
         writer.println("  capture-mode : ${machine.mode}")
         writer.println("  armed        : ${machine.isArmed()}")
         val deafFor = hearingFrom.get() - android.os.SystemClock.elapsedRealtime()

@@ -1641,3 +1641,58 @@ AudioRecord ของเราก่อนส่งเสียงให้ต�
   ≤15% และไม่ได้ชาร์จ อัปเดตทุก 10 วินาที และทันทีเมื่อเสียบ/ถอดสาย
 - **อากาศ** (ฝั่ง broker ต้อง deploy): จาร์วิสตอบอากาศจากข้อมูลเดียวกับบนจอ ไม่ยิง
   API เพิ่ม ถ้าข้อมูลเก่ากว่า 3 ชั่วโมงหรือไม่มี จะบอกว่ายังไม่มีข้อมูล
+
+---
+## v0.44.0 — File manager และจาร์วิสพักระหว่างเล่นสื่อ
+
+### ให้สิทธิ์ไฟล์ — ทำครั้งเดียวหลังติดตั้ง (หรือหลัง provision ใหม่)
+
+"เข้าถึงไฟล์ทั้งหมด" (`MANAGE_EXTERNAL_STORAGE`) เป็น special permission
+Device Owner ให้เองไม่ได้ และไม่มีหน้าจอให้กดใน lock task จึงให้ผ่าน adb:
+
+```
+adb shell appops set --uid com.mammonrn.phoneaikiosk.debug MANAGE_EXTERNAL_STORAGE allow
+adb shell appops get --uid com.mammonrn.phoneaikiosk.debug MANAGE_EXTERNAL_STORAGE
+```
+
+บรรทัดที่สองต้องตอบ `MANAGE_EXTERNAL_STORAGE: allow` สิทธิ์นี้อยู่ต่อข้าม
+`adb install -r` ไม่ต้องให้ใหม่ทุกครั้งที่อัปเดต ถ้ายังไม่ได้ให้ หน้า "จัดการไฟล์"
+จะขึ้นแม่กุญแจพร้อมคำสั่งนี้บนจอ
+
+สิทธิ์เครือข่ายในบ้าน (สำหรับ NAS) แอปให้ตัวเองตอนเปิด ไม่ต้องทำอะไร:
+Android 16 ใช้ `NEARBY_WIFI_DEVICES` ช่วงที่ระบบยังเป็นแบบเลือกเปิด ส่วน API 37
+ขึ้นไปใช้ `ACCESS_LOCAL_NETWORK` ตรวจได้ด้วย
+
+```
+adb shell dumpsys package com.mammonrn.phoneaikiosk.debug | grep -E "NEARBY_WIFI|LOCAL_NETWORK"
+```
+
+### log ของ File manager
+
+```
+adb logcat -s KioskFiles:I
+```
+
+เขียนเฉพาะชนิดงานและผล เช่น `copy ok`, `unzip failed UNSAFE_ZIP`,
+`nas list failed problem=LOGON_FAILURE` ไม่มีชื่อไฟล์ path ที่อยู่ NAS ชื่อผู้ใช้
+หรือรหัสผ่าน (FileManagerTest ตรวจ)
+
+### ทดสอบ NAS โดยไม่มี NAS จริง
+
+ต่อสายเครื่อง แล้วเปิด SMB server ทดสอบบนคอมที่พอร์ต 4445 (เช่น impacket
+`smbserver.py -smb2support -port 4445 -username u -password p TEST <โฟลเดอร์>`)
+แล้ว `adb reverse tcp:4445 tcp:4445` ในแอปกรอกที่อยู่ `127.0.0.1:4445` แชร์ `TEST`
+
+### จาร์วิสพัก — จำลองเพลงกำลังเล่น (debug build เท่านั้น)
+
+ยังไม่มีเครื่องเล่นเพลงจริงในรอบนี้ ใช้สวิตช์นี้แทนผู้เล่น:
+
+```
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD --ez on true  -p com.mammonrn.phoneaikiosk.debug
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD --ez on false -p com.mammonrn.phoneaikiosk.debug
+adb shell dumpsys activity service com.mammonrn.phoneaikiosk.debug/com.mammonrn.phoneaikiosk.voice.VoiceService | grep wake-pause
+```
+
+- เปิดแล้ว: การ์ดขึ้น "จาร์วิส · พักระหว่างเล่นเพลง" พูด Hey Jarvis ต้องไม่ปลุก
+- กดปุ่มจาร์วิส: ต้องถามได้ และ log มี `test media quiet` ตอนเริ่มฟัง `test media resume` หลังตอบ
+- ปิดแล้ว (หรือรอ 90 วินาทีเพราะสวิตช์นี้ไม่ต่ออายุ): การ์ดกลับเป็น "พร้อมฟัง" และ Hey Jarvis ใช้ได้

@@ -48,6 +48,25 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             }
 
+            ACTION_MEDIA_HOLD -> {
+                // Pretends music is playing, for the Jarvis card's "resting"
+                // state and the button-during-media path, before a real player
+                // exists. --ez on true|false. The fake player only logs what
+                // Jarvis asked of it (KioskVoice: "test media quiet/resume").
+                // Renewed by nobody: it lapses after WakePause.LEASE_MS, which
+                // is also how the lease is checked on the phone.
+                val on = intent.getBooleanExtra("on", true)
+                testHold?.let { com.mammonrn.phoneaikiosk.voice.WakePause.release(it) }
+                testHold = null
+                if (on) testHold = com.mammonrn.phoneaikiosk.voice.WakePause.hold(
+                    com.mammonrn.phoneaikiosk.voice.WakePause.Source.MUSIC,
+                    object : com.mammonrn.phoneaikiosk.voice.WakePause.Media {
+                        override fun quietForJarvis() { android.util.Log.i(VoiceService.TAG, "test media quiet") }
+                        override fun resumeAfterJarvis() { android.util.Log.i(VoiceService.TAG, "test media resume") }
+                    })
+                android.util.Log.i(VoiceService.TAG, "test media hold on=$on")
+            }
+
             ACTION_ALARM_IN -> {
                 // An alarm named "ทดสอบ" N minutes from now (default 1), set
                 // through the same store and scheduler a spoken command uses,
@@ -245,6 +264,10 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_ALARM_IN = "com.mammonrn.phoneaikiosk.TEST_ALARM_IN"
         const val ACTION_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK"
         const val ACTION_ALARM_CLEAR = "com.mammonrn.phoneaikiosk.TEST_ALARM_CLEAR"
+        const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
+
+        /** The adb switch's pretend player (TEST_MEDIA_HOLD). */
+        @Volatile private var testHold: com.mammonrn.phoneaikiosk.voice.WakePause.Hold? = null
         const val ACTION_VERIFY = "com.mammonrn.phoneaikiosk.TEST_VERIFY"
         const val TEST_ALARM_LABEL = "ทดสอบ"
 

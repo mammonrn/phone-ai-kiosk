@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.44.0): an archive box, a black square with a grey lid
+     and a zipper down the middle, gold pull tab. For the file manager in the
+     Control Panel and for zip files in its lists. Poom asked for something
+     like 7-Zip's; this keeps its black-square-archive feel and does NOT carry
+     the "7z" mark or any shape of 7-Zip's logo (DESIGN.md 8). 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M1,1h14v14h-14z" />
+    <path android:fillColor="#808080" android:pathData="M2,3h12v1h-12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M2,2h12v1h-12z
+        M7,4h1v1h-1z M8,5h1v1h-1z M7,6h1v1h-1z M8,7h1v1h-1z M7,8h1v1h-1z M8,9h1v1h-1z" />
+    <path android:fillColor="#FFD700" android:pathData="M7,10h2v4h-2z" />
+</vector>

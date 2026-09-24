@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.44.0): a manila folder with its tab, for folders in
+     the file manager. The sun's gold and the coin's dark gold. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFD700" android:pathData="M2,4h4v1h-4z M2,5h13v8h-13z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M2,6h12v1h-12z" />
+    <path android:fillColor="#8B6914" android:pathData="M2,3h4v1h-4z M6,4h9v1h-9z M1,4h1v10h-1z
+        M15,5h1v9h-1z M2,13h13v1h-13z" />
+</vector>

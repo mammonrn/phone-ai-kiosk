@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.44.0): a small grey tower with three drive bays and
+     a green light, for the NAS in the file manager. The battery's green.
+     16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M4,1h8v14h-8z" />
+    <path android:fillColor="#808080" android:pathData="M5,3h6v11h-6z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M5,2h6v1h-6z" />
+    <path android:fillColor="#000000" android:pathData="M6,5h4v1h-4z M6,8h4v1h-4z M6,11h2v1h-2z" />
+    <path android:fillColor="#2E8B2E" android:pathData="M9,11h1v1h-1z" />
+</vector>
