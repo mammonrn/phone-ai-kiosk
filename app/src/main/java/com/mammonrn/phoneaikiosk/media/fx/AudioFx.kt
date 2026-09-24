@@ -33,9 +33,13 @@ class AudioFx : BaseAudioProcessor() {
     private var appliedBalance = Float.NaN
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount !in 1..2) {
+        // A format it cannot take passes by untouched: NOT_SET makes the processor
+        // inactive. (Throwing instead fails the whole sink — seen on the A07 with a
+        // 12-channel m4a, which then would not play at all.)
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount !in 1..MAX_CHANNELS) {
             working = false
-            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+            chain = null
+            return AudioProcessor.AudioFormat.NOT_SET
         }
         chain = Eq.Chain(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
         applied = null
@@ -46,7 +50,7 @@ class AudioFx : BaseAudioProcessor() {
 
     override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
         chain?.reset()
-        tap.restart(streamMetadata.positionOffsetUs, inputAudioFormat.sampleRate.coerceAtLeast(1))
+        if (chain != null) tap.restart(streamMetadata.positionOffsetUs, inputAudioFormat.sampleRate.coerceAtLeast(1))
     }
 
     override fun onReset() {
@@ -77,5 +81,10 @@ class AudioFx : BaseAudioProcessor() {
             tap.write((mono / channels).toFloat())
         }
         out.flip()
+    }
+
+    companion object {
+        /** Every channel gets the equalizer (a 12-channel file was met on the A07); balance is stereo only. */
+        const val MAX_CHANNELS = 16
     }
 }
