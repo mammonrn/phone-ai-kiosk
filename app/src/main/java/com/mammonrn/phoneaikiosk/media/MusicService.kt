@@ -295,7 +295,7 @@ class MusicService : Service(), WakePause.Media {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MusicActivity::class.java),
                                              PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_pixel_music)
+            .setSmallIcon(R.drawable.ic_pixel_music_light)
             .setContentTitle(MusicPlayer.queue.current?.title ?: getString(R.string.window_music))
             .setContentText(getString(if (MusicPlayer.state == MusicPlayer.State.PAUSED) R.string.music_paused
                                       else R.string.music_playing))

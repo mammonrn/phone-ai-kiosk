@@ -90,7 +90,7 @@ class MusicScreenTest {
 
     @Test
     fun `the new icons are 16x16 squares with at most four colours`() {
-        for (name in listOf("music", "play", "pause", "stop", "prev", "next")) {
+        for (name in listOf("music", "music_light", "play", "pause", "stop", "prev", "next")) {
             val xml = file("src/main/res/drawable/ic_pixel_$name.xml")
             assertTrue(name, "android:viewportWidth=\"16\"" in xml && "Our own pixel art" in xml)
             val colours = Regex("""fillColor="(#[0-9A-Fa-f]{6})"""").findAll(xml).map { it.groupValues[1] }.toSet()

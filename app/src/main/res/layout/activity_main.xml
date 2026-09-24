@@ -592,7 +592,7 @@
                 <ImageView
                     android:layout_width="13dp"
                     android:layout_height="13dp"
-                    android:src="@drawable/ic_pixel_music"
+                    android:src="@drawable/ic_pixel_music_light"
                     android:contentDescription="@string/window_music" />
 
                 <TextView

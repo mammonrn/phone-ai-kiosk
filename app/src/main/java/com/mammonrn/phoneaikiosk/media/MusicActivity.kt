@@ -80,6 +80,8 @@ class MusicActivity : Activity() {
     private var queueTitle: TextView? = null
     private var queueAdapter: TrackAdapter? = null
     private var seeking = false
+    /** The list the "กำลังเล่น" page was drawn for: a new one draws the page again. */
+    private var drawnFor: List<Track>? = null
 
     private val listener: () -> Unit = { if (tab == Tab.NOW) refreshNow() }
 
@@ -163,7 +165,7 @@ class MusicActivity : Activity() {
             setBackgroundResource(R.drawable.retro_titlebar)
             setPadding(dp(6), dp(3), dp(3), dp(3))
         }
-        bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_music) },
+        bar.addView(ImageView(this).apply { setImageResource(R.drawable.ic_pixel_music_light) },
                     LinearLayout.LayoutParams(dp(16), dp(16)))
         bar.addView(TextView(this).apply {
             text = getString(R.string.window_music)
@@ -218,6 +220,7 @@ class MusicActivity : Activity() {
     // ------------------------------------------------------------ "กำลังเล่น"
 
     private fun showNow() {
+        drawnFor = MusicPlayer.queue.tracks
         val page = column()
         // The read-out: green on black, like the player it is modelled on.
         val lcd = column().apply {
@@ -317,6 +320,10 @@ class MusicActivity : Activity() {
 
     private fun refreshNow() {
         val q = MusicPlayer.queue
+        // A song chosen in the library sets the list a moment after this page
+        // was drawn (the command runs on the main thread's next turn): seen on
+        // the A07 as "ยังไม่มีเพลงในรายการ" over a playing song.
+        if (drawnFor !== q.tracks) { showNow(); return }
         val track = q.current
         titleView?.text = track?.title ?: "—"
         artistView?.text = listOf(track?.artist.orEmpty(), track?.album.orEmpty()).filter { it.isNotEmpty() }
