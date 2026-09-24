@@ -275,7 +275,7 @@ class CalculatorActivity : Activity() {
         gravity = Gravity.CENTER
         maxLines = 1
         textSize = when {
-            key.kind == Key.Kind.DIGIT && key.label.length == 1 -> 16f
+            key.label.length == 1 -> 16f                    // digits and + - × ÷ ( )
             key.label.length >= 4 -> 10f
             else -> 12f
         }
@@ -338,6 +338,9 @@ class CalculatorActivity : Activity() {
             is CalcEngine.Result.Value -> {
                 ans = r.value
                 shownResult = CalcEngine.format(r.value)
+                // What was worked out, with the brackets it closed: "√(256)".
+                val open = input.count { it == '(' } - input.count { it == ')' }
+                repeat(open.coerceAtLeast(0)) { input.append(')') }
                 history.add(0, input.toString() to shownResult)
                 while (history.size > HISTORY_MAX) history.removeAt(history.size - 1)
                 justEvaluated = true

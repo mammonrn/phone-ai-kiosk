@@ -94,7 +94,9 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
                 "V = " + Electrical.withUnit(res.volts, "V"),
                 "I = " + Electrical.withUnit(res.amps, "A"),
                 "R = " + Electrical.withUnit(res.ohms, "Ω"),
-                "P = " + Electrical.withUnit(res.watts, "W")), warnings)
+                "P = " + Electrical.withUnit(res.watts, "W")), warnings,
+                // What was worked out is bold; what was typed in is not.
+                bold = values.withIndex().filter { it.value.second == null }.map { it.index }.toSet())
         }, onClear = { fields.forEach { it.second.clear() }; out.clear() }))
         page.addView(out.view)
         a.setPage(scroll(page))
@@ -106,7 +108,13 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
     private fun combine() {
         val page = toolPage(R.string.el_combine, R.string.el_combine_hint)
-        page.addView(row(Electrical.Part.entries.map { p -> a.toggle(p.thai, p == part) { part = p; combine() } }))
+        page.addView(row(Electrical.Part.entries.map { p ->
+            a.toggle(p.thai, p == part) {
+                // Another kind of part: other units, so the values typed for the last one go.
+                if (p != part) { typed.keys.removeAll { it.startsWith("${Tool.COMBINE}:") }; picked.keys.removeAll { it.startsWith("${Tool.COMBINE}:") } }
+                part = p; combine()
+            }
+        }))
         val units = when (part) {
             Electrical.Part.RESISTOR -> listOf("Ω" to 1.0, "kΩ" to 1e3, "MΩ" to 1e6)
             Electrical.Part.CAPACITOR -> listOf("pF" to 1e-12, "nF" to 1e-9, "µF" to 1e-6)
@@ -139,7 +147,8 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
     private var decoding = true
     private var bandCount = 4
-    private val chosen = mutableListOf(Band.YELLOW, Band.VIOLET, Band.RED, Band.GOLD, Band.BROWN)
+    /** Digits at 0-2, the multiplier at 3, the tolerance at 4: 4.7 kΩ ±5 % to start. */
+    private val chosen = mutableListOf(Band.YELLOW, Band.VIOLET, Band.BLACK, Band.RED, Band.GOLD)
     private var picking: Int? = null
     private var tolerance = 5.0
 
@@ -242,9 +251,12 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
     }
 
     private fun swatch(band: Band) = View(a).apply {
-        setBackgroundColor(0xFF000000.toInt() or band.rgb)
-        // White and silver need an edge to be seen on the grey face.
-        foreground = a.getDrawable(R.drawable.retro_sunken)
+        // A dark edge round every swatch: white and silver would vanish on the grey face.
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xFF000000.toInt() or band.rgb)
+            setStroke(a.dp(2), a.color(R.color.retro_dark))
+        }
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
     private fun palette(options: List<Band>, onPick: (Band) -> Unit): View {
@@ -359,6 +371,8 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             for (d in drops.drop(from).take(4)) {
                 lines.add("${Electrical.plain(d.mm2)} ตร.มม.: ตก ${Electrical.plain(d.volts, 3)} V (${Electrical.plain(d.percent, 3)}%)")
             }
+            // The one thing this page does not check goes with every answer, not only at the foot.
+            warn.add(a.getString(R.string.el_wire_ampacity_short))
             out.show(lines, warn)
         }, onClear = { listOf(i, len).forEach { it.clear() }; out.clear() }))
         page.addView(out.view)
@@ -371,11 +385,27 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
     // ------------------------------------------------------------ parts
 
+    /**
+     * What was typed, and the unit picked, per field ("tool:label"). A toggle
+     * on the page (±5 %, 3 เฟส, ตัวเก็บประจุ) draws the page again; what was
+     * typed must still be there (ux-ui-design: never clear what was entered).
+     */
+    private val typed = HashMap<String, String>()
+    private val picked = HashMap<String, Int>()
+
     /** A number with a unit: the label, the field, and the unit buttons. */
     private inner class Qty(label: String, private val units: List<Pair<String, Double>>, start: Int,
                             initial: String = "") {
-        private var unit = start
-        val field: EditText = a.numberField().apply { setText(initial) }
+        private val key = "$tool:$label"
+        private var unit = picked[key] ?: start
+        val field: EditText = a.numberField().apply {
+            setText(typed[key] ?: initial)
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, af: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: Editable?) { typed[key] = s?.toString().orEmpty() }
+            })
+        }
         private val unitViews = ArrayList<TextView>()
         val view: LinearLayout = column().apply {
             addView(a.label(label + if (units.size == 1) " (${units[0].first})" else "").apply {
@@ -393,6 +423,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
         private fun pick(n: Int) {
             unit = n
+            picked[key] = n
             for ((k, t) in unitViews.withIndex()) styleUnit(t, units[k].first, k == n)
             changed?.invoke()
         }
@@ -451,10 +482,11 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             view.visibility = View.VISIBLE
         }
 
-        fun show(lines: List<String>, warnings: List<String>) {
+        /** [bold]: which lines are the answer (the first, unless said otherwise). */
+        fun show(lines: List<String>, warnings: List<String>, bold: Set<Int> = setOf(0)) {
             clear()
-            for ((n, line) in lines.withIndex()) view.addView(a.text(line, if (n == 0) 16f else 15f).apply {
-                if (n == 0) typeface = Typeface.create(a.thai, Typeface.BOLD)
+            for ((n, line) in lines.withIndex()) view.addView(a.text(line, if (n in bold) 16f else 15f).apply {
+                if (n in bold) typeface = Typeface.create(a.thai, Typeface.BOLD)
                 setPadding(0, if (n == 0) 0 else a.dp(4), 0, 0)
             })
             for (w in warnings) view.addView(a.text("โปรดตรวจ: $w", 13f).apply {
