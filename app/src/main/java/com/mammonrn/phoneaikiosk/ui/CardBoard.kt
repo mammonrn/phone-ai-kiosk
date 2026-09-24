@@ -65,6 +65,7 @@ class CardBoard(
         var changedAt: Long = Long.MIN_VALUE
         var openedByTouchAt: Long = Long.MIN_VALUE
         var pinned: Boolean = false
+        var held: Boolean = false
         var firstOnly: Boolean = true
     }
 
@@ -96,6 +97,15 @@ class CardBoard(
         cards[id]?.pinned = pinned
     }
 
+    /**
+     * HELD OPEN (0.53.0): open and never folded, like a pinned card, but it
+     * keeps its place in the order — the music card stays just above Jarvis,
+     * under the thumb, while something is playing. [fit] folds the others.
+     */
+    fun holdOpen(id: String, held: Boolean) {
+        cards[id]?.held = held
+    }
+
     fun layout(nowMs: Long): List<Slot> {
         if (fixedOrder) {
             order = cards.values.sortedBy { it.rank }.map { it.spec.id }
@@ -120,7 +130,7 @@ class CardBoard(
                 nowMs - card.openedByTouchAt < touchOpenMs
             Slot(
                 id = id,
-                open = card.spec.alwaysOpen || card.pinned || touched ||
+                open = card.spec.alwaysOpen || card.pinned || card.held || touched ||
                     sinceChange < card.spec.collapseAfterMs,
                 fresh = !card.firstOnly && sinceChange < freshMs,
             )
@@ -150,7 +160,7 @@ class CardBoard(
                 .filter { open.getValue(it.id) }
                 .map { cards.getValue(it.id) }
                 .filterNot {
-                    it.spec.alwaysOpen || it.pinned ||
+                    it.spec.alwaysOpen || it.pinned || it.held ||
                         (it.openedByTouchAt != Long.MIN_VALUE && nowMs - it.openedByTouchAt < touchOpenMs)
                 }
                 .minByOrNull { it.changedAt }

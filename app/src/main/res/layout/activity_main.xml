@@ -560,6 +560,123 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- ======================================================== music window
+             0.53.0 (Poom, DESIGN.md 12): while music is playing or paused, the
+             song and two word buttons, [หยุดชั่วคราว|เล่นต่อ] and [ถัดไป], 48dp.
+             Registered last, so it sits just above Jarvis, and held open
+             (CardBoard.holdOpen): the windows above fold to make room, never
+             Jarvis under its 156dp. Hidden when nothing is loaded. Tapping the
+             song opens the player. -->
+        <LinearLayout
+            android:id="@+id/card_music"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/retro_raised"
+            android:layout_marginTop="7dp"
+            android:padding="5dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/music_titlebar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/retro_titlebar"
+                android:gravity="center_vertical"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp">
+
+                <ImageView
+                    android:layout_width="13dp"
+                    android:layout_height="13dp"
+                    android:src="@drawable/ic_pixel_music"
+                    android:contentDescription="@string/window_music" />
+
+                <TextView
+                    android:id="@+id/music_title"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="@string/window_music"
+                    android:textColor="@color/retro_title_text"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+
+                <TextView
+                    android:id="@+id/music_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:textColor="@color/retro_badge"
+                    android:textSize="10sp"
+                    android:fontFamily="@font/plex_thai" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/music_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/retro_sunken"
+                android:layout_marginTop="3dp"
+                android:padding="5dp">
+
+                <TextView
+                    android:id="@+id/music_song"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="48dp"
+                    android:gravity="center_vertical"
+                    android:paddingStart="3dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/retro_text"
+                    android:textSize="@dimen/type_secondary"
+                    android:fontFamily="@font/plex_thai" />
+
+                <TextView
+                    android:id="@+id/music_toggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:minWidth="96dp"
+                    android:layout_marginStart="5dp"
+                    android:gravity="center"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:background="@drawable/retro_button"
+                    android:text="@string/music_pause"
+                    android:textColor="@color/retro_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+
+                <TextView
+                    android:id="@+id/music_next"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:minWidth="64dp"
+                    android:layout_marginStart="5dp"
+                    android:gravity="center"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:background="@drawable/retro_button"
+                    android:text="@string/music_next"
+                    android:textColor="@color/retro_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plex_thai" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- ======================================================= alarms window
              Hidden until there is an alarm. While one rings it is pinned open
              at the top of the stack with a big stop button — the one control

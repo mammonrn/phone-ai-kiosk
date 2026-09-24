@@ -889,6 +889,11 @@ class SettingsActivity : Activity() {
             Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
                 it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java))
             },
+            // 0.53.0: the music player. The music is in media/MusicService and
+            // plays on when this screen closes.
+            Category(R.drawable.ic_pixel_music, { it.getString(R.string.window_music) }) {
+                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
+            },
         )
     }
 }

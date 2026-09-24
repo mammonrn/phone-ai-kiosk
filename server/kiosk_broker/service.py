@@ -21,7 +21,7 @@ from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dash
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile, maps_rescue)
+               auth_reset, local_facts, envfile, maps_rescue, music)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -636,6 +636,14 @@ def handle_chat(
         log.info("lights device=%s intent=%s changed=%s", label, handled.intent, handled.changed)
         return answer_in_code(handled.reply, {"type": "home_updated"} if handled.changed else None,
                               handled.intent)
+
+    # ---- music (0.53.0): recognised in code; the PHONE finds the song and
+    # says "ไม่พบเพลง…" itself when it is not there (media/MusicVoice). ------
+    heard_music = music.match(text) if not is_camera and alarm is None else None
+    if heard_music is not None:
+        log_intent("skipped")
+        action, reply = music.action_and_reply(heard_music)
+        return answer_in_code(reply, action, f"music:{heard_music['command']}")
 
     private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:

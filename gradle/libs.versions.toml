@@ -31,6 +31,12 @@ mlkitFace = "16.1.7"
 # no native code. It brings BouncyCastle for the SMB crypto Android's JCE does
 # not have (MD4 for NTLM, AES-CMAC for SMB 3 signing). See NOTICE.
 smbj = "0.14.0"
+# The music player (0.53.0), and the video player after it. ExoPlayer only —
+# not media3-session or media3-ui (the kiosk draws its own screens and
+# notification) and NO decoder extension: every format Poom chose (FLAC,
+# ALAC, WAV, MP3, AAC, Opus) is decoded by Android's own MediaCodec. The
+# ffmpeg extension (DSD, APE, WavPack) is the ~22 MB Poom ruled out.
+media3 = "1.11.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,6 +48,7 @@ camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.
 camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 smbj = { group = "com.hierynomus", name = "smbj", version.ref = "smbj" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 mlkit-face = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
 
 [plugins]

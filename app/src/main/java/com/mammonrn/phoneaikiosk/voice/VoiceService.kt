@@ -647,11 +647,42 @@ class VoiceService : Service() {
      * this is the last line before startActivity and three cheap checks in a
      * row is the right number for the one place a string becomes an Intent.
      */
+    /**
+     * A spoken music command (0.53.0), carried out before the reply is said.
+     * Null: done. Otherwise the reason, which replaces the broker's words.
+     * The command and whether it worked are logged; never the song's name.
+     */
+    private fun music(action: KioskAction): String? {
+        val player = com.mammonrn.phoneaikiosk.media.MusicPlayer
+        val context = this
+        val deck = object : com.mammonrn.phoneaikiosk.media.MusicVoice.Deck {
+            override val hasQueue get() = !player.queue.isEmpty
+            override val hasMedia get() = player.hasMedia
+            override val playing get() = player.state == com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING
+            override val volume get() = player.volume
+            override fun play(tracks: List<com.mammonrn.phoneaikiosk.media.Track>) = player.play(context, tracks)
+            override fun resume() = player.resume(context)
+            override fun pause() = player.pause(context)
+            override fun next() = player.next(context)
+            override fun previous() = player.previous(context)
+            override fun stop() = player.stop(context)
+            override fun changeVolume(value: Float) = player.setVolume(context, value)
+        }
+        val command = action.params["command"].orEmpty()
+        val failure = com.mammonrn.phoneaikiosk.media.MusicVoice.perform(
+            command, action.params["query"].orEmpty(),
+            { com.mammonrn.phoneaikiosk.media.MusicShelf.all(context) }, deck)
+        VoiceState.lastAction = "music:$command:${if (failure == null) "ok" else "not-done"}"
+        Log.i(TAG, "action music command=$command done=${failure == null}")
+        return failure
+    }
+
     private fun performAction(action: KioskAction): String? {
         if (action.type == KioskAction.VERIFY_IDENTITY) return verifyForPrivate()
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
         if (action.type == KioskAction.SET_ALARM) return setAlarm(action)
         if (action.type == KioskAction.ALARM_ENABLE) return enableAlarm(action)
+        if (action.type == KioskAction.MUSIC) return music(action)
         if (action.type == KioskAction.HOME_UPDATED) {
             // The light is already switched (the broker did it) and the reply
             // says so. Here only the card is told to ask again.

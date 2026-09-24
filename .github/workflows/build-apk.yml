@@ -250,8 +250,14 @@ jobs:
           # (useLegacyPackaging), 52 MB -> ~29.4 MiB. The ceiling follows it
           # down, still under what Poom approved: the APK's size is what a
           # private repo's artifact storage would be billed on.
-          if [ "$SIZE" -gt 35651584 ]; then
-            echo "  APK is over 34 MB — check packaging (useLegacyPackaging), the onnxruntime version and new dependencies"; fail=1
+          # 2026-09-24 (0.53.0): Media3's ExoPlayer for the music and video
+          # players, ~3 MB, took the APK past 34 MiB. Poom: raise it as needed,
+          # with a number and a reason. 40 MiB: the players plus video's own
+          # code with ~4 MiB to spare, still under the 46 MB Poom approved in
+          # 0.37.0, and low enough that a stray library (the 22 MB ffmpeg
+          # extension Poom ruled out) still fails here.
+          if [ "$SIZE" -gt 41943040 ]; then
+            echo "  APK is over 40 MB — check packaging (useLegacyPackaging), the onnxruntime version and new dependencies"; fail=1
           fi
 
           exit $fail

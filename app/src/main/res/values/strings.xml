@@ -422,4 +422,45 @@
     <string name="el_wire_source">อ้างอิง: ความต้านทานสายทองแดงตาม IEC 60228 (สายตีเกลียว class 2) ปรับเป็นที่อุณหภูมิตัวนำ 70°C ไม่รวมรีแอกแตนซ์ของสาย ค่าแรงดันตก 3% เป็นค่าตั้งต้นที่แก้ได้ ไม่ได้อ้างมาตรฐาน</string>
     <string name="el_wire_ampacity_short">ยังไม่ได้ตรวจพิกัดกระแสของสาย กรุณาตรวจกับตารางของ วสท. ก่อนเลือกใช้</string>
     <string name="el_wire_ampacity">ผลนี้คิดจากแรงดันตกเท่านั้น ยังไม่ได้ตรวจพิกัดกระแสของสาย กรุณาตรวจกับตารางพิกัดกระแสในมาตรฐานการติดตั้งทางไฟฟ้าของ วสท. และใช้ขนาดที่ใหญ่กว่าระหว่างสองเกณฑ์</string>
+
+    <!-- The music player (0.53.0). -->
+    <string name="window_music">เครื่องเล่นเพลง</string>
+    <string name="music_tab_now">กำลังเล่น</string>
+    <string name="music_tab_library">คลังเพลง</string>
+    <string name="music_playing">กำลังเล่น</string>
+    <string name="music_paused">หยุดชั่วคราว</string>
+    <string name="music_stopped">หยุด</string>
+    <string name="music_prev">ก่อนหน้า</string>
+    <string name="music_play">เล่น</string>
+    <string name="music_pause">หยุดชั่วคราว</string>
+    <string name="music_stop">หยุด</string>
+    <string name="music_next">ถัดไป</string>
+    <string name="music_shuffle_on">สุ่ม: เปิด</string>
+    <string name="music_shuffle_off">สุ่ม: ปิด</string>
+    <string name="music_repeat_off">เล่นซ้ำ: ไม่ซ้ำ</string>
+    <string name="music_repeat_all">เล่นซ้ำ: ทั้งรายการ</string>
+    <string name="music_repeat_one">เล่นซ้ำ: เพลงเดียว</string>
+    <string name="music_volume">ระดับเสียง %1$d%%</string>
+    <string name="music_queue">รายการเพลง (%1$d)</string>
+    <string name="music_queue_empty">ยังไม่มีเพลงในรายการ กรุณาเลือกเพลงจากแท็บคลังเพลง หรือกดปุ่มจาร์วิสแล้วพูดว่า "เปิดเพลง" ตามด้วยชื่อเพลงหรือศิลปิน</string>
+    <string name="music_go_library">ไปที่คลังเพลง</string>
+    <string name="music_error_track">เล่นเพลง "%1$s" ไม่ได้ ไฟล์อาจเสียหรือเป็นรูปแบบที่ไม่รองรับ</string>
+    <string name="music_local">ในเครื่อง</string>
+    <string name="music_nas">NAS</string>
+    <string name="music_search_hint">ค้นหาชื่อเพลง ศิลปิน หรืออัลบั้ม</string>
+    <string name="music_play_all">เล่นทั้งหมด</string>
+    <string name="music_loading">กำลังอ่านรายการเพลง…</string>
+    <string name="music_local_empty">ไม่พบเพลงในเครื่อง รองรับ FLAC, ALAC, WAV, MP3, AAC และ Opus กรุณาคัดลอกเพลงไว้ในโฟลเดอร์ Music หรือ Download</string>
+    <string name="music_search_none">ไม่พบเพลงที่ตรงกับคำค้นหา</string>
+    <string name="music_nas_not_set">ยังไม่ได้ตั้งค่า NAS กรุณาตั้งค่าที่แผงควบคุม › จัดการไฟล์ › NAS</string>
+    <string name="music_nas_failed">เปิด NAS ไม่ได้ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่อีกครั้ง</string>
+    <string name="music_nas_play_folder">เล่นโฟลเดอร์นี้</string>
+    <string name="music_nas_add">เพิ่มเข้าคลังสำหรับสั่งด้วยเสียง</string>
+    <string name="music_nas_adding">กำลังอ่านรายชื่อเพลงในโฟลเดอร์…</string>
+    <string name="music_nas_added">เพิ่มเข้าคลังแล้ว %1$d เพลง</string>
+    <string name="music_nas_library">คลัง NAS สำหรับสั่งด้วยเสียง: %1$d โฟลเดอร์ %2$d เพลง</string>
+    <string name="music_nas_no_music">โฟลเดอร์นี้ไม่มีเพลงที่รองรับ</string>
+    <string name="music_unsupported">ไม่รองรับไฟล์ %1$s</string>
+    <string name="music_folder">โฟลเดอร์</string>
+    <string name="music_resume">เล่นต่อ</string>
 </resources>

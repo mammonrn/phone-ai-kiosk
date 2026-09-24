@@ -77,6 +77,13 @@ class Broker(private val baseUrl: String, private val token: String) {
                     else KioskAction(type, "", mapOf(
                         "target" to target, "enabled" to json.optBoolean("enabled").toString()))
                 }
+                // 0.53.0: one of MusicVoice's commands, and a bounded song name.
+                KioskAction.MUSIC -> {
+                    val command = json.optString("command")
+                    val query = json.optString("query").trim()
+                    if (command !in com.mammonrn.phoneaikiosk.media.MusicVoice.COMMANDS || query.length > 60) null
+                    else KioskAction(type, "", mapOf("command" to command, "query" to query))
+                }
                 else -> null
             }
         }

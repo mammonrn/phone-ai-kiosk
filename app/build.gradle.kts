@@ -32,8 +32,8 @@ android {
         minSdk = 29
         targetSdk = 36
 
-        versionCode = 65
-        versionName = "0.52.0"
+        versionCode = 66
+        versionName = "0.53.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
@@ -147,6 +147,9 @@ dependencies {
 
     // The file manager's NAS, read only (0.44.0): SMB in pure Java, no .so.
     implementation(libs.smbj)
+
+    // The music player (0.53.0): ExoPlayer alone. See libs.versions.toml.
+    implementation(libs.media3.exoplayer)
 
     testImplementation(libs.junit)
     // Test classpath only — see the note in libs.versions.toml.

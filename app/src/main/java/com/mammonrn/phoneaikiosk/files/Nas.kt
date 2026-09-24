@@ -240,6 +240,17 @@ class NasSession private constructor(
         work.doneFiles = 1
     }
 
+    /**
+     * A file opened for reading at any offset, for a player that streams it
+     * (0.53.0): GENERIC_READ + FILE_OPEN, as [download]. Every read asks for
+     * no byte past the end, for the reason [download] gives.
+     */
+    fun openRead(path: String): NasReader {
+        val remote = share.openFile(path, EnumSet.of(AccessMask.GENERIC_READ), null,
+                                    SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, null)
+        return NasReader(remote, remote.fileInformation.standardInformation.endOfFile)
+    }
+
     override fun close() {
         runCatching { share.close() }
         runCatching { session.close() }
@@ -277,6 +288,20 @@ class NasSession private constructor(
             }
         }
     }
+}
+
+/** One NAS file open for reading; [read] never asks past [size]. */
+class NasReader(private val remote: com.hierynomus.smbj.share.File, val size: Long) : Closeable {
+    /** Up to [length] bytes at [position]; -1 at the end. */
+    fun read(buffer: ByteArray, offset: Int, length: Int, position: Long): Int {
+        if (position >= size) return -1
+        val want = minOf(length.toLong(), size - position).toInt()
+        val read = remote.read(buffer, position, offset, want)
+        if (read <= 0) throw IOException("short read")
+        return read
+    }
+
+    override fun close() { runCatching { remote.close() } }
 }
 
 /**

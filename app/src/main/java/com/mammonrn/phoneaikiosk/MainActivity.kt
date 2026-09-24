@@ -250,6 +250,7 @@ class MainActivity : Activity() {
                 handler.removeCallbacks(refreshDashboard)
                 handler.post(refreshDashboard)
             }
+            showMusic(nowMs)
             renderCards(nowMs)
             jarvisState.text = DashboardState.jarvisState(
                 VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
@@ -495,6 +496,21 @@ class MainActivity : Activity() {
         // The house's lights, last: read at a glance, acted on by nobody yet.
         card("home", R.id.card_home, R.id.home_body, R.id.home_badge, R.id.home_titlebar,
              0.7f, 60 * minute)
+        // 0.53.0: the music, last so it sits just above Jarvis; held open while
+        // something is loaded (showMusic), hidden when nothing is.
+        card("music", R.id.card_music, R.id.music_body, R.id.music_badge, R.id.music_titlebar,
+             0f, 60 * minute)
+        val openPlayer = android.view.View.OnClickListener {
+            startActivity(Intent(this, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
+        }
+        findViewById<android.view.View>(R.id.music_titlebar).setOnClickListener(openPlayer)
+        findViewById<android.view.View>(R.id.music_song).setOnClickListener(openPlayer)
+        findViewById<android.view.View>(R.id.music_toggle).setOnClickListener {
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
+        }
+        findViewById<android.view.View>(R.id.music_next).setOnClickListener {
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.next(this)
+        }
         alarmStop.setOnClickListener {
             VoiceService.start(this, VoiceService.ACTION_ALARM_STOP)
         }
@@ -510,7 +526,8 @@ class MainActivity : Activity() {
         // with no alarm set, Google Home until it can control something (ค —
         // it comes back by itself the day the broker has devices to show).
         fun hidden(id: String) = (id == "alarms" && !alarmsVisible) ||
-            (id == "home" && homeCard == null)
+            (id == "home" && homeCard == null) ||
+            (id == "music" && !com.mammonrn.phoneaikiosk.media.MusicPlayer.hasMedia)
         val slots = fitToStack(board.layout(nowMs).filterNot { hidden(it.id) }, nowMs)
         val ids = slots.map { it.id }
         if (ids != shownOrder) {
@@ -523,7 +540,7 @@ class MainActivity : Activity() {
             }
             shownOrder = ids
         }
-        for (id in listOf("alarms", "home")) {
+        for (id in listOf("alarms", "home", "music")) {
             val root = cards.getValue(id).root
             val state = if (hidden(id)) android.view.View.GONE else android.view.View.VISIBLE
             if (root.visibility != state) root.visibility = state
@@ -609,6 +626,28 @@ class MainActivity : Activity() {
         if (view is android.view.ViewGroup) {
             for (i in 0 until view.childCount) forceLayoutTree(view.getChildAt(i))
         }
+    }
+
+    /**
+     * The music window (0.53.0): the song, and [หยุดชั่วคราว|เล่นต่อ] [ถัดไป].
+     * Held open while music is loaded, so the windows above fold for it, never
+     * Jarvis. Touches a view only when its text changes.
+     */
+    private fun showMusic(nowMs: Long) {
+        val player = com.mammonrn.phoneaikiosk.media.MusicPlayer
+        val has = player.hasMedia
+        board.holdOpen("music", has)
+        if (!has) return
+        val track = player.queue.current ?: return
+        val song = if (track.artist.isEmpty()) track.title else "${track.title} · ${track.artist}"
+        val playing = player.state == com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING
+        val toggle = getString(if (playing) R.string.music_pause else R.string.music_resume)
+        val songView = findViewById<android.widget.TextView>(R.id.music_song)
+        val toggleView = findViewById<android.widget.TextView>(R.id.music_toggle)
+        if (songView.text.toString() != song) songView.text = song
+        if (toggleView.text.toString() != toggle) toggleView.text = toggle
+        summaries["music"] = getString(if (playing) R.string.music_playing else R.string.music_paused)
+        board.report("music", track.id, nowMs)
     }
 
     /** The alarms window: the list, the stop button while one rings, its news. */

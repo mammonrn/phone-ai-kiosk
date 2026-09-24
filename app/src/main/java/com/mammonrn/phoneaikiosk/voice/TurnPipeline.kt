@@ -227,7 +227,7 @@ class TurnPipeline(
  * thing with it.
  */
 /** Actions on the phone's own state: done before the reply is said (TurnPipeline). */
-val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE)
+val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC)
 
 class KioskAction(
     val type: String,
@@ -265,6 +265,13 @@ class KioskAction(
          * "อุปกรณ์ในบ้าน" card now instead of within the minute. No fields.
          */
         const val HOME_UPDATED = "home_updated"
+
+        /**
+         * 0.53.0: a music command the broker recognised in code, {command,
+         * query}. Done before speaking: only the phone knows its songs, so a
+         * song not found is said as not found (media/MusicVoice).
+         */
+        const val MUSIC = "music"
     }
 }
 

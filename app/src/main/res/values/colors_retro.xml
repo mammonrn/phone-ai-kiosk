@@ -23,4 +23,7 @@
     <!-- The title-bar badge ("เพิ่งอัปเดต", or a folded window's summary): the
          palette's gold, readable on the navy bar. -->
     <color name="retro_badge">#FFFFD700</color>
+    <!-- The music player's read-out (0.53.0): a 1990s LCD, green on black. -->
+    <color name="retro_lcd">#FF00E000</color>
+    <color name="retro_lcd_dim">#FF00A000</color>
 </resources>
