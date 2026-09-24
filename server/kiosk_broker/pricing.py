@@ -132,6 +132,18 @@ class Pricing:
         billed = math.ceil(max(seconds, 0.0) / step) * step
         return billed * rates["usd_per_minute"] / 60.0
 
+    def qwen_stt_cost(self, model: str, seconds: float) -> float:
+        """Qwen3-ASR-Flash: per second, rounded up, list price (free quota not taken off)."""
+        rates = self._rates("stt_qwen", model)
+        return math.ceil(max(seconds, 0.0)) * rates["usd_per_second"]
+
+    def rate_field(self, section: str, key: str, field: str):
+        """One extra field of a rate ("free_until"), or None."""
+        try:
+            return self._rates(section, key).get(field)
+        except UnknownRateError:
+            return None
+
     def tts_cost(self, voice_family: str, characters: int) -> float:
         """USD for synthesising this many characters.
 

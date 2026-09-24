@@ -259,7 +259,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
 
             ACTION_STT_PROVIDER -> {
                 // Which transcriber the broker should use, for comparing them
-                // on the real phone. groq | groq-hints | google, or "default"
+                // on the real phone. groq | groq-hints | google | qwen, or "default"
                 // to go back to the broker's own choice (Groq). In memory
                 // only: a restart forgets it.
                 val value = intent.getStringExtra("value")?.trim()?.lowercase()

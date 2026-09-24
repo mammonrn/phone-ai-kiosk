@@ -8,9 +8,23 @@ from kiosk_broker import stt_compare
 from kiosk_broker.stt_compare import Sample
 
 
-def test_the_four_sentences_are_poom_s():
+def test_the_sentences_are_poom_s_and_the_first_four_keep_their_numbers():
+    # 1-4 are the numbers kept recordings were already paired with (--expect);
+    # 5-9 are the ones that went wrong for real (0.50.0).
     assert [s for s, _ in stt_compare.SENTENCES] == [
-        "ขอดูกล้องหน่อยครับ", "พาไปเซ็นทรัลเชียงราย", "วันนี้อากาศเป็นยังไง", "เปิดไฟห้องนั่งเล่น"]
+        "ขอดูกล้องหน่อยครับ", "พาไปเซ็นทรัลเชียงราย", "วันนี้อากาศเป็นยังไง", "เปิดไฟห้องนั่งเล่น",
+        "ตั้งปลุก 11 โมงเช้า", "เปิดไฟหน้าบ้าน", "ปิดไฟหน้าบ้าน", "พาไปภูชี้ฟ้าเชียงราย",
+        "วันนี้มีนัดอะไรบ้าง"]
+
+
+@pytest.mark.parametrize("keyword,heard,ok", [
+    ("กล้อง", "ขอดูกล่องหน่อยครับ", False), ("ปลุก", "ตั้งปลูก 11 โมงเช้า", False),
+    ("นัด", "วันนี้มีนักอะไรบ้าง", False), ("เปิดไฟ", "ปิดหน้าบ้าน", False),
+    ("ปิดไฟ!เปิด", "เปิดไฟหน้าบ้าน", False), ("ปิดไฟ!เปิด", "ปิดไฟหน้าบ้าน", True),
+    ("เปิดไฟ", "เปิดไฟ หน้าบ้าน", True),
+])
+def test_the_pairs_that_went_wrong_are_scored_as_misses(keyword, heard, ok):
+    assert stt_compare.keyword_ok(keyword, heard) is ok
 
 
 def test_a_perfect_transcript_has_no_errors_whatever_its_spacing():
@@ -34,14 +48,14 @@ def test_expect_names_sentences_by_number():
     assert stt_compare.parse_expect("12=1, 15=3") == {12: 1, 15: 3}
     assert stt_compare.parse_expect("") == {}
     with pytest.raises(ValueError):
-        stt_compare.parse_expect("12=9")
+        stt_compare.parse_expect("12=10")
     with pytest.raises(ValueError):
         stt_compare.parse_expect("twelve=1")
 
 
 @pytest.mark.parametrize("name,sentence", [
     ("1-camera.wav", "ขอดูกล้องหน่อยครับ"), ("3.wav", "วันนี้อากาศเป็นยังไง"),
-    ("recording.wav", None), ("9-x.wav", None), ("a-1.wav", None),
+    ("recording.wav", None), ("10-x.wav", None), ("a-1.wav", None), ("7-close.wav", "ปิดไฟหน้าบ้าน"),
 ])
 def test_a_file_is_scored_only_when_its_name_says_which_sentence(name, sentence):
     found = stt_compare.sentence_from_filename(name)
@@ -124,3 +138,22 @@ def test_a_failing_transcriber_is_a_row_not_a_crash_and_its_bill_is_kept():
     failed = [r for r in rows if r.provider == "groq-hints"]
     assert all(r.error == "google auth 403 PERMISSION_DENIED" and not r.ok for r in failed)
     assert len(ledger) == 8
+
+
+
+def test_a_run_stops_at_its_own_ceiling_at_list_price():
+    samples = [Sample(f"s{i}", b"", 3.0, "x", "x") for i in range(10)]
+    spent = [0.0]
+
+    def record(provider, seconds, cost):
+        spent[0] += cost
+
+    rows, stopped = stt_compare.run(samples, ["qwen"], lambda p, a: ("x", 0.0),
+                                    lambda p, s: 0.012, lambda: spent[0], record,
+                                    run_budget_usd=0.05)
+    # Free quota pays (cost 0), but the ceiling is checked at list price per call.
+    assert len(rows) == 10 and not stopped
+    rows, stopped = stt_compare.run(samples, ["qwen"], lambda p, a: ("x", 0.012),
+                                    lambda p, s: 0.012, lambda: spent[0], record,
+                                    run_budget_usd=0.05)
+    assert len(rows) == 4 and "this run past $0.05" in stopped

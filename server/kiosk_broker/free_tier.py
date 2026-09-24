@@ -54,18 +54,24 @@ GOOGLE_BILLING_ZONE = timezone(timedelta(hours=-8), name="UTC-8")
 WARN_SHARE = 0.80
 
 TTS = "tts"
+STT_QWEN = "stt_qwen"
 STT_GOOGLE = "stt_google"
 
 
 @dataclass(frozen=True)
 class Allowance:
-    name: str          # TTS or STT_GOOGLE
+    name: str          # TTS, STT_GOOGLE or STT_QWEN
     free: float        # in `unit`
     unit: str          # "characters" or "seconds"
     label: str         # for the log and `usage`
+    #: A ONE-OFF grant (Qwen's 36,000 seconds, 0.50.0): counted from the first
+    #: call ever, not per month, and worth nothing after [until] (epoch seconds).
+    one_off: bool = False
+    until: float | None = None
 
 
-def allowances(pricing, *, voice_family: str, google_stt_model: str) -> dict[str, Allowance]:
+def allowances(pricing, *, voice_family: str, google_stt_model: str,
+               qwen_stt_model: str = "") -> dict[str, Allowance]:
     """The allowances pricing.json declares, by name. Missing ones are absent,
     and a service with none is charged in full — never the other way round."""
     out: dict[str, Allowance] = {}
@@ -76,6 +82,16 @@ def allowances(pricing, *, voice_family: str, google_stt_model: str) -> dict[str
     if minutes > 0:
         out[STT_GOOGLE] = Allowance(STT_GOOGLE, minutes * 60, "seconds",
                                     f"Google STT {google_stt_model}")
+    seconds = pricing.free_per_month("stt_qwen", qwen_stt_model, "free_seconds") if qwen_stt_model else 0
+    if seconds > 0:
+        until = pricing.rate_field("stt_qwen", qwen_stt_model, "free_until")
+        end = None
+        if until:
+            # The end of that day, Singapore time (the account's region).
+            end = datetime.fromisoformat(str(until)).replace(
+                hour=23, minute=59, second=59, tzinfo=timezone(timedelta(hours=8))).timestamp()
+        out[STT_QWEN] = Allowance(STT_QWEN, seconds, "seconds", f"Qwen ASR {qwen_stt_model}",
+                                  one_off=True, until=end)
     return out
 
 
@@ -91,12 +107,15 @@ def period_label(now: float | None = None) -> str:
 
 
 def used(conn: sqlite3.Connection, name: str, now: float | None = None) -> float:
-    """How much of an allowance this broker has spent since the period began,
-    from both ledgers."""
-    since = period_start(now)
+    """How much of an allowance this broker has spent since the period began
+    (since ever, for a one-off grant), from both ledgers."""
+    since = 0.0 if name == STT_QWEN else period_start(now)
     if name == TTS:
         phone = ("service = 'tts' AND unit = 'characters'", ())
         operator = ("service = 'tts' AND unit = 'characters'", ())
+    elif name == STT_QWEN:
+        phone = ("service = 'stt' AND model LIKE 'qwen-%' AND unit = 'seconds'", ())
+        operator = ("service = 'stt:qwen' AND unit = 'seconds'", ())
     elif name == STT_GOOGLE:
         phone = ("service = 'stt' AND model LIKE 'google-%' AND unit = 'seconds'", ())
         operator = ("service = 'stt:google' AND unit = 'seconds'", ())
@@ -137,13 +156,16 @@ def charge(conn: sqlite3.Connection, allowance: Allowance | None, quantity: floa
     """
     if allowance is None:
         return price_of(quantity)
+    moment = time.time() if now is None else now
+    if allowance.until is not None and moment > allowance.until:
+        return price_of(quantity)                       # the grant has expired
     before = used(conn, allowance.name, now)
     after = before + quantity
     for level in crossings(before, after, allowance.free):
         if level == "warn":
-            log.warning("free tier %d%% used: %s %.0f of %.0f %s this month",
+            log.warning("free tier %d%% used: %s %.0f of %.0f %s %s",
                         int(WARN_SHARE * 100), allowance.label, after, allowance.free,
-                        allowance.unit)
+                        allowance.unit, "in all (one-off)" if allowance.one_off else "this month")
         else:
             log.warning("free tier used up: %s past %.0f %s; charges start now",
                         allowance.label, allowance.free, allowance.unit)
@@ -155,7 +177,10 @@ def status(conn: sqlite3.Connection, allowance: Allowance, now: float | None = N
     """What `usage` prints for one allowance."""
     spent = used(conn, allowance.name, now)
     share = spent / allowance.free if allowance.free else 0.0
-    if spent > allowance.free:
+    moment = time.time() if now is None else now
+    if allowance.until is not None and moment > allowance.until:
+        state = "expired: paying"
+    elif spent > allowance.free:
         state = "used up: paying"
     elif share >= WARN_SHARE:
         state = f"over {int(WARN_SHARE * 100)}%"

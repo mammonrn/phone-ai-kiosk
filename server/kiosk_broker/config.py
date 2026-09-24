@@ -61,6 +61,9 @@ class Config:
     #: Google Speech-to-Text v1 model for the "google" transcriber. latest_short
     #: lists th-TH and model adaptation on Google's supported-languages page.
     google_stt_model: str = "latest_short"
+    #: Qwen3-ASR-Flash snapshot for the "qwen" transcriber (0.50.0): the one
+    #: Poom's 36,000 free seconds are on. See qwen_stt.py.
+    qwen_stt_model: str = "qwen3-asr-flash-2026-02-10"
     #: 1 MiB is about 32 seconds of the 16 kHz mono 16-bit WAV the phone sends,
     #: which is a long question. Compressed formats fit more seconds in the same
     #: bytes, so the duration cap below is what actually bounds the bill.
@@ -251,6 +254,8 @@ class Config:
         pricing = Pricing.load(self.pricing_path)
         if provider == "google":
             return pricing.google_stt_cost(self.google_stt_model, self.max_audio_seconds)
+        if provider == "qwen":
+            return pricing.qwen_stt_cost(self.qwen_stt_model, self.max_audio_seconds)
         return pricing.stt_cost(self.stt_model, self.max_audio_seconds)
 
     @property

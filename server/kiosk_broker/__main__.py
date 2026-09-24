@@ -89,6 +89,61 @@ def _analysis(cfg, action: str, audio: bool) -> int:
         conn.close()
 
 
+def _stt_qwen_check(cfg) -> int:
+    """`stt-qwen-check`: is the key there, and does Alibaba accept it? One
+    request with one second of silence — about $0.000035, or one of the free
+    seconds. Prints the status and the error code word, never the key and
+    never a transcript (there is none to print: it is silence)."""
+    import struct
+
+    from . import free_tier, qwen_stt, stt, stt_hints
+
+    key = _secret("QWEN_API_KEY")
+    workspace = _secret("QWEN_WORKSPACE_ID")
+    print(f"QWEN_API_KEY      : {'present' if key else 'missing — set-key QWEN_API_KEY'}")
+    print(f"QWEN_WORKSPACE_ID : {'present' if workspace else 'not set (the older Singapore domain is used)'}")
+    print(f"endpoint          : {qwen_stt.base_url(workspace)}{qwen_stt.PATH}")
+    print(f"model             : {cfg.qwen_stt_model}")
+    hints = stt_hints.load(cfg.home / stt_hints.FILENAME)
+    context = qwen_stt.context_text(hints)
+    print(f"context           : {len(context)} of {qwen_stt.MAX_CONTEXT_CHARS} characters, "
+          f"{len(context.split()) if context else 0} phrases")
+    if not key:
+        return 1
+    rate, seconds = 16_000, 1
+    pcm = bytes(rate * 2 * seconds)
+    wav = (b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " +
+           struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16) + b"data" +
+           struct.pack("<I", len(pcm)) + pcm)
+    pricing = Pricing.load(cfg.pricing_path)
+    conn = store.connect(cfg.db_path)
+    try:
+        billed = None
+        try:
+            got = qwen_stt.recognize(api_key=key, audio=wav, model=cfg.qwen_stt_model,
+                                     hints=hints, workspace=workspace)
+            billed, result = got.seconds, "ok (the key works; silence came back as some text)"
+        except stt.SttError as exc:
+            billed = exc.seconds
+            result = ("ok (the key works; silence came back empty, as it should)"
+                      if exc.seconds is not None else f"FAILED: {exc.detail}")
+        if billed is not None:
+            allowance = free_tier.allowances(
+                pricing, voice_family=cfg.tts_voice_family, google_stt_model=cfg.google_stt_model,
+                qwen_stt_model=cfg.qwen_stt_model).get(free_tier.STT_QWEN)
+            quantity = float(max(1, int(-(-billed // 1))))
+            cost = free_tier.charge(conn, allowance, quantity,
+                                    lambda paid: pricing.qwen_stt_cost(cfg.qwen_stt_model, paid))
+            store.record_training_usage(conn, job="stt-qwen-check", service="stt:qwen",
+                                        quantity=quantity, unit="seconds", cost_usd=cost,
+                                        note="connection check, 1 s of silence")
+            print(f"billed            : {quantity:.0f} s, ${cost:.6f} after the free seconds")
+        print(f"result            : {result}")
+        return 0 if result.startswith("ok") else 1
+    finally:
+        conn.close()
+
+
 def _stt_compare(cfg, args) -> int:
     """`stt-compare`: the same audio through each transcriber. See stt_compare.py."""
     from . import analysis, google_stt, stt, stt_compare, stt_router, tts as tts_mod
@@ -164,6 +219,14 @@ def _stt_compare(cfg, args) -> int:
         # ---- the transcribers -------------------------------------------------
         groq_client = _stt_client() if any(p.startswith("groq") for p in providers) else None
         google_key = _secret("GOOGLE_TTS_API_KEY") or ""
+        qwen_key = _secret("QWEN_API_KEY") or ""
+        if "qwen" in providers and not qwen_key:
+            print("no QWEN_API_KEY — run: set-key QWEN_API_KEY (the value is not shown while typed)")
+            return 2
+        from . import free_tier
+        qwen_allowance = free_tier.allowances(
+            pricing, voice_family=cfg.tts_voice_family, google_stt_model=cfg.google_stt_model,
+            qwen_stt_model=cfg.qwen_stt_model).get(free_tier.STT_QWEN)
 
         def transcribe(provider: str, audio: bytes) -> tuple[str, float]:
             try:
@@ -171,27 +234,35 @@ def _stt_compare(cfg, args) -> int:
                     provider, groq_client=groq_client, google_key=google_key, audio=audio,
                     filename="audio.wav", language=cfg.stt_language, groq_model=cfg.stt_model,
                     google_model=cfg.google_stt_model,
-                    hints_path=cfg.home / "stt_hints.json", pricing=pricing)
+                    hints_path=cfg.home / "stt_hints.json", pricing=pricing,
+                    qwen_key=qwen_key, qwen_model=cfg.qwen_stt_model,
+                    qwen_workspace=_secret("QWEN_WORKSPACE_ID"))
             except stt.SttError as exc:
                 # Billed if the vendor answered at all; the ledger must hear of it.
                 exc.cost = (stt_router.cost_of(provider, pricing, groq_model=cfg.stt_model,
                                                google_model=cfg.google_stt_model,
-                                               seconds=exc.seconds)[1]
+                                               seconds=exc.seconds, qwen_model=cfg.qwen_stt_model)[1]
                             if exc.seconds is not None else 0.0)
                 raise
+            if provider == "qwen":
+                # What is actually paid, after the one-off free seconds.
+                return outcome.transcript.text, free_tier.charge(
+                    conn, qwen_allowance, outcome.billed_seconds,
+                    lambda paid: pricing.qwen_stt_cost(cfg.qwen_stt_model, paid))
             return outcome.transcript.text, outcome.cost_usd
 
         def worst_case(provider: str, seconds: float) -> float:
             # Rounded up generously: a billed minimum and a second of slack.
             return stt_router.cost_of(provider, pricing, groq_model=cfg.stt_model,
                                       google_model=cfg.google_stt_model,
-                                      seconds=seconds + 1.0)[1]
+                                      seconds=seconds + 1.0, qwen_model=cfg.qwen_stt_model)[1]
 
         def record(provider: str, seconds: float, cost: float) -> None:
             store.record_training_usage(conn, job=stt_compare.JOB, service=f"stt:{provider}",
                                         quantity=seconds, unit="seconds", cost_usd=cost)
 
-        rows, stopped = stt_compare.run(samples, providers, transcribe, worst_case, spent, record)
+        rows, stopped = stt_compare.run(samples, providers, transcribe, worst_case, spent, record,
+                                        run_budget_usd=args.max_usd)
 
         # ---- the table ----------------------------------------------------------
         for row in rows:
@@ -215,7 +286,11 @@ def _stt_compare(cfg, args) -> int:
         if not any(s["scored"] for s in stt_compare.summary(rows, providers)):
             print("no recording had an answer key, so no accuracy is shown — "
                   "pair them with --expect ID=N to score")
-        print(f"\ncomparison spend so far: ${spent():.4f} of ${stt_compare.COMPARE_BUDGET_USD:.2f}")
+        print(f"\ncomparison spend so far: ${spent():.4f} of ${stt_compare.COMPARE_BUDGET_USD:.2f}"
+              f"  (this run capped at ${args.max_usd:.2f}, at list price)")
+        if qwen_allowance is not None:
+            s = free_tier.status(conn, qwen_allowance)
+            print(f"qwen free seconds used (counted here): {s['used']:,.0f} / {s['free']:,.0f}  {s['state']}")
         if stopped:
             print(stopped)
             return 1
@@ -419,17 +494,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--audio", action="store_true",
                    help="with `on`: also keep each turn's WAV (separate consent)")
     sub.add_parser("stt-hints-check", help="validate stt_hints.json (never prints secrets)")
-    p = sub.add_parser("stt-compare", help="same audio through groq, groq-hints, google; "
+    p = sub.add_parser("stt-compare", help="same audio through groq, groq-hints, google, qwen; "
                                            "capped at $0.20 across all runs")
     p.add_argument("--from-analysis", type=int, default=0,
                    help="use the last N turns kept by `analysis on --audio` (say the 4 in order)")
     p.add_argument("--ids", default="",
                    help="kept recordings by id from `analysis summary` (blind unless --expect)")
     p.add_argument("--expect", default="",
-                   help="which sentence each id is, e.g. 12=1,15=3 (1-4). Only these are scored")
-    p.add_argument("--dir", default="", help="WAV files, sorted, paired with the 4 sentences")
-    p.add_argument("--synth", action="store_true", help="the 4 sentences in the kiosk's TTS voice")
+                   help="which sentence each id is, e.g. 12=1,15=3 (1-9, see stt_compare.SENTENCES)")
+    p.add_argument("--dir", default="", help="WAV files named N-anything.wav, N = the sentence number")
+    p.add_argument("--synth", action="store_true", help="the 9 sentences in the kiosk's TTS voice")
     p.add_argument("--providers", default="groq,groq-hints,google")
+    p.add_argument("--max-usd", type=float, default=0.05,
+                   help="this run's own ceiling, at list price (Poom: $0.05)")
+    sub.add_parser("stt-qwen-check", help="Qwen ASR: key present, and one request with 1 s of silence")
     sub.add_parser("tuya-check", help="Tuya Cloud: keys, data center, and one token request")
     sub.add_parser("tuya-devices", help="Tuya Cloud: list devices — name, type, on/off. Read only")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
@@ -627,6 +705,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "analysis":
         return _analysis(cfg, args.action, args.audio)
+    if args.cmd == "stt-qwen-check":
+        return _stt_qwen_check(cfg)
     if args.cmd == "stt-compare":
         return _stt_compare(cfg, args)
     if args.cmd in ("tuya-check", "tuya-devices"):
@@ -734,7 +814,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"google free tier, counted here — {free_tier.period_label()}:")
             for allowance in free_tier.allowances(
                     pricing, voice_family=cfg.tts_voice_family,
-                    google_stt_model=cfg.google_stt_model).values():
+                    google_stt_model=cfg.google_stt_model,
+                    qwen_stt_model=cfg.qwen_stt_model).values():
                 s = free_tier.status(conn, allowance)
                 amount = (f"{s['used']:,.0f} / {s['free']:,.0f} characters"
                           if allowance.unit == "characters"
@@ -1205,6 +1286,8 @@ def main(argv: list[str] | None = None) -> int:
                 ("ANTHROPIC_API_KEY", "/v1/chat"),
                 ("GROQ_API_KEY", "/v1/stt"),
                 ("GOOGLE_TTS_API_KEY", "/v1/tts and the \"google\" transcriber"),
+                ("QWEN_API_KEY", "the \"qwen\" transcriber (Alibaba, Singapore)"),
+                ("QWEN_WORKSPACE_ID", "optional: the newer Singapore domain for qwen"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
                 ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),

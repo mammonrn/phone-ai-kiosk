@@ -43,6 +43,13 @@ SENTENCES: tuple[tuple[str, str], ...] = (
     ("พาไปเซ็นทรัลเชียงราย", "เซ็นทรัล"),
     ("วันนี้อากาศเป็นยังไง", "อากาศ"),
     ("เปิดไฟห้องนั่งเล่น", "ไฟ"),
+    # 0.50.0 (Poom): the pairs that went wrong for real. A key word written
+    # "must!not" also fails when "not" is heard — "ปิดไฟ" is inside "เปิดไฟ".
+    ("ตั้งปลุก 11 โมงเช้า", "ปลุก"),
+    ("เปิดไฟหน้าบ้าน", "เปิดไฟ"),
+    ("ปิดไฟหน้าบ้าน", "ปิดไฟ!เปิด"),
+    ("พาไปภูชี้ฟ้าเชียงราย", "ภูชี้ฟ้า"),
+    ("วันนี้มีนัดอะไรบ้าง", "นัด"),
 )
 
 JOB = "stt-compare"
@@ -73,7 +80,10 @@ def cer(expected: str, heard: str) -> float:
 
 
 def keyword_ok(keyword: str, heard: str) -> bool:
-    return normalise(keyword) in normalise(heard)
+    """The key word heard — and, for "must!not", the other one not heard."""
+    must, _, must_not = keyword.partition("!")
+    said = normalise(heard)
+    return normalise(must) in said and not (must_not and normalise(must_not) in said)
 
 
 @dataclass
@@ -143,7 +153,8 @@ def run(samples: list[Sample], providers: list[str],
         spent_so_far: Callable[[], float],
         record: Callable[[str, float, float], None],
         budget_usd: float = COMPARE_BUDGET_USD,
-        clock: Callable[[], float] = time.monotonic) -> tuple[list[Row], str]:
+        clock: Callable[[], float] = time.monotonic,
+        run_budget_usd: float | None = None) -> tuple[list[Row], str]:
     """Every sample through every provider, within the budget.
 
     `transcribe(provider, wav)` returns (text, cost) and raises on failure;
@@ -152,11 +163,19 @@ def run(samples: list[Sample], providers: list[str],
     `expected` gets no verdict and no error rate — only what was heard.
     """
     rows: list[Row] = []
+    start = spent_so_far()
     for sample in samples:
         for provider in providers:
             if spent_so_far() + worst_case(provider, sample.seconds) > budget_usd:
                 return rows, (f"stopped: the next call could take the comparison past "
                               f"${budget_usd:.2f} (spent ${spent_so_far():.4f})")
+            # This run's own ceiling (--max-usd, Poom: $0.05 for the Qwen test),
+            # at LIST price even where a free quota will pay: a guard that
+            # trusts the quota is wrong on the day it runs out.
+            if run_budget_usd is not None and \
+                    spent_so_far() - start + worst_case(provider, sample.seconds) > run_budget_usd:
+                return rows, (f"stopped: the next call could take this run past "
+                              f"${run_budget_usd:.2f} (this run ${spent_so_far() - start:.4f})")
             started = clock()
             try:
                 text, cost = transcribe(provider, sample.audio)

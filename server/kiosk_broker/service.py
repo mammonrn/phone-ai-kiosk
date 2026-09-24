@@ -21,7 +21,7 @@ from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dash
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts)
+               auth_reset, local_facts, envfile)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -472,7 +472,8 @@ def _check_caps(conn: sqlite3.Connection, cfg: Config, *, device_id: int, day: s
 
 def _allowances(cfg: Config, pricing: Pricing) -> dict[str, free_tier.Allowance]:
     return free_tier.allowances(pricing, voice_family=cfg.tts_voice_family,
-                                google_stt_model=cfg.google_stt_model)
+                                google_stt_model=cfg.google_stt_model,
+                                qwen_stt_model=cfg.qwen_stt_model)
 
 
 #: Months already warned about in this process: once a month is plenty for a
@@ -832,6 +833,7 @@ def handle_stt(
     google_key: str = "",
     google_transport=None,
     wake: str | None = None,
+    qwen_transport=None,
 ) -> tuple[int, dict]:
     """One POST /v1/stt: audio in, text out.
 
@@ -880,7 +882,12 @@ def handle_stt(
     def bill(seconds: float) -> float:
         model, cost, billed = stt_router.cost_of(
             chosen, pricing, groq_model=cfg.stt_model, google_model=cfg.google_stt_model,
-            seconds=seconds)
+            seconds=seconds, qwen_model=cfg.qwen_stt_model)
+        if chosen == "qwen":
+            # Qwen's one-off 36,000 free seconds come off first (0.50.0).
+            cost = free_tier.charge(
+                conn, _allowances(cfg, pricing).get(free_tier.STT_QWEN), billed,
+                lambda paid: pricing.qwen_stt_cost(cfg.qwen_stt_model, paid))
         if chosen == "google":
             # Google's 60 free minutes a month come off first (Poom, 2026-09-23).
             # `cost` above is the list price; this is what is actually paid.
@@ -893,11 +900,16 @@ def handle_stt(
 
     started = time.monotonic()
     try:
+        # The Qwen key is read when it is needed, like eWeLink's: set-key
+        # needs no restart, and a broker that never uses qwen never reads it.
+        secret = envfile.reader(cfg.env_path) if chosen == "qwen" else (lambda _n: None)
         transcript = stt_router.transcribe(
             chosen, groq_client=client, google_key=google_key, audio=body,
             filename=filename, language=cfg.stt_language, groq_model=cfg.stt_model,
             google_model=cfg.google_stt_model, hints_path=cfg.home / stt_hints.FILENAME,
-            pricing=pricing, google_transport=google_transport).transcript
+            pricing=pricing, google_transport=google_transport,
+            qwen_key=secret("QWEN_API_KEY") or "", qwen_model=cfg.qwen_stt_model,
+            qwen_workspace=secret("QWEN_WORKSPACE_ID"), qwen_transport=qwen_transport).transcript
     except stt.SttError as exc:
         # Groq answering 200 with an empty transcript is still a billed request.
         # Recording it is what stops "say nothing at it repeatedly" from being a

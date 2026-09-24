@@ -45,5 +45,19 @@
       "billed_increment_seconds": 1,
       "free_minutes_per_month": 60
     }
+  },
+  "stt_qwen": {
+    "_source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+    "_checked_at": "2026-09-24",
+    "_unit": "USD per second of audio",
+    "_note": "Poom read these off the Model Studio console (Singapore) on 2026-09-24: qwen3-asr-flash $0.000035 per second; qwen3-asr-flash-2026-02-10 carries a free quota of 36,000 seconds that expires 2026-12-23, and Stop-on-Exhaust is Not Enabled, so past it the account is charged rather than stopped. Billed on usage.seconds from the answer, rounded up here to a whole second (rounding rule not stated on the pages read). The free quota is ONE-OFF, not monthly: free_tier.py counts it from the first call, until free_until.",
+    "qwen3-asr-flash-2026-02-10": {
+      "usd_per_second": 3.5e-05,
+      "free_seconds": 36000,
+      "free_until": "2026-12-23"
+    },
+    "qwen3-asr-flash": {
+      "usd_per_second": 3.5e-05
+    }
   }
 }

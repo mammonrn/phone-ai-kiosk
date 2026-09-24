@@ -36,6 +36,8 @@ SETTABLE: dict[str, str] = {
     "ANTHROPIC_API_KEY": "/v1/chat",
     "GROQ_API_KEY": "/v1/stt",
     "GOOGLE_TTS_API_KEY": "/v1/tts",
+    "QWEN_API_KEY": "Alibaba Cloud Model Studio (Singapore) key, for the \"qwen\" transcriber",
+    "QWEN_WORKSPACE_ID": "optional: the Model Studio workspace id, for the newer Singapore domain",
 }
 
 

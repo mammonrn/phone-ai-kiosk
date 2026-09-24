@@ -35,7 +35,7 @@ class Broker(private val baseUrl: String, private val token: String) {
         }
 
         /** The transcribers the broker knows. "device" is not one: it never reaches it. */
-        val BROKER_STT_PROVIDERS = setOf("groq", "groq-hints", "google")
+        val BROKER_STT_PROVIDERS = setOf("groq", "groq-hints", "google", "qwen")
 
         /** The header value for an override, or null for "use the broker's default". */
         fun sttProviderHeader(override: String?): String? =

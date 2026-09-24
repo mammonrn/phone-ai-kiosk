@@ -1398,6 +1398,58 @@ URL จึงมีคีย์อยู่ ดังนั้น**ไม่ม�
 
 `/healthz` ต้องแสดง `"build"` ของรุ่นนี้ก่อน ถ้าไม่มี แปลว่ายังไม่ได้ deploy
 
+### ตัวถอดเสียงที่ 4: Qwen ASR (`qwen`, 0.50.0) — Alibaba Cloud Model Studio, สิงคโปร์
+
+**ความเป็นส่วนตัว: เมื่อเลือก `qwen` เสียงที่พูดกับ kiosk ถูกส่งไปถอดเสียงที่เซิร์ฟเวอร์ของ Alibaba Cloud
+ในภูมิภาค Singapore** (เหมือน `groq` ส่งไป Groq และ `google` ส่งไป Google) broker ไม่เขียนข้อความที่ถอดได้
+ลง log (log มีแค่จำนวนตัวอักษร เวลา และค่าใช้จ่าย) ข้อความและเสียงจะถูกเก็บก็ต่อเมื่อเปิด `analysis on`
+เท่านั้น ❓ หน้าเอกสารที่อ่านไม่ได้บอกว่า Alibaba เก็บเสียงหรือข้อความไว้นานเท่าไร
+
+**ค่าเริ่มต้นยังเป็น `groq-hints` ไม่เปลี่ยน** `qwen` ใช้เมื่อ
+- สลับชั่วคราวจาก adb: `adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_STT_PROVIDER --es value qwen -p com.mammonrn.phoneaikiosk.debug` (กลับด้วย `--es value groq-hints` หรือรีสตาร์ทแอป)
+- หรือใน `config.json` ของ broker: `"stt_provider": "qwen"` แล้ว restart (อย่าเพิ่งทำจนกว่าจะเทียบเสร็จ)
+
+**ใส่คีย์ (ไม่แสดงค่าที่พิมพ์ และห้ามวางในแชท):**
+```bash
+$B set-key QWEN_API_KEY          # วางคีย์จาก password manager แล้ว Enter
+$B set-key QWEN_WORKSPACE_ID     # ไม่บังคับ: workspace id ของ Model Studio ถ้าอยากใช้โดเมนใหม่
+$B keys                          # QWEN_API_KEY ต้องขึ้น present
+$B stt-qwen-check                # ส่งเสียงเงียบ 1 วินาที: ต้องขึ้น result : ok
+```
+ไม่ต้อง restart broker หลังใส่คีย์ broker อ่านคีย์นี้ตอนที่ต้องใช้
+IP whitelist ของคีย์คือ 45.76.157.64 จึงเรียกได้จาก VPS เท่านั้น
+
+**สิ่งที่ตรวจจากเอกสารทางการ (2026-09-24):**
+- endpoint: `POST https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
+  (เอกสารบอกว่าโดเมนเดิม "remains fully functional" และแนะนำโดเมนใหม่
+  `https://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com/api/v1` ถ้าใส่ `QWEN_WORKSPACE_ID` จะใช้โดเมนใหม่)
+- ยืนยันตัวด้วย `Authorization: Bearer <key>` (คีย์อยู่ใน header ไม่อยู่ใน URL)
+- เสียงส่งเป็น base64 data URI (`data:audio/wav;base64,…`) ไฟล์ละไม่เกิน 10 MB และ 5 นาที
+- ภาษา: `asr_options.language = "th"` (ไทยอยู่ในรายการ) และ `enable_itn = false`
+- คำใบ้: ส่งเป็น system message ("background text and entity glossaries") ใช้คำใบ้ชุดเดียวกับ groq
+  จาก `stt_hints.json` ใส่ได้ถึง **400 ตัวอักษร** (groq ใส่ได้ 150) 🔶 ตัวเลข 400 มาจากหน้า context ที่เขียนถึง
+  รุ่น Qwen-Audio ASR ❓ ไม่ชัดว่าใช้กับ qwen3-asr-flash เหมือนกันไหม ❓ ไม่มีหน้าไหนบอกชัดว่าใช้กับอักษรไทยได้ดีแค่ไหน
+- บริบทบทสนทนา: เอกสารบอกให้ใส่ใน system message เหมือนคำใบ้ (ข้อความพื้นหลัง) ยังไม่ได้ส่งบทสนทนาเดิมไปด้วย
+- ขีดจำกัดอัตราเรียก: ❓ ไม่ระบุในหน้าที่อ่าน
+- รุ่น: `qwen3-asr-flash-2026-02-10` (มีโควตาฟรี 36,000 วินาที หมดอายุ 23 ธ.ค. 2026 ตามหน้า console ของ Poom)
+  ❓ ไม่ชัดว่าชื่อ `qwen3-asr-flash` เฉย ๆ ใช้โควตาฟรีเดียวกันไหม จึงระบุชื่อรุ่นตรง ๆ
+
+**ค่าใช้จ่าย:** $0.000035 ต่อวินาที (ปัดขึ้นเป็นวินาทีเต็ม) นับในงบเดิมทุกครั้ง หักโควตาฟรี 36,000 วินาทีก่อน
+(นับเองจากบัญชีของ broker แบบครั้งเดียว ไม่รีเซ็ตรายเดือน) log เตือนที่ 80% และเมื่อหมด หลัง 23 ธ.ค. 2026
+คิดเต็มราคา `$B usage` แสดงยอดที่ใช้ไป ⚠️ Stop-on-Exhaust ปิดอยู่ เมื่อโควตาหมด Alibaba จะคิดเงินตามจริง
+
+**เทียบกับ groq และ groq-hints ด้วยเสียงจริงของ Poom (`--max-usd 0.05` เป็นค่าเริ่มต้น):**
+1. `$B analysis on --audio`
+2. พูดกับ kiosk ทีละประโยค (Hey Jarvis ก่อนทุกประโยค) ตามเลขนี้:
+   1 ขอดูกล้องหน่อยครับ · 5 ตั้งปลุก 11 โมงเช้า · 6 เปิดไฟหน้าบ้าน · 7 ปิดไฟหน้าบ้าน ·
+   8 พาไปภูชี้ฟ้าเชียงราย · 9 วันนี้มีนัดอะไรบ้าง
+   (6 และ 7 จะสั่งไฟจริง ถ้าไม่อยากให้ไฟเปลี่ยน ให้ปิดการสั่งก่อนด้วย `$B ewelink-control off` แล้วเปิดคืนทีหลัง)
+3. `$B analysis summary` จด `#id` ของแต่ละประโยค
+4. `$B stt-compare --ids <id ทั้งหมด> --expect <id>=1,<id>=5,<id>=6,<id>=7,<id>=8,<id>=9 --providers groq,groq-hints,qwen`
+5. ตารางบอกว่าคำหลักถูกไหม: กล้อง (ไม่ใช่กล่อง) · ปลุก (ไม่ใช่ปลูก) · เปิดไฟ · ปิดไฟ (ห้ามได้ยินเป็นเปิด) · ภูชี้ฟ้า · นัด (ไม่ใช่นัก)
+6. บรรทัดท้ายบอกค่าใช้จ่ายรอบนี้ และวินาทีฟรีของ qwen ที่ใช้ไป
+7. `$B analysis off` และ `$B analysis purge`
+
 ## eWeLink — ไฟบ้าน (0.45.0 อ่าน · 0.46.0 สั่งเปิดปิดไฟ · 0.47.0 ตั้งค่าจากมือถือ)
 
 ทางหลักคุมไฟบ้าน (Poom 2026-09-24) Google Home และ Tuya พักไว้ 0.45.0 อ่านอย่างเดียว

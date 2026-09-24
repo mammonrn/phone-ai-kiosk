@@ -172,6 +172,9 @@ jobs:
           curl -sS http://127.0.0.1:18770/v1/home/devices -H "Authorization: Bearer $token" \
             | python -c 'import json,sys; a=json.load(sys.stdin); print("devices:", a); sys.exit(0 if a == {"ok": False, "error": "not-connected"} else 1)' \
             || { echo "/v1/home/devices did not say not-connected"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          # 0.50.0: the qwen transcriber exists and says so without a key.
+          python -m kiosk_broker stt-qwen-check | tee "$home/qwen.txt" || true
+          grep -q "QWEN_API_KEY      : missing" "$home/qwen.txt" || { echo "stt-qwen-check did not run"; kill "$pid"; exit 1; }
           python -m kiosk_broker ewelink-control off | grep -q "switching STOPPED" || { echo "ewelink-control off did not run"; kill "$pid"; exit 1; }
           python -m kiosk_broker ewelink-allowlist | grep -q "STOPPED" || { echo "ewelink-allowlist does not show the stop"; kill "$pid"; exit 1; }
           python -m kiosk_broker ewelink-control on > /dev/null
@@ -197,6 +200,7 @@ jobs:
               "stt": "https://console.groq.com/",
               "tts": "https://cloud.google.com/",
               "stt_google": "https://cloud.google.com/speech-to-text/",
+              "stt_qwen": "https://www.alibabacloud.com/help/en/model-studio/",
           }
 
           data = json.load(open("pricing.json"))
