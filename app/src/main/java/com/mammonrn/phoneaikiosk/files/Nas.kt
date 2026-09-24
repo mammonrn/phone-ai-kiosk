@@ -128,7 +128,7 @@ enum class NasProblem {
                     is SMBApiException -> return ofStatus(e.statusCode)
                     is java.net.UnknownHostException -> return HOST_NOT_FOUND
                     is java.net.SocketTimeoutException, is java.net.NoRouteToHostException,
-                    is java.net.PortUnreachableException -> return NO_ANSWER
+                    is java.net.PortUnreachableException, is java.util.concurrent.TimeoutException -> return NO_ANSWER
                     is SecurityException -> return LOCAL_NETWORK_DENIED
                     is java.net.ConnectException, is java.net.SocketException -> {
                         val m = e.message.orEmpty()
@@ -204,23 +204,31 @@ class NasSession private constructor(
     /**
      * Copies a file from the NAS to [target] on the phone — reading only, on
      * the NAS side. A stopped or failed copy removes the partial file.
+     *
+     * EXACTLY THE FILE'S SIZE, AT EXPLICIT OFFSETS, never "read until the end".
+     * Reading past the end makes the server answer with an error message, and
+     * one that smbj cannot parse (seen with the test server on the A07,
+     * 0.44.0: every byte arrived, then smbj waited out its timeout on that
+     * answer) turns a finished copy into a failed one. Asking for no byte past
+     * the end means that answer is never asked for.
      */
     fun download(entry: NasEntry, target: File, work: FileOps.Work) {
         work.totalFiles = 1
-        work.totalBytes = entry.size
         try {
             share.openFile(entry.path, EnumSet.of(AccessMask.GENERIC_READ), null,
                            SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, null).use { remote ->
-                remote.inputStream.use { input ->
-                    target.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            work.check()
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            output.write(buffer, 0, read)
-                            work.doneBytes += read
-                        }
+                val size = remote.fileInformation.standardInformation.endOfFile
+                work.totalBytes = size
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var offset = 0L
+                    while (offset < size) {
+                        work.check()
+                        val read = remote.read(buffer, offset, 0, minOf(buffer.size.toLong(), size - offset).toInt())
+                        if (read <= 0) throw IOException("short read")
+                        output.write(buffer, 0, read)
+                        offset += read
+                        work.doneBytes = offset
                     }
                 }
             }

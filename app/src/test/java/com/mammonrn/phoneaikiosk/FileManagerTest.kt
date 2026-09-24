@@ -391,6 +391,9 @@ class FileManagerTest {
         assertEquals(NasProblem.PATH_NOT_FOUND, NasProblem.of(smb(0xC0000034L)))
         assertEquals(NasProblem.HOST_NOT_FOUND, NasProblem.of(java.net.UnknownHostException("nas.local")))
         assertEquals(NasProblem.NO_ANSWER, NasProblem.of(java.net.SocketTimeoutException()))
+        // smbj's own wait for an answer, wrapped as it throws it.
+        assertEquals(NasProblem.NO_ANSWER, NasProblem.of(com.hierynomus.protocol.transport.TransportException(
+            java.util.concurrent.TimeoutException())))
         assertEquals(NasProblem.NO_ANSWER, NasProblem.of(java.net.ConnectException("ECONNREFUSED")))
         assertEquals(NasProblem.LOCAL_NETWORK_DENIED,
                      NasProblem.of(java.net.ConnectException("connect failed: EPERM (Operation not permitted)")))
