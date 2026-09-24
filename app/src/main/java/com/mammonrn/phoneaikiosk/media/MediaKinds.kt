@@ -35,33 +35,43 @@ object MediaKinds {
 }
 
 /**
- * THE ONE PLACE A PLAYER IS CHOSEN FOR A FILE (0.59.0). Both services ask
- * here before they load anything; 0.60.0 adds LibVLC as [Engine] for what
- * Media3 cannot play, here and nowhere else.
+ * THE ONE PLACE A PLAYER IS CHOSEN FOR A FILE (0.59.0; LibVLC since 0.60.0,
+ * Poom's choice after codecprobe). Both services ask here before they load
+ * anything, and nowhere else decides.
  *
- * What Media3 plays on the A07 was measured (codecprobe, 2026-09-24):
- * no MPEG-1/2 video decoder on the phone, no ASF (WMV/WMA) reader in Media3.
- * So .mpg .mpeg .dat .vob .wmv and .wma are "not yet" by name, before anything
- * is opened. .ts, .flv and .avi hold many codecs: Media3 is given them, and a
- * file whose picture or sound it cannot decode is caught when its tracks are
- * known (VideoService / MusicService) and said to be not supported — never a
- * silent clock, never a hang.
+ * MEDIA3 IS THE PLAYER; LibVLC plays only what Media3 cannot (Poom: "ไฟล์ที่
+ * Media3 เล่นได้อยู่แล้ว ห้ามย้ายไป VLC"), because only Media3 feeds our own
+ * equalizer and the bars. Measured on the A07 (codecprobe, 2026-09-24): no
+ * MPEG-1/2 video decoder on the phone, no ASF (WMV/WMA) reader in Media3, no
+ * ALAC decoder, and FLV/TS with the codecs they usually carry do not play. So:
+ *
+ *  * by name: .dat .mpg .mpeg .vob .ts .wmv .wma .flv (and the rare .alac) → VLC;
+ *  * .m4a by what is inside ([codec], Mp4Sniff): "alac" → VLC, AAC → Media3;
+ *  * everything else Media3 — and a file Media3 then turns out not to decode
+ *    is handed to LibVLC by the service, once, rather than skipped.
  */
 object PlayerChoice {
 
-    enum class Engine { MEDIA3, NOT_YET }
+    enum class Engine { MEDIA3, VLC, NOT_YET }
 
-    private val MEDIA3_AUDIO = setOf("mp3", "flac", "wav", "aac", "m4a", "ogg", "opus", "alac")
-    private val MEDIA3_VIDEO = setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi", "ts", "flv")
+    private val VLC_BY_NAME = setOf("dat", "mpg", "mpeg", "vob", "ts", "wmv", "wma", "flv", "alac")
+    private val MEDIA3 = setOf("mp3", "flac", "wav", "aac", "m4a", "ogg", "opus", "mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi")
 
-    fun forName(name: String): Engine = when (MediaKinds.extension(name)) {
-        in MEDIA3_AUDIO, in MEDIA3_VIDEO -> Engine.MEDIA3
+    /** [codec] is asked only for an .m4a: the four letters of its sound track ("alac", "mp4a"), or null. */
+    fun forFile(name: String, codec: () -> String?): Engine = when (MediaKinds.extension(name)) {
+        in VLC_BY_NAME -> Engine.VLC
+        "m4a" -> if (codec() == "alac") Engine.VLC else Engine.MEDIA3
+        in MEDIA3 -> Engine.MEDIA3
         else -> Engine.NOT_YET
     }
 
-    fun playsAudio(name: String) = MediaKinds.isAudio(name) && forName(name) == Engine.MEDIA3
-    fun playsVideo(name: String) = MediaKinds.isVideo(name) && forName(name) == Engine.MEDIA3
+    /** By name alone (an .m4a counts as Media3's until it is looked into). */
+    fun forName(name: String): Engine = forFile(name) { null }
 
-    /** "DAT", "WMA": the word a person knows the file by, for "not supported yet". */
+    /** A player here plays it, one or the other. */
+    fun playsAudio(name: String) = MediaKinds.isAudio(name) && forName(name) != Engine.NOT_YET
+    fun playsVideo(name: String) = MediaKinds.isVideo(name) && forName(name) != Engine.NOT_YET
+
+    /** "DAT", "WMA": the word a person knows the file by. */
     fun typeWord(name: String): String = MediaKinds.extension(name).uppercase(Locale.ROOT).ifEmpty { "?" }
 }

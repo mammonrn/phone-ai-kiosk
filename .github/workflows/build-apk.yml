@@ -256,8 +256,11 @@ jobs:
           # code with ~4 MiB to spare, still under the 46 MB Poom approved in
           # 0.37.0, and low enough that a stray library (the 22 MB ffmpeg
           # extension Poom ruled out) still fails here.
-          if [ "$SIZE" -gt 41943040 ]; then
-            echo "  APK is over 40 MB — check packaging (useLegacyPackaging), the onnxruntime version and new dependencies"; fail=1
+          # 2026-09-25 (0.60.0): LibVLC, built by us LGPL-only and arm64-only, plays
+          # what Media3 cannot. Poom set the new ceiling at 120 MiB; codecprobe
+          # measured LibVLC at about +22-24 MiB, so a stray library still fails here.
+          if [ "$SIZE" -gt 125829120 ]; then
+            echo "  APK is over 120 MiB — check packaging (useLegacyPackaging), LibVLC's build, the onnxruntime version and new dependencies"; fail=1
           fi
 
           exit $fail

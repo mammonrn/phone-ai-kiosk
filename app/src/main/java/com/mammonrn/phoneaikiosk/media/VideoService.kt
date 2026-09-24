@@ -111,8 +111,14 @@ object VideoPlayer {
 
     val hasMedia: Boolean get() = state != State.STOPPED && current != null
     val player: ExoPlayer? get() = service?.player
-    val positionMs: Long get() = player?.currentPosition ?: 0
-    val durationMs: Long get() = player?.duration?.takeIf { it != C.TIME_UNSET } ?: (current?.track?.durationMs ?: 0)
+    val positionMs: Long get() = service?.positionMs() ?: 0
+    val durationMs: Long get() = service?.durationMs()?.takeIf { it > 0 } ?: (current?.track?.durationMs ?: 0)
+
+    /** 0.60.0: this video plays through LibVLC (PlayerChoice). */
+    val usingVlc: Boolean get() = service?.usingVlc == true
+
+    /** The picture's size as shown, whichever engine has it; null before it is known. */
+    fun videoSize(): Pair<Int, Int>? = service?.videoSize()
 
     private fun run(context: Context, block: (VideoService) -> Unit) {
         main.post {
@@ -170,7 +176,7 @@ object VideoPlayer {
         // Too hot: play is refused, and the screen says why (HeatLadder step 3+).
         if (HeatWatch.step.pause) { error = context.getString(R.string.video_heat_pause); changed(); return@run }
         MusicPlayer.quietForVideo(context)
-        if (s.loaded) s.player.play() else current?.let { s.load(it, true) }
+        if (s.loaded) s.playNow() else current?.let { s.load(it, true) }
     }
     /** Paused on purpose (a button, a spoken "หยุด"): not started again when a question ends. */
     fun pause(context: Context) = run(context) { it.pauseOnPurpose() }
@@ -179,28 +185,29 @@ object VideoPlayer {
 
     /** Music starting: a playing video pauses (one sound at a time); a stopped one is not woken. */
     fun quietForMusic(context: Context) { if (state == State.PLAYING) pause(context) }
-    fun seekTo(context: Context, ms: Long) = run(context) { it.player.seekTo(ms.coerceAtLeast(0)) }
-    fun skip(context: Context, deltaMs: Long) = run(context) { it.player.seekTo((it.player.currentPosition + deltaMs).coerceAtLeast(0)) }
+    fun seekTo(context: Context, ms: Long) = run(context) { it.seek(ms.coerceAtLeast(0)) }
+    fun skip(context: Context, deltaMs: Long) = run(context) { it.seek((it.positionMs() + deltaMs).coerceAtLeast(0)) }
     fun next(context: Context) = run(context) { s ->
         if (index + 1 < list.size) { index += 1; s.load(current!!, true) }
     }
 
     fun setVolume(context: Context, value: Float) {
         volume = value.coerceIn(0f, 1f)
-        run(context) { it.player.volume = volume }
+        run(context) { it.applyVolume() }
         changed()
     }
 
     fun cycleSpeed(context: Context) {
         speed = VideoRules.nextSpeed(speed)
-        run(context) { it.player.playbackParameters = PlaybackParameters(speed) }
+        run(context) { it.applySpeed() }
         changed()
     }
 
-    /** Audio or subtitle tracks the file has: (group, index in group, words). */
-    data class Choice(val group: Tracks.Group, val index: Int, val words: String, val selected: Boolean)
+    /** Audio or subtitle tracks the file has: Media3's (group, index in group) or LibVLC's id; the words; chosen. */
+    data class Choice(val group: Tracks.Group?, val index: Int, val words: String, val selected: Boolean, val vlcId: Int? = null)
 
     fun choices(type: Int): List<Choice> {
+        service?.vlcChoices(type)?.let { return it }
         val p = player ?: return emptyList()
         val out = ArrayList<Choice>()
         for (g in p.currentTracks.groups) {
@@ -218,15 +225,19 @@ object VideoPlayer {
 
     @OptIn(UnstableApi::class)
     fun choose(context: Context, type: Int, choice: Choice?) = run(context) { s ->
+        if (s.usingVlc) { s.vlcChoose(type, choice?.vlcId); return@run }
         val params = s.player.trackSelectionParameters.buildUpon()
         if (choice == null) params.setTrackTypeDisabled(type, true)
         else params.setTrackTypeDisabled(type, false)
-            .setOverrideForType(TrackSelectionOverride(choice.group.mediaTrackGroup, choice.index))
+            .setOverrideForType(TrackSelectionOverride(choice.group!!.mediaTrackGroup, choice.index))
         s.player.trackSelectionParameters = params.build()
     }
 
-    fun attachSurface(view: SurfaceView) { player?.setVideoSurfaceView(view) }
-    fun detachSurface(view: SurfaceView) { player?.clearVideoSurfaceView(view) }
+    /** The screen's picture: the service draws on it with whichever engine plays (and again after a change of engine). */
+    fun attachSurface(view: SurfaceView) { service?.attachView(view) }
+    fun detachSurface(view: SurfaceView) { service?.detachView(view) }
+    /** The picture was laid out again: LibVLC draws to the new size (Media3 follows the surface itself). */
+    fun surfaceResized(width: Int, height: Int) { service?.vlcResized(width, height) }
 
     // ------------------------------------------------------------ where each video was left
 
@@ -267,7 +278,91 @@ class VideoService : Service(), WakePause.Media {
     private var quieted = false
     private var loadedVideo: Video? = null
 
-    val loaded: Boolean get() = player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE
+    val loaded: Boolean get() = if (usingVlc) vlc?.loaded == true
+        else player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE
+
+    // ------------------------------------------------------------ 0.60.0: two engines, one choice
+
+    private var vlc: VlcDeck? = null
+    var usingVlc = false
+        private set
+    private var vlcWant = false
+    /** A video Media3 could not show after all: it goes to LibVLC, once. */
+    private var handedOver: String? = null
+    private var wantPlay = true
+    /** The screen's picture, kept so the engine that plays gets it. */
+    private var view: SurfaceView? = null
+
+    private val vlcEvents = object : VlcDeck.Events {
+        override fun onPlaying() = update()
+        override fun onPaused() = update()
+        override fun onEnded() {
+            vlcWant = false
+            loadedVideo?.let { VideoPlayer.savePlace(this@VideoService, it, Long.MAX_VALUE, 0) }
+            stopAll()
+        }
+        override fun onError() {
+            Log.w(TAG, "video failed: vlc")
+            vlcWant = false
+            VideoPlayer.error = getString(R.string.video_error, VideoPlayer.current?.track?.title.orEmpty())
+            stopAll()
+        }
+        /** The same limits as Media3's: 720p at most, no AV1 (Poom), checked once the picture is known. */
+        override fun onVideo(width: Int, height: Int) {
+            VideoRules.refusal(width, height, vlc?.videoCodec())?.let { refuse(it); return }
+            VideoPlayer.changed()
+        }
+    }
+
+    fun positionMs(): Long = if (usingVlc) vlc?.positionMs ?: 0 else player.currentPosition
+    fun durationMs(): Long = if (usingVlc) vlc?.durationMs ?: 0 else player.duration.takeIf { it != C.TIME_UNSET } ?: 0
+    private fun wantsToPlay(): Boolean = if (usingVlc) vlcWant else player.playWhenReady
+    fun playNow() { if (usingVlc) { vlcWant = true; vlc?.play(); update() } else player.play() }
+    private fun pauseNow() { if (usingVlc) { vlcWant = false; vlc?.pause() } else player.pause() }
+    fun seek(ms: Long) { if (usingVlc) vlc?.seekTo(ms) else player.seekTo(ms) }
+    fun applyVolume() { player.volume = VideoPlayer.volume; vlc?.setVolume(VideoPlayer.volume) }
+    fun applySpeed() { player.playbackParameters = PlaybackParameters(VideoPlayer.speed); vlc?.setRate(VideoPlayer.speed) }
+
+    fun videoSize(): Pair<Int, Int>? = if (usingVlc) vlc?.videoSize() else player.videoSize.takeIf { it.width > 0 && it.height > 0 }
+        ?.let { (it.width * it.pixelWidthHeightRatio).toInt() to it.height }
+
+    fun attachView(v: SurfaceView) {
+        view = v
+        if (usingVlc) { player.clearVideoSurfaceView(v); vlc?.attach(v) } else { vlc?.attach(null); player.setVideoSurfaceView(v) }
+    }
+
+    fun detachView(v: SurfaceView) {
+        if (view === v) view = null
+        player.clearVideoSurfaceView(v)
+        vlc?.attach(null)
+    }
+
+    fun vlcResized(width: Int, height: Int) { if (usingVlc) vlc?.resized(width, height) }
+
+    /** LibVLC's sound tracks or subtitles as the screen's choices; null when Media3 plays. */
+    fun vlcChoices(type: Int): List<VideoPlayer.Choice>? {
+        val d = vlc?.takeIf { usingVlc } ?: return null
+        val list = if (type == C.TRACK_TYPE_TEXT) d.subtitleTracks() else d.audioTracks()
+        return list.map { VideoPlayer.Choice(null, 0, it.words, it.selected, it.id) }
+    }
+
+    fun vlcChoose(type: Int, id: Int?) {
+        val d = vlc ?: return
+        if (type == C.TRACK_TYPE_TEXT) d.chooseSubtitles(id ?: -1) else if (id != null) d.chooseAudio(id)
+    }
+
+    private fun engineFor(t: Track): PlayerChoice.Engine =
+        if (handedOver == t.id) PlayerChoice.Engine.VLC else PlayerChoice.forName(t.path)
+
+    /** Media3 opened the file but cannot show it: LibVLC is given it, once. False when it already had its turn. */
+    private fun handOver(): Boolean {
+        val v = loadedVideo ?: return false
+        if (usingVlc || handedOver == v.track.id) return false
+        handedOver = v.track.id
+        Log.i(TAG, "handed to vlc")
+        load(v, wantPlay)
+        return true
+    }
 
     private val renew = object : Runnable {
         override fun run() {
@@ -309,7 +404,7 @@ class VideoService : Service(), WakePause.Media {
                 VideoPlayer.changed()
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) {
+                if (state == Player.STATE_ENDED && !usingVlc) {
                     loadedVideo?.let { VideoPlayer.savePlace(this@VideoService, it, Long.MAX_VALUE, 0) }
                     stopAll()
                 }
@@ -318,6 +413,8 @@ class VideoService : Service(), WakePause.Media {
                 Log.w(TAG, "video failed: ${error.errorCodeName}")
                 val track = VideoPlayer.current?.track
                 val title = track?.title.orEmpty()
+                if ((error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                     error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) && handOver()) return
                 // 0.59.0: said as it is — gone, or a kind not played yet.
                 VideoPlayer.error = when (error.errorCode) {
                     PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> getString(R.string.video_file_missing, title)
@@ -352,12 +449,16 @@ class VideoService : Service(), WakePause.Media {
         handler.removeCallbacksAndMessages(null)
         VideoPlayer.detach(this)
         player.release()
+        vlc?.release()
+        vlc = null
         if (VideoPlayer.state != VideoPlayer.State.STOPPED) { VideoPlayer.state = VideoPlayer.State.STOPPED; VideoPlayer.changed() }
         Log.i(TAG, "video service down")
         super.onDestroy()
     }
 
     fun load(video: Video, play: Boolean) {
+        wantPlay = play
+        if (handedOver != video.track.id) handedOver = null
         VideoPlayer.error = null
         VideoPlayer.cue = ""
         // 0.59.0: a video no longer on the phone, or of a kind no player here plays yet
@@ -380,11 +481,31 @@ class VideoService : Service(), WakePause.Media {
         savePlace()
         loadedVideo = video
         val at = VideoRules.resumeAt(VideoPlayer.savedPlace(this, video), video.track.durationMs)
-        player.setMediaItem(MediaItem.fromUri(MediaSources.uriOf(video.track)), at)
-        player.playbackParameters = PlaybackParameters(VideoPlayer.speed)
-        player.volume = VideoPlayer.volume
-        player.prepare()
-        player.playWhenReady = play && !HeatWatch.step.pause
+        if (engineFor(video.track) == PlayerChoice.Engine.VLC) {
+            // 0.60.0: what Media3 cannot play (PlayerChoice): a VCD, .mpg, .wmv, .flv…
+            player.stop()
+            player.clearMediaItems()
+            view?.let { player.clearVideoSurfaceView(it) }
+            val deck = vlc ?: VlcDeck(this, vlcEvents).also { vlc = it }
+            usingVlc = true
+            vlcWant = play && !HeatWatch.step.pause
+            deck.setVolume(VideoPlayer.volume)
+            deck.setRate(VideoPlayer.speed)
+            deck.attach(view)
+            deck.load(video.track, at, vlcWant)
+            Log.i(TAG, "engine vlc")
+        } else {
+            vlc?.stop()
+            vlc?.attach(null)
+            usingVlc = false
+            vlcWant = false
+            view?.let { player.setVideoSurfaceView(it) }
+            player.setMediaItem(MediaItem.fromUri(MediaSources.uriOf(video.track)), at)
+            player.playbackParameters = PlaybackParameters(VideoPlayer.speed)
+            player.volume = VideoPlayer.volume
+            player.prepare()
+            player.playWhenReady = play && !HeatWatch.step.pause
+        }
         startInForeground()
         update()
     }
@@ -398,6 +519,8 @@ class VideoService : Service(), WakePause.Media {
         if (tracks.groups.isNotEmpty() && loadedVideo != null) {
             val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
             if (video.none { g -> (0 until g.length).any { g.isTrackSupported(it) } }) {
+                // 0.60.0: LibVLC shows what Media3 cannot (MPEG-2 in a .ts, a VCD).
+                if (handOver()) return
                 val t = loadedVideo!!.track
                 Log.i(TAG, "not played: no picture it can show")
                 VideoPlayer.error = getString(R.string.video_not_yet, t.title, PlayerChoice.typeWord(t.path))
@@ -427,6 +550,9 @@ class VideoService : Service(), WakePause.Media {
         loadedVideo = null
         player.stop()
         player.clearMediaItems()
+        vlc?.stop()
+        usingVlc = false
+        vlcWant = false
         quieted = false
         releaseHold()
         VideoPlayer.state = VideoPlayer.State.STOPPED
@@ -437,8 +563,8 @@ class VideoService : Service(), WakePause.Media {
 
     private fun savePlace() {
         val v = loadedVideo ?: return
-        if (player.currentMediaItem == null) return
-        VideoPlayer.savePlace(this, v, player.currentPosition, player.duration.takeIf { it != C.TIME_UNSET } ?: 0)
+        if (!loaded) return
+        VideoPlayer.savePlace(this, v, positionMs(), durationMs())
     }
 
     /** One step of the heat ladder, for the video: its size cap, and pause or stop. */
@@ -447,16 +573,17 @@ class VideoService : Service(), WakePause.Media {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setMaxVideoSize(VideoRules.MAX_W * h / VideoRules.MAX_H, h).build()
         if (step.stop) { VideoPlayer.error = getString(R.string.video_heat_stop); stopAll(); return }
-        if (step.pause && player.playWhenReady) { player.pause(); VideoPlayer.error = getString(R.string.video_heat_pause) }
+        if (step.pause && wantsToPlay()) { pauseNow(); VideoPlayer.error = getString(R.string.video_heat_pause) }
         VideoPlayer.changed()
     }
 
     private fun update() {
-        val meant = player.playWhenReady &&
-            (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
+        val meant = if (usingVlc) vlcWant && vlc?.loaded == true
+            else player.playWhenReady &&
+                (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
         val newState = when {
             meant || quieted -> VideoPlayer.State.PLAYING
-            player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE -> VideoPlayer.State.PAUSED
+            loaded -> VideoPlayer.State.PAUSED
             else -> VideoPlayer.state.takeIf { it == VideoPlayer.State.STOPPED } ?: VideoPlayer.State.PAUSED
         }
         if (meant || quieted) takeHold() else releaseHold()
@@ -489,20 +616,20 @@ class VideoService : Service(), WakePause.Media {
      */
     fun pauseOnPurpose() {
         quieted = false
-        player.pause()
+        pauseNow()
         update()
     }
 
     override fun quietForJarvis() {
-        if (!player.playWhenReady) return
+        if (!wantsToPlay()) return
         quieted = true
-        player.pause()
+        pauseNow()
     }
 
     override fun resumeAfterJarvis() {
         if (!quieted) return
         quieted = false
-        player.play()
+        playNow()
     }
 
     private fun notification(): Notification {

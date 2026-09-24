@@ -43,6 +43,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import com.mammonrn.phoneaikiosk.ui.UiScale
 import com.mammonrn.phoneaikiosk.ui.Retro
+import com.mammonrn.phoneaikiosk.auth.IdentityGate
 import com.mammonrn.phoneaikiosk.media.MusicActivity
 import com.mammonrn.phoneaikiosk.media.VideoActivity
 
@@ -111,6 +112,8 @@ class FilesActivity : Activity() {
     private var noticeBad = false
 
     private var confirmingDelete = false
+    /** 0.60.0: what is deleted once the owner's face or pattern passes (auth/IdentityGate). */
+    private var afterPass: (() -> Unit)? = null
     private var confirmingForget = false
 
     /** The work in progress, if any: how far, and the way to stop it. */
@@ -148,6 +151,26 @@ class FilesActivity : Activity() {
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")
     @Suppress("DEPRECATION")
     override fun onBackPressed() = goBack()
+
+    /** The owner's face or pattern for a delete: only a pass deletes (auth/IdentityGate). */
+    @Deprecated("startActivityForResult's partner; this app has no androidx.activity.")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != IdentityGate.REQUEST) return
+        val then = afterPass
+        afterPass = null
+        if (IdentityGate.passed(data)) {
+            Log.i(TAG, "delete: identity passed")
+            then?.invoke()
+        } else {
+            Log.i(TAG, "delete: identity not passed")
+            say(IdentityGate.refusal(this, data), bad = true)
+            confirmingDelete = false
+            confirmingForget = false
+            show(page)
+        }
+    }
 
     private fun goBack() {
         when (val p = page) {
@@ -509,7 +532,7 @@ class FilesActivity : Activity() {
             box.addView(text(if (file.isDirectory)
                 getString(R.string.files_delete_confirm_folder, file.name, insideCount.coerceAtLeast(0))
                 else getString(R.string.files_delete_confirm_file, file.name), UiScale.TEXT_BASE))
-            box.addView(pair(getString(R.string.files_delete_yes), { runDelete(file) },
+            box.addView(pair(getString(R.string.files_delete_yes), { afterPass = { runDelete(file) }; IdentityGate.ask(this) },
                              getString(R.string.cancel), { confirmingDelete = false; drawDelete() }),
                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
             deleteArea.addView(box)
@@ -826,10 +849,13 @@ class FilesActivity : Activity() {
                 form.addView(text(getString(R.string.nas_forget_confirm), UiScale.TEXT_BASE),
                              LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
                 form.addView(pair(getString(R.string.files_delete_yes), {
-                    NasStore.delete(this)
-                    Log.i(TAG, "nas settings deleted")
-                    say(getString(R.string.nas_forgotten))
-                    show(Page.Roots)
+                    afterPass = {
+                        NasStore.delete(this)
+                        Log.i(TAG, "nas settings deleted")
+                        say(getString(R.string.nas_forgotten))
+                        show(Page.Roots)
+                    }
+                    IdentityGate.ask(this)
                 }, getString(R.string.cancel), { confirmingForget = false; show(Page.NasSetup) }),
                     LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
             }

@@ -20,3 +20,7 @@ __pycache__/
 
 # Reference pictures of other products: looked at, never committed (Poom).
 docs/refs/
+
+# LibVLC is fetched by its pinned checksum, never committed (app/build.gradle.kts).
+app/libs/libvlc-*.aar
+app/libs/libvlc-*.aar.part

@@ -198,3 +198,17 @@ SMB 2/3 in pure Java: no native code. It brings, all pure Java:
 BouncyCastle's post-quantum data files (org/bouncycastle/pqc/**) and its
 certificate-path message files are left out of the APK (app/build.gradle.kts,
 packaging); SMB uses neither.
+
+
+LibVLC - the second player (0.60.0)
+-----------------------------------
+LibVLC 3.7.6 from VideoLAN (https://www.videolan.org/vlc/libvlc.html), GNU LGPL
+version 2.1 or later; the full text is licenses/LGPL-2.1.txt, and a copy is in
+the APK at assets/licenses/LGPL-2.1.txt. Built by this project, arm64 only, with
+no GPL component: VLC's contribs with --disable-gpl, and every VLC module that
+declares the GPL left out (tools/libvlc/build-lgpl.sh). The source commits, the
+build, the license report of every module and library in it, and how to build
+it again are in licenses/LIBVLC.md. It is fetched by its pinned SHA-256 and is
+not kept in git. The libraries it bundles keep their own licences (FFmpeg
+under the LGPL 2.1; others BSD, MIT, zlib and similar), listed in the report.
+It is used only for files Media3 cannot play (media/PlayerChoice).

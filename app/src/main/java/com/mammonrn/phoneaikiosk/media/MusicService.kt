@@ -61,8 +61,11 @@ object MusicPlayer {
     /** Music is loaded and not stopped: the home card shows. */
     val hasMedia: Boolean get() = state != State.STOPPED && queue.current != null
 
-    val positionMs: Long get() = service?.player?.currentPosition ?: 0
-    val durationMs: Long get() = service?.player?.duration?.takeIf { it != C.TIME_UNSET } ?: 0
+    val positionMs: Long get() = service?.positionMs() ?: 0
+    val durationMs: Long get() = service?.durationMs() ?: 0
+
+    /** 0.60.0: this song plays through LibVLC (PlayerChoice): VLC's equalizer, and no bars. */
+    val usingVlc: Boolean get() = service?.usingVlc == true
 
     /** Runs [block] on the main thread with the service, starting it if it is not running. */
     private fun run(context: Context, block: (MusicService) -> Unit) {
@@ -120,7 +123,7 @@ object MusicPlayer {
     fun resume(context: Context) = run(context) { s ->
         if (HeatWatch.step.pause) { error = context.getString(R.string.video_heat_pause); changed(); return@run }
         VideoPlayer.quietForMusic(context)
-        if (s.loaded) s.player.play() else s.load(queue.current, true)
+        if (s.loaded) s.playNow() else s.load(queue.current, true)
     }
 
     /** A video starting: playing music pauses (one sound at a time); stopped music is not woken. */
@@ -135,18 +138,18 @@ object MusicPlayer {
 
     fun previous(context: Context) = run(context) { s ->
         // Winamp's rule: a few seconds in, "previous" starts this song again.
-        if (s.player.currentPosition > 3_000) s.player.seekTo(0)
+        if (s.positionMs() > 3_000) s.seek(0)
         else queue.previous()?.let { s.load(it, true) }
     }
 
     fun stop(context: Context) = run(context) { it.stopAll() }
 
-    fun seekTo(context: Context, ms: Long) = run(context) { it.player.seekTo(ms) }
+    fun seekTo(context: Context, ms: Long) = run(context) { it.seek(ms) }
 
     fun setVolume(context: Context, value: Float) {
         volume = value.coerceIn(0f, 1f)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putFloat("volume", volume).apply()
-        run(context) { it.player.volume = volume }
+        run(context) { it.applyVolume() }
         changed()
     }
 
@@ -175,6 +178,8 @@ object MusicPlayer {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean("eq_on", settings.on).putFloat("eq_pre", settings.preampDb)
             .putString("eq_gains", settings.gainsDb.joinToString(",")).putString("eq_preset", settings.preset).apply()
+        // A song playing through LibVLC takes the same settings on VLC's own equalizer (0.60.0, Poom).
+        service?.applyEq()
         changed()
     }
 
@@ -198,7 +203,9 @@ object MusicPlayer {
     data class FileInfo(val kbps: Int?, val khz: Int?, val channels: Int?)
 
     fun fileInfo(): FileInfo {
-        val p = service?.player ?: return FileInfo(null, null, null)
+        val svc = service ?: return FileInfo(null, null, null)
+        svc.vlcFacts()?.let { (kbps, khz, ch) -> return FileInfo(kbps, khz, ch) }
+        val p = svc.player
         val f = p.audioFormat ?: return FileInfo(null, null, null)
         var bitrate = f.bitrate.takeIf { it > 0 }
         // FLAC, WAV and ALAC seldom carry a bitrate: the average is the file's size over its length.
@@ -212,7 +219,10 @@ object MusicPlayer {
     }
 
     /** The song's own tags, read from the file by the player: title, artist, album, cover. */
-    val tags: androidx.media3.common.MediaMetadata? get() = service?.player?.mediaMetadata
+    val tags: androidx.media3.common.MediaMetadata? get() = service?.takeIf { !it.usingVlc }?.player?.mediaMetadata
+
+    /** Title, artist and album as LibVLC read them, for a song playing through it. */
+    val vlcTags: Triple<String?, String?, String?>? get() = service?.vlcTags()
 
     // ------------------------------------------------------------ 0.55.0: editing the list
 
@@ -269,7 +279,7 @@ object MusicPlayer {
     fun playSingle(context: Context, track: Track) = run(context) { s ->
         VideoPlayer.quietForMusic(context)
         if (before == null) {
-            before = Before(queue.snapshot(), if (s.loaded) s.player.currentPosition else resumeAtMs, playlistId, s.loaded)
+            before = Before(queue.snapshot(), if (s.loaded) s.positionMs() else resumeAtMs, playlistId, s.loaded)
         }
         playlistId = null
         queue.setShuffle(false)
@@ -375,8 +385,9 @@ class MusicService : Service(), WakePause.Media {
     /** Errors in a row: a list of files that all fail stops, rather than spinning. */
     private var failures = 0
 
-    /** A track is in the player (not stopped). */
-    val loaded: Boolean get() = player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE
+    /** A track is in the player (not stopped), whichever engine has it. */
+    val loaded: Boolean get() = if (usingVlc) vlc?.loaded == true
+        else player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE
 
     /** Every few seconds while it plays, the place is saved: an unplugged phone comes back near it. */
     private val saver = object : Runnable {
@@ -389,12 +400,74 @@ class MusicService : Service(), WakePause.Media {
     /** The heat ladder's top steps, for the music: pause, then stop (the bars stop by themselves). */
     private val heat: (HeatLadder.Step) -> Unit = { step ->
         if (step.stop) stopAll()
-        else if (step.pause && player.playWhenReady) { player.pause(); MusicPlayer.error = getString(R.string.video_heat_pause) }
+        else if (step.pause && wantsToPlay()) { pauseNow(); MusicPlayer.error = getString(R.string.video_heat_pause) }
+    }
+
+    // ------------------------------------------------------------ 0.60.0: two engines, one choice
+
+    /** LibVLC's player, made the first time a song needs it (PlayerChoice). */
+    private var vlc: VlcDeck? = null
+    /** The song now loaded plays through LibVLC. */
+    var usingVlc = false
+        private set
+    /** LibVLC is meant to be playing (it has no playWhenReady of its own). */
+    private var vlcWant = false
+    /** A song Media3 could not decode after all: it goes to LibVLC, once. */
+    private var handedOver: String? = null
+    /** Whether the song last asked for was to play: kept when one is skipped (0.60.0). */
+    private var wantPlay = true
+
+    private val vlcEvents = object : VlcDeck.Events {
+        override fun onPlaying() { failures = 0; learnDuration(); update() }
+        override fun onPaused() = update()
+        override fun onEnded() { vlcWant = false; trackEnded() }
+        override fun onError() {
+            Log.w(TAG, "track failed: vlc")
+            vlcWant = false
+            skip(getString(R.string.music_error_track, MusicPlayer.queue.current?.title.orEmpty()))
+        }
+    }
+
+    fun positionMs(): Long = if (usingVlc) vlc?.positionMs ?: 0 else player.currentPosition
+    fun durationMs(): Long = if (usingVlc) vlc?.durationMs ?: 0 else player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0
+    private fun wantsToPlay(): Boolean = if (usingVlc) vlcWant else player.playWhenReady
+    fun playNow() { if (usingVlc) { vlcWant = true; vlc?.play(); update() } else player.play() }
+    private fun pauseNow() { if (usingVlc) { vlcWant = false; vlc?.pause() } else player.pause() }
+    fun seek(ms: Long) { if (usingVlc) vlc?.seekTo(ms) else player.seekTo(ms) }
+    fun applyVolume() { player.volume = MusicPlayer.volume; vlc?.setVolume(MusicPlayer.volume) }
+    fun applyEq() { if (usingVlc) vlc?.equalize(MusicPlayer.eq) }
+    fun vlcFacts(): Triple<Int?, Int?, Int?>? = if (usingVlc) vlc?.soundFacts() else null
+    fun vlcTags(): Triple<String?, String?, String?>? = if (usingVlc) vlc?.tags() else null
+
+    /** Which engine plays [track]: PlayerChoice, looking inside an .m4a on the phone. */
+    private fun engineFor(track: Track): PlayerChoice.Engine =
+        if (handedOver == track.id) PlayerChoice.Engine.VLC
+        else PlayerChoice.forFile(track.path) { if (track.onNas) null else Mp4Sniff.audioCodec(java.io.File(track.path)) }
+
+    /**
+     * Media3 opened the song but cannot decode it (an ALAC .m4a it was not told
+     * about, say): LibVLC is given it, once, as PlayerChoice promises. Returns
+     * false when it already had its turn.
+     */
+    private fun handOver(): Boolean {
+        val t = MusicPlayer.queue.current ?: return false
+        if (usingVlc || handedOver == t.id) return false
+        handedOver = t.id
+        Log.i(TAG, "handed to vlc")
+        load(t, wantPlay, keepError = true)
+        return true
+    }
+
+    /** A song finished by itself: the next one, or the end of the list (Media3's ENDED or VLC's EndReached). */
+    private fun trackEnded() {
+        val next = MusicPlayer.queue.next(auto = true)
+        // A file played on its own that ends: the list comes back (0.59.0).
+        if (next != null) load(next, true) else if (MusicPlayer.single) endSingleNow(false) else stopAll()
     }
 
     /** A NAS song's length is known once it plays: the list shows it from then on. */
     private fun learnDuration() {
-        val ms = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        val ms = durationMs().takeIf { it > 0 } ?: return
         val i = MusicPlayer.queue.currentIndex
         val t = MusicPlayer.queue.current ?: return
         if (t.durationMs == 0L) MusicPlayer.queue.replace(i, t.copy(durationMs = ms))
@@ -442,7 +515,7 @@ class MusicService : Service(), WakePause.Media {
                 val mime = audio.first().getTrackFormat(0).sampleMimeType.orEmpty()
                 val kind = mime.substringAfter('/').uppercase().ifEmpty { "?" }
                 Log.w(TAG, "no decoder for $mime")
-                handler.post { skip(getString(R.string.music_no_decoder, MusicPlayer.queue.current?.title.orEmpty(), kind)) }
+                handler.post { if (!handOver()) skip(getString(R.string.music_no_decoder, MusicPlayer.queue.current?.title.orEmpty(), kind)) }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -450,17 +523,16 @@ class MusicService : Service(), WakePause.Media {
                     failures = 0
                     learnDuration()
                 }
-                if (state == Player.STATE_ENDED) {
-                    val next = MusicPlayer.queue.next(auto = true)
-                    // A file played on its own that ends: the list comes back (0.59.0).
-                    if (next != null) load(next, true) else if (MusicPlayer.single) endSingleNow(false) else stopAll()
-                }
+                if (state == Player.STATE_ENDED) trackEnded()
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "track failed: ${error.errorCodeName}")
                 val track = MusicPlayer.queue.current
                 val title = track?.title.orEmpty()
+                // 0.60.0: a file Media3 cannot open or decode is LibVLC's to try.
+                if ((error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                     error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) && handOver()) return
                 // 0.59.0: said as it is — gone, or a kind not played yet — not "the file may be damaged".
                 skip(when (error.errorCode) {
                     PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> getString(R.string.music_file_missing, title)
@@ -493,6 +565,8 @@ class MusicService : Service(), WakePause.Media {
         handler.removeCallbacksAndMessages(null)
         MusicPlayer.detach(this)
         player.release()
+        vlc?.release()
+        vlc = null
         if (MusicPlayer.state != MusicPlayer.State.STOPPED) {
             MusicPlayer.state = MusicPlayer.State.STOPPED
             MusicPlayer.changed()
@@ -503,6 +577,8 @@ class MusicService : Service(), WakePause.Media {
 
     fun load(track: Track?, play: Boolean, keepError: Boolean = false) {
         if (track == null) return stopAll()
+        wantPlay = play
+        if (handedOver != track.id) handedOver = null
         // A song skipped because it failed keeps its reason on screen while the next plays.
         if (!keepError) MusicPlayer.error = null
         // 0.59.0: a song no longer on the phone, or of a kind no player here plays yet —
@@ -517,15 +593,32 @@ class MusicService : Service(), WakePause.Media {
             Log.i(TAG, "not played: " + if (PlayerChoice.forName(track.path) == PlayerChoice.Engine.NOT_YET) "kind not yet" else "file gone")
             player.stop()
             player.clearMediaItems()
+            vlc?.stop()
             handler.post { skip(problem) }
             return
         }
         // Back where it was left (0.55.0): the saved place, once, for the saved song.
         val at = MusicPlayer.resumeAtMs
         MusicPlayer.resumeAtMs = 0
-        player.setMediaItem(MediaItem.fromUri(MediaSources.uriOf(track)), at)
-        player.prepare()
-        player.playWhenReady = play
+        if (engineFor(track) == PlayerChoice.Engine.VLC) {
+            // 0.60.0: what Media3 cannot play (PlayerChoice). The song is on LibVLC alone.
+            player.stop()
+            player.clearMediaItems()
+            val deck = vlc ?: VlcDeck(this, vlcEvents).also { vlc = it }
+            usingVlc = true
+            vlcWant = play
+            deck.setVolume(MusicPlayer.volume)
+            deck.equalize(MusicPlayer.eq)
+            deck.load(track, at, play)
+            Log.i(TAG, "engine vlc")
+        } else {
+            vlc?.stop()
+            usingVlc = false
+            vlcWant = false
+            player.setMediaItem(MediaItem.fromUri(MediaSources.uriOf(track)), at)
+            player.prepare()
+            player.playWhenReady = play
+        }
         startInForeground()
         update()
     }
@@ -539,7 +632,9 @@ class MusicService : Service(), WakePause.Media {
         failures += 1
         val next = if (failures < MusicPlayer.queue.tracks.size) MusicPlayer.queue.next(auto = false) else null
         when {
-            next != null -> load(next, true, keepError = true)
+            // Plays only if the one it replaces was to play (0.60.0: adding songs to an empty list
+            // started the music when the first could not be played, seen in Poom's log).
+            next != null -> load(next, wantPlay, keepError = true)
             MusicPlayer.single -> endSingleNow(true)
             else -> stopAll()
         }
@@ -557,6 +652,9 @@ class MusicService : Service(), WakePause.Media {
         MusicPlayer.resumeAtMs = 0
         player.stop()
         player.clearMediaItems()
+        vlc?.stop()
+        usingVlc = false
+        vlcWant = false
         quieted = false
         releaseHold()
         MusicPlayer.state = MusicPlayer.State.STOPPED
@@ -568,11 +666,12 @@ class MusicService : Service(), WakePause.Media {
 
     /** The state, the hold and the notification, from the player as it is now. */
     private fun update() {
-        val meant = player.playWhenReady &&
-            (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
+        val meant = if (usingVlc) vlcWant && vlc?.loaded == true
+            else player.playWhenReady &&
+                (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
         val newState = when {
             meant || quieted -> MusicPlayer.State.PLAYING
-            player.currentMediaItem != null && player.playbackState != Player.STATE_IDLE -> MusicPlayer.State.PAUSED
+            loaded -> MusicPlayer.State.PAUSED
             else -> MusicPlayer.state.takeIf { it == MusicPlayer.State.STOPPED } ?: MusicPlayer.State.PAUSED
         }
         if (meant || quieted) takeHold() else releaseHold()
@@ -607,20 +706,20 @@ class MusicService : Service(), WakePause.Media {
      */
     fun pauseOnPurpose() {
         quieted = false
-        player.pause()
+        pauseNow()
         update()
     }
 
     override fun quietForJarvis() {
-        if (!player.playWhenReady) return
+        if (!wantsToPlay()) return
         quieted = true
-        player.pause()
+        pauseNow()
     }
 
     override fun resumeAfterJarvis() {
         if (!quieted) return
         quieted = false
-        player.play()
+        playNow()
     }
 
     // ------------------------------------------------------------ notification

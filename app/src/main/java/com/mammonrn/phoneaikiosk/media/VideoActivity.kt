@@ -37,6 +37,7 @@ import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
 import com.mammonrn.phoneaikiosk.files.FilesActivity
 import com.mammonrn.phoneaikiosk.ui.Retro
+import com.mammonrn.phoneaikiosk.auth.IdentityGate
 import com.mammonrn.phoneaikiosk.ui.UiScale
 import java.util.concurrent.Executors
 
@@ -245,6 +246,20 @@ class VideoActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() = goBack()
 
+    /** 0.60.0: a delete waits for the owner's face or pattern (auth/IdentityGate); only a pass deletes. */
+    private var afterPass: (() -> Unit)? = null
+
+    @Deprecated("startActivityForResult's partner; this app has no androidx.activity.")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != IdentityGate.REQUEST) return
+        val then = afterPass
+        afterPass = null
+        if (IdentityGate.passed(data)) then?.invoke()
+        else android.widget.Toast.makeText(this, IdentityGate.refusal(this, data), android.widget.Toast.LENGTH_LONG).show()
+    }
+
     /** Back: the player to the list (a file on its own: out), the playlists or choosing to the list, then out. */
     private fun goBack() {
         when {
@@ -354,6 +369,7 @@ class VideoActivity : Activity() {
                 if (list.items.isEmpty()) startPicker(list) else showList()
             }
             override fun addTo(list: Playlist) = startPicker(list)
+            override fun afterIdentity(then: () -> Unit) { afterPass = then; IdentityGate.ask(this@VideoActivity) }
         })
     }
 
@@ -440,7 +456,10 @@ class VideoActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         frame = AspectFrame(this).also { f ->
-            surface = SurfaceView(this)
+            surface = SurfaceView(this).apply {
+                // LibVLC draws to the size it is told (0.60.0); Media3 follows the surface by itself.
+                addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ -> VideoPlayer.surfaceResized(v.width, v.height) }
+            }
             f.addView(surface, FrameLayout.LayoutParams(MATCH, MATCH))
             f.fill = fill
         }
@@ -591,10 +610,11 @@ class VideoActivity : Activity() {
 
     private fun attach() {
         val s = surface ?: return
-        val p = VideoPlayer.player ?: return
-        if (attachedTo === p) return
+        // The service, and which engine it plays with (0.60.0): a change of either attaches again.
+        val key = (VideoPlayer.service ?: return) to VideoPlayer.usingVlc
+        if (attachedTo == key) return
         VideoPlayer.attachSurface(s)
-        attachedTo = p
+        attachedTo = key
     }
 
     /** Full screen on or off: the picture fills, and the phone may turn (DESIGN.md 5ซ). */
@@ -654,9 +674,9 @@ class VideoActivity : Activity() {
         // moment only, so full screen can still be chosen before pressing play again.
         if (fill && hadMedia && !VideoPlayer.hasMedia) setFull(false)
         hadMedia = VideoPlayer.hasMedia
-        val size = VideoPlayer.player?.videoSize
-        if (size != null && size.width > 0) frame?.ratio = size.width * size.pixelWidthHeightRatio / size.height
-        lcdFacts?.text = listOfNotNull(size?.takeIf { it.height > 0 }?.let { "${minOf(it.width, it.height)}p" },
+        val size = VideoPlayer.videoSize()
+        if (size != null) frame?.ratio = size.first.toFloat() / size.second
+        lcdFacts?.text = listOfNotNull(size?.let { "${minOf(it.first, it.second)}p" },
                                        VideoRules.speedWord(VideoPlayer.speed)).joinToString(" · ")
         // A refused or failed file shows black, not the last picture of the one before.
         frame?.visibility = if (VideoPlayer.error != null && !VideoPlayer.hasMedia) View.INVISIBLE else View.VISIBLE

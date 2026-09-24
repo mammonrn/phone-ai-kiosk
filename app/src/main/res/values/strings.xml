@@ -297,6 +297,7 @@
         <item>ราคาทอง|สมาคมค้าทองคำ ผ่าน chnwt.dev</item>
         <item>ราคาน้ำมัน|ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev</item>
         <item>คริปโต|ราคาจาก Binance อันดับจาก CoinGecko</item>
+        <item>ตัวเล่นสำรอง LibVLC|LibVLC 3.7.6 จาก VideoLAN สัญญาอนุญาต GNU LGPL 2.1 ขึ้นไป build เองแบบ LGPL เท่านั้น ไม่มีส่วน GPL ใช้เล่นไฟล์ที่ Media3 เล่นไม่ได้ ข้อความสัญญาอนุญาตเต็ม ซอร์ส และวิธี build ซ้ำ อยู่ที่ github.com/mammonrn/phone-ai-kiosk โฟลเดอร์ licenses (ไฟล์ LIBVLC.md และ LGPL-2.1.txt)</item>
     </string-array>
     <!-- Identity check (0.37.0): face with a blink, pattern as the fallback.
          DESIGN.md, "ยืนยันตัวตน". Formal written Thai, as every screen. -->
@@ -631,4 +632,11 @@
     <string name="picker_folder_no_video">ไม่มีวิดีโอในโฟลเดอร์นี้และโฟลเดอร์ย่อย</string>
     <string name="picker_added_songs">เพิ่มแล้ว %1$d เพลง (มีอยู่แล้ว %2$d เพลง)</string>
     <string name="picker_added_videos">เพิ่มแล้ว %1$d วิดีโอ (มีอยู่แล้ว %2$d วิดีโอ)</string>
+    <!-- 0.60.0: LibVLC for what Media3 cannot play -->
+    <string name="music_no_graph">ไม่มีกราฟสำหรับไฟล์นี้</string>
+    <string name="music_eq_vlc">ไฟล์นี้เล่นผ่าน VLC ใช้อีควอไลเซอร์ของ VLC ตามค่าที่ตั้งไว้ ปรับเสียงซ้ายขวาไม่ได้</string>
+    <!-- 0.60.0: nothing is deleted without the owner -->
+    <string name="gate_nothing_enrolled">ยังไม่ได้ลบ เพราะยังไม่ได้ตั้งใบหน้าหรือ pattern กรุณาตั้งในแผงควบคุม หน้ายืนยันตัวตน ก่อนลบ</string>
+    <string name="gate_cancelled">ยังไม่ได้ลบ เพราะยกเลิกการยืนยันตัวตน</string>
+    <string name="gate_failed">ยังไม่ได้ลบ เพราะยืนยันตัวตนไม่ผ่าน</string>
 </resources>

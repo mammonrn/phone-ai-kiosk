@@ -1,3 +1,6 @@
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     // AGP 9 has built-in Kotlin support, so no separate kotlin-android plugin.
     alias(libs.plugins.android.application)
@@ -32,8 +35,8 @@ android {
         minSdk = 29
         targetSdk = 36
 
-        versionCode = 76
-        versionName = "0.59.0"
+        versionCode = 77
+        versionName = "0.60.0"
 
         // ONE ABI. The kiosk is a Galaxy A07, which is arm64-v8a, and
         // onnxruntime-android carries a native library for every architecture
@@ -129,6 +132,42 @@ if (hasGoogleHomeSdk) {
     android.sourceSets.getByName("main").java.srcDir("src/googlehome/java")
 }
 
+// LIBVLC (0.60.0, Poom): plays what Media3 cannot (media/PlayerChoice). Built
+// ONCE by us, LGPL only and arm64 only, by .github/workflows/libvlc-lgpl.yml
+// (tools/libvlc/build-lgpl.sh), and published as a GitHub Release asset. It is
+// fetched here by that pinned release and REFUSED if its SHA-256 differs; it
+// never goes into git (.gitignore). The source, the patches and the way to build
+// it again are in licenses/LIBVLC.md.
+val libvlcRelease = "libvlc-lgpl-3.7.6-arm64-5"
+val libvlcSha256 = "e8c58f5e4d64cddba1199b13e0aa2567112412261f25e13c8acd195e67f5cb93"
+val libvlcAar = file("libs/libvlc-lgpl-3.7.6-arm64.aar")
+// For a compile check on a developer's machine only: another AAR of the same
+// API. Never set in CI, so what ships is always the checked one.
+val libvlcDevAar = providers.gradleProperty("libvlcDevAar").orNull?.let { file(it) }
+
+fun sha256Of(f: File): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    f.inputStream().use { input ->
+        val buf = ByteArray(1 shl 16)
+        while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n) }
+    }
+    return md.digest().joinToString("") { "%02x".format(it) }
+}
+
+if (libvlcDevAar == null && (!libvlcAar.isFile || sha256Of(libvlcAar) != libvlcSha256)) {
+    val url = "https://github.com/mammonrn/phone-ai-kiosk/releases/download/$libvlcRelease/libvlc-lgpl-3.7.6-arm64.aar"
+    libvlcAar.parentFile.mkdirs()
+    val part = File(libvlcAar.path + ".part")
+    URI(url).toURL().openStream().use { input -> part.outputStream().use { out -> input.copyTo(out) } }
+    val got = sha256Of(part)
+    if (got != libvlcSha256) {
+        part.delete()
+        throw GradleException("LibVLC from $libvlcRelease has SHA-256 $got, not the pinned $libvlcSha256 - refused")
+    }
+    libvlcAar.delete()
+    part.renameTo(libvlcAar)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     if (hasGoogleHomeSdk) implementation(files(googleHomeSdk))
@@ -150,6 +189,12 @@ dependencies {
 
     // The music player (0.53.0): ExoPlayer alone. See libs.versions.toml.
     implementation(libs.media3.exoplayer)
+
+    // LibVLC (0.60.0), the checked AAR above; a plain file brings no dependencies,
+    // so its Java side's are named: LiveData (lifecycle) and the annotations.
+    implementation(files(libvlcDevAar ?: libvlcAar))
+    implementation(libs.androidx.lifecycle.livedata)
+    compileOnly(libs.androidx.annotation)
 
     testImplementation(libs.junit)
     // Test classpath only — see the note in libs.versions.toml.

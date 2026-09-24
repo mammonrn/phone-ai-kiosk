@@ -46,10 +46,15 @@ class PlayQueue(private val random: Random = Random.Default) {
         pos = if (shuffle) 0 else first
     }
 
-    /** Jump to [index] in [tracks] (a tap on the list). */
+    /**
+     * Jump to [index] in [tracks] (a tap on the list). With shuffle on, the
+     * tapped song starts a new order and every other song follows it once
+     * (0.60.0: jumping into the old order left only its tail to play, and the
+     * music stopped early — Poom on the A07).
+     */
     fun jumpTo(index: Int): Track? {
         if (index !in tracks.indices) return null
-        pos = order.indexOf(index)
+        if (shuffle) { order = shuffledFrom(index); pos = 0 } else pos = order.indexOf(index)
         return current
     }
 
@@ -100,7 +105,12 @@ class PlayQueue(private val random: Random = Random.Default) {
         tracks = tracks + more
         val added = (from until tracks.size).toList().let { if (shuffle) it.shuffled(random) else it }
         order = order + added.toIntArray()
-        if (pos < 0) pos = order.indexOf(from)
+        // Nothing was playing (an empty list): start at the first song added, and with
+        // shuffle on put it first in the order, so none of the others is left out
+        // (0.60.0: it started where it landed in the shuffle, and only the tail played).
+        if (pos < 0) {
+            if (shuffle) { order = shuffledFrom(from); pos = 0 } else pos = order.indexOf(from)
+        }
     }
 
     /**

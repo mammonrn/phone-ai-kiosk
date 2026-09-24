@@ -36,6 +36,7 @@ import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
 import com.mammonrn.phoneaikiosk.files.FilesActivity
 import com.mammonrn.phoneaikiosk.ui.Retro
+import com.mammonrn.phoneaikiosk.auth.IdentityGate
 import java.util.concurrent.Executors
 import com.mammonrn.phoneaikiosk.ui.UiScale
 import com.mammonrn.phoneaikiosk.media.fx.Eq
@@ -139,6 +140,20 @@ class MusicActivity : Activity() {
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")
     @Suppress("DEPRECATION")
     override fun onBackPressed() = goBack()
+
+    /** 0.60.0: a delete waits for the owner's face or pattern (auth/IdentityGate); only a pass deletes. */
+    private var afterPass: (() -> Unit)? = null
+
+    @Deprecated("startActivityForResult's partner; this app has no androidx.activity.")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != IdentityGate.REQUEST) return
+        val then = afterPass
+        afterPass = null
+        if (IdentityGate.passed(data)) then?.invoke()
+        else android.widget.Toast.makeText(this, IdentityGate.refusal(this, data), android.widget.Toast.LENGTH_LONG).show()
+    }
 
     /** Back: out of choosing, else out to the Control Panel. The music plays on. */
     private fun goBack() {
@@ -254,6 +269,7 @@ class MusicActivity : Activity() {
     private var eqNote: String? = null
 
     private var titleLine: TextView? = null
+    private var noGraphView: TextView? = null
     private var kbpsView: TextView? = null
     private var khzView: TextView? = null
     private var monoView: TextView? = null
@@ -304,7 +320,16 @@ class MusicActivity : Activity() {
             setOnClickListener { remaining = !remaining; refreshTime() }
         }
         left.addView(timeView, LinearLayout.LayoutParams(MATCH, WRAP))
-        left.addView(SpectrumView(this), LinearLayout.LayoutParams(MATCH, dp(UiScale.SPECTRUM_H)).apply { topMargin = dp(UiScale.SPACE_XS) })
+        // 0.60.0: a song through LibVLC has no samples for the bars — said in words, never faked (Poom).
+        val bars = FrameLayout(this)
+        bars.addView(SpectrumView(this), FrameLayout.LayoutParams(MATCH, MATCH))
+        noGraphView = TextView(this).apply {
+            text = getString(R.string.music_no_graph); typeface = thai; textSize = UiScale.TEXT_NOTE
+            setTextColor(color(R.color.retro_lcd)); gravity = Gravity.CENTER; setBackgroundColor(color(R.color.retro_dark))
+            visibility = View.GONE
+        }
+        bars.addView(noGraphView, FrameLayout.LayoutParams(MATCH, MATCH))
+        left.addView(bars, LinearLayout.LayoutParams(MATCH, dp(UiScale.SPECTRUM_H)).apply { topMargin = dp(UiScale.SPACE_XS) })
         top.addView(left, LinearLayout.LayoutParams(dp(UiScale.AMP_LCD_W), MATCH))
 
         val right = column()
@@ -442,6 +467,7 @@ class MusicActivity : Activity() {
         val s = MusicPlayer.eq
         return when {
             !s.on -> getString(R.string.music_eq_off_note)
+            MusicPlayer.hasMedia && MusicPlayer.usingVlc -> getString(R.string.music_eq_vlc)
             MusicPlayer.hasMedia && !MusicPlayer.fx.working -> getString(R.string.music_eq_not_working)
             else -> getString(R.string.music_eq_presets) + ": " + s.preset.ifEmpty { getString(R.string.music_eq_custom) }
         }
@@ -515,7 +541,12 @@ class MusicActivity : Activity() {
         when {
             confirmClear -> {
                 row.addView(ampText(getString(R.string.music_clear_ask)).apply { maxLines = 2 }, LinearLayout.LayoutParams(0, WRAP, 2f))
-                add(getString(R.string.music_list_clear)) { confirmClear = false; selected.clear(); MusicPlayer.clear(this); showNow() }
+                add(getString(R.string.music_list_clear)) {
+                    // Emptying a playlist is deleting what is in it: the owner first (0.60.0).
+                    confirmClear = false
+                    afterPass = { selected.clear(); MusicPlayer.clear(this); showNow() }
+                    IdentityGate.ask(this)
+                }
                 add(getString(R.string.music_cancel)) { confirmClear = false; refreshTools() }
             }
             sorting -> {
@@ -576,9 +607,11 @@ class MusicActivity : Activity() {
         if (drawnFor !== q.tracks) { showNow(); return }
         val track = q.current
         val tags = MusicPlayer.tags
-        val title = tags?.title?.toString()?.ifBlank { null } ?: track?.title
-        val artist = tags?.artist?.toString()?.ifBlank { null } ?: track?.artist.orEmpty()
-        val album = tags?.albumTitle?.toString()?.ifBlank { null } ?: track?.album.orEmpty()
+        val vt = MusicPlayer.vlcTags
+        val title = (tags?.title?.toString() ?: vt?.first)?.ifBlank { null } ?: track?.title
+        val artist = (tags?.artist?.toString() ?: vt?.second)?.ifBlank { null } ?: track?.artist.orEmpty()
+        val album = (tags?.albumTitle?.toString() ?: vt?.third)?.ifBlank { null } ?: track?.album.orEmpty()
+        noGraphView?.visibility = if (MusicPlayer.usingVlc && MusicPlayer.hasMedia) View.VISIBLE else View.GONE
         val length = MusicPlayer.durationMs.takeIf { it > 0 } ?: track?.durationMs ?: 0
         titleLine?.text = sliderNote ?: if (track == null) "—" else
             "${q.currentIndex + 1}. " + listOf(artist, title.orEmpty()).filter { it.isNotEmpty() }.joinToString(" - ") +
@@ -784,6 +817,7 @@ class MusicActivity : Activity() {
                 show(Tab.NOW)
             }
             override fun addTo(list: Playlist) = startPicker(list)
+            override fun afterIdentity(then: () -> Unit) { afterPass = then; IdentityGate.ask(this@MusicActivity) }
         })
     }
 

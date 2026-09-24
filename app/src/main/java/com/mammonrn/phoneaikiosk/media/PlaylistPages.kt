@@ -39,6 +39,8 @@ class PlaylistsPage(private val r: Retro, private val kind: Playlist.Kind, priva
     interface Host {
         fun play(list: Playlist)
         fun addTo(list: Playlist)
+        /** The owner's face or pattern, then [then] (0.60.0: nothing is deleted without it). */
+        fun afterIdentity(then: () -> Unit)
     }
 
     private val context: Context get() = r.activity
@@ -150,10 +152,12 @@ class PlaylistsPage(private val r: Retro, private val kind: Playlist.Kind, priva
         }
         box.addView(r.text(a.getString(R.string.playlist_delete_ask, list.name, list.items.size), UiScale.TEXT_BASE))
         box.addView(r.pair(a.getString(R.string.playlist_delete_yes), {
-            PlaylistStore.edit(context) { it.delete(list.id) }
-            if (kind == Playlist.Kind.MUSIC && MusicPlayer.playlistId == list.id) MusicPlayer.forgetPlaylist()
-            Log.i(TAG, "playlist deleted")
-            form = Form.NONE; chosen = null; draw()
+            host.afterIdentity {
+                PlaylistStore.edit(context) { it.delete(list.id) }
+                if (kind == Playlist.Kind.MUSIC && MusicPlayer.playlistId == list.id) MusicPlayer.forgetPlaylist()
+                Log.i(TAG, "playlist deleted")
+                form = Form.NONE; chosen = null; draw()
+            }
         }, a.getString(R.string.cancel), { form = Form.NONE; draw() }),
             LinearLayout.LayoutParams(Retro.MATCH, Retro.WRAP).apply { topMargin = r.dp(UiScale.SPACE_S) })
         view.addView(box, LinearLayout.LayoutParams(Retro.MATCH, Retro.WRAP).apply { topMargin = r.dp(UiScale.SPACE_S) })

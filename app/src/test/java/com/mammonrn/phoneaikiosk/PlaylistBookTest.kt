@@ -39,10 +39,10 @@ class PlaylistBookTest {
     }
 
     @Test
-    fun `the player is chosen in one place, and what Media3 cannot play is not yet, by name`() {
-        // Measured on the A07 (codecprobe): no MPEG-1/2 picture, no ASF reader.
+    fun `the player is chosen in one place, and what Media3 cannot play goes to LibVLC, by name`() {
+        // Measured on the A07 (codecprobe): no MPEG-1/2 picture, no ASF reader. 0.60.0: LibVLC plays them.
         for (name in listOf("คู่โจร1.DAT", "x.mpg", "x.mpeg", "x.vob", "x.wmv", "x.wma")) {
-            assertEquals(name, PlayerChoice.Engine.NOT_YET, PlayerChoice.forName(name))
+            assertEquals(name, PlayerChoice.Engine.VLC, PlayerChoice.forName(name))
         }
         for (name in listOf("x.mp4", "x.mkv", "x.avi", "x.flac", "x.m4a", "x.opus")) {
             assertEquals(name, PlayerChoice.Engine.MEDIA3, PlayerChoice.forName(name))
