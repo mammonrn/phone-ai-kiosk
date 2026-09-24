@@ -542,7 +542,8 @@
     <string name="video_lcd_length">จาก %1$s</string>
     <string name="video_error">เล่นวิดีโอ "%1$s" ไม่ได้ ไฟล์อาจเสียหรือเป็นรูปแบบที่เครื่องไม่รองรับ</string>
     <string name="video_refused">ไม่เล่นไฟล์นี้ เพราะเกินขีดจำกัดของเครื่อง (%1$s) เครื่องนี้เล่นได้ถึง 720p และไม่รองรับ AV1</string>
-    <string name="video_heat_lower">เครื่องร้อน จึงลดความละเอียดลงเหลือ %1$dp เพื่อให้เครื่องเย็นลง</string>
+    <string name="video_refused_av1">ไม่เล่นไฟล์นี้ เพราะเป็นวิดีโอ AV1 ซึ่งเครื่องนี้ไม่รองรับ</string>
+    <string name="video_heat_dim">เครื่องร้อน จึงหรี่หน้าจอเหลือ %1$d%% เพื่อให้เครื่องเย็นลง</string>
     <string name="video_heat_pause">เครื่องร้อนมาก จึงหยุดเล่นชั่วคราว กรุณารอให้เครื่องเย็นลงแล้วกดเล่นอีกครั้ง</string>
     <string name="video_heat_stop">เครื่องร้อนเกินกำหนด จึงหยุดเล่น กรุณารอให้เครื่องเย็นลง</string>
     <string name="music_resume">เล่นต่อ</string>

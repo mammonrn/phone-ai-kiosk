@@ -144,6 +144,8 @@ object VideoPlayer {
     }
 
     fun resume(context: Context) = run(context) { s ->
+        // Too hot: play is refused, and the screen says why (HeatLadder step 3+).
+        if (HeatWatch.step.pause) { error = context.getString(R.string.video_heat_pause); changed(); return@run }
         MusicPlayer.quietForVideo(context)
         if (s.loaded) s.player.play() else current?.let { s.load(it, true) }
     }
@@ -250,7 +252,7 @@ object VideoPlayer {
  * back with the screen. Jarvis rests while it plays (WakePause, VIDEO).
  *
  * LIMITS, Poom's: up to 720p, no 4K, no AV1 — a file over them is not played
- * and the screen says why. The heat ladder lowers the size further, dims, then
+ * and the screen says why. The heat ladder dims the screen, then
  * pauses ([HeatWatch]). NOTHING ABOUT THE VIDEO IS LOGGED: states and error
  * kinds, never a title or a path.
  */
@@ -377,7 +379,7 @@ class VideoService : Service(), WakePause.Media {
 
     private fun refuse(why: String) {
         Log.i(TAG, "refused: over the limit")
-        VideoPlayer.error = getString(R.string.video_refused, why)
+        VideoPlayer.error = if (why == "AV1") getString(R.string.video_refused_av1) else getString(R.string.video_refused, why)
         stopAll()
     }
 

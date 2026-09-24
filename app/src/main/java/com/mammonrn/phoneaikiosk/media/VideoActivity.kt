@@ -408,7 +408,8 @@ class VideoActivity : Activity() {
         body.addView(top, LinearLayout.LayoutParams(MATCH, WRAP))
 
         // The row of settings: two short lines each ("ความเร็ว / 1.0×"), so 64dp tall.
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        // Not baseline-aligned: a two-line button sat lower than a one-line one (seen on the A07).
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; isBaselineAligned = false }
         speedButton = dvdButton("", small = true) { VideoPlayer.cycleSpeed(this); poke() }
         row.addView(speedButton, LinearLayout.LayoutParams(0, dp(UiScale.ICON_BUTTON), 1f))
         row.addView(dvdButton(getString(R.string.video_audio), small = true) { chooseTrack(C.TRACK_TYPE_AUDIO, it) },
@@ -483,6 +484,8 @@ class VideoActivity : Activity() {
         if (size != null && size.width > 0) frame?.ratio = size.width * size.pixelWidthHeightRatio / size.height
         lcdFacts?.text = listOfNotNull(size?.takeIf { it.height > 0 }?.let { "${minOf(it.width, it.height)}p" },
                                        VideoRules.speedWord(VideoPlayer.speed)).joinToString(" · ")
+        // A refused or failed file shows black, not the last picture of the one before.
+        frame?.visibility = if (VideoPlayer.error != null && !VideoPlayer.hasMedia) View.INVISIBLE else View.VISIBLE
         cueView?.text = VideoPlayer.cue
         cueView?.visibility = if (VideoPlayer.cue.isEmpty()) View.GONE else View.VISIBLE
         val note = VideoPlayer.error ?: heatNote(HeatWatch.step)
@@ -503,15 +506,16 @@ class VideoActivity : Activity() {
 
     private fun heatNote(step: HeatLadder.Step): String? = when (step) {
         HeatLadder.Step.NORMAL -> null
-        HeatLadder.Step.COOLER, HeatLadder.Step.COOLEST -> getString(R.string.video_heat_lower, step.maxHeight ?: 0)
+        HeatLadder.Step.COOLER, HeatLadder.Step.COOLEST ->
+            getString(R.string.video_heat_dim, ((step.brightness ?: 1f) * 100).toInt())
         HeatLadder.Step.PAUSE -> getString(R.string.video_heat_pause)
         HeatLadder.Step.STOP -> getString(R.string.video_heat_stop)
     }
 
-    /** Heat, step 2 and above: the screen at half brightness while the video is shown. */
+    /** Heat, step 1 and above: the screen dimmer while the video is shown (70%, then 40%). */
     private fun applyDim(step: HeatLadder.Step) {
         window.attributes = window.attributes.apply {
-            screenBrightness = if (step.dim) 0.5f else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            screenBrightness = step.brightness ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
         if (page == Page.PLAYER) refresh()
     }

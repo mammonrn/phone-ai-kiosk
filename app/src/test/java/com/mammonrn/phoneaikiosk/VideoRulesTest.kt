@@ -52,7 +52,7 @@ class VideoRulesTest {
     fun `the heat ladder climbs at once and comes down one step a minute`() {
         val h = HeatLadder(coolDownMs = 60_000)
         assertEquals(HeatLadder.Step.NORMAL, h.update(1, 0))
-        assertEquals(HeatLadder.Step.COOLEST, h.update(3, 1_000))          // severe: straight to 360p and dim
+        assertEquals(HeatLadder.Step.COOLEST, h.update(3, 1_000))          // severe: straight to 40% brightness
         assertEquals(HeatLadder.Step.COOLEST, h.update(0, 2_000))          // cooled, but wait
         assertEquals(HeatLadder.Step.COOLEST, h.update(0, 61_000))
         assertEquals(HeatLadder.Step.COOLER, h.update(0, 62_000))          // one step down after a minute
@@ -68,7 +68,7 @@ class VideoRulesTest {
         for ((a, b) in steps.zipWithNext()) {
             assertTrue((a.maxHeight ?: 0) >= (b.maxHeight ?: 0))
             assertTrue(!a.barsOff || b.barsOff)
-            assertTrue(!a.dim || b.dim)
+            assertTrue((a.brightness ?: 1f) >= (b.brightness ?: 1f))
             assertTrue(!a.pause || b.pause)
         }
         assertEquals(720, HeatLadder.Step.NORMAL.maxHeight)

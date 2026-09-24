@@ -94,11 +94,17 @@ object VideoRules {
  * Android's thermal status (PowerManager, 0 none … 6 shutdown) picks a step.
  * Each step keeps what the one before it did and adds one thing:
  *
- *   0 NORMAL   (none, light)  — nothing held back; video up to 720p.
- *   1 COOLER   (moderate)     — video at most 480p; the music's bars stop.
- *   2 COOLEST  (severe)       — video at most 360p; the video screen dims to half.
- *   3 PAUSE    (critical)     — playback pauses, and the screen says why.
+ *   0 NORMAL   (none, light)  — nothing held back.
+ *   1 COOLER   (moderate)     — the video screen at 70% brightness; the music's bars stop.
+ *   2 COOLEST  (severe)       — the video screen at 40%.
+ *   3 PAUSE    (critical)     — playback pauses, play is refused, and the screen says why.
  *   4 STOP     (emergency, shutdown) — playback stops.
+ *
+ * WHAT IS NOT ON IT, AND WHY: a smaller picture. A file on the phone or the
+ * NAS has one size, and the player cannot decode it smaller (seen on the A07:
+ * the cap was set and a 720p file stayed 720p). [maxHeight] still asks for a
+ * smaller version when a file carries more than one, but the screen never
+ * claims the size was lowered — it says what was really done: dimmed.
  *
  * Going up is at once. Coming down waits [COOL_DOWN_MS] at the lower status
  * and then goes one step at a time, so a phone at the edge does not flicker.
@@ -106,12 +112,12 @@ object VideoRules {
  */
 class HeatLadder(private val coolDownMs: Long = COOL_DOWN_MS) {
 
-    enum class Step(val maxHeight: Int?, val barsOff: Boolean, val dim: Boolean, val pause: Boolean, val stop: Boolean) {
-        NORMAL(VideoRules.MAX_H, false, false, false, false),
-        COOLER(480, true, false, false, false),
-        COOLEST(360, true, true, false, false),
-        PAUSE(360, true, true, true, false),
-        STOP(360, true, true, true, true),
+    enum class Step(val maxHeight: Int?, val barsOff: Boolean, val brightness: Float?, val pause: Boolean, val stop: Boolean) {
+        NORMAL(VideoRules.MAX_H, false, null, false, false),
+        COOLER(480, true, 0.7f, false, false),
+        COOLEST(360, true, 0.4f, false, false),
+        PAUSE(360, true, 0.4f, true, false),
+        STOP(360, true, 0.4f, true, true),
     }
 
     var step = Step.NORMAL

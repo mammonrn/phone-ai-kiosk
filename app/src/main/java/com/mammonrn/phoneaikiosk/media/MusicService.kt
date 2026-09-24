@@ -98,6 +98,7 @@ object MusicPlayer {
 
     /** Plays on from where it is, or starts the queue again after a stop. */
     fun resume(context: Context) = run(context) { s ->
+        if (HeatWatch.step.pause) { error = context.getString(R.string.video_heat_pause); changed(); return@run }
         VideoPlayer.quietForMusic(context)
         if (s.loaded) s.player.play() else s.load(queue.current, true)
     }
