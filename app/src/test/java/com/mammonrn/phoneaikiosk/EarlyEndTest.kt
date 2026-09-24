@@ -27,4 +27,10 @@ class EarlyEndTest {
         assertEquals(12_000L, EarlyEnd.goOnAt(10_000, length, EarlyEnd.MAX_TIMES - 1))
         assertNull(EarlyEnd.goOnAt(10_000, length, EarlyEnd.MAX_TIMES))
     }
+
+    @Test fun anEndThatMadeNoProgressIsTheEnd() {
+        // Went on from 249 s but the file started again at 0:00 and ended at the same spot.
+        assertNull(EarlyEnd.goOnAt(247_000, length, 1, lastFromMs = 249_000))
+        assertEquals(496_000L + EarlyEnd.SKIP_MS, EarlyEnd.goOnAt(496_000, length, 1, lastFromMs = 249_000))
+    }
 }

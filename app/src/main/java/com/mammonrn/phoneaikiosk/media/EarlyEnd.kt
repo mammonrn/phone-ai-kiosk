@@ -15,9 +15,13 @@ object EarlyEnd {
     const val SKIP_MS = 2_000L
     const val MAX_TIMES = 10
 
-    /** Where to go on from, or null when the end is the real end. */
-    fun goOnAt(atMs: Long, lengthMs: Long, timesSoFar: Int): Long? = when {
+    /**
+     * Where to go on from, or null when the end is the real end. [lastFromMs]:
+     * where the last time went on from — an end not past it made no progress.
+     */
+    fun goOnAt(atMs: Long, lengthMs: Long, timesSoFar: Int, lastFromMs: Long = 0): Long? = when {
         lengthMs <= 0 || atMs <= 0 -> null
+        atMs <= lastFromMs -> null
         atMs >= lengthMs - EARLY_MS -> null
         timesSoFar >= MAX_TIMES -> null
         else -> atMs + SKIP_MS

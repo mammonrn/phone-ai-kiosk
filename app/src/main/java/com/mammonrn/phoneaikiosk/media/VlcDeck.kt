@@ -55,7 +55,8 @@ class VlcDeck(context: Context, private val events: Events) {
     init {
         player.setEventListener { e ->
             when (e.type) {
-                MediaPlayer.Event.Playing -> { playing = true; events.onPlaying() }
+                MediaPlayer.Event.Playing -> { playing = true; startWhereAsked(); events.onPlaying() }
+                MediaPlayer.Event.SeekableChanged -> if (e.seekable) startWhereAsked()
                 MediaPlayer.Event.Paused -> { playing = false; events.onPaused() }
                 MediaPlayer.Event.TimeChanged -> lastTimeMs = e.timeChanged
                 MediaPlayer.Event.LengthChanged -> if (e.lengthChanged > 0) lengthMs = e.lengthChanged
@@ -76,10 +77,26 @@ class VlcDeck(context: Context, private val events: Events) {
     private var lengthMs = 0L
     private var track: Track? = null
     private var rescues = 0
+    /** Where the last rescue went on from: an end that is not past it made no progress. */
+    private var rescuedFromMs = 0L
+    /**
+     * Where the file is to start, until VLC can seek. Not VLC's ":start-time":
+     * a VCD ignores it and starts at 0:00 (0.60.0, found on the A07), so the
+     * file is sought to once it plays and can seek.
+     */
+    private var startAtMs = 0L
+
+    private fun startWhereAsked() {
+        val at = startAtMs
+        if (at <= 0 || !player.isSeekable) return
+        startAtMs = 0
+        player.time = at
+    }
 
     /** Opens [track] at [startMs]; plays when [play]. */
     fun load(track: Track, startMs: Long, play: Boolean) {
         rescues = 0
+        rescuedFromMs = 0
         open(track, startMs, play)
     }
 
@@ -87,8 +104,9 @@ class VlcDeck(context: Context, private val events: Events) {
     private fun rescue(atMs: Long): Boolean {
         val t = track ?: return false
         if (!loaded) return false
-        val from = EarlyEnd.goOnAt(atMs, lengthMs.takeIf { it > 0 } ?: player.length, rescues) ?: return false
+        val from = EarlyEnd.goOnAt(atMs, lengthMs.takeIf { it > 0 } ?: player.length, rescues, rescuedFromMs) ?: return false
         rescues++
+        rescuedFromMs = from
         Log.w(TAG, "vlc: early end, going on past it ($rescues)")
         open(t, from, play = true)
         return true
@@ -99,8 +117,8 @@ class VlcDeck(context: Context, private val events: Events) {
         this.track = track
         lastTimeMs = startMs
         lengthMs = 0
+        startAtMs = startMs
         val m = if (track.onNas) nasMedia(track) else Media(lib(app), Uri.fromFile(java.io.File(track.path)))
-        if (startMs > 0) m.addOption(":start-time=" + String.format(java.util.Locale.US, "%.3f", startMs / 1000.0))
         // Kept (and released at stop): the player's getMedia() would take a reference each time it is asked.
         media = m
         player.media = m
@@ -131,14 +149,19 @@ class VlcDeck(context: Context, private val events: Events) {
         if (loaded) player.stop()
         loaded = false
         playing = false
+        startAtMs = 0
         media?.release()
         media = null
     }
 
-    val positionMs: Long get() = if (loaded) player.time.coerceAtLeast(0) else 0
+    val positionMs: Long get() = if (!loaded) 0 else if (startAtMs > 0) startAtMs else player.time.coerceAtLeast(0)
     val durationMs: Long get() = if (loaded) player.length.coerceAtLeast(0) else 0
 
-    fun seekTo(ms: Long) { if (loaded) player.time = ms.coerceAtLeast(0) }
+    fun seekTo(ms: Long) {
+        if (!loaded) return
+        // Before it can seek, the place is kept for when it can.
+        if (startAtMs > 0 || !player.isSeekable) startAtMs = ms.coerceAtLeast(0) else player.time = ms.coerceAtLeast(0)
+    }
 
     /** 0..1, as the players' own volume. */
     fun setVolume(v: Float) { player.volume = (v.coerceIn(0f, 1f) * 100).toInt() }
