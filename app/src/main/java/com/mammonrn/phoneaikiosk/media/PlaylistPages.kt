@@ -51,7 +51,9 @@ class PlaylistsPage(private val r: Retro, private val kind: Playlist.Kind, priva
     fun draw() {
         view.removeAllViews()
         val lists = PlaylistStore.read(context) { it.of(kind) }
-        val current = PlaylistStore.read(context) { it.current(kind)?.id }
+        // ► is the list the player has: for music the one loaded (a new list is not playing yet).
+        val current = if (kind == Playlist.Kind.MUSIC) MusicPlayer.playlistId
+                      else PlaylistStore.read(context) { it.current(kind)?.id }
         if (chosen == null || lists.none { it.id == chosen }) chosen = current
         val a = r.activity
 

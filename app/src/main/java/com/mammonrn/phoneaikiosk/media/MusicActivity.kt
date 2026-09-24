@@ -218,6 +218,7 @@ class MusicActivity : Activity() {
     }
 
     private fun show(next: Tab) {
+        if (next != Tab.LISTS) listNote = null
         tab = next
         generation += 1
         tabRow.visibility = if (singleMode) View.GONE else View.VISIBLE
@@ -802,6 +803,7 @@ class MusicActivity : Activity() {
 
     /** Choosing songs for [list] (null: the list made by voice) through the shared folder browser. */
     private fun startPicker(list: Playlist?, fromNow: Boolean = false) {
+        listNote = null
         pickFromNow = fromNow
         picking = true
         tab = Tab.LISTS
@@ -818,7 +820,7 @@ class MusicActivity : Activity() {
                 setBackgroundResource(R.drawable.retro_sunken)
                 setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
-            listNote = null
+            // Kept while this page shows: the lists' own redraw after the add must not take it away.
         }
         playlists.draw()
         page.addView(detached(playlists.view), LinearLayout.LayoutParams(MATCH, 0, 1f))

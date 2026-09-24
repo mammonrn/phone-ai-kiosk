@@ -567,7 +567,7 @@
     <string name="folder_blocked_row">ระบบสงวนไว้</string>
     <string name="folder_failed">อ่านโฟลเดอร์นี้ไม่ได้ กรุณาลองใหม่อีกครั้ง</string>
     <string name="folder_space">ว่าง %1$s จาก %2$s</string>
-    <string name="folder_space_one_unit">ว่าง %1$s จาก %2$s %3$s</string>
+    <string name="folder_space_one_unit">ว่าง %1$s/%2$s %3$s</string>
     <string name="folder_read_only">อ่านได้อย่างเดียว</string>
     <string name="folder_count">%d รายการ</string>
     <string name="folder_ticked">เลือกแล้ว %d รายการ</string>
