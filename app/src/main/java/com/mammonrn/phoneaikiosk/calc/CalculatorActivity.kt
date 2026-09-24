@@ -290,6 +290,12 @@ class CalculatorActivity : Activity() {
             setBackgroundColor(color(R.color.retro_title))
             textSize = 18f
         } else setBackgroundResource(R.drawable.retro_button)
+        // Press Start 2P draws × and ÷ at half the height of its digits (seen
+        // on the A07): these two come from Plex, bold, at the digits' size.
+        if (key.label == "×" || key.label == "÷") {
+            typeface = Typeface.create(thai, Typeface.BOLD)
+            textSize = 24f
+        }
         contentDescription = spoken(key)
         isClickable = true
         setOnClickListener { press(key) }

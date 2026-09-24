@@ -137,7 +137,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             if (given.any { it <= 0 }) return@actions out.error("ค่าทุกตัวต้องมากกว่า 0")
             val (series, parallel) = Electrical.combine(part, given) ?: return@actions out.error("คำนวณไม่ได้")
             out.show(listOf("ต่ออนุกรม = " + Electrical.withUnit(series, part.unit),
-                            "ต่อขนาน = " + Electrical.withUnit(parallel, part.unit)), emptyList())
+                            "ต่อขนาน = " + Electrical.withUnit(parallel, part.unit)), emptyList(), bold = setOf(0, 1))
         }, onClear = { fields.forEach { it.clear() }; out.clear() }))
         page.addView(out.view)
         a.setPage(scroll(page))
