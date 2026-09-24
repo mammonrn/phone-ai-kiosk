@@ -430,7 +430,7 @@ class CalculatorActivity : Activity() {
                 })
                 addView(TextView(context).apply {
                     text = "= $result"; typeface = pixel; textSize = UiScale.TEXT_ITEM
-                    setTextColor(color(R.color.retro_text)); gravity = Gravity.END; setPadding(0, dp(UiScale.SPACE_S), 0, 0)
+                    setTextColor(color(R.color.retro_text)); gravity = Gravity.END; setPadding(0, dp(UiScale.SPACE_XS), 0, 0)
                 }, LinearLayout.LayoutParams(MATCH, WRAP))
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
         }

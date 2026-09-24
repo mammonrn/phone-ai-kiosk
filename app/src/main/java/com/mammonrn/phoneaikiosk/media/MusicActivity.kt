@@ -558,7 +558,8 @@ class MusicActivity : Activity() {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_VERTICAL
         minimumHeight = dp(UiScale.ROW)
-        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
+        // Two lines and 4dp above and below: 56dp, the ROW, more songs to a screen.
+        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS))
         addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_ITEM; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
         addView(TextView(context).apply { typeface = thai; textSize = UiScale.TEXT_NOTE; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
         layoutParams = ViewGroup.LayoutParams(MATCH, WRAP)
