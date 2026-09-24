@@ -144,14 +144,57 @@ def _stt_qwen_check(cfg) -> int:
         conn.close()
 
 
+def _maps_check(cfg, conn, pricing, rows, spent, run_start: float, max_usd: float) -> str:
+    """`stt-compare --maps-check`: each map command's transcript through the
+    real model, exactly as /v1/chat would send it, and the place Maps would be
+    opened at. One question per distinct transcript; list price, training
+    ledger, inside the same --max-usd. Returns why it stopped, or ''."""
+    from . import actions, service, speech_gate, stt_compare
+    from .llm import ask
+
+    texts = list(dict.fromkeys(r.heard for r in rows
+                               if r.provider in ("rescue", "groq-hints") and r.heard
+                               and speech_gate.has_maps_word(r.heard)))
+    if not texts:
+        print("\nmaps check: no map commands among the transcripts")
+        return ""
+    client = _client(cfg)
+    guess = 0.005                       # before the first answer: more than one costs
+    print("\nmaps check — where Maps would open (the model, as /v1/chat asks it):")
+    for text in texts:
+        if spent() - run_start + guess > max_usd or spent() + guess > stt_compare.COMPARE_BUDGET_USD:
+            return f"stopped the maps check: the next question could pass ${max_usd:.2f}"
+        answer = ask(client, model=cfg.model, system=service.system_prompt_for(cfg, text),
+                     messages=[{"role": "user", "content": text}], max_tokens=cfg.max_output_tokens)
+        _, raw = actions.extract(answer.text)
+        action, why = actions.sanitize_why(raw)
+        cost = pricing.cost(cfg.model, input_tokens=answer.usage.input_tokens,
+                            output_tokens=answer.usage.output_tokens,
+                            cache_write_tokens=answer.usage.cache_write_tokens,
+                            cache_read_tokens=answer.usage.cache_read_tokens)
+        guess = max(guess, cost * 2)
+        store.record_training_usage(conn, job=stt_compare.JOB, service="chat", quantity=1,
+                                    unit="questions", cost_usd=cost, note="maps check")
+        where = action.get("destination") if action else None
+        print(f"  {text}\n      -> {'Maps: ' + where if where else 'no map opened (' + why + ')'}"
+              f"   ${cost:.4f}")
+    return ""
+
+
 def _stt_compare(cfg, args) -> int:
     """`stt-compare`: the same audio through each transcriber. See stt_compare.py."""
     from . import analysis, google_stt, stt, stt_compare, stt_router, tts as tts_mod
 
     providers = [p.strip() for p in args.providers.split(",") if p.strip()]
-    unknown = [p for p in providers if p not in stt_router.PROVIDERS]
+    # "rescue" (0.51.0) is not a transcriber: it is what /v1/stt now does —
+    # groq-hints, and Qwen as well when that heard a map command.
+    choices = (*stt_router.PROVIDERS, "rescue")
+    unknown = [p for p in providers if p not in choices]
     if unknown or not providers:
-        print(f"unknown transcriber(s): {unknown}; choose from {', '.join(stt_router.PROVIDERS)}")
+        print(f"unknown transcriber(s): {unknown}; choose from {', '.join(choices)}")
+        return 2
+    if args.maps_check and not any(p in ("rescue", "groq-hints") for p in providers):
+        print("--maps-check needs rescue or groq-hints among --providers")
         return 2
     if not (args.from_analysis or args.ids or args.dir or args.synth):
         print("choose the audio: --ids 12,13,14,15, --from-analysis 4, --dir DIR, or --synth")
@@ -217,10 +260,11 @@ def _stt_compare(cfg, args) -> int:
         print()
 
         # ---- the transcribers -------------------------------------------------
-        groq_client = _stt_client() if any(p.startswith("groq") for p in providers) else None
+        groq_client = (_stt_client() if any(p.startswith("groq") or p == "rescue" for p in providers)
+                       else None)
         google_key = _secret("GOOGLE_TTS_API_KEY") or ""
         qwen_key = _secret("QWEN_API_KEY") or ""
-        if "qwen" in providers and not qwen_key:
+        if ("qwen" in providers or "rescue" in providers) and not qwen_key:
             print("no QWEN_API_KEY — run: set-key QWEN_API_KEY (the value is not shown while typed)")
             return 2
         from . import free_tier
@@ -228,7 +272,25 @@ def _stt_compare(cfg, args) -> int:
             pricing, voice_family=cfg.tts_voice_family, google_stt_model=cfg.google_stt_model,
             qwen_stt_model=cfg.qwen_stt_model).get(free_tier.STT_QWEN)
 
+        from . import maps_rescue
+        rescued: list[maps_rescue.Result] = []
+
         def transcribe(provider: str, audio: bytes) -> tuple[str, float]:
+            if provider == "rescue":
+                # Exactly the production path: groq-hints, then maps_rescue.
+                text, groq_cost = transcribe("groq-hints", audio)
+                result = maps_rescue.rescue(
+                    conn, text=text, audio=audio, audio_seconds=google_stt.wav_info(audio)[1],
+                    provider="groq-hints", enabled=True,
+                    inputs=lambda: (qwen_key, _secret("QWEN_WORKSPACE_ID"), qwen_allowance),
+                    qwen_model=cfg.qwen_stt_model, language=cfg.stt_language,
+                    hints_path=cfg.home / "stt_hints.json", pricing=pricing,
+                    timeout_s=cfg.maps_rescue_timeout_s, strip_wake=True,
+                    record_usage=lambda _model, cost, seconds: store.record_training_usage(
+                        conn, job=stt_compare.JOB, service="stt:qwen", quantity=seconds,
+                        unit="seconds", cost_usd=cost, note="maps rescue test"))
+                rescued.append(result)
+                return result.text, groq_cost
             try:
                 outcome = stt_router.transcribe(
                     provider, groq_client=groq_client, google_key=google_key, audio=audio,
@@ -252,6 +314,8 @@ def _stt_compare(cfg, args) -> int:
             return outcome.transcript.text, outcome.cost_usd
 
         def worst_case(provider: str, seconds: float) -> float:
+            if provider == "rescue":
+                return worst_case("groq-hints", seconds) + worst_case("qwen", seconds)
             # Rounded up generously: a billed minimum and a second of slack.
             return stt_router.cost_of(provider, pricing, groq_model=cfg.stt_model,
                                       google_model=cfg.google_stt_model,
@@ -261,12 +325,20 @@ def _stt_compare(cfg, args) -> int:
             store.record_training_usage(conn, job=stt_compare.JOB, service=f"stt:{provider}",
                                         quantity=seconds, unit="seconds", cost_usd=cost)
 
+        run_start = spent()
         rows, stopped = stt_compare.run(samples, providers, transcribe, worst_case, spent, record,
                                         run_budget_usd=args.max_usd)
+        # Which way each rescue row went, in the order they ran.
+        how = iter(rescued)
+        rescue_of = {id(row): next(how) for row in rows if row.provider == "rescue" and not row.error}
 
         # ---- the table ----------------------------------------------------------
         for row in rows:
             heard = row.heard or f"(error: {row.error})"
+            if id(row) in rescue_of:
+                r = rescue_of[id(row)]
+                extra = f" +{r.ms} ms qwen" if r.asked else ""
+                heard = f"<{r.status}{extra}> {heard}"
             if row.ok is None:
                 # Blind: what was heard, how long, what it cost. No verdict.
                 print(f"  -  {row.label:<10} {row.provider:<11} {'':>8} {row.ms:>5} ms "
@@ -286,6 +358,16 @@ def _stt_compare(cfg, args) -> int:
         if not any(s["scored"] for s in stt_compare.summary(rows, providers)):
             print("no recording had an answer key, so no accuracy is shown — "
                   "pair them with --expect ID=N to score")
+        if rescued:
+            asked = [r for r in rescued if r.asked]
+            print(f"\nrescue: {len(rescued)} turns, {len(asked)} sent to Qwen "
+                  f"({', '.join(sorted({r.status for r in rescued}))})"
+                  + (f"; extra wait mean {sum(r.ms for r in asked) / len(asked):.0f} ms, "
+                     f"max {max(r.ms for r in asked)} ms" if asked else ""))
+
+        if args.maps_check and not stopped:
+            stopped = _maps_check(cfg, conn, pricing, rows, spent, run_start, args.max_usd)
+
         print(f"\ncomparison spend so far: ${spent():.4f} of ${stt_compare.COMPARE_BUDGET_USD:.2f}"
               f"  (this run capped at ${args.max_usd:.2f}, at list price)")
         if qwen_allowance is not None:
@@ -504,7 +586,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="which sentence each id is, e.g. 12=1,15=3 (1-9, see stt_compare.SENTENCES)")
     p.add_argument("--dir", default="", help="WAV files named N-anything.wav, N = the sentence number")
     p.add_argument("--synth", action="store_true", help="the 9 sentences in the kiosk's TTS voice")
-    p.add_argument("--providers", default="groq,groq-hints,google")
+    p.add_argument("--providers", default="groq,groq-hints,google",
+                   help="any of groq, groq-hints, google, qwen, and rescue (what /v1/stt does "
+                        "since 0.51.0: groq-hints, and Qwen too for a map command)")
+    p.add_argument("--maps-check", action="store_true",
+                   help="also ask the model each map command, as /v1/chat does, and print "
+                        "where Maps would open (about $0.002 a question)")
     p.add_argument("--max-usd", type=float, default=0.05,
                    help="this run's own ceiling, at list price (Poom: $0.05)")
     sub.add_parser("stt-qwen-check", help="Qwen ASR: key present, and one request with 1 s of silence")
@@ -702,6 +789,16 @@ def main(argv: list[str] | None = None) -> int:
         hints = stt_hints.load(path)
         print(f"{path}: ok, {len(hints.phrases)} phrases, google_boost {hints.boost:g}")
         print(f"  whisper prompt ({len(hints.whisper_prompt())} chars): {hints.whisper_prompt()}")
+        from . import qwen_stt
+
+        context = qwen_stt.context_text(hints)
+        wanted = len(dict.fromkeys((*hints.phrases, *hints.qwen_phrases)))
+        sent = len(qwen_stt.context_phrases(hints))
+        print(f"  qwen context ({len(context)} of {qwen_stt.MAX_CONTEXT_CHARS} chars, "
+              f"{len(hints.qwen_phrases)} qwen-only phrases): {context}")
+        if sent < wanted:
+            print(f"  NOTE: {wanted - sent} phrase(s) at the end did not fit "
+                  f"under {qwen_stt.MAX_CONTEXT_CHARS} characters and are not sent")
         return 0
     if args.cmd == "analysis":
         return _analysis(cfg, args.action, args.audio)
@@ -824,6 +921,12 @@ def main(argv: list[str] | None = None) -> int:
                       f"{s['state']}")
             print("  (Google offers no way to read the remainder; another project on the same")
             print("   billing account would use the same allowance without showing here)")
+            from . import maps_rescue
+            print("  maps rescue (Qwen hears map commands too): " + maps_rescue.status_line(
+                conn, cfg.maps_rescue, free_tier.allowances(
+                    pricing, voice_family=cfg.tts_voice_family,
+                    google_stt_model=cfg.google_stt_model,
+                    qwen_stt_model=cfg.qwen_stt_model).get(free_tier.STT_QWEN)))
 
             print()
             warning = limits.budget_warning(spent, cfg.monthly_budget_usd)

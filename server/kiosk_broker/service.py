@@ -21,7 +21,7 @@ from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dash
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile)
+               auth_reset, local_facts, envfile, maps_rescue)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -938,6 +938,23 @@ def handle_stt(
         text, wake_cut = speech_gate.strip_wake(transcript.text)
         if wake_cut:
             transcript = dataclasses.replace(transcript, text=text)
+    # A MAP COMMAND IS HEARD TWICE (0.51.0, Poom): Qwen gets the same audio
+    # for the place name, and Groq's words stand whenever Qwen fails, is slow
+    # or is out of free seconds. Any other turn: one scan for the map words,
+    # nothing else. See maps_rescue.py.
+    groq_text = transcript.text
+    second = maps_rescue.rescue(
+        conn, text=transcript.text, audio=body, audio_seconds=transcript.seconds,
+        provider=chosen, enabled=cfg.maps_rescue, inputs=lambda: _rescue_inputs(cfg, pricing),
+        qwen_model=cfg.qwen_stt_model, language=cfg.stt_language,
+        hints_path=cfg.home / stt_hints.FILENAME, pricing=pricing,
+        timeout_s=cfg.maps_rescue_timeout_s, strip_wake=source == "wake",
+        record_usage=maps_rescue.record_to(conn, device_id=device_id, month=month),
+        qwen_transport=qwen_transport)
+    if second.text != groq_text:
+        transcript = dataclasses.replace(transcript, text=second.text)
+    if second.cost_usd:
+        cost += second.cost_usd
     from . import lights  # noqa: PLC0415
     verdict = speech_gate.judge(
         transcript.text, no_speech_prob=getattr(transcript, "no_speech_prob", None),
@@ -951,20 +968,32 @@ def handle_stt(
     # Length, never content: what somebody says to a kiosk is not something to
     # keep in a log file. The words themselves go only to the analysis table,
     # and only while Poom has analysis mode switched on — see analysis.py.
-    log.info("stt %s device=%s provider=%s bytes=%d seconds=%.1f chars_out=%d cost=%.6f ms=%d"
+    log.info("stt %s device=%s provider=%s text_from=%s rescue=%s bytes=%d seconds=%.1f"
+             " chars_out=%d cost=%.6f ms=%d rescue_ms=%d"
              " gate=%s doubts=%s no_speech=%s logprob=%s wake=%s wake_cut=%s",
-             "ok" if verdict.passed else "gated", label, chosen, len(body), transcript.seconds,
-             len(transcript.text), cost, elapsed_ms, verdict.reason,
+             "ok" if verdict.passed else "gated", label, chosen,
+             "qwen" if second.used_qwen else chosen, second.status, len(body), transcript.seconds,
+             len(transcript.text), cost, elapsed_ms, second.ms, verdict.reason,
              ",".join(verdict.doubts) or "-", _num(getattr(transcript, "no_speech_prob", None)),
              _num(getattr(transcript, "avg_logprob", None)),
              source if wake_score is None else f"{wake_score:.3f}", "yes" if wake_cut else "no")
-    analysis.record_stt(conn, cfg.home, device=label, provider=chosen, text=transcript.text,
-                        audio_seconds=transcript.seconds, audio=body, stt_ms=elapsed_ms,
+    analysis.record_stt(conn, cfg.home, device=label,
+                        provider=f"{chosen}+qwen" if second.used_qwen else chosen,
+                        text=transcript.text, audio_seconds=transcript.seconds, audio=body,
+                        stt_ms=elapsed_ms + second.ms,
                         cost_usd=cost, intent=(actions.camera_match(transcript.text)[1]
                                                if verdict.passed else f"gated:{verdict.reason}"))
 
     return 200, {"text": transcript.text if verdict.passed else "", "provider": chosen,
-                 "gate": verdict.as_json()}
+                 "rescue": second.status, "gate": verdict.as_json()}
+
+
+def _rescue_inputs(cfg: Config, pricing: Pricing) -> tuple[str, str | None, Any]:
+    """What a map command's second opinion needs, read only when there is one:
+    the Qwen key (set-key needs no restart), the workspace, the free seconds."""
+    secret = envfile.reader(cfg.env_path)
+    return (secret("QWEN_API_KEY") or "", secret("QWEN_WORKSPACE_ID"),
+            _allowances(cfg, pricing).get(free_tier.STT_QWEN))
 
 
 def _num(value: float | None) -> str:

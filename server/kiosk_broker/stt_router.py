@@ -26,8 +26,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import google_stt, qwen_stt, stt, stt_hints
+from . import google_stt, qwen_stt, stt, stt_hints, thai_numbers
 from .pricing import Pricing
+from .stt import Transcript
 
 PROVIDERS = ("groq", "groq-hints", "google", "qwen")
 
@@ -68,14 +69,18 @@ def transcribe(provider: str, *, groq_client, google_key: str, audio: bytes, fil
                language: str, groq_model: str, google_model: str, hints_path: Path,
                pricing: Pricing, google_transport=None, qwen_key: str = "",
                qwen_model: str = qwen_stt.DEFAULT_MODEL, qwen_workspace: str | None = None,
-               qwen_transport=None) -> Outcome:
+               qwen_transport=None, qwen_timeout: float = 20.0) -> Outcome:
     """One transcription by `provider`. SttError on failure, with `seconds` set
     whenever the vendor answered and therefore billed."""
     hints = stt_hints.load(hints_path) if provider in ("groq-hints", "google", "qwen") else None
     if provider == "qwen":
         transcript = qwen_stt.recognize(
             api_key=qwen_key, audio=audio, language=language.split("-")[0].lower(), model=qwen_model,
-            hints=hints, workspace=qwen_workspace, transport=qwen_transport)
+            hints=hints, workspace=qwen_workspace, transport=qwen_transport, timeout=qwen_timeout)
+        # Qwen writes "สิบเอ็ด" where Groq writes "11" (0.51.0): the same digits
+        # as everywhere else, before anything reads it. See thai_numbers.py.
+        transcript = Transcript(thai_numbers.to_digits(transcript.text), transcript.seconds,
+                                transcript.no_speech_prob, transcript.avg_logprob)
     elif provider == "google":
         transcript = google_stt.recognize(
             api_key=google_key, audio=audio, language_code=_bcp47(language),

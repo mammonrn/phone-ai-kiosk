@@ -64,6 +64,12 @@ class Config:
     #: Qwen3-ASR-Flash snapshot for the "qwen" transcriber (0.50.0): the one
     #: Poom's 36,000 free seconds are on. See qwen_stt.py.
     qwen_stt_model: str = "qwen3-asr-flash-2026-02-10"
+    #: 0.51.0 (Poom 2026-09-24): when groq-hints hears a map command, the same
+    #: audio goes to Qwen as well and Qwen's words are used — only while Qwen's
+    #: free seconds last, and Groq's words whenever Qwen fails or is slower
+    #: than the timeout below. See maps_rescue.py.
+    maps_rescue: bool = True
+    maps_rescue_timeout_s: float = 2.5
     #: 1 MiB is about 32 seconds of the 16 kHz mono 16-bit WAV the phone sends,
     #: which is a long question. Compressed formats fit more seconds in the same
     #: bytes, so the duration cap below is what actually bounds the bill.

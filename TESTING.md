@@ -1816,3 +1816,26 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_PREROLL --es value on -
 → `pre-roll : on last=250 ms` หลังพูดต่อกันทันที
 
 **การปลุกที่ไม่มีอยู่:** พิมพ์ด้วย `TEST_ASK --es text "'เปิดปลุก ทดสอบไม่มี'"` ตอนไม่มีการปลุกชื่อนี้ → จอต้องขึ้น "ไม่พบการปลุกนั้นครับ" ไม่ใช่ "เปิดปลุก…แล้วครับ"
+
+## v0.51.0 (broker) — คำสั่งแผนที่ถอดซ้ำด้วย Qwen
+
+ไม่มี APK ใหม่ เปลี่ยนแค่ broker (รายละเอียดและคำสั่งทั้งหมดใน `server/INSTALL.md` หัวข้อ "ถอดซ้ำคำสั่งแผนที่ด้วย Qwen")
+
+**1. เสียงจริงที่เก็บไว้ (บน VPS, ≤ $0.05):**
+```
+$B analysis summary
+$B stt-compare --ids <id ทั้งหมดที่มี audio> --providers groq-hints,rescue --maps-check
+```
+ต้องเห็น: ประโยคแผนที่ขึ้น `<used ...>` หรือ `<same ...>` และ `-> Maps: <ชื่อที่ถูก>` ·
+ประโยคอื่นขึ้น `<->` และข้อความเหมือนแถว groq-hints ทุกตัวอักษร · บรรทัด `rescue: ... extra wait mean X ms` คือเวลาที่เพิ่ม
+
+**2. บน A07 (พูดจริง):** "Hey Jarvis พาไปดอยตุง" · "พาไปสิงห์ปาร์ค" · "นำทางไปวัดร่องขุ่น" · "พาไปภูชี้ฟ้า"
+→ Maps เปิดถูกที่ทุกครั้ง แล้วดู log:
+```
+sudo journalctl -u kiosk-broker --since "10 min ago" | grep "stt ok" | grep -o "text_from=[a-z-]* rescue=[a-z-]*.*rescue_ms=[0-9]*"
+```
+แผนที่ต้องเป็น `text_from=qwen rescue=used|same` · คำสั่งอื่น ("เปิดไฟหน้าบ้าน", "ขอดูกล้อง", "ตั้งปลุก 6 โมง") ต้องเป็น
+`text_from=groq-hints rescue=- ... rescue_ms=0` และทำงานเหมือนเดิม
+
+**3. ถอยกลับไป Groq:** `"maps_rescue_timeout_s": 0.01` ใน config.json แล้ว restart → พูดคำสั่งแผนที่ →
+Maps ยังเปิด (ชื่อจาก Groq) log ขึ้น `rescue=fallback-timeout` → เอาค่านั้นออกแล้ว restart

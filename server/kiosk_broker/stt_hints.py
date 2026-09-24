@@ -36,6 +36,12 @@ MAX_PHRASE_CHARS = 40
 #: file lists the most important words first.
 MAX_PROMPT_CHARS = 150
 
+#: 0.51.0: words for Qwen alone ("qwen_phrases"), after the shared ones.
+#: Qwen reads up to 400 characters (qwen_stt.MAX_CONTEXT_CHARS); Groq's prompt
+#: and Google's phrases never see these, so adding a place name cannot change
+#: how the other commands are heard.
+MAX_QWEN_PHRASES = 80
+
 #: Google's boost is a weight; 0 means "no boost". Kept to a sane range.
 MAX_BOOST = 20.0
 
@@ -44,6 +50,8 @@ MAX_BOOST = 20.0
 class Hints:
     phrases: tuple[str, ...]
     boost: float
+    #: Only for Qwen's context, after `phrases`. See MAX_QWEN_PHRASES.
+    qwen_phrases: tuple[str, ...] = ()
 
     def whisper_prompt(self) -> str:
         """The phrases as one line of plausible text, cut to MAX_PROMPT_CHARS."""
@@ -76,11 +84,24 @@ def problems(raw) -> list[str]:
                 found.append(f"phrase {index + 1} is longer than {MAX_PHRASE_CHARS} characters")
             elif any(ord(c) < 0x20 for c in phrase):
                 found.append(f"phrase {index + 1} contains a control character")
+    extra = raw.get("qwen_phrases", [])
+    if not isinstance(extra, list):
+        found.append("\"qwen_phrases\" must be a list")
+    else:
+        if len(extra) > MAX_QWEN_PHRASES:
+            found.append(f"at most {MAX_QWEN_PHRASES} qwen_phrases (found {len(extra)})")
+        for index, phrase in enumerate(extra):
+            if not isinstance(phrase, str) or not phrase.strip():
+                found.append(f"qwen phrase {index + 1} is not a non-empty string")
+            elif len(phrase.strip()) > MAX_PHRASE_CHARS:
+                found.append(f"qwen phrase {index + 1} is longer than {MAX_PHRASE_CHARS} characters")
+            elif any(ord(c) < 0x20 for c in phrase):
+                found.append(f"qwen phrase {index + 1} contains a control character")
     boost = raw.get("google_boost", 0)
     if not isinstance(boost, (int, float)) or isinstance(boost, bool) \
             or not 0 <= boost <= MAX_BOOST:
         found.append(f"\"google_boost\" must be a number from 0 to {MAX_BOOST:g}")
-    unknown = set(raw) - {"phrases", "google_boost", "_note"}
+    unknown = set(raw) - {"phrases", "qwen_phrases", "google_boost", "_note"}
     if unknown:
         found.append(f"unknown keys: {', '.join(sorted(unknown))}")
     return found
@@ -123,6 +144,7 @@ def load(path: Path) -> Hints | None:
     else:
         raw = json.loads(path.read_text(encoding="utf-8"))
         hints = Hints(tuple(p.strip() for p in raw["phrases"]),
-                      float(raw.get("google_boost", 0)))
+                      float(raw.get("google_boost", 0)),
+                      tuple(p.strip() for p in raw.get("qwen_phrases", [])))
     _cache[str(path)] = (mtime, hints)
     return hints

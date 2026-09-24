@@ -67,18 +67,24 @@ def base_url(workspace: str | None) -> str:
     return LEGACY_BASE
 
 
-def context_text(hints: Hints | None) -> str:
-    """The hint phrases as one word list, cut at a whole phrase under the limit."""
-    if not hints or not hints.phrases:
-        return ""
+def context_phrases(hints: Hints | None) -> list[str]:
+    """The hint phrases that fit under the limit, cut at a whole phrase: the
+    shared ones first, then the ones for Qwen alone (0.51.0), each once."""
+    if not hints:
+        return []
     out, length = [], 0
-    for phrase in hints.phrases:
+    for phrase in dict.fromkeys((*hints.phrases, *hints.qwen_phrases)):
         extra = len(phrase) + (1 if out else 0)
         if length + extra > MAX_CONTEXT_CHARS:
             break
         out.append(phrase)
         length += extra
-    return " ".join(out)
+    return out
+
+
+def context_text(hints: Hints | None) -> str:
+    """The phrases that fit, as one word list."""
+    return " ".join(context_phrases(hints))
 
 
 def request_body(audio: bytes, *, model: str, language: str, hints: Hints | None) -> dict:
