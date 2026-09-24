@@ -1982,3 +1982,24 @@ id ถูกตัดเหลือ 4 ตัวท้าย ไม่พิม�
   - `override-status 4` → หยุดพัก ภาพค้าง กดเล่นไม่ได้ และคำปลุกกลับมา
   - `override-status 6` → หยุดเล่น ภาพดำ เวลาเป็น 0:00:00 และ service หยุด
   - ต้อง `cmd thermalservice reset` ทุกครั้งหลังทดสอบ
+
+## v0.58.0 — หมุนจอเมื่อเต็มจอ, วิดีโอไม่เล่นเบื้องหลัง
+
+- **หมุนจอด้วยมือจริง (ต้องใช้คนหมุนเครื่อง):**
+  1. เปิดวิดีโอ แตะภาพให้แผงขึ้น แล้วกด "เต็มจอ" จนปุ่มขึ้นว่า "เปิด"
+  2. หมุนเครื่องเป็นแนวนอน ภาพต้องหมุนตามภายในประมาณ 1 วินาที
+  3. กลับไปที่รายการ แล้วเลือกวิดีโอเรื่องอื่น (ทางที่เคยพังใน 0.57.0) แล้วหมุนเครื่องอีกครั้ง
+  4. ดู log ได้ด้วย `adb logcat -s KioskVideo` ต้องเห็น `orientation asked=sensor` ทุกครั้งที่หน้าเล่นแสดงขณะเต็มจอ
+  - ถ้าเซนเซอร์บอกแนวนอนแล้วแต่ภาพไม่หมุน ให้ดู `adb shell dumpsys window | grep -E "mCurrentAppOrientation|mRotation"` ค่าแรกต้องเป็น SENSOR
+- **ออกจากเครื่องเล่นแล้ววิดีโอต้องหยุด (log `KioskVideo`):**
+  - X หรือ Back → `stopped: left the player (closed)`
+  - "◄ รายการ" → `stopped: left the player (list)` และรายการแสดง "ดูถึง …"
+  - จอดับ (`adb shell input keyevent KEYCODE_SLEEP`) → `paused: screen off`
+  - ทุกกรณีต้องได้ `wake pause off` แล้วพูด Hey Jarvis ทางลำโพงคอมพิวเตอร์ เครื่องต้องจับได้
+- **ลบไฟล์ทดสอบ:** ระบุ path เต็มทีละไฟล์ ห้ามใช้ wildcard แล้วสั่งสแกนใหม่ทีละไฟล์
+  ```
+  adb shell rm /sdcard/Music/KioskTest/eq_tones.flac
+  adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Music/KioskTest/eq_tones.flac
+  adb shell content query --uri content://media/external/video/media --projection _data
+  ```
+  - ไฟล์ที่ลบไปแล้วแต่ยังอยู่ในรายการเพลงที่บันทึกไว้ จะไม่หายเอง กดเล่นแล้วแอปหยุดเองและขึ้นข้อความ ต้องเอาออกจากรายการด้วยปุ่ม "ลบ"

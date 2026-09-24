@@ -17,3 +17,6 @@ vendor/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Reference pictures of other products: looked at, never committed (Poom).
+docs/refs/
