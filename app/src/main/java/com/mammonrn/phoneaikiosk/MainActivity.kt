@@ -206,7 +206,10 @@ class MainActivity : Activity() {
         override fun run() {
             val now = Date()
             applyScreenRule()
-            taskbarClock.text = taskbarFormat.format(now)
+            // Debug builds can show a chosen time for a minute (TEST_CLOCK), to check
+            // the tray at its widest, "12:59 PM", without waiting for 10-12 o'clock.
+            val shown = clockOverride?.takeIf { android.os.SystemClock.elapsedRealtime() < clockOverrideUntil }
+            taskbarClock.text = shown ?: taskbarFormat.format(now)
             // Thai, "พ. 23 ก.ย.": the time stays AM/PM as asked, the date is
             // in the language of everything else on the screen.
             jarvisDate.text = com.mammonrn.phoneaikiosk.ui.ScreenDate.format(
@@ -1656,6 +1659,10 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        /** Debug only (TEST_CLOCK, 0.57.0): the tray's time for a test; null in real use. */
+        @Volatile var clockOverride: String? = null
+        @Volatile var clockOverrideUntil = 0L
+
         /**
          * How often the screen asks the broker.
          *

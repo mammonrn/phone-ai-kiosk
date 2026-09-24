@@ -102,6 +102,14 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 main.postDelayed(sample, 1000)
             }
 
+            ACTION_CLOCK -> {
+                // 0.57.0: the taskbar shows --es text "12:59 PM" for 60 s (DESIGN.md: check the
+                // tray at 10-12 o'clock, the widest time). Only the words shown change.
+                MainActivity.clockOverride = intent.getStringExtra("text")?.take(8)
+                MainActivity.clockOverrideUntil = android.os.SystemClock.elapsedRealtime() + 60_000
+                android.util.Log.i("KioskHome", "test clock for 60 s")
+            }
+
             ACTION_PERFORM -> {
                 // 0.57.0: a music or video action as the broker sends it, done by the real
                 // code. --es type video --es command pause|play|resume|stop [--es query …]
@@ -352,6 +360,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_FX = "com.mammonrn.phoneaikiosk.TEST_FX"
         const val ACTION_VIDEO_ROTATE = "com.mammonrn.phoneaikiosk.TEST_VIDEO_ROTATE"
         const val ACTION_PERFORM = "com.mammonrn.phoneaikiosk.TEST_PERFORM"
+        const val ACTION_CLOCK = "com.mammonrn.phoneaikiosk.TEST_CLOCK"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
         const val ACTION_LIGHTS_PAGE = "com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE"
 
