@@ -60,12 +60,14 @@ object MusicPlayer {
     val durationMs: Long get() = service?.player?.duration?.takeIf { it != C.TIME_UNSET } ?: 0
 
     /** Runs [block] on the main thread with the service, starting it if it is not running. */
-    private fun run(context: Context, block: (MusicService) -> Unit) = main.post {
-        val s = service
-        if (s != null) block(s)
-        else {
-            pending.add(block)
-            ContextCompat.startForegroundService(context.applicationContext, Intent(context, MusicService::class.java))
+    private fun run(context: Context, block: (MusicService) -> Unit) {
+        main.post {
+            val s = service
+            if (s != null) block(s)
+            else {
+                pending.add(block)
+                ContextCompat.startForegroundService(context.applicationContext, Intent(context, MusicService::class.java))
+            }
         }
     }
 
