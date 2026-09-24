@@ -155,6 +155,7 @@ class VideoActivity : Activity() {
         frame?.fill = fill && newConfig.orientation != Configuration.ORIENTATION_LANDSCAPE
         frame?.requestLayout()
         (panel?.layoutParams as? FrameLayout.LayoutParams)?.let { panel?.layoutParams = panelParams() }
+        panel?.post { placeCue(panel?.visibility == View.VISIBLE) }
         Log.i(VideoService.TAG, "turned ${if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"}")
     }
 
@@ -542,7 +543,23 @@ class VideoActivity : Activity() {
         val v = if (on) View.VISIBLE else View.GONE
         topBar?.visibility = v
         panel?.visibility = v
+        placeCue(on)
         if (on) poke() else handler.removeCallbacks(hide)
+    }
+
+    /**
+     * Subtitles sit just above the panel while it shows, and near the bottom edge
+     * when it hides — a fixed height put them mid-picture when turned sideways
+     * (the screen is 384dp tall there; seen on the A07).
+     */
+    private fun placeCue(controlsShown: Boolean) {
+        val cue = cueView ?: return
+        val p = panel
+        val above = if (controlsShown && p != null && p.height > 0) p.height + dp(UiScale.FRAME) * 2
+                    else if (controlsShown) dp(UiScale.VIDEO_CUE_BOTTOM) else dp(UiScale.SPACE_L)
+        (cue.layoutParams as? FrameLayout.LayoutParams)?.let {
+            if (it.bottomMargin != above) { it.bottomMargin = above; cue.layoutParams = it }
+        }
     }
 
     private fun refresh() {
