@@ -189,6 +189,25 @@ class VoiceService : Service() {
             }
         }
 
+        if (intent?.action == ACTION_TEST_PERFORM) {
+            // Debug builds only send this (TestTriggerReceiver, 0.57.0): an action as the broker
+            // would send it, done by the real code — optionally inside a question (WakePause's
+            // turn), to check that a spoken pause is not undone when the answer ends.
+            val type = intent.getStringExtra(EXTRA_TYPE).orEmpty()
+            if (type == KioskAction.VIDEO || type == KioskAction.MUSIC) {
+                val action = KioskAction(type, "", mapOf("command" to intent.getStringExtra(EXTRA_COMMAND).orEmpty(),
+                                                         "query" to intent.getStringExtra(EXTRA_QUERY).orEmpty()))
+                val asTurn = intent.getBooleanExtra(EXTRA_AS_TURN, false)
+                if (asTurn) WakePause.turnStarted()
+                alarmHandler.postDelayed({
+                    val instead = performAction(action)
+                    // Whether it was done — never the words, which may carry a name.
+                    Log.i(TAG, "test perform type=$type command=${action.params["command"]} done=${instead == null}")
+                    if (asTurn) alarmHandler.postDelayed({ WakePause.turnEnded() }, 1_500)
+                }, 1_500)
+            }
+        }
+
         if (intent?.action == ACTION_AUTH_PASSED) {
             resumePrivate(intent.getStringExtra(EXTRA_METHOD) ?: "face",
                           intent.getBooleanExtra(com.mammonrn.phoneaikiosk.auth.VerifyActivity.EXTRA_FOR_PRIVATE,
@@ -1217,6 +1236,11 @@ class VoiceService : Service() {
 
         const val ACTION_ALARM_RING = "com.mammonrn.phoneaikiosk.ALARM_RING"
         const val ACTION_TEST_ASK = "com.mammonrn.phoneaikiosk.TEST_ASK_TEXT"
+        const val ACTION_TEST_PERFORM = "com.mammonrn.phoneaikiosk.TEST_PERFORM_ACTION"
+        const val EXTRA_TYPE = "type"
+        const val EXTRA_COMMAND = "command"
+        const val EXTRA_QUERY = "query"
+        const val EXTRA_AS_TURN = "as_turn"
         const val EXTRA_TEXT = "text"
         const val ACTION_ALARM_STOP = "com.mammonrn.phoneaikiosk.ALARM_STOP"
         /** From VerifyActivity, after a pass that was for a private question. */

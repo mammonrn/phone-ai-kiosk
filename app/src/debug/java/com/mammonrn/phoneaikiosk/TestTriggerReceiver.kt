@@ -102,6 +102,18 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 main.postDelayed(sample, 1000)
             }
 
+            ACTION_PERFORM -> {
+                // 0.57.0: a music or video action as the broker sends it, done by the real
+                // code. --es type video --es command pause|play|resume|stop [--es query …]
+                // [--ez as_turn true: inside a question, as the Jarvis button would].
+                context.startForegroundService(android.content.Intent(context, VoiceService::class.java)
+                    .setAction(VoiceService.ACTION_TEST_PERFORM)
+                    .putExtra(VoiceService.EXTRA_TYPE, intent.getStringExtra("type"))
+                    .putExtra(VoiceService.EXTRA_COMMAND, intent.getStringExtra("command"))
+                    .putExtra(VoiceService.EXTRA_QUERY, intent.getStringExtra("query"))
+                    .putExtra(VoiceService.EXTRA_AS_TURN, intent.getBooleanExtra("as_turn", false)))
+            }
+
             ACTION_VIDEO_ROTATE -> {
                 // 0.57.0: the sensor's word, for a test without turning the phone:
                 // --es to landscape|portrait. Only in full screen and not locked.
@@ -339,6 +351,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_MEDIA_HOLD = "com.mammonrn.phoneaikiosk.TEST_MEDIA_HOLD"
         const val ACTION_FX = "com.mammonrn.phoneaikiosk.TEST_FX"
         const val ACTION_VIDEO_ROTATE = "com.mammonrn.phoneaikiosk.TEST_VIDEO_ROTATE"
+        const val ACTION_PERFORM = "com.mammonrn.phoneaikiosk.TEST_PERFORM"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
         const val ACTION_LIGHTS_PAGE = "com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE"
 
