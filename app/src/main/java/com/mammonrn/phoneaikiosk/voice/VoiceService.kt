@@ -1012,7 +1012,7 @@ class VoiceService : Service() {
         // so the screen is already there by the time the question starts. See
         // ScreenWaker; a failure here must not cost the turn.
         runCatching { ScreenWaker.wakeIfAsleep(this) }
-        runCatching {
+        if (VoiceState.beep) runCatching {
             if (tone == null) {
                 tone = android.media.ToneGenerator(
                     android.media.AudioManager.STREAM_NOTIFICATION, TONE_VOLUME,

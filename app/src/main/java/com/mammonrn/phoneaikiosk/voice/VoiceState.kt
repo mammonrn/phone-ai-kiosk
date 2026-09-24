@@ -41,6 +41,13 @@ object VoiceState : VoiceSink {
      */
     @Volatile var preRoll: Boolean = true
 
+    /**
+     * The wake acknowledgement tone. On by default; the debug build's TEST_BEEP
+     * switches it off to measure whether it covers the question's first
+     * syllable (0.61.0, DESIGN 11ก). Forgotten on restart (on again).
+     */
+    @Volatile var beep: Boolean = true
+
     /** How much the last wake-word capture took from before the detector fired. */
     @Volatile var lastPreRollMs: Int = 0
 
@@ -243,6 +250,7 @@ object VoiceState : VoiceSink {
         appendLine("  detections : $detections")
         appendLine("  wake-only  : ${if (wakeOnly) "ON — no STT, chat or TTS" else "off"}")
         appendLine("  pre-roll   : ${if (preRoll) "on" else "OFF (TEST_PREROLL)"} last=${lastPreRollMs} ms")
+        if (!beep) appendLine("  beep       : OFF (TEST_BEEP)")
         if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
         appendLine("  last-action: $lastAction")
         appendLine("  maps       : $mapsState")

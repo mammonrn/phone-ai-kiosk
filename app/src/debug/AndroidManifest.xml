@@ -43,6 +43,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_PREROLL" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_BEEP" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_HOME" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_DIAGNOSTICS" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_STT_PROVIDER" />

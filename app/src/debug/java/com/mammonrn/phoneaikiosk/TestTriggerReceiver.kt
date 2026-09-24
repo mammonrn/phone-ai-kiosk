@@ -320,6 +320,14 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "pre-roll ${if (on) "ON" else "off"}")
             }
 
+            ACTION_BEEP -> {
+                // Is the first syllable lost under the wake tone? (0.61.0, DESIGN 11ก)
+                // --es value off, play the same clip N times, --es value on, again.
+                val on = intent.getStringExtra("value")?.lowercase() !in setOf("off", "0", "false")
+                com.mammonrn.phoneaikiosk.voice.VoiceState.beep = on
+                android.util.Log.i("KioskStats", "beep ${if (on) "ON" else "off"}")
+            }
+
             ACTION_WAKE_ONLY -> {
                 // Measuring how often the wake word actually fires needs twenty
                 // attempts, and twenty full turns is twenty transcriptions,
@@ -432,6 +440,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_SET_THRESHOLD = "com.mammonrn.phoneaikiosk.TEST_SET_THRESHOLD"
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
         const val ACTION_PREROLL = "com.mammonrn.phoneaikiosk.TEST_PREROLL"
+        const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
         const val ACTION_SET_MARGIN = "com.mammonrn.phoneaikiosk.TEST_SET_MARGIN"
         const val ACTION_SET_WAIT = "com.mammonrn.phoneaikiosk.TEST_SET_WAIT"
