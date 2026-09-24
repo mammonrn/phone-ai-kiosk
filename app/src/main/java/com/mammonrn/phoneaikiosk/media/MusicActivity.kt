@@ -304,11 +304,13 @@ class MusicActivity : Activity() {
         facts.addView(ampText(getString(R.string.music_kbps)).apply { setPadding(dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_S), 0) })
         facts.addView(khzView, LinearLayout.LayoutParams(WRAP, dp(UiScale.AMP_LINE)))
         facts.addView(ampText(getString(R.string.music_khz)).apply { setPadding(dp(UiScale.SPACE_XS), 0, 0, 0) })
-        facts.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
-        monoView = ampText(getString(R.string.music_mono)); stereoView = ampText(getString(R.string.music_stereo))
-        facts.addView(monoView)
-        facts.addView(stereoView, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(UiScale.SPACE_S) })
         right.addView(facts, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
+        // mono / stereo on a line of their own: beside kHz they ran off the edge (seen on the A07).
+        val channels = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        monoView = ampText(getString(R.string.music_mono)); stereoView = ampText(getString(R.string.music_stereo))
+        channels.addView(monoView)
+        channels.addView(stereoView, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(UiScale.SPACE_S) })
+        right.addView(channels, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
         val tagsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         coverView = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP; contentDescription = getString(R.string.music_cover); visibility = View.GONE
@@ -336,8 +338,10 @@ class MusicActivity : Activity() {
                 balanceWords(MusicPlayer.balance) }, done = { progress = ((MusicPlayer.balance + 1) * 100).toInt() }))
         }
         sliders.addView(balanceSeek, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 2f).apply { marginStart = dp(UiScale.SPACE_XS) })
-        eqToggle = led(getString(R.string.music_eq_button), showEq) { showEq = !showEq; showNow() }
-        plToggle = led(getString(R.string.music_pl_button), showList) { showList = !showList; showNow() }
+        // The equalizer and the list share the space under the player, one at a
+        // time: both at once left the list a title bar high on this screen.
+        eqToggle = led(getString(R.string.music_eq_button), showEq) { showEq = !showEq; if (showEq) showList = false; showNow() }
+        plToggle = led(getString(R.string.music_pl_button), showList) { showList = !showList; if (showList) showEq = false; showNow() }
         sliders.addView(eqToggle, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_XS) })
         sliders.addView(plToggle, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)).apply { marginStart = dp(UiScale.SPACE_XS) })
         body.addView(sliders, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_XS) })
@@ -362,7 +366,7 @@ class MusicActivity : Activity() {
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controls.addView(control(R.drawable.ic_pixel_prev, R.string.music_prev) { MusicPlayer.previous(this) }, tight(0))
         controls.addView(control(R.drawable.ic_pixel_play, R.string.music_play) { MusicPlayer.resume(this) }, tight(1))
-        controls.addView(control(R.drawable.ic_pixel_pause, R.string.music_pause) { MusicPlayer.pause(this) }, tight(1))
+        controls.addView(control(R.drawable.ic_pixel_pause, R.string.music_pause_short) { MusicPlayer.pause(this) }, tight(1))
         controls.addView(control(R.drawable.ic_pixel_stop, R.string.music_stop) { MusicPlayer.stop(this) }, tight(1))
         controls.addView(control(R.drawable.ic_pixel_next, R.string.music_next) { MusicPlayer.next(this) }, tight(1))
         controls.addView(control(R.drawable.ic_pixel_eject, R.string.music_open) { addMode = true; show(Tab.LIBRARY) }, tight(1))
@@ -414,7 +418,7 @@ class MusicActivity : Activity() {
         return when {
             !s.on -> getString(R.string.music_eq_off_note)
             MusicPlayer.hasMedia && !MusicPlayer.fx.working -> getString(R.string.music_eq_not_working)
-            else -> getString(R.string.music_eq_presets) + ": " + s.preset.ifEmpty { "—" }
+            else -> getString(R.string.music_eq_presets) + ": " + s.preset.ifEmpty { getString(R.string.music_eq_custom) }
         }
     }
 

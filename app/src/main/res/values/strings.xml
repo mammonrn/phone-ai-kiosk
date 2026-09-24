@@ -482,6 +482,8 @@
     <string name="music_eq_title">อีควอไลเซอร์</string>
     <string name="music_eq_on">เปิด</string>
     <string name="music_eq_presets">ชุดค่า</string>
+    <string name="music_eq_custom">ปรับเอง</string>
+    <string name="music_pause_short">หยุดพัก</string>
     <string name="music_eq_preamp">PRE</string>
     <string name="music_eq_describe">อีควอไลเซอร์ พรีแอมป์ %1$s เดซิเบล ย่านความถี่ %2$s</string>
     <string name="music_eq_off_note">อีควอไลเซอร์ปิดอยู่ เสียงออกตามไฟล์</string>
