@@ -300,7 +300,9 @@ internal class LightsPage(private val a: SettingsActivity) {
             saveButton = a.button(a.getString(R.string.save), big = true) {
                 val value = field.text.toString().trim()
                 if (value.isEmpty()) {
-                    error.text = a.getString(R.string.lights_name_empty)
+                    // Only point at "ลบชื่อที่ตั้งเอง" when that button is on the page.
+                    error.text = a.getString(if (ownName.isNotEmpty()) R.string.lights_name_empty
+                                             else R.string.lights_name_empty_new)
                     error.visibility = View.VISIBLE
                 } else {
                     save(value, saveButton)

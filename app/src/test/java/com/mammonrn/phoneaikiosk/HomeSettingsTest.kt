@@ -84,6 +84,12 @@ class HomeSettingsTest {
         }
         val broker = file("src/main/java/com/mammonrn/phoneaikiosk/voice/Broker.kt")
         assertTrue("\"/v1/home/devices\"" in broker && "\"/v1/home/name\"" in broker && "\"/v1/home/allow\"" in broker)
+        // Quotes in a string resource are dropped unless escaped (seen on the A07, 0.47.0).
+        val strings = file("src/main/res/values/strings.xml")
+        for (line in strings.lines().filter { "name=\"lights_" in it }) {
+            val value = line.substringAfter(">").substringBeforeLast("<")
+            assertFalse("unescaped quote in $line", Regex("""(?<!\\)"""").containsMatchIn(value))
+        }
         // In the Control Panel, with its own icon.
         assertTrue("it.lights.open()" in file("src/main/java/com/mammonrn/phoneaikiosk/settings/SettingsActivity.kt"))
     }

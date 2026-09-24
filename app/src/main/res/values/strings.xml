@@ -49,8 +49,9 @@
     <string name="lights_naming">ตั้งชื่อ: %1$s</string>
     <string name="lights_ewelink_name">ชื่อจาก eWeLink: %1$s</string>
     <string name="lights_no_ewelink_name">eWeLink ไม่ได้ส่งชื่อมา</string>
-    <string name="lights_name_hint">จาร์วิสจะฟังชื่อนี้ เช่น "เปิดไฟหน้าบ้าน" ชื่อต้องไม่ซ้ำกับดวงอื่น</string>
-    <string name="lights_name_empty">กรุณาพิมพ์ชื่อ หรือกด "ลบชื่อที่ตั้งเอง"</string>
+    <string name="lights_name_hint">จาร์วิสจะฟังชื่อนี้ เช่น \"เปิดไฟหน้าบ้าน\" ชื่อต้องไม่ซ้ำกับดวงอื่น</string>
+    <string name="lights_name_empty">กรุณาพิมพ์ชื่อ หรือกด \"ลบชื่อที่ตั้งเอง\"</string>
+    <string name="lights_name_empty_new">กรุณาพิมพ์ชื่อ</string>
     <string name="lights_name_remove">ลบชื่อที่ตั้งเอง</string>
     <string name="home_stale">ข้อมูลเมื่อ %1$d นาทีก่อน</string>
     <!-- Title bar of the gold window when the broker sends the purity. The
