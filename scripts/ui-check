@@ -29,11 +29,16 @@ adb get-state >/dev/null 2>&1 || { echo "no phone on adb"; exit 2; }
 if [ "${SKIP_INSTALL:-0}" != "1" ]; then
   run=$(gh run list -w "Build Android APK" -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
   dl=$(mktemp -d)
+  # A Windows path for gh.exe (MSYS_NO_PATHCONV above stops Git Bash converting it).
+  command -v cygpath >/dev/null && dl=$(cygpath -m "$dl")
   echo "installing the app and the UI-check APK from CI run $run"
   gh run download "$run" -n phone-ai-kiosk-debug-apk -D "$dl/app" || exit 2
   gh run download "$run" -n phone-ai-kiosk-ui-check-apk -D "$dl/test" || { echo "that run has no UI-check APK (built before 0.63.0?)"; exit 2; }
-  adb install -r -t "$(cygpath -m "$dl"/app/*.apk 2>/dev/null || echo "$dl"/app/*.apk)" | tail -1
-  adb install -r -t "$(cygpath -m "$dl"/test/*.apk 2>/dev/null || echo "$dl"/test/*.apk)" | tail -1
+  for part in app test; do
+    apk=$(find "$dl/$part" -name '*.apk' | head -1)
+    [ -n "$apk" ] || { echo "no APK in the $part artifact"; exit 2; }
+    adb install -r -t "$apk" | tail -1
+  done
 fi
 
 echo "walking every screen…"

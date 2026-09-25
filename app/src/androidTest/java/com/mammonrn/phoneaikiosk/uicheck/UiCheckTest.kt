@@ -80,6 +80,10 @@ class UiCheckTest {
     }
 
     private fun home() {
+        // Every other screen of ours closed first — the kiosk's own way (as Hey
+        // Jarvis does), so the next step never starts on a stale page.
+        inst.runOnMainSync { KioskScreens.leaveAllButHome("ui-check") }
+        settle(500)
         inst.runOnMainSync {
             ctx.startActivity(Intent(ctx, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
@@ -112,12 +116,17 @@ class UiCheckTest {
     private fun words(v: View): String =
         ((v as? TextView)?.text?.toString().orEmpty() + "|" + (v.contentDescription ?: "")).trim('|')
 
-    /** Presses the first shown view whose text or description starts with [prefix] (or its pressable parent). */
-    private fun press(prefix: String, nth: Int = 0): Boolean {
+    /**
+     * Presses the first shown view whose text or description starts with [prefix]
+     * ([anywhere]: contains it), or its pressable parent. Views hidden from the
+     * screen reader (behind a pop-up) are not pressed.
+     */
+    private fun press(prefix: String, nth: Int = 0, anywhere: Boolean = false): Boolean {
         val hits = views().filter { v ->
             val t = (v as? TextView)?.text?.toString().orEmpty()
             val d = v.contentDescription?.toString().orEmpty()
-            t.startsWith(prefix) || d.startsWith(prefix)
+            !hiddenFromReader(v) &&
+                (if (anywhere) t.contains(prefix) || d.contains(prefix) else t.startsWith(prefix) || d.startsWith(prefix))
         }
         val v = hits.getOrNull(nth) ?: return false
         var target: View? = v
@@ -172,8 +181,11 @@ class UiCheckTest {
         return false
     }
 
-    private fun check(name: String, extra: ((List<Seen>) -> List<String>)? = null, picture: Boolean = true) {
+    private fun check(name: String, extra: ((Activity?) -> List<String>)? = null, picture: Boolean = true) {
+        // The screen on for the picture (a dark screen photographs black and has no views).
+        androidx.test.uiautomator.UiDevice.getInstance(inst).wakeUp()
         settle(600)
+        val screenOn = (ctx.getSystemService(android.os.PowerManager::class.java))?.isInteractive == true
         val act = top()
         val activity = act?.javaClass?.simpleName ?: "none"
         val issues = ArrayList<String>()
@@ -209,9 +221,13 @@ class UiCheckTest {
                 val hierarchy = AccessibilityHierarchyAndroid.newBuilder(root).build()
                 for (c in a11y) for (r in c.runCheckOnHierarchy(hierarchy)) {
                     if (r.type != AccessibilityCheckResultType.ERROR) continue
-                    val el = r.element
-                    issues.add("a11y ${c.javaClass.simpleName}: ${el?.boundsInScreen ?: ""} ${
-                        runCatching { r.getMessage(Locale.ENGLISH) }.getOrDefault("").toString().take(80)}")
+                    val b = r.element?.boundsInScreen
+                    val line = "a11y ${c.javaClass.simpleName}: ${b ?: ""} ${
+                        runCatching { r.getMessage(Locale.ENGLISH) }.getOrDefault("").toString().take(80)}"
+                    // The same view as a rule that waits for Poom: an exception, said, not a failure.
+                    val waits = seen.firstOrNull { s -> b != null && s.full.left == b.left && s.full.top == b.top &&
+                        s.full.right == b.right && s.full.bottom == b.bottom }?.let { waitingFor(it) }
+                    if (waits != null) excepted.add("$line — $waits") else issues.add(line)
                 }
             }.onFailure { issues.add("a11y could not run: ${it.javaClass.simpleName}") }
         }
@@ -222,7 +238,7 @@ class UiCheckTest {
             if (s.rect != s.full) continue                      // cut by a scrolling edge: partly shown
             if (minOf(s.rect.width(), s.rect.height()) < min) {
                 val line = "touch: '${s.label}' ${(s.rect.width() / density).toInt()}×${(s.rect.height() / density).toInt()}dp"
-                val why = waiting[s.id]
+                val why = waitingFor(s)
                 if (why != null) excepted.add("$line — $why") else issues.add(line)
             }
         }
@@ -235,7 +251,8 @@ class UiCheckTest {
             if (!x.intersect(b.rect) || x.width() <= 3 || x.height() <= 3) continue
             issues.add("overlap: '${a.label}' ${a.rect.toShortString()} × '${b.label}' ${b.rect.toShortString()}")
         }
-        extra?.let { issues.addAll(it(seen)) }
+        extra?.let { issues.addAll(it(act)) }
+        if (!screenOn) issues.add("the screen was off")
 
         val noPicture = !picture || activity in CAMERA_SCREENS
         if (!noPicture) {
@@ -244,16 +261,28 @@ class UiCheckTest {
         }
         results.put(JSONObject().put("name", name).put("activity", activity).put("pass", issues.isEmpty())
             .put("issues", JSONArray(issues.distinct())).put("exceptions", JSONArray(excepted.distinct()))
-            .put("picture", !noPicture))
+            .put("picture", !noPicture).put("screenOn", screenOn))
         File(out, "results.json").writeText(results.toString(1))
     }
 
-    private fun homeRules(seen: List<Seen>): List<String> {
+    private fun waitingFor(s: Seen): String? =
+        waiting[s.id] ?: if (s.label.startsWith("หน้า") && s.label.contains("ทอง")) waiting["gold_pages"] else null
+
+    private fun homeRules(act: Activity?): List<String> {
         val out = ArrayList<String>()
-        val card = seen.firstOrNull { it.id == "card_jarvis" }
-        if (card == null || card.full.height() / density < 156 - 0.5)
-            out.add("home: Jarvis window ${card?.full?.height()?.div(density)?.toInt() ?: 0}dp < 156dp")
-        val corner = seen.firstOrNull { it.id == "exit_corner" }?.full
+        fun box(id: Int): Rect? {
+            var r: Rect? = null
+            inst.runOnMainSync {
+                val v = act?.findViewById<View>(id) ?: return@runOnMainSync
+                val at = IntArray(2); v.getLocationOnScreen(at)
+                r = Rect(at[0], at[1], at[0] + v.width, at[1] + v.height)
+            }
+            return r
+        }
+        val card = box(R.id.card_jarvis)
+        if (card == null || card.height() / density < 156 - 0.5)
+            out.add("home: Jarvis window ${card?.height()?.div(density)?.toInt() ?: 0}dp < 156dp")
+        val corner = box(R.id.exit_corner)
         val side = (72 * density).toInt()
         if (corner == null || corner.right != screenW || corner.bottom != screenH ||
             kotlin.math.abs(corner.width() - side) > 2 || kotlin.math.abs(corner.height() - side) > 2)
@@ -328,7 +357,7 @@ class UiCheckTest {
     /** The first film, paused at once (its place moves a second at most), full screen standing and lying. */
     private fun videoFull() {
         openApp("สื่อ", "เครื่องเล่นวิดีโอ", "VideoActivity")
-        if (!press("ดูถึง") && !press("ยังไม่ได้ดู")) { results.put(JSONObject().put("name", "video-full").put("pass", false)
+        if (!press("ดูถึง", anywhere = true) && !press("ยังไม่ได้ดู", anywhere = true)) { results.put(JSONObject().put("name", "video-full").put("pass", false)
             .put("issues", JSONArray(listOf("no video in the list")))); return }
         settle(2500)
         com.mammonrn.phoneaikiosk.media.VideoPlayer.pause(ctx)

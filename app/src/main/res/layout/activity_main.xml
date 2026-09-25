@@ -1081,5 +1081,6 @@
         android:layout_height="72dp"
         android:layout_gravity="bottom|end"
         android:background="@android:color/transparent"
-        android:contentDescription="@null" />
+        android:contentDescription="@null" 
+            android:importantForAccessibility="no"/>
 </FrameLayout>
