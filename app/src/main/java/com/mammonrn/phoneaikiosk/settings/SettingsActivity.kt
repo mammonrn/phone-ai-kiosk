@@ -891,6 +891,10 @@ class SettingsActivity : Activity() {
                 // the VPS; this is where they are set up, not switched.
                 Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
                 Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
+                // 0.62.0: the stopwatch and countdown (timer/TimerActivity), next to the alarms: a kitchen tool.
+                Category(R.drawable.ic_pixel_stopwatch, { it.getString(R.string.window_timer) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.timer.TimerActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
                 Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
             )),
             Group(R.string.settings_group_media, listOf(
@@ -924,6 +928,10 @@ class SettingsActivity : Activity() {
                 // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).
                 Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
                     it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+                // 0.62.0: the compass and the spirit level (compass/CompassActivity).
+                Category(R.drawable.ic_pixel_compass, { it.getString(R.string.window_compass) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.compass.CompassActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                 },
             )),
             Group(R.string.settings_group_setup, listOf(

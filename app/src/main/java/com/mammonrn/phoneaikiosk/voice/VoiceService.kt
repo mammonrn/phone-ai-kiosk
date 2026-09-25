@@ -223,6 +223,11 @@ class VoiceService : Service() {
             stopAlarm("stop-button")
         }
 
+        // 0.62.0: the countdown's end, rung by the alarm's own ringer (timer/TimerClock).
+        if (intent?.action == ACTION_TIMER_RING) {
+            startTimerRing()
+        }
+
         // The Jarvis button stops a ringing alarm rather than asking a question.
         if (intent?.action == ACTION_BUTTON_LISTEN && VoiceState.alarmRinging.isNotEmpty()) {
             stopAlarm("jarvis-button")
@@ -933,7 +938,36 @@ class VoiceService : Service() {
         alarmRinger.stop()
         VoiceState.alarmRinging = ""
         VoiceState.alarmsVersion += 1
+        // A person stopped it (not the 10-minute limit): a ringing countdown is seen too.
+        if (reason != "timeout") com.mammonrn.phoneaikiosk.timer.TimerClock.acknowledge(this)
         Log.i(TAG, "alarm stopped reason=$reason")
+    }
+
+    /**
+     * 0.62.0: the countdown has ended (timer/TimerClock). Rung EXACTLY as an
+     * alarm is — the screen on, the same tone through [alarmRinger] at the
+     * alarm volume, [VoiceState.alarmRinging] set so the wake word is deaf
+     * while it rings (WakeGate.deaf) and the Jarvis button and the home card's
+     * stop button stop it, the same 10-minute limit — and then the countdown's
+     * own screen in front, saying "หมดเวลา" until someone stops it.
+     */
+    fun startTimerRing() {
+        val clock = com.mammonrn.phoneaikiosk.timer.TimerClock
+        clock.load(this)
+        if (clock.countdown.state != com.mammonrn.phoneaikiosk.timer.Countdown.State.RINGING) {
+            Log.i(TAG, "timer not rung: already stopped")
+            return
+        }
+        runCatching { ScreenWaker.wakeIfAsleep(this) }
+        val rang = alarmRinger.start()
+        VoiceState.alarmRinging = getString(R.string.timer_ringing_card,
+            com.mammonrn.phoneaikiosk.timer.TimerText.thai(clock.countdown.setMs))
+        VoiceState.alarmsVersion += 1
+        alarmHandler.removeCallbacks(alarmTimeout)
+        alarmHandler.postDelayed(alarmTimeout, com.mammonrn.phoneaikiosk.alarm.AlarmRinger.MAX_RING_MS)
+        runCatching { startActivity(com.mammonrn.phoneaikiosk.timer.TimerActivity.ringIntent(this)) }
+            .onFailure { Log.w(TAG, "timer: could not show its screen: ${it.javaClass.simpleName}") }
+        Log.i(TAG, "timer ringing sound=$rang")
     }
 
     /**
@@ -1292,6 +1326,24 @@ class VoiceService : Service() {
                     .putExtra(EXTRA_ALARM_ID, id))
             }.onFailure { Log.w(TAG, "alarm: could not bring the kiosk up: ${it.javaClass.simpleName}") }
         }
+
+        /**
+         * 0.62.0: the countdown ended (timer/TimerClock). As [ringAlarm]: the
+         * running service rings at once; with no service, the countdown's
+         * screen comes up (a Device Owner may start its activity from the
+         * background) and starts the service from the foreground.
+         */
+        fun ringTimer(context: Context) {
+            val service = instance
+            if (service != null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post { service.startTimerRing() }
+                return
+            }
+            runCatching { context.startActivity(com.mammonrn.phoneaikiosk.timer.TimerActivity.ringIntent(context)) }
+                .onFailure { Log.w(TAG, "timer: could not bring its screen up: ${it.javaClass.simpleName}") }
+        }
+
+        const val ACTION_TIMER_RING = "com.mammonrn.phoneaikiosk.TIMER_RING"
 
         fun ringFromActivity(context: Context, id: Int) {
             context.startForegroundService(Intent(context, VoiceService::class.java)

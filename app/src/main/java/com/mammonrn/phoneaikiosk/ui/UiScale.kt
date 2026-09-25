@@ -66,6 +66,9 @@ object UiScale {
     const val CAMERA_W = 240
     const val CAMERA_H = 320
 
+    /** 0.62.0: the compass's dial and the level's window, a square-ish picture read at arm's length. */
+    const val DIAL = 240
+
     /** The 3 × 3 pattern pad: 93dp a cell, wider than two thumbs. */
     const val PATTERN_PAD = 280
 
@@ -146,6 +149,12 @@ object UiScale {
 
     /** The music player's time, Press Start 2P: six characters in [AMP_LCD_W]. */
     const val AMP_TIME = 22f
+
+    /**
+     * 0.62.0: the timer's and the compass's big read-out, Press Start 2P (1em a
+     * character): nine characters ("1:05:07.3") must fit the A07's window.
+     */
+    const val LCD_DIGITS = 32f
 
     // ------------------------------------------------ the calculator's keys (Press Start 2P, sp)
 

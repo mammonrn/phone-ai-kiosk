@@ -1135,6 +1135,8 @@ class MainActivity : Activity() {
         // Android forgets alarms on reboot and on update; this activity is HOME
         // and starts after both, so the next alarm is booked again here.
         AlarmScheduler.schedule(this)
+        // 0.62.0: a running countdown's end, booked again (or rung, if it passed meanwhile).
+        com.mammonrn.phoneaikiosk.timer.TimerClock.restore(this)
         ringIfAsked(intent)
         grantMicrophoneToSelf()
         grantLocationToSelf()
