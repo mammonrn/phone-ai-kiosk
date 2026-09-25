@@ -300,6 +300,22 @@
             android:name=".alarm.AlarmReceiver"
             android:exported="false" />
 
+        <!-- 0.62.0: the stopwatch and countdown (timer/TimerActivity) and the compass
+             and level (compass/CompassActivity), from the Control Panel. Our own
+             activities, so lock task mode allows them; not exported; portrait. The
+             countdown's end comes to TimerReceiver, from our own PendingIntent only. -->
+        <activity
+            android:name=".timer.TimerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".compass.CompassActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <receiver
+            android:name=".timer.TimerReceiver"
+            android:exported="false" />
+
         <!-- The admin `dpm set-device-owner` is pointed at.
              BIND_DEVICE_ADMIN must be on the receiver, and it must be exported,
              or the system refuses to bind it and provisioning fails. -->

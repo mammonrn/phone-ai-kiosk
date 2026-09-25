@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- นาฬิกาจับเวลา / นับถอยหลัง (0.62.0, timer/TimerActivity, DESIGN.md 5ณ). -->
+<resources>
+    <string name="window_timer">จับเวลา</string>
+    <string name="timer_title">จับเวลา · นับถอยหลัง</string>
+    <string name="timer_mode_stopwatch">นาฬิกาจับเวลา</string>
+    <string name="timer_mode_countdown">นับถอยหลัง</string>
+    <string name="timer_other_stopwatch">นาฬิกาจับเวลากำลังเดิน: %1$s</string>
+    <string name="timer_other_countdown">นับถอยหลังกำลังเดิน: เหลือ %1$s</string>
+    <string name="timer_other_countdown_paused">นับถอยหลังหยุดชั่วคราว: เหลือ %1$s</string>
+    <string name="timer_digits_counted">จับเวลาได้ %1$s</string>
+    <string name="timer_digits_left">เหลือเวลา %1$s</string>
+
+    <!-- The stopwatch. -->
+    <string name="timer_sw_ready">พร้อมจับเวลา</string>
+    <string name="timer_sw_running">กำลังจับเวลา</string>
+    <string name="timer_sw_paused">หยุดชั่วคราว</string>
+    <string name="timer_start">เริ่ม</string>
+    <string name="timer_pause">หยุดชั่วคราว</string>
+    <string name="timer_resume">เริ่มต่อ</string>
+    <string name="timer_reset">ล้างเวลา</string>
+    <string name="timer_lap">จับรอบ</string>
+    <string name="timer_laps_full">ครบ 99 รอบแล้ว</string>
+    <string name="timer_laps_title">รอบ (%1$d)</string>
+    <string name="timer_laps_empty">ระหว่างจับเวลา กด [จับรอบ] เพื่อเก็บเวลาของแต่ละรอบ รอบใหม่อยู่บนสุด</string>
+    <string name="timer_lap_row">รอบ %1$d</string>
+    <string name="timer_lap_total">รวม %1$s</string>
+    <string name="timer_lap_fastest">เร็วสุด</string>
+    <string name="timer_lap_slowest">ช้าสุด</string>
+    <string name="timer_note_stopwatch">ปิดหน้านี้ได้ นาฬิกาจับเวลายังเดินต่อ เปิดกลับมาจะเห็นเวลาเดิม</string>
+
+    <!-- The countdown. -->
+    <string name="timer_cd_set">ตั้งเวลา</string>
+    <string name="timer_cd_running">กำลังนับถอยหลัง</string>
+    <string name="timer_cd_paused">หยุดชั่วคราว</string>
+    <string name="timer_cd_ends_at">ครบเวลาตอน %1$s</string>
+    <string name="timer_hours">ชั่วโมง</string>
+    <string name="timer_minutes">นาที</string>
+    <string name="timer_seconds">วินาที</string>
+    <string name="timer_up_desc">เพิ่ม%1$s</string>
+    <string name="timer_down_desc">ลด%1$s</string>
+    <string name="timer_presets">ตั้งเร็ว (นาที)</string>
+    <string name="timer_preset_desc">%1$d นาที</string>
+    <string name="timer_cd_start">เริ่มนับถอยหลัง</string>
+    <string name="timer_cd_resume">นับต่อ</string>
+    <string name="timer_cd_cancel">ยกเลิก</string>
+    <string name="timer_cd_zero">ตั้งเวลาอย่างน้อย 1 วินาทีก่อนเริ่ม</string>
+    <string name="timer_note_countdown">ปิดหน้านี้ได้ และจอดับได้ นับถอยหลังยังเดินต่อ ครบเวลาจะมีเสียงปลุก และหน้านี้จะขึ้นมาเอง</string>
+
+    <!-- The end. -->
+    <string name="timer_ring_title">หมดเวลา</string>
+    <string name="timer_ring_detail">นับถอยหลัง %1$s ครบแล้ว</string>
+    <string name="timer_ring_stop">หยุดเสียง</string>
+    <string name="timer_ring_ok">ตกลง</string>
+    <string name="timer_ring_note">ระหว่างมีเสียง จาร์วิสไม่ฟังคำปลุก กด [หยุดเสียง] หรือปุ่มจาร์วิสเพื่อหยุด</string>
+    <string name="timer_ring_quiet">เสียงหยุดเองแล้วหลังดังครบ 10 นาที กด [ตกลง] เพื่อตั้งเวลาใหม่</string>
+    <!-- The home screen's alarm card while the end rings (VoiceState.alarmRinging). -->
+    <string name="timer_ringing_card">หมดเวลานับถอยหลัง %1$s</string>
+</resources>

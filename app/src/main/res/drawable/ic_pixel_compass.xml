@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.62.0): a compass for the compass and level app — a round
+     grey case in steps, a white face, the needle's north half red (#CC0000, the low
+     battery's red) and its south half navy. Grey so it shows on the navy title bar
+     and on the grey Control Panel. 16x16, rectangles only, four colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <!-- the case -->
+    <path android:fillColor="#808080" android:pathData="M5,1h6v1h-6z M3,2h10v1h-10z M2,3h12v2h-12z
+        M1,5h14v6h-14z M2,11h12v2h-12z M3,13h10v1h-10z M5,14h6v1h-6z" />
+    <!-- the face -->
+    <path android:fillColor="#FFFFFF" android:pathData="M5,3h6v1h-6z M3,4h10v1h-10z M2,5h12v6h-12z
+        M3,11h10v1h-10z M5,12h6v1h-6z" />
+    <!-- north -->
+    <path android:fillColor="#CC0000" android:pathData="M7,3h2v3h-2z M6,6h4v2h-4z" />
+    <!-- south -->
+    <path android:fillColor="#000080" android:pathData="M6,8h4v2h-4z M7,10h2v3h-2z" />
+</vector>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- เข็มทิศ / ระดับน้ำ (0.62.0, compass/CompassActivity, DESIGN.md 5ด). -->
+<resources>
+    <string name="window_compass">เข็มทิศ</string>
+    <string name="compass_title">เข็มทิศ · ระดับน้ำ</string>
+    <string name="compass_mode_compass">เข็มทิศ</string>
+    <string name="compass_mode_level">ระดับน้ำ</string>
+    <string name="compass_waiting">กำลังอ่านเซนเซอร์…</string>
+
+    <!-- The compass. -->
+    <string name="compass_reading_desc">%1$d องศา ทิศ%2$s</string>
+    <string name="compass_how_flat">ทิศที่หัวมือถือชี้ (วางมือถือราบ)</string>
+    <string name="compass_how_upright">ทิศที่ด้านหลังมือถือหันไป (ถือมือถือตั้งขึ้น)</string>
+    <string name="compass_accuracy">ความแม่นยำ: %1$s</string>
+    <string name="compass_accuracy_high">สูง</string>
+    <string name="compass_accuracy_medium">ปานกลาง</string>
+    <string name="compass_accuracy_low">ต่ำ</string>
+    <string name="compass_accuracy_unreliable">ไม่น่าเชื่อถือ</string>
+    <string name="compass_accuracy_unknown">กำลังตรวจ</string>
+    <string name="compass_figure_eight">เข็มทิศยังไม่แม่น: โบกมือถือเป็นรูปเลข 8 ช้าๆ สัก 2–3 รอบ แล้วดูว่าความแม่นยำขึ้นเป็น \"สูง\"</string>
+    <string name="compass_interference">มีแม่เหล็กหรือโลหะอยู่ใกล้ เข็มทิศอ่านผิดได้: ย้ายออกห่างลำโพง โต๊ะเหล็ก หรือเครื่องใช้ไฟฟ้า แล้วโบกมือถือเป็นรูปเลข 8</string>
+    <string name="compass_note">เป็นทิศเหนือแม่เหล็ก ในประเทศไทยต่างจากทิศเหนือจริงราว 1 องศาหรือน้อยกว่า ใช้ดูทิศทั่วไปได้ ไม่ใช่เครื่องมือสำรวจ</string>
+    <string name="compass_no_sensor">มือถือเครื่องนี้ไม่มีเซนเซอร์แม่เหล็ก จึงใช้เข็มทิศไม่ได้ ระดับน้ำยังใช้ได้</string>
+
+    <!-- The level. -->
+    <string name="level_ok">ได้ระดับ</string>
+    <string name="level_not">ยังไม่ได้ระดับ</string>
+    <string name="level_sideways">วางมือถือราบ หรือตั้งมือถือบนขอบด้านล่าง</string>
+    <string name="level_flat_axes">ซ้าย–ขวา: %1$s\nบน–ล่าง: %2$s</string>
+    <string name="level_upright_axis">ขอบล่าง: %1$s</string>
+    <string name="level_right_high">ขวาสูงกว่า %1$s°</string>
+    <string name="level_left_high">ซ้ายสูงกว่า %1$s°</string>
+    <string name="level_top_high">ด้านบนสูงกว่า %1$s°</string>
+    <string name="level_bottom_high">ด้านล่างสูงกว่า %1$s°</string>
+    <string name="level_axis_ok">ตรง (%1$s°)</string>
+    <string name="level_note">วางมือถือราบบนพื้นที่จะวัด (ดูสองแนว) หรือตั้งมือถือบนขอบด้านล่างแนบกับสิ่งที่จะวัด (ดูแนวเดียว) ได้ระดับเมื่อเอียงไม่เกิน 1 องศา ถ้ามือถือมีเคส ให้วัดโดยถอดเคส</string>
+    <string name="level_no_sensor">มือถือเครื่องนี้ไม่มีเซนเซอร์วัดการเอียง จึงใช้ระดับน้ำไม่ได้</string>
+</resources>
