@@ -11,6 +11,9 @@
     <string name="social_not_installed">ยังไม่ได้ติดตั้ง %1$s ในเครื่องนี้</string>
     <string name="social_install">สแกนใบหน้าแล้วติดตั้งจาก Play Store</string>
     <string name="social_install_note">Play Store จะเปิดที่หน้าของ %1$s กรุณากด “ติดตั้ง” เมื่อติดตั้งเสร็จแล้ว กรุณากดย้อนกลับเพื่อกลับเข้าตู้ แล้วเปิดอีกครั้งจากแผงควบคุม</string>
+    <string name="social_nothing_enrolled">ยังไม่ได้เปิด เพราะยังไม่ได้ตั้งใบหน้าหรือ pattern กรุณาตั้งในแผงควบคุม หน้ายืนยันตัวตน ก่อนเปิด</string>
+    <string name="social_cancelled">ยังไม่ได้เปิด เพราะยกเลิกการยืนยันตัวตน</string>
+    <string name="social_not_passed">ยังไม่ได้เปิด เพราะยืนยันตัวตนไม่ผ่าน</string>
     <string name="social_gone">ไม่พบ %1$s ในเครื่องแล้ว กรุณาปิดหน้านี้แล้วเปิดใหม่อีกครั้ง</string>
     <string name="social_failed">เปิด %1$s ไม่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง</string>
 </resources>

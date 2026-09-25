@@ -12,6 +12,7 @@ import android.widget.ScrollView
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.R
 import com.mammonrn.phoneaikiosk.auth.IdentityGate
+import com.mammonrn.phoneaikiosk.auth.VerifyActivity
 import com.mammonrn.phoneaikiosk.ui.Origin
 import com.mammonrn.phoneaikiosk.ui.Retro
 import com.mammonrn.phoneaikiosk.ui.Retro.Companion.MATCH
@@ -112,7 +113,12 @@ class SocialActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != IdentityGate.REQUEST) return
         if (!IdentityGate.passed(data)) {
-            problem = IdentityGate.refusal(this, data)
+            // Its own words: the gate's are about deleting.
+            problem = getString(when (data?.getStringExtra(VerifyActivity.EXTRA_OUTCOME)) {
+                VerifyActivity.OUTCOME_NOTHING_ENROLLED -> R.string.social_nothing_enrolled
+                VerifyActivity.OUTCOME_CANCELLED, null -> R.string.social_cancelled
+                else -> R.string.social_not_passed
+            })
             Log.i(TAG, "check not passed app=${app.name.lowercase()}")
             draw()
             return
