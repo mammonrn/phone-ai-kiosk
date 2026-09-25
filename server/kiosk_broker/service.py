@@ -21,7 +21,7 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile, maps_rescue, music, notes, video)
+               auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -645,8 +645,8 @@ def handle_chat(
     text = text.strip()
     # 0.61.0: a bare command from an app's own Jarvis button ("ต่อไป" on the music
     # page) said in full — only when a code recogniser then takes it.
-    text, screen_why = screen_context.apply(
-        text, screen, lambda t: music.match(t) is not None or video.match(t) is not None or notes.match(t) is not None)
+    text, screen_why = screen_context.apply(text, screen, lambda t: any(
+        m(t) is not None for m in (music.match, video.match, notes.match, timers.match, radio_cmd.match)))
     if len(text) > cfg.max_text_chars:
         store.record_request(conn, device_id=device_id, day=day, outcome="text_too_long",
                              text_len=len(text))
@@ -782,6 +782,21 @@ def handle_chat(
         log_intent("skipped")
         action, reply = notes.action_and_reply(heard_note)
         return answer_in_code(reply, action, f"notes:{heard_note['kind']}:{heard_note['list']}")
+
+    # ---- the countdown and the radio (0.63.0): recognised in code; the PHONE
+    # starts, stops or reads the countdown and finds the station, and says why
+    # itself when it cannot (timer/TimerVoice, radio/RadioVoice). Before the
+    # lights: "ปิดวิทยุ" is not a switch. After the alarms, which own "ปลุก".
+    heard_timer = timers.match(text) if not is_camera and alarm is None and not calendar_yes else None
+    if heard_timer is not None:
+        log_intent("skipped")
+        action, reply = timers.action_and_reply(heard_timer)
+        return answer_in_code(reply, action, f"timer:{heard_timer['command']}")
+    heard_radio = radio_cmd.match(text) if not is_camera and alarm is None and not calendar_yes else None
+    if heard_radio is not None:
+        log_intent("skipped")
+        action, reply = radio_cmd.action_and_reply(heard_radio)
+        return answer_in_code(reply, action, f"radio:{heard_radio['command']}")
 
     # ---- the lights (0.46.0): switched in code, answered from eWeLink ----
     # After the camera and the alarms, which own their sentences ("ปิดปลุก").

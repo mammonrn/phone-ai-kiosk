@@ -45,8 +45,8 @@ def test_nothing_changes_without_a_screen_or_for_a_real_question():
     assert text == "พรุ่งนี้อากาศเป็นยังไง" and why == "screen:music:unused"
     # A full command is not touched.
     assert screen_context.apply("เปิดเพลงคิดถึง", "music", _recognised)[0] == "เปิดเพลงคิดถึง"
-    # The radio and the timer have no commands of their own yet: nothing is rewritten.
-    assert screen_context.apply("หยุด", "radio", _recognised)[1] == "screen:radio:unused"
+    # The Control Panel has no commands of its own: nothing is rewritten.
+    assert screen_context.apply("หยุด", "panel", _recognised)[1] == "screen:panel:unused"
     # "เพิ่มนัด" on the notes page is not a note.
     assert screen_context.apply("เพิ่มนัดพรุ่งนี้", "notes", _recognised)[0] == "เพิ่มนัดพรุ่งนี้"
 

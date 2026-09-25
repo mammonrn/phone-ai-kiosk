@@ -237,7 +237,7 @@ class TurnPipeline(
  */
 /** Actions on the phone's own state: done before the reply is said (TurnPipeline). */
 val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC, KioskAction.VIDEO,
-                                 KioskAction.NOTE_ADD, KioskAction.NOTE_READ)
+                                 KioskAction.NOTE_ADD, KioskAction.NOTE_READ, KioskAction.TIMER, KioskAction.RADIO)
 
 /** 0.62.0: actions whose words, when there are any, are the answer itself — not a failure. */
 val ANSWERED_ON_PHONE = setOf(KioskAction.NOTE_READ)
@@ -305,6 +305,12 @@ class KioskAction(
 
         /** 0.62.0: {list} — the list read from this phone's own file; those words are the reply. */
         const val NOTE_READ = "note_read"
+
+        /** 0.63.0: {command, seconds} — the countdown started, stopped or read before speaking (timer/TimerVoice). */
+        const val TIMER = "timer"
+
+        /** 0.63.0: {command, query} — a station played, stopped or changed before speaking (radio/RadioVoice). */
+        const val RADIO = "radio"
     }
 }
 

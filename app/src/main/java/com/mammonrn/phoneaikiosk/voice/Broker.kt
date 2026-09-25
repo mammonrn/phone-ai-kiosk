@@ -101,6 +101,21 @@ class Broker(private val baseUrl: String, private val token: String) {
                     "list" to json.optString("list").trim().take(20),
                     "text" to json.optString("text").trim().take(com.mammonrn.phoneaikiosk.notes.NoteVoice.MAX_VOICE_CHARS + 1)))
                 KioskAction.NOTE_READ -> KioskAction(type, "", mapOf("list" to json.optString("list").trim().take(20)))
+                // 0.63.0: a countdown command and its length in whole seconds.
+                KioskAction.TIMER -> {
+                    val command = json.optString("command")
+                    val seconds = json.optInt("seconds", -1)
+                    if (command !in com.mammonrn.phoneaikiosk.timer.TimerVoice.COMMANDS ||
+                        seconds !in 0..com.mammonrn.phoneaikiosk.timer.TimerVoice.MAX_SECONDS) null
+                    else KioskAction(type, "", mapOf("command" to command, "seconds" to seconds.toString()))
+                }
+                // 0.63.0: a radio command and a bounded station name.
+                KioskAction.RADIO -> {
+                    val command = json.optString("command")
+                    val query = json.optString("query").trim()
+                    if (command !in com.mammonrn.phoneaikiosk.radio.RadioVoice.COMMANDS || query.length > 60) null
+                    else KioskAction(type, "", mapOf("command" to command, "query" to query))
+                }
                 else -> null
             }
         }

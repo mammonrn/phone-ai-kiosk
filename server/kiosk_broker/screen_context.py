@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import re
 
+from . import thai_numbers
+
 SCREENS = frozenset({"music", "video", "notes", "radio", "timer", "panel"})
 
 _TAIL = re.compile(r"(?:ให้หน่อย|หน่อย|ด้วย|นะ|ครับ|ค่ะ|คะ|จ้ะ)+$")
@@ -36,11 +38,23 @@ _VIDEO = (
     (re.compile(r"^(?:เล่น|เล่นต่อ|ดูต่อ|ต่อ)$"), "เล่นวิดีโอต่อ"),
     (re.compile(r"^ปิด$"), "ปิดวิดีโอ"),
 )
+_RADIO = (
+    (re.compile(r"^(?:ถัดไป|ต่อไป|ข้าม|เปลี่ยน|อันต่อไป|อันถัดไป)$"), "สถานีถัดไป"),
+    (re.compile(r"^(?:ก่อนหน้า|ย้อน|ย้อนกลับ|อันก่อน|อันที่แล้ว)$"), "สถานีก่อนหน้า"),
+    (re.compile(r"^(?:หยุด|พัก|ปิด|หยุดก่อน|พักก่อน)$"), "ปิดวิทยุ"),
+    (re.compile(r"^(?:เปิด|เล่น|ฟัง)$"), "เปิดวิทยุ"),
+)
+_TIMER = (
+    (re.compile(r"^(?:หยุด|ยกเลิก|ปิด|พอ|พอแล้ว)$"), "หยุดจับเวลา"),
+    (re.compile(r"^(?:เหลือ(?:เวลา)?(?:อีก)?(?:กี่นาที|กี่วินาที|เท่าไร|เท่าไหร่))$"), "จับเวลาเหลือเท่าไหร่"),
+)
+#: A bare length on the countdown's page: "5 นาที", "ห้านาที", "ครึ่งชั่วโมง".
+_LENGTH = re.compile(r"^(?:\d+(?:ชั่วโมง|ชม|นาที|วินาที)(?:ครึ่ง)?)+$|^ครึ่งชั่วโมง$")
 _NOTES = (
     (re.compile(r"^(?:อ่าน|อ่านรายการ|มีอะไรบ้าง|อ่านให้ฟัง)$"), "อ่านรายการซื้อของ"),
 )
 #: "เปิด X" / "เพิ่ม X" with the thing's kind left out.
-_OPEN = re.compile(r"^(?:เปิด|เล่น)(?!เพลง|วิดีโอ|วีดีโอ)(.+)$")
+_OPEN = re.compile(r"^(?:เปิด|เล่น)(?!เพลง|วิดีโอ|วีดีโอ|วิทยุ)(.+)$")
 _ADD = re.compile(r"^(?:เพิ่ม|ใส่|จด)(?!.*(?:รายการ|ลิสต์|โน้ต|นัด|ปฏิทิน))(.+)$")
 
 
@@ -58,16 +72,19 @@ def candidate(text: str, screen: str | None) -> str | None:
     t = _squash(text)
     if not t:
         return None
-    table = {"music": _MUSIC, "video": _VIDEO, "notes": _NOTES}.get(screen, ())
+    table = {"music": _MUSIC, "video": _VIDEO, "notes": _NOTES, "radio": _RADIO,
+             "timer": _TIMER}.get(screen, ())
     for pattern, full in table:
         if pattern.match(t):
             return full
     raw = " ".join((text or "").split())
-    if screen in ("music", "video"):
+    if screen == "timer" and _LENGTH.match("".join(thai_numbers.to_digits(text or "").split())):
+        return "จับเวลา " + raw
+    if screen in ("music", "video", "radio"):
         m = _OPEN.match(t)
         if m:
             name = raw.split(" ", 1)[1] if " " in raw else m.group(1)
-            return ("เปิดเพลง " if screen == "music" else "เปิดวิดีโอ ") + name
+            return {"music": "เปิดเพลง ", "video": "เปิดวิดีโอ ", "radio": "เปิดวิทยุ "}[screen] + name
     if screen == "notes":
         m = _ADD.match(t)
         if m:

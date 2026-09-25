@@ -795,6 +795,64 @@ class VoiceService : Service() {
         return done.instead
     }
 
+    /**
+     * 0.63.0: a spoken countdown command, done before the reply (timer/TimerVoice).
+     * A new length replaces a running one; stopping a ringing one stops its sound
+     * the same way as the screen's button. Logged: the command and the outcome.
+     */
+    private fun timer(action: KioskAction): String? {
+        val clock = com.mammonrn.phoneaikiosk.timer.TimerClock
+        clock.load(this)
+        val context = this
+        val deck = object : com.mammonrn.phoneaikiosk.timer.TimerVoice.Deck {
+            override val countdown get() = clock.countdown
+            override val now get() = android.os.SystemClock.elapsedRealtime()
+            override fun clear() {
+                if (clock.countdown.state == com.mammonrn.phoneaikiosk.timer.Countdown.State.RINGING) {
+                    clock.acknowledge(context)
+                    if (VoiceState.alarmRinging.isNotEmpty()) stopAlarm("timer-voice")
+                } else clock.resetCountdown(context)
+            }
+            override fun start(ms: Long) {
+                clock.setLength(context, ms)
+                clock.showMode(context, true)
+                clock.startCountdown(context)
+            }
+        }
+        val command = action.params["command"].orEmpty()
+        val result = com.mammonrn.phoneaikiosk.timer.TimerVoice.perform(
+            command, action.params["seconds"]?.toIntOrNull() ?: -1, deck)
+        val done = result == null || isDoneWords(result)
+        VoiceState.lastAction = "timer:$command:${if (done) "ok" else "not-done"}"
+        Log.i(TAG, "action timer command=$command done=$done")
+        return result
+    }
+
+    /**
+     * 0.63.0: a spoken radio command, done before the reply (radio/RadioVoice).
+     * Logged: the command and the outcome, never a station's name.
+     */
+    private fun radio(action: KioskAction): String? {
+        val player = com.mammonrn.phoneaikiosk.radio.RadioPlayer
+        val context = this
+        val deck = object : com.mammonrn.phoneaikiosk.radio.RadioVoice.Deck {
+            override val stations get() = com.mammonrn.phoneaikiosk.radio.RadioStore.book(context).ordered()
+            override val onAir get() = player.stationId.takeIf {
+                player.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.PLAYING ||
+                    player.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.CONNECTING
+            }
+            override val last get() = player.stationId
+            override fun play(station: com.mammonrn.phoneaikiosk.radio.Station) = player.play(context, station)
+            override fun stop() = player.stop(context)
+        }
+        val command = action.params["command"].orEmpty()
+        val result = com.mammonrn.phoneaikiosk.radio.RadioVoice.perform(command, action.params["query"].orEmpty(), deck)
+        val done = result == null || isDoneWords(result)
+        VoiceState.lastAction = "radio:$command:${if (done) "ok" else "not-done"}"
+        Log.i(TAG, "action radio command=$command done=$done")
+        return result
+    }
+
     private fun performAction(action: KioskAction): String? {
         if (action.type == KioskAction.VERIFY_IDENTITY) return verifyForPrivate()
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
@@ -803,6 +861,8 @@ class VoiceService : Service() {
         if (action.type == KioskAction.MUSIC) return music(action)
         if (action.type == KioskAction.VIDEO) return video(action)
         if (action.type == KioskAction.NOTE_ADD || action.type == KioskAction.NOTE_READ) return note(action)
+        if (action.type == KioskAction.TIMER) return timer(action)
+        if (action.type == KioskAction.RADIO) return radio(action)
         if (action.type == KioskAction.HOME_UPDATED) {
             // The light is already switched (the broker did it) and the reply
             // says so. Here only the card is told to ask again.
