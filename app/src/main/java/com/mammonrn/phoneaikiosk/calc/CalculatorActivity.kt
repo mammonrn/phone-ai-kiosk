@@ -411,6 +411,8 @@ class CalculatorActivity : Activity() {
 
     private fun refresh() {
         exprView?.text = if (justEvaluated) "$input =" else input.toString().ifEmpty { " " }
+        // Empty, the line is a space: said in words, so the screen reader has something to read (0.63.0).
+        exprView?.contentDescription = if (!justEvaluated && input.isEmpty()) getString(R.string.calc_expr_empty) else null
         resultView?.apply {
             val error = shownError
             if (error != null) {

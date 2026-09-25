@@ -661,4 +661,5 @@
     <string name="taskbar_jarvis_a">ถามจาร์วิส</string>
     <string name="taskbar_jarvis_c">● พูดกับจาร์วิส</string>
     <string name="taskbar_panel_a">แผงควบคุม</string>
+    <string name="calc_expr_empty">ยังไม่ได้กดตัวเลข</string>
 </resources>

@@ -71,7 +71,8 @@ class UiCheckTest {
 
     // ------------------------------------------------------------ moving about
 
-    private fun top(): Activity? = KioskScreens.resumed?.get()
+    /** The screen in front, never one on its way out. */
+    private fun top(): Activity? = KioskScreens.resumed?.get()?.takeUnless { it.isFinishing }
 
     private fun settle(ms: Long = 900) {
         inst.waitForIdleSync()
@@ -84,9 +85,11 @@ class UiCheckTest {
         // Jarvis does), so the next step never starts on a stale page.
         inst.runOnMainSync { KioskScreens.leaveAllButHome("ui-check") }
         settle(500)
+        // Brought to the front, NOT made again: CLEAR_TOP finished the kiosk's own home
+        // screen and started a second one (seen in the walk: views of a finished screen).
         inst.runOnMainSync {
             ctx.startActivity(Intent(ctx, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
         }
         waitFor("MainActivity")
         settle(1500)
