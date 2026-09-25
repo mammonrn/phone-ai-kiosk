@@ -434,14 +434,14 @@ class RadioService : Service(), WakePause.Media {
         if (!RadioPlayer.active) return
         ducked = true
         applyVolume()
-        Log.i(TAG, "ducked for jarvis")
+        Log.i(TAG, "ducked for jarvis volume=${player.volume}")
     }
 
     override fun resumeAfterJarvis() {
         if (!ducked) return
         ducked = false
         applyVolume()
-        Log.i(TAG, "volume back after jarvis")
+        Log.i(TAG, "volume back after jarvis volume=${player.volume}")
     }
 
     // ------------------------------------------------------------ notification
