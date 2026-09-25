@@ -470,6 +470,13 @@ class VoiceService : Service() {
                         recorder.appendPcm(buffer, frame, read)
                         val wav = recorder.wrapAsWav(buffer.toByteArray())
                         buffer.reset()
+                        // Debug build only, switched on by TEST_KEEP_CAPTURE (off by default,
+                        // forgotten on restart): the question's audio, over the last one, in
+                        // the app's own files, to see where the beep falls (DESIGN 11ก).
+                        if (VoiceState.keepCapture) runCatching {
+                            java.io.File(filesDir, "last_capture.wav").writeBytes(wav)
+                            Log.i(TAG, "capture kept for measuring bytes=${wav.size}")
+                        }
                         val captureEndedAt = android.os.SystemClock.elapsedRealtime()
                         Log.i(TAG, "capture finished reason=${machine.lastStopReason} " +
                             "bytes=${wav.size} silence_ms=${machine.silenceMillis}")

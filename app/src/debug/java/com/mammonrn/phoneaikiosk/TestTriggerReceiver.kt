@@ -345,6 +345,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }, ms)
             }
 
+            ACTION_KEEP_CAPTURE -> {
+                // 0.61.0: keep the last question's audio (files/last_capture.wav) to see
+                // where the beep falls. --es value on|off; "off" also deletes the file.
+                val on = intent.getStringExtra("value")?.lowercase() in setOf("on", "1", "true")
+                com.mammonrn.phoneaikiosk.voice.VoiceState.keepCapture = on
+                if (!on) java.io.File(context.filesDir, "last_capture.wav").delete()
+                android.util.Log.i("KioskStats", "keep capture ${if (on) "ON" else "off"}")
+            }
+
             ACTION_BEEP -> {
                 // Is the first syllable lost under the wake tone? (0.61.0, DESIGN 11ก)
                 // --es value off, play the same clip N times, --es value on, again.
@@ -467,6 +476,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_PREROLL = "com.mammonrn.phoneaikiosk.TEST_PREROLL"
         const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
+        const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
         const val ACTION_SET_MARGIN = "com.mammonrn.phoneaikiosk.TEST_SET_MARGIN"
         const val ACTION_SET_WAIT = "com.mammonrn.phoneaikiosk.TEST_SET_WAIT"

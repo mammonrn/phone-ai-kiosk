@@ -48,6 +48,13 @@ object VoiceState : VoiceSink {
      */
     @Volatile var beep: Boolean = true
 
+    /**
+     * Keep the last question's audio in the app's files (files/last_capture.wav,
+     * one file, overwritten) to measure the beep against the first syllable.
+     * Off, and only the debug build's TEST_KEEP_CAPTURE turns it on; forgotten on restart.
+     */
+    @Volatile var keepCapture: Boolean = false
+
     /** How much the last wake-word capture took from before the detector fired. */
     @Volatile var lastPreRollMs: Int = 0
 
@@ -251,6 +258,7 @@ object VoiceState : VoiceSink {
         appendLine("  wake-only  : ${if (wakeOnly) "ON — no STT, chat or TTS" else "off"}")
         appendLine("  pre-roll   : ${if (preRoll) "on" else "OFF (TEST_PREROLL)"} last=${lastPreRollMs} ms")
         if (!beep) appendLine("  beep       : OFF (TEST_BEEP)")
+        if (keepCapture) appendLine("  keep-capture: ON (TEST_KEEP_CAPTURE) - files/last_capture.wav")
         if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
         appendLine("  last-action: $lastAction")
         appendLine("  maps       : $mapsState")
