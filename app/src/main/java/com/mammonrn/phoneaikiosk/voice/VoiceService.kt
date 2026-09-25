@@ -755,6 +755,32 @@ class VoiceService : Service() {
         return failure
     }
 
+    /**
+     * 0.62.0: a line added to a list, or a list read, from this phone's own
+     * file (notes/NoteStore). An add is done before the reply (null = added,
+     * the broker's words stand; else the reason). A read returns the list's
+     * words, which ARE the reply (TurnPipeline.ANSWERED_ON_PHONE).
+     * Logged: the list's id, the outcome and counts — never a line's words.
+     */
+    private fun note(action: KioskAction): String? {
+        val store = com.mammonrn.phoneaikiosk.notes.NoteStore
+        store.remember(this)
+        val list = action.params["list"].orEmpty()
+        // Only our own two ids reach a log line; anything else is "other".
+        val tag = if (list in com.mammonrn.phoneaikiosk.notes.NoteBook.BUILT_IN) list else "other"
+        if (action.type == KioskAction.NOTE_READ) {
+            val book = store.book()
+            val said = com.mammonrn.phoneaikiosk.notes.NoteVoice.read(list, book)
+            VoiceState.lastAction = "note_read:$tag"
+            Log.i(TAG, "action note_read list=$tag pending=${book.list(list)?.pending?.size ?: -1}")
+            return said
+        }
+        val done = com.mammonrn.phoneaikiosk.notes.NoteVoice.add(list, action.params["text"].orEmpty(), store)
+        VoiceState.lastAction = "note_add:$tag:${if (done.added) "ok" else "not-done"}"
+        Log.i(TAG, "action note_add list=$tag added=${done.added}")
+        return done.instead
+    }
+
     private fun performAction(action: KioskAction): String? {
         if (action.type == KioskAction.VERIFY_IDENTITY) return verifyForPrivate()
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
@@ -762,6 +788,7 @@ class VoiceService : Service() {
         if (action.type == KioskAction.ALARM_ENABLE) return enableAlarm(action)
         if (action.type == KioskAction.MUSIC) return music(action)
         if (action.type == KioskAction.VIDEO) return video(action)
+        if (action.type == KioskAction.NOTE_ADD || action.type == KioskAction.NOTE_READ) return note(action)
         if (action.type == KioskAction.HOME_UPDATED) {
             // The light is already switched (the broker did it) and the reply
             // says so. Here only the card is told to ask again.

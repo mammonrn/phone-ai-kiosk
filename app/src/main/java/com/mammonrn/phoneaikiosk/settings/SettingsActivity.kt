@@ -896,6 +896,10 @@ class SettingsActivity : Activity() {
                     it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.timer.TimerActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                 },
                 Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
+                // 0.62.0: notes and the shopping list (notes/NotesActivity), kept on this phone only.
+                Category(R.drawable.ic_pixel_note, { it.getString(R.string.window_notes) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.notes.NotesActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
             )),
             Group(R.string.settings_group_media, listOf(
                 // 0.53.0: the music player. The music is in media/MusicService and

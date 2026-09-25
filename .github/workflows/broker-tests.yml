@@ -108,6 +108,17 @@ jobs:
           grep -q "calendar=yes calendar_reason=misheard:" "$home/serve.log"             || { echo "the intent log does not show the calendar check:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
           grep -q "alarm=yes alarm_reason=set calendar=no calendar_reason=no-calendar-word maps=skipped maps_word=no" "$home/serve.log" \
             || { echo "the intent log does not show the alarm and map checks:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          # 0.62.0 THE SHOPPING LIST: decided in code (the placeholder key means a
+          # request that reached the model would fail), the reason last on the
+          # intent line, and the item never in the log.
+          body="$(python -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "เพิ่ม นมจืดซีไอ ในรายการซื้อของ")"
+          answer="$(curl -sS -X POST http://127.0.0.1:18770/v1/chat -H "Authorization: Bearer $token" \
+                    -H 'Content-Type: application/json; charset=utf-8' --data "$body")"
+          echo "$answer" | python -c 'import json,sys; a=json.load(sys.stdin); t=(a.get("action") or {}).get("type"); print("action:", t); sys.exit(0 if t == "note_add" else 1)' \
+            || { echo "the shopping-list command did not become note_add:"; echo "$answer"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          grep -q "notes=add:shopping:named" "$home/serve.log" \
+            || { echo "the intent log does not show the notes check:"; cat "$home/serve.log"; kill "$pid"; exit 1; }
+          if grep -q "นมจืดซีไอ" "$home/serve.log"; then echo "a shopping-list item reached the log"; kill "$pid"; exit 1; fi
           # Round 2A routes, through the running server: a grant with no token
           # is refused, and a callback with a made-up state is refused politely.
           code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18770/v1/auth/grant -d '{}')"
