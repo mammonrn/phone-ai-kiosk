@@ -190,6 +190,10 @@ dependencies {
     // The music player (0.53.0): ExoPlayer alone. See libs.versions.toml.
     implementation(libs.media3.exoplayer)
 
+    // Google Drive (0.61.0): the access token from Google Play services, in
+    // memory only. See drive/DriveAuth.kt and libs.versions.toml.
+    implementation(libs.play.services.auth)
+
     // LibVLC (0.60.0), the checked AAR above; a plain file brings no dependencies,
     // so its Java side's are named: LiveData (lifecycle) and the annotations.
     implementation(files(libvlcDevAar ?: libvlcAar))

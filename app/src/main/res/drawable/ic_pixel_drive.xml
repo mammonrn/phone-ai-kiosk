@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0): a white cloud with a navy arrow up in it, for
+     Google Drive in the file manager. Not Google Drive's logo (no triangle,
+     none of its colours; DESIGN.md 8). Lit from the top left: grey shade on
+     the bottom and right. 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M6,3h4v1h-4z M5,4h6v1h-6z M3,5h9v1h-9z M2,6h12v1h-12z M1,7h14v5h-14z M2,12h12v1h-12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M6,4h4v1h-4z M4,5h7v1h-7z M3,6h10v1h-10z M2,7h12v4h-12z" />
+    <path android:fillColor="#808080" android:pathData="M2,11h12v1h-12z M13,8h1v3h-1z" />
+    <path android:fillColor="#000080" android:pathData="M7,7h2v1h-2z M6,8h4v1h-4z M7,9h2v2h-2z" />
+</vector>

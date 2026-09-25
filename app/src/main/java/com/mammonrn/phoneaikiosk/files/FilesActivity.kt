@@ -44,6 +44,7 @@ import java.util.concurrent.Executors
 import com.mammonrn.phoneaikiosk.ui.UiScale
 import com.mammonrn.phoneaikiosk.ui.Retro
 import com.mammonrn.phoneaikiosk.auth.IdentityGate
+import com.mammonrn.phoneaikiosk.drive.DriveActivity
 import com.mammonrn.phoneaikiosk.media.MusicActivity
 import com.mammonrn.phoneaikiosk.media.VideoActivity
 
@@ -326,6 +327,10 @@ class FilesActivity : Activity() {
                 else getString(R.string.files_nas_not_set)) {
                 show(if (config != null) Page.NasFolder("") else Page.NasSetup)
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
+            // 0.61.0: Google Drive, its own screen (drive/DriveActivity, DESIGN.md 5ฑ).
+            list.addView(bigRow(R.drawable.ic_pixel_drive, getString(R.string.drive_root_name), getString(R.string.drive_root_sub)) {
+                startActivity(Intent(this, DriveActivity::class.java))
+            }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         } else {
             list.addView(text(getString(R.string.files_pick_open_folder), UiScale.TEXT_NOTE, dim = true).apply {
                 setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0)
@@ -513,6 +518,10 @@ class FilesActivity : Activity() {
         list.addView(pair(getString(R.string.files_copy), { startPick(Pick.Kind.COPY, file) },
                           getString(R.string.files_move), { startPick(Pick.Kind.MOVE, file) }),
                      LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(if (kind == FileOps.Kind.ZIP) 8 else 14) })
+        // 0.61.0: a phone file to Google Drive; the Drive screen asks for the folder.
+        if (!file.isDirectory) list.addView(button(getString(R.string.drive_upload_button)) {
+            startActivity(DriveActivity.uploadIntent(this, file))
+        }, LinearLayout.LayoutParams(MATCH, dp(UiScale.TOUCH)).apply { topMargin = dp(UiScale.SPACE_S) })
         val deleteArea = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         list.addView(deleteArea, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         var insideCount = -1

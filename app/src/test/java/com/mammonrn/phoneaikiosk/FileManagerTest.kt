@@ -451,7 +451,9 @@ class FileManagerTest {
         val starts = Regex("""startActivity\(([^\n]*)""").findAll(screen).map { it.groupValues[1] }.toList()
         // 0.59.0: a song, a video or a picture opens in the kiosk's own player or viewer — still nothing outside.
         val ours = listOf("MainActivity::class.java", "MusicActivity::class.java", "VideoActivity::class.java",
-                          "ImageViewerActivity::class.java")
+                          "ImageViewerActivity::class.java",
+                          // 0.61.0: Google Drive, the kiosk's own screen too (DriveTest holds what it starts).
+                          "DriveActivity::class.java", "DriveActivity.uploadIntent(")
         assertTrue(starts.isNotEmpty())
         for (start in starts) assertTrue(start, ours.any { it in start })
         for (outside in listOf("ACTION_VIEW", "ACTION_SEND", "createChooser", "ACTION_OPEN_DOCUMENT",
