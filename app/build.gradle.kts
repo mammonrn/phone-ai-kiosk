@@ -35,6 +35,9 @@ android {
         minSdk = 29
         targetSdk = 36
 
+        // scripts/ui-check: the on-phone walk of every screen (app/src/androidTest).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         versionCode = 78
         versionName = "0.61.0"
 
@@ -203,6 +206,13 @@ dependencies {
     compileOnly(libs.androidx.annotation)
 
     testImplementation(libs.junit)
+    // The on-phone UI walk (scripts/ui-check): its own test APK, never in the app's.
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.uiautomator)
+    androidTestImplementation(libs.atf)
     // Test classpath only — see the note in libs.versions.toml.
     testImplementation(libs.json)
     // The JVM build of the SAME runtime version, so WakeWordParityTest exercises

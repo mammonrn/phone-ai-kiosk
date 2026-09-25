@@ -276,6 +276,22 @@ jobs:
           # APK is always there to download, even after a quiet week.
           retention-days: 30
 
+      - name: Build the UI-check test APK
+        # scripts/ui-check (0.63.0): the on-phone walk of every screen. Its own
+        # APK, signed like the app (instrumentation needs the same key), never
+        # part of the app's APK and not counted in its size ceiling.
+        env:
+          DEBUG_KEYSTORE_PATH: ${{ steps.debug_keystore.outputs.path }}
+        run: ./gradlew assembleDebugAndroidTest --stacktrace
+
+      - name: Upload the UI-check test APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: phone-ai-kiosk-ui-check-apk
+          path: app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Keep only the newest APKs
         # KEEP_APKS newest "phone-ai-kiosk-debug-apk" artifacts stay; older
         # ones are deleted. On main only: a pull request never deletes the

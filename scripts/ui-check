@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# The UI check of every screen, in one command (0.63.0, Poom 2026-09-25).
+#
+#   scripts/ui-check [OUT_DIR]
+#
+# Runs on the PC (Git Bash) with the A07 on adb. Installs the app and its
+# UI-check test APK from the newest successful CI run (the phone refuses APKs
+# built on the PC), runs the walk (app/src/androidTest/.../UiCheckTest.kt) —
+# every screen, no model in the loop — brings the kiosk back to LOCKED, pulls
+# the pictures and results, and writes:
+#   OUT_DIR/results.md      pass / fail per screen, with every issue
+#   OUT_DIR/sheet.png       every screen on one sheet, its name under it
+#   OUT_DIR/failed/*.png    the screens that did not pass, one picture each
+#
+#   SKIP_INSTALL=1   use what is installed (after a local change is on CI already)
+#
+# RULE (CLAUDE.md): every UI change runs this before it is reported, and the
+# sheet goes with the report. A new screen is added to the walk.
+set -u
+export MSYS_NO_PATHCONV=1
+cd "$(dirname "$0")/.." || exit 2
+
+PKG=com.mammonrn.phoneaikiosk.debug
+OUT=${1:-${TEMP:-/tmp}/kiosk-ui-check/$(date +%Y%m%d-%H%M%S)}
+started=$(date +%s)
+
+adb get-state >/dev/null 2>&1 || { echo "no phone on adb"; exit 2; }
+
+if [ "${SKIP_INSTALL:-0}" != "1" ]; then
+  run=$(gh run list -w "Build Android APK" -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
+  dl=$(mktemp -d)
+  echo "installing the app and the UI-check APK from CI run $run"
+  gh run download "$run" -n phone-ai-kiosk-debug-apk -D "$dl/app" || exit 2
+  gh run download "$run" -n phone-ai-kiosk-ui-check-apk -D "$dl/test" || { echo "that run has no UI-check APK (built before 0.63.0?)"; exit 2; }
+  adb install -r -t "$(cygpath -m "$dl"/app/*.apk 2>/dev/null || echo "$dl"/app/*.apk)" | tail -1
+  adb install -r -t "$(cygpath -m "$dl"/test/*.apk 2>/dev/null || echo "$dl"/test/*.apk)" | tail -1
+fi
+
+echo "walking every screen…"
+adb shell am instrument -w -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
+  "$PKG.test/androidx.test.runner.AndroidJUnitRunner" | tail -4
+
+# The walk ends on the home screen; the instrumentation's end stops the app's
+# process, so the kiosk is started again and must be LOCKED.
+adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1
+sleep 4
+if adb shell dumpsys activity activities | grep -q "mLockTaskModeState=LOCKED"; then
+  echo "kiosk: LOCKED"
+else
+  echo "WARNING: the kiosk is NOT LOCKED — open it from the home button and check"
+fi
+
+mkdir -p "$OUT"
+adb pull "/sdcard/Android/data/$PKG/files/ui-check" "$OUT" >/dev/null || { echo "no results on the phone"; exit 1; }
+PYTHONIOENCODING=utf-8 python tools/ui/report.py "$OUT/ui-check" "$OUT"
+status=$?
+echo "took $(( $(date +%s) - started )) s · $OUT"
+exit $status
