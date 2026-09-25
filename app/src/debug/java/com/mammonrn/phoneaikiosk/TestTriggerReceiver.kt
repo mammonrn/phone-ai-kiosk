@@ -148,15 +148,23 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 // 0.63.0 (scripts/ui-check): the walk of every screen, in this process —
                 // an instrumented test force-stops the app and took the kiosk out of
                 // lock task. --es only home,calc runs part of it. The end is a log line.
+                // --es run <id>: the script's id, said again at the end, so a line from an
+                // earlier walk can never be taken for this one's. One walk at a time.
                 val only = intent.getStringExtra("only")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
-                Thread({
+                val run = intent.getStringExtra("run").orEmpty().filter { it.isLetterOrDigit() }.take(20)
+                if (!uiCheckRunning.compareAndSet(false, true)) {
+                    android.util.Log.i("KioskUiCheck", "busy run=$run")
+                } else Thread({
+                    android.util.Log.i("KioskUiCheck", "start run=$run only=${only?.size ?: 0}")
                     val words = try {
                         com.mammonrn.phoneaikiosk.uicheck.UiWalk(context.applicationContext, only).everyScreen()
                         "done"
                     } catch (t: Throwable) {
                         "failed ${t.javaClass.simpleName}"
+                    } finally {
+                        uiCheckRunning.set(false)
                     }
-                    android.util.Log.i("KioskUiCheck", words)
+                    android.util.Log.i("KioskUiCheck", "$words run=$run")
                 }, "ui-check").start()
             }
 
@@ -572,6 +580,8 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_TASKBAR = "com.mammonrn.phoneaikiosk.TEST_TASKBAR"
         const val ACTION_LAYOUT_REPORT = "com.mammonrn.phoneaikiosk.TEST_LAYOUT_REPORT"
         const val ACTION_UI_CHECK = "com.mammonrn.phoneaikiosk.TEST_UI_CHECK"
+        /** One UI walk at a time. */
+        val uiCheckRunning = java.util.concurrent.atomic.AtomicBoolean(false)
         const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"

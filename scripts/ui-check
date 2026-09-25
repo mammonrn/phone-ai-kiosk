@@ -49,14 +49,16 @@ adb shell dumpsys activity activities | grep -q "mLockTaskModeState=LOCKED" \
 
 echo "walking every screen…"
 adb logcat -c
-adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_UI_CHECK -p "$PKG" ${ONLY:+--es only "$ONLY"} >/dev/null
+run_id=r$(date +%s)
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_UI_CHECK -p "$PKG" --es run "$run_id" ${ONLY:+--es only "$ONLY"} >/dev/null
 end=$(( $(date +%s) + 600 ))
 result=""
 while [ "$(date +%s)" -lt "$end" ]; do
-  result=$(adb logcat -d -s KioskUiCheck | grep -o -E "KioskUiCheck: (done|failed.*)" | tail -1)
+  result=$(adb logcat -d -s KioskUiCheck | grep -o -E "KioskUiCheck: (done|failed.*|busy) run=$run_id" | tail -1)
   [ -n "$result" ] && break
   sleep 5
 done
+case "$result" in *busy*) echo "another walk is still running on the phone — try again when it ends"; exit 2 ;; esac
 echo "walk: ${result:-no answer in 10 minutes}"
 
 lock_broke=0

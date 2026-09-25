@@ -70,7 +70,7 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
     private val screenW = ctx.resources.displayMetrics.widthPixels
     private val screenH = ctx.resources.displayMetrics.heightPixels
     private val out = File(ctx.getExternalFilesDir(null), "ui-check").apply { deleteRecursively(); mkdirs() }
-    private val results = JSONArray()
+    private val results = JSONArray().also { File(out, "results.json").writeText("[]") }
     private val a11y = AccessibilityCheckPreset.getAccessibilityHierarchyChecksForPreset(AccessibilityCheckPreset.LATEST)
 
     /** Rules waiting for Poom (report ก): shown as exceptions, not failures. */
