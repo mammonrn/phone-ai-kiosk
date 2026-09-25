@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notes and the shopping list (0.62.0, DESIGN.md 5ณ). Formal written Thai, like the file manager.
+     Its own file so these words never collide with another feature's. What Jarvis SAYS is in
+     notes/NoteVoice.kt (spoken, tested there), as the music's is in media/MusicVoice.kt. -->
+<resources>
+    <string name="window_notes">โน้ต</string>
+    <string name="notes_all_title">โน้ตและรายการ</string>
+    <string name="notes_list_shopping">รายการซื้อของ</string>
+    <string name="notes_list_notes">โน้ต</string>
+
+    <!-- The lists page -->
+    <string name="notes_lists_label">รายการทั้งหมด (%1$d)</string>
+    <string name="notes_list_counts">ยังไม่ติ๊ก %1$d · ติ๊กแล้ว %2$d</string>
+    <string name="notes_list_empty_counts">ยังว่าง</string>
+    <string name="notes_new_list">สร้างรายการใหม่</string>
+    <string name="notes_open_hint">แตะรายการเพื่อเปิด</string>
+
+    <!-- One list -->
+    <string name="notes_all_lists">◄ รายการทั้งหมด</string>
+    <string name="notes_add">เพิ่ม</string>
+    <string name="notes_add_hint_shopping">พิมพ์สิ่งที่จะซื้อ</string>
+    <string name="notes_add_hint">พิมพ์สิ่งที่จะจด</string>
+    <string name="notes_pending_shopping">ยังไม่ได้ซื้อ (%1$d)</string>
+    <string name="notes_pending">ยังไม่ติ๊ก (%1$d)</string>
+    <string name="notes_done_label">ติ๊กแล้ว (%1$d)</string>
+    <string name="notes_clear_done">ล้างที่ติ๊กแล้ว</string>
+    <string name="notes_empty">ยังไม่มีอะไรในรายการนี้ พิมพ์ในช่องด้านบนแล้วกด “เพิ่ม”</string>
+    <string name="notes_all_done">ติ๊กครบทุกอย่างแล้ว</string>
+    <string name="notes_row_hint">แตะช่องสี่เหลี่ยมเพื่อติ๊ก แตะข้อความเพื่อแก้ไขหรือเอาออก</string>
+    <string name="notes_voice_hint_shopping">สั่งด้วยเสียงได้ เช่น “เพิ่ม นม ในรายการซื้อของ” หรือ “อ่านรายการซื้อของ”</string>
+    <string name="notes_voice_hint_notes">สั่งด้วยเสียงได้ เช่น “จดว่า พรุ่งนี้จ่ายค่าไฟ” หรือ “อ่านโน้ต”</string>
+    <string name="notes_private">เก็บในเครื่องนี้เท่านั้น ไม่ส่งออกไปไหน</string>
+    <string name="notes_tick_desc">ยังไม่ติ๊ก: %1$s แตะเพื่อติ๊ก</string>
+    <string name="notes_untick_desc">ติ๊กแล้ว: %1$s แตะเพื่อเอาติ๊กออก</string>
+
+    <!-- What just happened -->
+    <string name="notes_added">เพิ่ม “%1$s” แล้ว</string>
+    <string name="notes_again">“%1$s” ติ๊กไว้แล้ว เอากลับมาในรายการแล้ว</string>
+    <string name="notes_saved">บันทึกแล้ว</string>
+    <string name="notes_removed">เอา “%1$s” ออกจากรายการแล้ว</string>
+    <string name="notes_cleared">ล้างที่ติ๊กแล้วออก %1$d รายการ</string>
+    <string name="notes_list_made">สร้างรายการ “%1$s” แล้ว</string>
+    <string name="notes_list_removed">ลบรายการ “%1$s” แล้ว</string>
+
+    <!-- Why not -->
+    <string name="notes_err_empty">ยังไม่ได้พิมพ์อะไร</string>
+    <string name="notes_err_long">ยาวเกินไป ไม่เกิน %1$d ตัวอักษร</string>
+    <string name="notes_err_duplicate">มีอยู่ในรายการนี้แล้ว</string>
+    <string name="notes_err_duplicate_list">มีรายการชื่อนี้แล้ว</string>
+    <string name="notes_err_full">รายการเต็มแล้ว ล้างที่ติ๊กแล้วออกก่อน</string>
+    <string name="notes_err_lists_full">สร้างรายการได้ไม่เกิน %1$d รายการ</string>
+    <string name="notes_err_missing">ไม่พบรายการนี้แล้ว</string>
+    <string name="notes_err_built_in">รายการนี้เป็นรายการประจำ ลบหรือเปลี่ยนชื่อไม่ได้</string>
+    <string name="notes_err_not_saved">บันทึกไม่สำเร็จ ยังไม่ได้เปลี่ยนอะไร</string>
+
+    <!-- Editing a line -->
+    <string name="notes_edit_title">แก้ไข</string>
+    <string name="notes_edit_label">ข้อความ</string>
+    <string name="notes_save">บันทึก</string>
+    <string name="notes_cancel">ยกเลิก</string>
+    <string name="notes_remove_item">เอาออกจากรายการ</string>
+    <string name="notes_remove_note">เอาออกได้ทันที ไม่ต้องยืนยันตัวตน เพราะไม่ได้ลบไฟล์ของใคร</string>
+
+    <!-- A list of one's own -->
+    <string name="notes_new_list_title">รายการใหม่</string>
+    <string name="notes_list_name_label">ชื่อรายการ (ไม่เกิน %1$d ตัวอักษร)</string>
+    <string name="notes_create">สร้าง</string>
+    <string name="notes_rename_list">เปลี่ยนชื่อรายการ</string>
+    <string name="notes_delete_list">ลบรายการนี้</string>
+    <string name="notes_delete_list_ask">ลบรายการ “%1$s” และทุกอย่างในรายการใช่หรือไม่ ย้อนกลับไม่ได้</string>
+    <string name="notes_delete_list_yes">ลบรายการ</string>
+</resources>

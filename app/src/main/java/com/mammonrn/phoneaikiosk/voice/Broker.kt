@@ -91,6 +91,13 @@ class Broker(private val baseUrl: String, private val token: String) {
                     if (command !in com.mammonrn.phoneaikiosk.media.VideoVoice.COMMANDS || query.length > 60) null
                     else KioskAction(type, "", mapOf("command" to command, "query" to query))
                 }
+                // 0.62.0: a list's id (bounded) and the line. NOT dropped for a bad
+                // line: a dropped add would leave the broker's "เพิ่มแล้ว" standing,
+                // so the line goes on to NoteVoice, which refuses it in words.
+                KioskAction.NOTE_ADD -> KioskAction(type, "", mapOf(
+                    "list" to json.optString("list").trim().take(20),
+                    "text" to json.optString("text").trim().take(com.mammonrn.phoneaikiosk.notes.NoteVoice.MAX_VOICE_CHARS + 1)))
+                KioskAction.NOTE_READ -> KioskAction(type, "", mapOf("list" to json.optString("list").trim().take(20)))
                 else -> null
             }
         }

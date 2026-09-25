@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.62.0): a notepad for notes and the shopping list. A black
+     outline, three black rings over the top edge, a grey binding band, white paper
+     with three navy ruled lines (the last one short, where the writing stops).
+     Drawn from squares; not any brand's notepad (DESIGN.md 8). 16x16 grid, four
+     colours, all from the window palette. Reads on the navy title bar (white paper,
+     black edge) and on the grey panel alike. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M2,2h12v1h-12z M2,3h1v12h-1z M13,3h1v12h-1z
+        M3,14h10v1h-10z M4,1h1v2h-1z M7,1h1v2h-1z M10,1h1v2h-1z" />
+    <path android:fillColor="#808080" android:pathData="M3,3h10v2h-10z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M3,5h10v9h-10z" />
+    <path android:fillColor="#000080" android:pathData="M4,7h8v1h-8z M4,9h8v1h-8z M4,11h5v1h-5z" />
+</vector>

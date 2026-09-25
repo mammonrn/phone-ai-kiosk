@@ -118,7 +118,12 @@ class TurnPipeline(
         if (first != null && first.type in DONE_BEFORE_SPEAKING) {
             val failure = perform(first)
             action = null
-            if (failure != null) {
+            if (failure != null && first.type in ANSWERED_ON_PHONE) {
+                // 0.62.0: the phone's own words ARE the answer (a list read
+                // from this phone's file), not a failure.
+                reply = failure
+                state.reply = failure
+            } else if (failure != null) {
                 log("action ${first.type} failed before speaking")
                 state.lastError = "action-failed"
                 reply = failure
@@ -227,7 +232,11 @@ class TurnPipeline(
  * thing with it.
  */
 /** Actions on the phone's own state: done before the reply is said (TurnPipeline). */
-val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC, KioskAction.VIDEO)
+val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC, KioskAction.VIDEO,
+                                 KioskAction.NOTE_ADD, KioskAction.NOTE_READ)
+
+/** 0.62.0: actions whose words, when there are any, are the answer itself — not a failure. */
+val ANSWERED_ON_PHONE = setOf(KioskAction.NOTE_READ)
 
 class KioskAction(
     val type: String,
@@ -275,6 +284,12 @@ class KioskAction(
 
         /** 0.57.0: a video command, {command, query}, done before speaking like the music (media/VideoVoice). */
         const val VIDEO = "video"
+
+        /** 0.62.0: {list, text} — a line added to a list on this phone before speaking (notes/NoteVoice). */
+        const val NOTE_ADD = "note_add"
+
+        /** 0.62.0: {list} — the list read from this phone's own file; those words are the reply. */
+        const val NOTE_READ = "note_read"
     }
 }
 

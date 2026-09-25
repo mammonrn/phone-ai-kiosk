@@ -21,7 +21,7 @@ from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dash
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile, maps_rescue, music, video)
+               auth_reset, local_facts, envfile, maps_rescue, music, notes, video)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -666,6 +666,10 @@ def handle_chat(
     else:
         add_heard, add_why = calendar_add.match(text, cfg.clock_timezone)
 
+    # The shopping list and notes (0.62.0): checked on every question, the
+    # reason logged (notes=, last on the intent line) — never the item.
+    heard_note, note_why = notes.notes_match(text)
+
     def log_intent(maps: str) -> None:
         """One line per question, written once its way is known. maps= says
         what became of the map (2026-09-23, "I was told the map was opening
@@ -681,12 +685,15 @@ def handle_chat(
         # calendar_add= since round 2B: draft:<day>, a reason it was asked
         # back or not taken, or answer:yes|no to a held draft. Last, so the
         # lines CI and the tests look for keep their shape.
+        # notes= since 0.62.0 (notes.notes_match's reason), after it for the same reason.
         log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s"
-                 " calendar=%s calendar_reason=%s maps=%s maps_word=%s chars=%d calendar_add=%s",
+                 " calendar=%s calendar_reason=%s maps=%s maps_word=%s chars=%d calendar_add=%s"
+                 " notes=%s",
                  label, "yes" if is_camera else "no", why,
                  "yes" if alarm is not None else "no", alarm_why,
                  "yes" if calendar_yes else "no", calendar_why,
-                 maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text), add_why)
+                 maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text), add_why,
+                 note_why)
     def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
         """A reply decided by code, no model, nothing paid: the camera and the
         alarms. Stored in the conversation like any other turn."""
@@ -726,6 +733,17 @@ def handle_chat(
         store.prune_messages(conn, conversation_id=conversation_id, turns=cfg.history_turns,
                              ttl_hours=cfg.history_ttl_hours)
         return 200, {"reply": reply, "action": action, "conversation_id": conversation_id}
+
+    # ---- the shopping list and notes (0.62.0): recognised in code -------
+    # The lists are on the PHONE: it adds before the reply is said (and says
+    # why when it could not), and reads a list out from its own data. After
+    # adding an appointment (its "เพิ่มนัด…" is never a list), before the
+    # lights ("เพิ่ม หลอดไฟ ในรายการซื้อของ" is not a switch). The camera, the
+    # alarms and the private calendar read keep their sentences.
+    if heard_note is not None and not is_camera and alarm is None and not calendar_yes:
+        log_intent("skipped")
+        action, reply = notes.action_and_reply(heard_note)
+        return answer_in_code(reply, action, f"notes:{heard_note['kind']}:{heard_note['list']}")
 
     # ---- the lights (0.46.0): switched in code, answered from eWeLink ----
     # After the camera and the alarms, which own their sentences ("ปิดปลุก").
