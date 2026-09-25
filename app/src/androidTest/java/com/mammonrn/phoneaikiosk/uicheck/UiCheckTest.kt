@@ -80,7 +80,8 @@ class UiCheckTest {
             found = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
                 .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).firstOrNull { !it.isFinishing }
         }
-        return found
+        // The home screen is singleInstance and can predate the monitor: the kiosk's own record then.
+        return found ?: KioskScreens.resumed?.get()?.takeUnless { it.isFinishing }
     }
 
     private fun settle(ms: Long = 900) {
