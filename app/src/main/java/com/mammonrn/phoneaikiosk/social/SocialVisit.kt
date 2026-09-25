@@ -70,6 +70,7 @@ object SocialVisit {
     var limitMs = LIMIT_MS
     const val CALL_GRACE_MS = 5 * 60_000L
     private const val MIC_POLL_MS = 3_000L
+    private const val START_GRACE_MS = 2_000L
     private const val TAG = "KioskSocial"
 
     private val main by lazy { Handler(Looper.getMainLooper()) }
@@ -114,7 +115,9 @@ object SocialVisit {
     private fun begin(activity: Activity, pkg: String, what: String, intent: Intent): Result {
         val dpm = activity.getSystemService(DevicePolicyManager::class.java)
         if (dpm == null || !dpm.isDeviceOwnerApp(activity.packageName)) return Result.NOT_OWNER
-        end(activity, "replaced")
+        // A visit already on (only the debug test can start one from outside a kiosk screen):
+        // its watchers go, and the list below replaces its package in one step.
+        end(activity, "replaced", restore = false)
         val admin = KioskDeviceAdminReceiver.componentName(activity)
         refuseNotifications(activity)
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + pkg)
@@ -134,7 +137,7 @@ object SocialVisit {
     }
 
     /** Ends the visit, if there is one: the kiosk's own allowlist again. Main thread. */
-    fun end(context: Context, reason: String) {
+    fun end(context: Context, reason: String, restore: Boolean = true) {
         val pkg = active ?: return
         active = null
         main.removeCallbacksAndMessages(null)
@@ -142,15 +145,32 @@ object SocialVisit {
         screenOff = null
         micHold?.let { WakePause.release(it) }
         micHold = null
-        WifiPanel.restore(context)
+        if (restore) WifiPanel.restore(context)
         val minutes = (SystemClock.elapsedRealtime() - startedAt) / 60_000
         Log.i(TAG, "visit end app=$label reason=$reason minutes=$minutes still_allowed=${allowed(context, pkg)}")
     }
 
+    /** A kiosk screen that is in front now (resumed and not yet paused), else null. */
+    private var kioskFront: java.lang.ref.WeakReference<Activity>? = null
+
     /** From KioskScreens on every resume: a kiosk screen in front ends the visit. */
     fun kioskResumed(activity: Activity) {
+        kioskFront = java.lang.ref.WeakReference(activity)
         if (active == null || activity is SocialActivity || activity is VerifyActivity) return
+        // The app's first frames: a task that the new list closed can bring a kiosk screen
+        // forward for a moment as the visited app starts. Looked at again when they are
+        // over — still in front then, the visit ends.
+        val left = START_GRACE_MS - (SystemClock.elapsedRealtime() - startedAt)
+        if (left > 0) {
+            main.postDelayed({ kioskFront?.get()?.let { if (it === activity) end(it, "kiosk-front") } }, left)
+            return
+        }
         end(activity, "kiosk-front")
+    }
+
+    /** From KioskScreens on every pause. */
+    fun kioskPaused(activity: Activity) {
+        if (kioskFront?.get() === activity) kioskFront = null
     }
 
     /** The device owner refuses the Meta apps' notifications. Cheap; idempotent. */

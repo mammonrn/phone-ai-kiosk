@@ -104,6 +104,7 @@ object KioskScreens {
 
         override fun onActivityPaused(activity: Activity) {
             if (activity is MainActivity) homeResumed(false)
+            com.mammonrn.phoneaikiosk.social.SocialVisit.kioskPaused(activity)
         }
 
         override fun onActivityDestroyed(activity: Activity) {

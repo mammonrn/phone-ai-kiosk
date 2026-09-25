@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Facebook / Instagram visits on the A07 (0.65.0, social/SocialVisit): every way a visit
+# ends, and that nothing opens either app without one. Runs on the PC (Git Bash) with the
+# phone on adb and the debug APK from CI installed, the kiosk LOCKED and on a kiosk screen.
+#
+#   scripts/social-check [FACEBOOK|INSTAGRAM]      default FACEBOOK
+#
+# The visits here skip the face: the debug build's TEST_SOCIAL_VISIT, which acts only with
+# a nonce equal to the system property debug.kiosk.social_nonce — set here from adb (no app
+# can set it) and cleared on exit. Nothing is typed into either app, no account is touched.
+# Prints one PASS/FAIL line per check and the visit log lines (app, reason, minutes only).
+
+export MSYS_NO_PATHCONV=1
+APP=${1:-FACEBOOK}
+PKG=com.mammonrn.phoneaikiosk.debug
+case $APP in
+  FACEBOOK) META="com.facebook.lite|com.facebook.katana" ;;
+  INSTAGRAM) META="com.instagram.android" ;;
+  *) echo "app: FACEBOOK or INSTAGRAM"; exit 2 ;;
+esac
+fails=0
+nonce=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')
+adb shell setprop debug.kiosk.social_nonce "$nonce" || exit 2
+trap 'adb shell setprop debug.kiosk.social_nonce "\"\""' EXIT
+
+locked() { adb shell dumpsys activity activities | grep -a -m1 -o "mLockTaskModeState=[A-Z]*" | cut -d= -f2; }
+allowed() { adb shell dumpsys device_policy | grep -a -m1 "LockTaskPolicy {mPackages" | grep -E -c "$META"; }
+front() { adb shell dumpsys activity activities | grep -a -m1 "topResumedActivity" | grep -o -E "u0 [^ /]+" | cut -d' ' -f2; }
+visit() {  # visit [open|play|end] [limit_ms]
+  adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SOCIAL_VISIT -p $PKG --es nonce "$nonce" \
+    --es app "$APP" --es do "${1:-open}" ${2:+--el limit_ms $2} >/dev/null
+  sleep 5
+}
+check() {  # check NAME CONDITION-RESULT(0/1)
+  if [ "$2" = 0 ]; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi
+}
+home() { adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME -p $PKG >/dev/null; sleep 3; }
+kiosk_front() { [ "$(front)" = "$PKG" ] && echo 0 || echo 1; }
+clean() { [ "$(allowed)" = 0 ] && echo 0 || echo 1; }
+
+[ "$(locked)" = LOCKED ] || { echo "the kiosk is not LOCKED; not starting"; exit 2; }
+adb logcat -c
+home
+
+# 1. Nothing opens the app without a visit: a link, and a straight launch.
+adb shell am start -a android.intent.action.VIEW -d "https://www.facebook.com/" >/dev/null 2>&1
+adb shell monkey -p "$(echo "$META" | cut -d'|' -f1)" 1 >/dev/null 2>&1
+adb shell monkey -p "$(echo "$META" | cut -d'|' -f2)" 1 >/dev/null 2>&1
+sleep 4
+check "no visit: a link and a launch leave the kiosk in front" "$(kiosk_front)"
+check "no visit: the app is not on the allowlist" "$(clean)"
+
+# 2. A visit, then Back until the kiosk is in front.
+visit open
+[ "$(allowed)" -ge 1 ] && a=0 || a=1
+check "visit: the app is on the allowlist" $a
+[ "$(front)" != "$PKG" ] && a=0 || a=1
+check "visit: the app is in front" $a
+adb shell am start -a android.intent.action.VIEW -d "https://example.com/" >/dev/null 2>&1
+sleep 3
+[ "$(front)" != "com.android.chrome" ] && a=0 || a=1
+check "visit: a link to the browser does not open it" $a
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  [ "$(front)" = "$PKG" ] && break
+  adb shell input keyevent KEYCODE_BACK; sleep 1.5
+done
+sleep 2
+check "back: the kiosk is in front" "$(kiosk_front)"
+check "back: the allowlist is the kiosk's own" "$(clean)"
+
+# 3. The wake word's way home (TEST_LISTEN brings home forward exactly as "Hey Jarvis" does).
+visit open
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_LISTEN -p $PKG >/dev/null
+sleep 6
+check "jarvis: the kiosk is in front" "$(kiosk_front)"
+check "jarvis: the allowlist is the kiosk's own" "$(clean)"
+
+# 4. The screen turning off.
+visit open
+adb shell input keyevent KEYCODE_SLEEP; sleep 3
+check "screen off: the allowlist is the kiosk's own" "$(clean)"
+adb shell input keyevent KEYCODE_WAKEUP; sleep 3
+check "screen on again: the kiosk is in front" "$(kiosk_front)"
+
+# 5. The time limit (20 s for this visit only).
+visit open 20000
+sleep 22
+check "limit: the allowlist is the kiosk's own" "$(clean)"
+check "limit: the kiosk is in front" "$(kiosk_front)"
+
+# 6. Notifications refused by the device owner.
+for p in ${META//|/ }; do
+  line=$(adb shell dumpsys package "$p" 2>/dev/null | grep -a -m1 "android.permission.POST_NOTIFICATIONS: granted")
+  [ -z "$line" ] && continue
+  echo "$line" | grep -q "granted=false" && a=0 || a=1
+  check "notifications refused: $p" $a
+done
+
+home
+[ "$(locked)" = LOCKED ] && a=0 || a=1
+check "the kiosk is LOCKED at the end" $a
+echo "--- the visit log"
+adb logcat -d -s KioskSocial:I | grep -a -E "visit|refused|notifications" | sed 's/^.*KioskSocial: //'
+echo "fails=$fails"
+exit $((fails > 0))
