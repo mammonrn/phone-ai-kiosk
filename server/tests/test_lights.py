@@ -104,6 +104,8 @@ def test_a_question_is_never_a_command(text):
 @pytest.mark.parametrize("text", [
     "เปิดแผนที่ไปเซ็นทรัลเชียงราย", "ปิดปลุกไปทำงาน", "ขอดูกล้อง", "เปิดเพลงในห้องนอน",
     "ปรับระดับเสียง", "อย่าเปิดไฟ", "ไม่ต้องปิดไฟนะ", "วันนี้อากาศเป็นยังไง", "เปิดทีวี",
+    # 0.61.0 (tools/voice matrix): the torch, the radio, a clip, a misheard song — none is a light.
+    "เปิดไฟฉาย", "ปิดไฟฉาย", "เปิดวิทยุ", "เปิดคลิปแมว", "เปิดเพรงของคาราบาว", "เปิดวีดีโอ",
 ])
 def test_not_a_light_sentence(text):
     assert lights.parse(text) is None

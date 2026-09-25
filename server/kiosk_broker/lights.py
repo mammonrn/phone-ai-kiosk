@@ -57,7 +57,11 @@ QUESTION = re.compile(r"อยู่(ไหม|มั้ย|หรือเป�
 NEGATED = re.compile(r"(อย่า|ไม่ต้อง|ไม่ให้|ห้าม)(ช่วย)?(เปิด|ปิด|ดับ)")
 #: Another command owns these sentences: the map ("เปิดแผนที่ไป..."), alarms.
 #: Other appliances and media are not lights either: "เปิดเพลงในห้องนอน".
-NOT_LIGHTS = re.compile(r"แผนที่|นำทาง|แมพ|พาไป|ปลุก|กล้อง|เพลง|ทีวี|แอร์|วิดีโอ|หนัง|ยูทูบ|youtube")
+#: 0.61.0: "เปิดไฟฉาย" (the phone's torch) and "เปิดวิทยุ" were taken as a light — with one
+#: light in the house the only-one rule would have switched it on; a clip, and the
+#: transcriber's "เพรง" for เพลง, and "วีดีโอ", are not lights either (tools/voice matrix).
+NOT_LIGHTS = re.compile(r"แผนที่|นำทาง|แมพ|พาไป|ปลุก|กล้อง|เพลง|เพรง|ทีวี|แอร์|วิดีโอ|วีดีโอ|หนัง|ยูทูบ|youtube"
+                        r"|ไฟฉาย|วิทยุ|คลิป")
 CANCEL = re.compile(r"ยกเลิก|ไม่เอา|ไม่ต้อง|ช่างมัน")
 #: "Yes" to "…ปิดอยู่แล้วครับ ต้องการเปิดใช่ไหมครับ". Checked after CANCEL and
 #: after NO, so "ไม่ใช่" is never a yes.
