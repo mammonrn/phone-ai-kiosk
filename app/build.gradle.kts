@@ -189,6 +189,8 @@ dependencies {
 
     // The music player (0.53.0): ExoPlayer alone. See libs.versions.toml.
     implementation(libs.media3.exoplayer)
+    // The radio's HLS stations (0.61.0).
+    implementation(libs.media3.exoplayer.hls)
 
     // LibVLC (0.60.0), the checked AAR above; a plain file brings no dependencies,
     // so its Java side's are named: LiveData (lifecycle) and the annotations.

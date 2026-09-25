@@ -103,6 +103,7 @@ object MusicPlayer {
     /** Plays [tracks] from [start]; [playlist] when they are a playlist's, whose edits are then kept. */
     fun play(context: Context, tracks: List<Track>, start: Int = 0, playlist: String? = null) = run(context) {
         VideoPlayer.quietForMusic(context)
+        com.mammonrn.phoneaikiosk.radio.RadioPlayer.quietForMedia(context)
         // Something else asked for: a file playing on its own is let go of, not put back.
         before = null
         playlistId = playlist
@@ -123,6 +124,7 @@ object MusicPlayer {
     fun resume(context: Context) = run(context) { s ->
         if (HeatWatch.step.pause) { error = context.getString(R.string.video_heat_pause); changed(); return@run }
         VideoPlayer.quietForMusic(context)
+        com.mammonrn.phoneaikiosk.radio.RadioPlayer.quietForMedia(context)
         if (s.loaded) s.playNow() else s.load(queue.current, true)
     }
 
@@ -278,6 +280,7 @@ object MusicPlayer {
      */
     fun playSingle(context: Context, track: Track) = run(context) { s ->
         VideoPlayer.quietForMusic(context)
+        com.mammonrn.phoneaikiosk.radio.RadioPlayer.quietForMedia(context)
         if (before == null) {
             before = Before(queue.snapshot(), if (s.loaded) s.positionMs() else resumeAtMs, playlistId, s.loaded)
         }

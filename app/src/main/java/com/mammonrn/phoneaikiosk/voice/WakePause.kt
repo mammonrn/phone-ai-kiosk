@@ -39,6 +39,9 @@ object WakePause {
         MUSIC("เล่นเพลง"),
         VIDEO("เล่นวิดีโอ"),
 
+        /** The radio (0.61.0): lowered, not paused, while Jarvis is asked something. */
+        RADIO("เล่นวิทยุ"),
+
         /** The debug build's adb switch (TEST_MEDIA_HOLD); never used by a real player. */
         TEST("ทดสอบ"),
     }

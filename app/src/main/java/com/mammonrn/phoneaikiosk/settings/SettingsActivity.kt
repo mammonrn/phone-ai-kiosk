@@ -900,6 +900,10 @@ class SettingsActivity : Activity() {
             Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
                 it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java))
             },
+            // 0.61.0: the radio (radio/RadioActivity); it plays on when its screen closes.
+            Category(R.drawable.ic_pixel_radio, { it.getString(R.string.window_radio) }) {
+                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.radio.RadioActivity::class.java))
+            },
         )
     }
 }
