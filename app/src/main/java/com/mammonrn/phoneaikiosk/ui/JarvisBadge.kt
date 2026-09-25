@@ -184,6 +184,15 @@ object JarvisBadges {
     private const val NORTON_LIGHT = 0xFF5555FF.toInt()
     private const val NORTON_CYAN = 0xFF55FFFF.toInt()
 
+    /**
+     * Shows or hides the screen's badge (0.63.0, Poom: on a full-screen video it
+     * goes with the controls, so nothing sits on the picture while it plays).
+     */
+    fun show(activity: Activity, shown: Boolean) {
+        val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
+        content.findViewWithTag<View>(TAG_KEY)?.visibility = if (shown) View.VISIBLE else View.GONE
+    }
+
     /** Adds the badge over the screen, top right, once. */
     fun attach(activity: Activity) {
         val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return

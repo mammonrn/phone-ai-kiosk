@@ -344,6 +344,7 @@ class VideoService : Service(), WakePause.Media {
             // A picture that arrives after VLC started: its video output is opened again on it.
             if (fresh) vlc?.reopenVideo()
         } else { vlc?.attach(null); player.setVideoSurfaceView(v) }
+        logFrames(if (fresh) "attach-new" else "attach-same")
     }
 
     fun detachView(v: SurfaceView) {
@@ -352,7 +353,10 @@ class VideoService : Service(), WakePause.Media {
         vlc?.attach(null)
     }
 
-    fun vlcResized(width: Int, height: Int) { if (usingVlc) vlc?.resized(width, height) }
+    fun vlcResized(width: Int, height: Int) {
+        if (usingVlc) vlc?.resized(width, height)
+        logFrames("resized ${width}x$height")
+    }
 
     /** LibVLC's sound tracks or subtitles as the screen's choices; null when Media3 plays. */
     fun vlcChoices(type: Int): List<VideoPlayer.Choice>? {
@@ -389,7 +393,35 @@ class VideoService : Service(), WakePause.Media {
     private val saver = object : Runnable {
         override fun run() {
             savePlace()
+            logFrames("tick")
             handler.postDelayed(this, 5_000)
+        }
+    }
+
+    /**
+     * Pictures decoded and shown so far, from the engine itself (0.63.0: a .DAT
+     * played its sound on a black screen; a screenshot of a SurfaceView cannot
+     * tell a black picture from an uncaptured one, a count can). Numbers only:
+     * the engine, the counts, the surface's state and size. Every 5 s while a
+     * video is loaded, and at each turn, re-attach and switch of film.
+     */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    internal fun logFrames(why: String) {
+        if (loadedVideo == null) return
+        val v = view
+        val surface = if (v == null) "none" else
+            "${if (v.holder.surface?.isValid == true) "valid" else "invalid"} ${v.width}x${v.height}" +
+                " shown=${v.isShown}"
+        if (usingVlc) {
+            val (decoded, shown, lost) = vlc?.frameStats() ?: Triple(-1, -1, -1)
+            Log.i(TAG, "frames $why engine=vlc decoded=$decoded displayed=$shown lost=$lost" +
+                " vout=${vlc?.hasView() == true} surface=$surface")
+        } else {
+            val c = player.videoDecoderCounters
+            c?.ensureUpdated()
+            Log.i(TAG, "frames $why engine=media3 rendered=${c?.renderedOutputBufferCount ?: -1}" +
+                " dropped=${c?.droppedBufferCount ?: -1} skipped=${c?.skippedOutputBufferCount ?: -1}" +
+                " surface=$surface")
         }
     }
 

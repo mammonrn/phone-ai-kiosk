@@ -355,6 +355,20 @@ class VlcDeck(context: Context, private val events: Events, private val movie: B
         if (viewAttached && width > 0) player.vlcVout.setWindowSize(width, height)
     }
 
+    /**
+     * VLC's own counts for the file playing (0.63.0, the ".DAT: sound but a black
+     * screen" bug): pictures decoded, shown and lost. A picture that is decoded
+     * but never shown is a surface problem, not a file problem — and a count,
+     * unlike a screenshot, cannot be fooled by how SurfaceView is captured.
+     */
+    fun frameStats(): Triple<Int, Int, Int>? {
+        val s = player.media?.stats ?: return null
+        return Triple(s.decodedVideo, s.displayedPictures, s.lostPictures)
+    }
+
+    /** Whether a view is attached to VLC's video output now. */
+    fun hasView(): Boolean = viewAttached
+
     /** The picture's size as VLC laid it out (sample aspect applied); null before it is known. */
     private var shownSize: Pair<Int, Int>? = null
 

@@ -431,7 +431,15 @@ class VoiceService : Service() {
                         // (KioskScreens tracks them all). Only when home is
                         // not already in front, so a capture on the home
                         // screen starts no activity.
-                        alarmHandler.post { comeHome(VoiceState.turnWake.ifEmpty { "wake" }) }
+                        // EXCEPT an app's own Jarvis button (0.63.0, Poom):
+                        // asked from the music page, the answer comes there
+                        // and the page stays — its badge shows listening,
+                        // thinking and speaking.
+                        if (VoiceState.turnScreen in Broker.SCREENS) {
+                            Log.i(TAG, "staying on the app's screen screen=${VoiceState.turnScreen}")
+                        } else {
+                            alarmHandler.post { comeHome(VoiceState.turnWake.ifEmpty { "wake" }) }
+                        }
                     }
 
                     CaptureMachine.Step.CAPTURING -> recorder.appendPcm(buffer, frame, read)

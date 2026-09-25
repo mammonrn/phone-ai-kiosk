@@ -114,7 +114,8 @@ def test_what_every_question_pays_is_still_bounded():
     total = len(SYSTEM_PROMPT) + 1 + clock.MAX_LINE_CHARS + 1 + dashboard_mod.MAX_WEATHER_LINE_CHARS
     # 1,250 -> 1,290 when the prompt grew 1,046 -> 1,095 (persona.py says why).
     # 1,290 -> 1,340 when it grew 1,095 -> 1,143 for "unsure, not a guess" (0.43.0).
-    assert total <= 1340, total
+    # 1,340 -> 1,520 when it grew 1,143 -> 1,322 for the sentences that work (0.63.0).
+    assert total <= 1520, total
 
 
 def test_the_answer_rule_survives_any_cut(cfg):

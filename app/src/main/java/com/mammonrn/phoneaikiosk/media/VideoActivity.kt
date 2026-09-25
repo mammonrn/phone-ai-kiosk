@@ -286,6 +286,7 @@ class VideoActivity : Activity() {
     // ------------------------------------------------------------ the list
 
     private fun showList() {
+        com.mammonrn.phoneaikiosk.ui.JarvisBadges.show(this, true)
         // A video on its own has no list here: leaving it goes back to the file manager.
         if (singleMode) { finish(); return }
         // Back to the list stops the video: nothing plays where it cannot be seen (0.58.0).
@@ -387,6 +388,7 @@ class VideoActivity : Activity() {
     }
 
     private fun showLists() {
+        com.mammonrn.phoneaikiosk.ui.JarvisBadges.show(this, true)
         page = Page.LISTS
         generation += 1
         val body = listWindow()
@@ -643,6 +645,8 @@ class VideoActivity : Activity() {
         val v = if (on) View.VISIBLE else View.GONE
         topBar?.visibility = v
         panel?.visibility = v
+        // Jarvis's badge goes with the controls on the picture (0.63.0, Poom).
+        com.mammonrn.phoneaikiosk.ui.JarvisBadges.show(this, on)
         placeCue(on)
         if (on) poke() else handler.removeCallbacks(hide)
     }
