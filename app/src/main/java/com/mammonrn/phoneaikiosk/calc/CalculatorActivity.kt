@@ -103,6 +103,11 @@ class CalculatorActivity : Activity() {
         finish()
     }
 
+    /** The close button: back where this screen was opened from (ui/Origin, Poom 2026-09-25). */
+    private fun closeApp() {
+        com.mammonrn.phoneaikiosk.ui.Origin.close(this, "calculator-close")
+    }
+
     private fun goHome() {
         KioskScreens.leaveAllButHome("calculator-home")
         startActivity(Intent(this, MainActivity::class.java)
@@ -147,9 +152,9 @@ class CalculatorActivity : Activity() {
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
         bar.addView(FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_button)
-            contentDescription = getString(R.string.settings_home)
+            contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@CalculatorActivity)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { closeApp() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))

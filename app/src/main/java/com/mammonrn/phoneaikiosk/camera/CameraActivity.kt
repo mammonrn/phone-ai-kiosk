@@ -235,9 +235,9 @@ class CameraActivity : Activity(), LifecycleOwner {
         }, LinearLayout.LayoutParams(0, Retro.WRAP, 1f))
         bar.addView(FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_button)
-            contentDescription = getString(R.string.settings_home)
+            contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@CameraActivity)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { closeApp() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(r.dp(UiScale.ICON_M), r.dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(r.dp(UiScale.TOUCH), r.dp(UiScale.TOUCH)))
@@ -281,6 +281,11 @@ class CameraActivity : Activity(), LifecycleOwner {
     private fun say(words: String?) {
         status.text = words.orEmpty()
         status.visibility = if (words == null) View.GONE else View.VISIBLE
+    }
+
+    /** The close button: back where this screen was opened from (ui/Origin, Poom 2026-09-25). */
+    private fun closeApp() {
+        com.mammonrn.phoneaikiosk.ui.Origin.close(this, "camera-close")
     }
 
     private fun goHome() {

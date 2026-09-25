@@ -52,7 +52,7 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
  * own, and "back to the kiosk" is said explicitly.
  *
  * GROWS BY CATEGORY. The first page is the panel's icons, one per category
- * ([CATEGORIES]). A new kind of setting is a new entry there and a page of its
+ * ([GROUPS]). A new kind of setting is a new entry there and a page of its
  * own; nothing else here changes. DESIGN.md, "Control Panel", has the rules.
  *
  * Built in code rather than XML because every page is the same few 1995 parts
@@ -77,6 +77,9 @@ class SettingsActivity : Activity() {
     /** [label] is read each time the panel is drawn, so a switch can say its state. */
     private class Category(val icon: Int, val label: (SettingsActivity) -> String,
                            val open: (SettingsActivity) -> Unit)
+
+    /** A heading and its icons on the panel's first page. */
+    private class Group(val title: Int, val items: List<Category>)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -245,7 +248,11 @@ class SettingsActivity : Activity() {
             setBackgroundResource(R.drawable.retro_field)
             setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS))
         }
-        for (row in CATEGORIES.chunked(ICONS_PER_ROW)) {
+        for ((g, group) in GROUPS.withIndex()) {
+          grid.addView(label(getString(group.title)).apply {
+              setPadding(dp(UiScale.SPACE_XS), if (g == 0) 0 else dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_XS))
+          }, LinearLayout.LayoutParams(MATCH, WRAP))
+          for (row in group.items.chunked(ICONS_PER_ROW)) {
             val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             grid.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
             for ((index, category) in row.withIndex()) line.addView(LinearLayout(this).apply {
@@ -267,13 +274,14 @@ class SettingsActivity : Activity() {
                 line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
             }
         }
-        setPage(LinearLayout(this).apply {
+        }
+        setPage(ScrollView(this).apply { addView(LinearLayout(this@SettingsActivity).apply {
             orientation = LinearLayout.VERTICAL
             addView(grid, LinearLayout.LayoutParams(MATCH, WRAP))
             addView(text(getString(R.string.settings_hint), UiScale.TEXT_NOTE, dim = true).apply {
                 setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0)
             })
-        })
+        }) })
     }
 
     // -------------------------------------------------------------- alarms
@@ -869,45 +877,58 @@ class SettingsActivity : Activity() {
         private const val REQUEST_DELETE = 38
 
         /**
-         * The panel's categories, in order. ADD A SETTING HERE: an icon, a
-         * name, and the page it opens (DESIGN.md, "Control Panel").
+         * The panel's icons IN GROUPS (Poom 2026-09-25, CLAUDE.md 3ก), each under a
+         * short heading. ADD A SETTING HERE, in the group it belongs to: an icon, a
+         * name, and the page it opens (DESIGN.md 5ก). The order is the reason:
+         *  1. in the house and used most — the lights, the alarms, the torch — first,
+         *     on the first screen without scrolling;
+         *  2. media together; 3. tools together;
+         *  4. setting the phone up, with "ที่มาข้อมูล" always the very last icon.
          */
-        private val CATEGORIES = listOf(
-            Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
-            Category(R.drawable.ic_pixel_face, { it.getString(R.string.window_auth) }) { it.showAuth() },
-            Category(R.drawable.ic_pixel_sources, { it.getString(R.string.window_sources) }) { it.showSources() },
-            // 0.42.0: WiFi opens the system's panel for one visit (WifiPanel);
-            // the torch is a switch, and its label is its state.
-            Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
-            Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
-            // 0.44.0: the file manager, a screen of its own (files/FilesActivity).
-            Category(R.drawable.ic_pixel_folder, { it.getString(R.string.window_files) }) {
-                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.files.FilesActivity::class.java))
-            },
-            // 0.47.0: name the lights, allow each one, see its state. Kept on
-            // the VPS; this is where they are set up, not switched.
-            Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
-            // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).
-            Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
-                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java))
-            },
-            // 0.53.0: the music player. The music is in media/MusicService and
-            // plays on when this screen closes.
-            Category(R.drawable.ic_pixel_music, { it.getString(R.string.window_music) }) {
-                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
-            },
-            // 0.56.0: the video player (media/VideoActivity); the sound plays on when it closes.
-            Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
-                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java))
-            },
-            // 0.61.0: the phone's camera, for a photo (camera/CameraActivity).
-            Category(R.drawable.ic_pixel_camera, { it.getString(R.string.window_camera) }) {
-                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.camera.CameraActivity::class.java))
-            },
-            // 0.61.0: the voice recorder (recorder/RecorderActivity); the wake word rests while it records.
-            Category(R.drawable.ic_pixel_mic, { it.getString(R.string.window_recorder) }) {
-                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.recorder.RecorderActivity::class.java))
-            },
+        private val GROUPS = listOf(
+            Group(R.string.settings_group_home, listOf(
+                // 0.47.0: name the lights, allow each one, see its state. Kept on
+                // the VPS; this is where they are set up, not switched.
+                Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
+                Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
+                Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
+            )),
+            Group(R.string.settings_group_media, listOf(
+                // 0.53.0: the music player. The music is in media/MusicService and
+                // plays on when this screen closes.
+                Category(R.drawable.ic_pixel_music, { it.getString(R.string.window_music) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+                // 0.56.0: the video player (media/VideoActivity); the sound plays on when it closes.
+                Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+                // 0.61.0: the phone's camera, for a photo (camera/CameraActivity).
+                Category(R.drawable.ic_pixel_camera, { it.getString(R.string.window_camera) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.camera.CameraActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+                // 0.61.0: the voice recorder (recorder/RecorderActivity); the wake word rests while it records.
+                Category(R.drawable.ic_pixel_mic, { it.getString(R.string.window_recorder) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.recorder.RecorderActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+            )),
+            Group(R.string.settings_group_tools, listOf(
+                // 0.44.0: the file manager, a screen of its own (files/FilesActivity).
+                Category(R.drawable.ic_pixel_folder, { it.getString(R.string.window_files) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.files.FilesActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+                // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).
+                Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
+            )),
+            Group(R.string.settings_group_setup, listOf(
+                // 0.42.0: WiFi opens the system's panel for one visit (WifiPanel);
+                // the torch is a switch, and its label is its state.
+                Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
+                Category(R.drawable.ic_pixel_face, { it.getString(R.string.window_auth) }) { it.showAuth() },
+                Category(R.drawable.ic_pixel_sources, { it.getString(R.string.window_sources) }) { it.showSources() },
+            )),
         )
     }
 }

@@ -641,4 +641,13 @@
     <string name="gate_nothing_enrolled">ยังไม่ได้ลบ เพราะยังไม่ได้ตั้งใบหน้าหรือ pattern กรุณาตั้งในแผงควบคุม หน้ายืนยันตัวตน ก่อนลบ</string>
     <string name="gate_cancelled">ยังไม่ได้ลบ เพราะยกเลิกการยืนยันตัวตน</string>
     <string name="gate_failed">ยังไม่ได้ลบ เพราะยืนยันตัวตนไม่ผ่าน</string>
+    <!-- The close button (top right) says where it goes (ui/Origin, 0.61.0). -->
+    <string name="close_to_panel">ปิด กลับแผงควบคุม</string>
+    <string name="close_to_files">ปิด กลับตัวจัดการไฟล์</string>
+    <string name="close_to_home">ปิด กลับหน้าหลัก</string>
+    <!-- Control Panel groups (0.61.0, Poom: icons in groups, sources last). -->
+    <string name="settings_group_home">ในบ้านและใช้บ่อย</string>
+    <string name="settings_group_media">สื่อ</string>
+    <string name="settings_group_tools">เครื่องมือ</string>
+    <string name="settings_group_setup">ตั้งค่าและข้อมูล</string>
 </resources>

@@ -167,6 +167,11 @@ class DriveActivity : Activity() {
         }
     }
 
+    /** The close button: back where this screen was opened from (ui/Origin, Poom 2026-09-25). */
+    private fun closeApp() {
+        com.mammonrn.phoneaikiosk.ui.Origin.close(this, "drive-close")
+    }
+
     private fun goHome() {
         KioskScreens.leaveAllButHome("drive-home")
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
@@ -279,9 +284,9 @@ class DriveActivity : Activity() {
         bar.addView(titleText, LinearLayout.LayoutParams(0, WRAP, 1f))
         bar.addView(FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_button)
-            contentDescription = getString(R.string.settings_home)
+            contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@DriveActivity)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { closeApp() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(r.dp(UiScale.ICON_M), r.dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(r.dp(UiScale.TOUCH), r.dp(UiScale.TOUCH)))
@@ -604,8 +609,8 @@ class DriveActivity : Activity() {
     private fun play(kind: FileOps.Kind, file: File) {
         Log.i(TAG, "open one file: ${kind.name.lowercase()}")
         when (kind) {
-            FileOps.Kind.AUDIO -> startActivity(Intent(this, MusicActivity::class.java).putExtra(FilesActivity.SINGLE, Track.LOCAL + file.absolutePath))
-            FileOps.Kind.VIDEO -> startActivity(Intent(this, VideoActivity::class.java).putExtra(FilesActivity.SINGLE, Track.LOCAL + file.absolutePath))
+            FileOps.Kind.AUDIO -> startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(this, MusicActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.FILES).putExtra(FilesActivity.SINGLE, Track.LOCAL + file.absolutePath))
+            FileOps.Kind.VIDEO -> startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(this, VideoActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.FILES).putExtra(FilesActivity.SINGLE, Track.LOCAL + file.absolutePath))
             else -> startActivity(Intent(this, ImageViewerActivity::class.java).putExtra(FilesActivity.SINGLE, file.absolutePath))
         }
     }
@@ -724,5 +729,6 @@ class DriveActivity : Activity() {
 
         fun uploadIntent(context: Context, file: File): Intent =
             Intent(context, DriveActivity::class.java).putExtra(EXTRA_UPLOAD, file.absolutePath)
+                .putExtra(com.mammonrn.phoneaikiosk.ui.Origin.EXTRA, com.mammonrn.phoneaikiosk.ui.Origin.FILES)
     }
 }

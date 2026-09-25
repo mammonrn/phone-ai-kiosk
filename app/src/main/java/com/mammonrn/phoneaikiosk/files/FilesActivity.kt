@@ -196,6 +196,11 @@ class FilesActivity : Activity() {
     }
 
     /** To the kiosk screen, closing the Control Panel under this too. */
+    /** The close button: back where this screen was opened from (ui/Origin, Poom 2026-09-25). */
+    private fun closeApp() {
+        com.mammonrn.phoneaikiosk.ui.Origin.close(this, "files-close")
+    }
+
     private fun goHome() {
         KioskScreens.leaveAllButHome("files-home")
         startActivity(Intent(this, MainActivity::class.java)
@@ -240,9 +245,9 @@ class FilesActivity : Activity() {
         bar.addView(titleText, LinearLayout.LayoutParams(0, WRAP, 1f))
         bar.addView(FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_button)
-            contentDescription = getString(R.string.settings_home)
+            contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@FilesActivity)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { closeApp() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
@@ -329,7 +334,7 @@ class FilesActivity : Activity() {
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
             // 0.61.0: Google Drive, its own screen (drive/DriveActivity, DESIGN.md 5ฑ).
             list.addView(bigRow(R.drawable.ic_pixel_drive, getString(R.string.drive_root_name), getString(R.string.drive_root_sub)) {
-                startActivity(Intent(this, DriveActivity::class.java))
+                startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(this, DriveActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.FILES))
             }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_S) })
         } else {
             list.addView(text(getString(R.string.files_pick_open_folder), UiScale.TEXT_NOTE, dim = true).apply {
@@ -406,11 +411,11 @@ class FilesActivity : Activity() {
             when (FileOps.kindOfName(entry.name)) {
                 FileOps.Kind.AUDIO -> {
                     Log.i(TAG, "open one file: audio")
-                    startActivity(Intent(this@FilesActivity, MusicActivity::class.java).putExtra(SINGLE, id))
+                    startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(this@FilesActivity, MusicActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.FILES).putExtra(SINGLE, id))
                 }
                 FileOps.Kind.VIDEO -> {
                     Log.i(TAG, "open one file: video")
-                    startActivity(Intent(this@FilesActivity, VideoActivity::class.java).putExtra(SINGLE, id))
+                    startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(this@FilesActivity, VideoActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.FILES).putExtra(SINGLE, id))
                 }
                 FileOps.Kind.IMAGE -> if (source is LocalSource) {
                     Log.i(TAG, "open one file: picture")

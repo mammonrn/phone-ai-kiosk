@@ -269,6 +269,12 @@ class VideoActivity : Activity() {
         }
     }
 
+    /** The close button: back where this screen was opened from (ui/Origin, Poom 2026-09-25). */
+    private fun closeApp() {
+        stopForLeaving("close")
+        com.mammonrn.phoneaikiosk.ui.Origin.close(this, "video-close")
+    }
+
     private fun goHome() {
         stopForLeaving("home")
         KioskScreens.leaveAllButHome("video-home")
@@ -491,8 +497,8 @@ class VideoActivity : Activity() {
             addView(titleView, LinearLayout.LayoutParams(0, WRAP, 1f))
             addView(FrameLayout(context).apply {
                 background = DvdSkin.button(context); isClickable = true
-                contentDescription = getString(R.string.settings_home)
-                setOnClickListener { goHome() }
+                contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@VideoActivity)
+                setOnClickListener { closeApp() }
                 addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                         FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
             }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
@@ -730,9 +736,9 @@ class VideoActivity : Activity() {
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
         addView(FrameLayout(context).apply {
             setBackgroundResource(R.drawable.retro_button)
-            contentDescription = getString(R.string.settings_home)
+            contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@VideoActivity)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { closeApp() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))

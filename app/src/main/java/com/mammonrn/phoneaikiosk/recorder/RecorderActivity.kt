@@ -174,6 +174,12 @@ class RecorderActivity : Activity() {
     }
 
     /** To the kiosk screen, closing the Control Panel under this too (and stopping a recording). */
+    /** The close button: back where this screen was opened from (ui/Origin, Poom 2026-09-25). */
+    private fun closeApp() {
+        VoiceMemo.stop("screen-closed")
+        com.mammonrn.phoneaikiosk.ui.Origin.close(this, "recorder-close")
+    }
+
     private fun goHome() {
         VoiceMemo.stop("screen-closed")
         KioskScreens.leaveAllButHome("recorder-home")
@@ -219,9 +225,9 @@ class RecorderActivity : Activity() {
         bar.addView(titleText, LinearLayout.LayoutParams(0, WRAP, 1f))
         bar.addView(FrameLayout(this).apply {
             setBackgroundResource(R.drawable.retro_button)
-            contentDescription = getString(R.string.settings_home)
+            contentDescription = com.mammonrn.phoneaikiosk.ui.Origin.closeWords(this@RecorderActivity)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { closeApp() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(r.dp(UiScale.ICON_M), r.dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(r.dp(UiScale.TOUCH), r.dp(UiScale.TOUCH)))
