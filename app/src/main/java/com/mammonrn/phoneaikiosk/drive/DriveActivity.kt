@@ -137,7 +137,7 @@ class DriveActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             DriveAuth.REQUEST_CONSENT -> {
-                val s = DriveAuth.finishConsent(this, data)
+                val s = DriveAuth.finishConsent(this, data, resultCode)
                 if (s == DriveStatus.CONNECTED) show(Page.Folder(DrivePath.ROOT)) else show(Page.NotConnected(s))
             }
             IdentityGate.REQUEST -> {

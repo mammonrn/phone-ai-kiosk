@@ -959,6 +959,8 @@
 - log (`KioskDrive`) มีแค่ชนิดงาน สถานะ และรหัส HTTP ห้ามชื่อไฟล์ path บัญชี หรือ token
 
 **ขนาด APK:** `play-services-auth` เพิ่มราว 1 MB (ไลบรารีส่วนใหญ่ที่ต้องใช้มากับ ML Kit อยู่แล้ว) เรียก Drive ด้วย HttpURLConnection + org.json ไม่ใช้ google-api-client
+- **หน้าขออนุญาตของ Google (Poom อนุมัติ 2026-09-25):** `SIGN_IN_ALLOWED = true` Play services เข้า lock task เฉพาะตอนหน้านั้นเปิด ถอนทันทีเมื่อ Google ตอบ (เชื่อมเสร็จ) หรือยกเลิก หรือครบ 5 นาที (`CONSENT_MAX_MS` ปิดหน้าของ Google ด้วย) log `KioskDrive: consent allowlist added / withdrawn reason=answered|cancelled|timeout` และทุกครั้งที่หน้า Drive กลับมาหรือแอปเริ่ม รายการกลับเป็น 3 แพ็กเกจเดิม
+- **Cloud project:** ใช้ project เดิมของปฏิทิน (Poom แก้ 2026-09-25)
 ## 5ฏ. วิทยุ (0.61.0, Poom)
 
 **หน้าที่:** ฟังวิทยุออนไลน์ของไทย เข้าจากไอคอน "วิทยุ" ในแผงควบคุม (`radio/RadioActivity`) เล่นต่อในเบื้องหลังเหมือนเพลง

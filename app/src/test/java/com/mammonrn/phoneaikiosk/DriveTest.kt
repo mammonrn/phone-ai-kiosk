@@ -245,10 +245,18 @@ class DriveTest {
     }
 
     @Test
-    fun `Google's screen stays out of the kiosk until Poom approves`() {
-        assertFalse("Poom approves adding Play services to lock task first", DriveAuth.SIGN_IN_ALLOWED)
+    fun `Google's screen is in the kiosk only for a moment - approved by Poom, withdrawn on answer, cancel or 5 minutes`() {
+        // Poom approved (2026-09-25) Play services in the locked task for the consent screen only.
+        assertTrue(DriveAuth.SIGN_IN_ALLOWED)
+        assertEquals(5L * 60 * 1000, DriveAuth.CONSENT_MAX_MS)
         val auth = source("drive/DriveAuth.kt")
-        assertTrue("const val SIGN_IN_ALLOWED = false" in auth)
+        val allowBody = auth.substringAfter("fun allowConsentScreen(").substringBefore("\n    }")
+        assertTrue("timer.postDelayed(it, CONSENT_MAX_MS)" in allowBody)          // the 5-minute cap is armed with it
+        assertTrue("withdrawn(app, \"timeout\")" in allowBody)
+        val finish = auth.substringAfter("fun finishConsent(").substringBefore("\n    }")
+        assertTrue("\"answered\" else \"cancelled\"" in finish)                  // done or cancelled: withdrawn at once
+        val withdrawn = auth.substringAfter("private fun withdrawn(").substringBefore("\n    }")
+        assertTrue("timer.removeCallbacks" in withdrawn && "restoreAllowlist(context)" in withdrawn)
         val allow = auth.substringAfter("fun allowConsentScreen(").substringBefore("\n    }")
         assertTrue("if (!SIGN_IN_ALLOWED) return false" in allow)
         assertTrue(allow.indexOf("if (!SIGN_IN_ALLOWED) return false") < allow.indexOf("setLockTaskPackages"))
@@ -260,7 +268,7 @@ class DriveTest {
         // Put back on every Drive screen resume and after Google's answer.
         val screen = source("drive/DriveActivity.kt")
         assertTrue("DriveAuth.restoreAllowlist(this)" in screen.substringAfter("override fun onResume()").substringBefore("\n    }"))
-        assertTrue("restoreAllowlist(activity)" in auth.substringAfter("fun finishConsent(").substringBefore("\n    }"))
+        assertTrue("withdrawn(activity," in auth.substringAfter("fun finishConsent(").substringBefore("\n    }"))
         // The permanent list is untouched.
         assertEquals(3, LockTaskAllowlist.packages("self").size)
     }

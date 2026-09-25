@@ -69,7 +69,16 @@ object DriveAuth {
      * kiosk. False: "เชื่อมต่อ" explains that instead of opening anything, and
      * the allowlist is never touched. DriveTest holds it false.
      */
-    const val SIGN_IN_ALLOWED = false
+    const val SIGN_IN_ALLOWED = true
+
+    /**
+     * Poom (2026-09-25): Play services stays in the locked task for the consent
+     * screen only — withdrawn the moment it answers (connected or cancelled) or
+     * after this long, whichever comes first.
+     */
+    const val CONSENT_MAX_MS = 5L * 60 * 1000
+    private val timer = android.os.Handler(android.os.Looper.getMainLooper())
+    private var withdraw: Runnable? = null
 
     const val GMS_PACKAGE = "com.google.android.gms"
     /** Full Drive: list, open, upload, rename, and move to Drive's trash. Never deleted for good (DriveApi). */
@@ -191,6 +200,15 @@ object DriveAuth {
         if (dpm == null || !dpm.isDeviceOwnerApp(activity.packageName)) return false
         val admin = KioskDeviceAdminReceiver.componentName(activity)
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + GMS_PACKAGE)
+        val app = activity.applicationContext
+        withdraw?.let { timer.removeCallbacks(it) }
+        val shownBy = java.lang.ref.WeakReference(activity)
+        withdraw = Runnable {
+            // Google's screen closes too, not only its permission (it would be left on screen outside the list).
+            shownBy.get()?.let { a -> runCatching { a.finishActivity(REQUEST_CONSENT) } }
+            withdrawn(app, "timeout")
+        }.also { timer.postDelayed(it, CONSENT_MAX_MS) }
+        Log.i(TAG, "consent allowlist added for at most ${CONSENT_MAX_MS / 60_000} min")
         setDisconnected(activity, false)
         return try {
             activity.startIntentSenderForResult(pending.intentSender, REQUEST_CONSENT, null, 0, 0, 0)
@@ -198,7 +216,7 @@ object DriveAuth {
             true
         } catch (e: Exception) {
             Log.i(TAG, "consent refused ${e.javaClass.simpleName}")
-            restoreAllowlist(activity)
+            withdrawn(activity, "not-shown")
             false
         }
     }
@@ -206,9 +224,18 @@ object DriveAuth {
     /** The kiosk's own allowlist again: on every Drive screen resume and after the consent answers. */
     fun restoreAllowlist(context: Context) = WifiPanel.restore(context)
 
+    /** Play services out of the locked task again, the timer stopped, and why — in the log. */
+    private fun withdrawn(context: Context, why: String) {
+        withdraw?.let { timer.removeCallbacks(it) }
+        withdraw = null
+        restoreAllowlist(context)
+        Log.i(TAG, "consent allowlist withdrawn reason=$why")
+        if (why == "timeout") consent = null
+    }
+
     /** The consent screen's answer. Main thread is fine: no network. */
-    fun finishConsent(activity: Activity, data: Intent?): DriveStatus {
-        restoreAllowlist(activity)
+    fun finishConsent(activity: Activity, data: Intent?, resultCode: Int = Activity.RESULT_OK): DriveStatus {
+        withdrawn(activity, if (resultCode == Activity.RESULT_OK) "answered" else "cancelled")
         consent = null
         val outcome = try {
             take(Identity.getAuthorizationClient(activity).getAuthorizationResultFromIntent(data))
