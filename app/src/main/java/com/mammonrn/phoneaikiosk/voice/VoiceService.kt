@@ -372,7 +372,7 @@ class VoiceService : Service() {
                                                         VoiceState.wakeScore)
                     // Something has to tell the person it heard them, or the
                     // only feedback is an answer several seconds later.
-                    acknowledge()
+                    acknowledge(byButton = false)
                     // A button press in the same frame must not beep twice.
                     ackOnStart = false
                     Log.i(TAG, "beep %d ms after the best score"
@@ -415,7 +415,7 @@ class VoiceService : Service() {
                         // and "ฟังอยู่ครับ" now, as a wake word would have.
                         if (ackOnStart) {
                             ackOnStart = false
-                            acknowledge()
+                            acknowledge(byButton = true)
                         }
                         VoiceState.stt = "recording"
                         // Logged at the start as well, so the calibration is
@@ -1076,7 +1076,13 @@ class VoiceService : Service() {
      * no file, and it plays on the notification stream so it does not fight the
      * answer for the music stream.
      */
-    private fun acknowledge() {
+    /**
+     * [byButton]: the Jarvis button beeps; the wake word does NOT (Poom,
+     * 2026-09-25) — measured on the A07, the tone lands right before the first
+     * syllable and "พรุ่งนี้" came out wrong 4 of 4 times with it, 4 of 5 right
+     * without. The screen says "listening" instead (MainActivity.showListening).
+     */
+    private fun acknowledge(byButton: Boolean) {
         VoiceState.lastCancel = ""
         VoiceState.heard = ""
         VoiceState.reply = ""
@@ -1086,7 +1092,7 @@ class VoiceService : Service() {
         // so the screen is already there by the time the question starts. See
         // ScreenWaker; a failure here must not cost the turn.
         runCatching { ScreenWaker.wakeIfAsleep(this) }
-        if (VoiceState.beep) runCatching {
+        if (byButton || VoiceState.beep) runCatching {
             if (tone == null) {
                 tone = android.media.ToneGenerator(
                     android.media.AudioManager.STREAM_NOTIFICATION, TONE_VOLUME,

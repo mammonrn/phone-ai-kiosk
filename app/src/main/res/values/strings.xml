@@ -131,7 +131,7 @@
     <string name="data_unavailable">ข้อมูลไม่พร้อม</string>
 
     <string name="jarvis_ready">จาร์วิส · พร้อมฟัง</string>
-    <string name="jarvis_listening">จาร์วิส · กำลังฟัง</string>
+    <string name="jarvis_listening">● จาร์วิส · กำลังฟัง พูดได้เลย</string>
     <string name="jarvis_thinking">จาร์วิส · กำลังคิด</string>
     <string name="jarvis_speaking">จาร์วิส · กำลังพูด</string>
     <string name="jarvis_offline">จาร์วิส · ยังไม่พร้อม</string>

@@ -42,11 +42,12 @@ object VoiceState : VoiceSink {
     @Volatile var preRoll: Boolean = true
 
     /**
-     * The wake acknowledgement tone. On by default; the debug build's TEST_BEEP
-     * switches it off to measure whether it covers the question's first
-     * syllable (0.61.0, DESIGN 11ก). Forgotten on restart (on again).
+     * The tone after the WAKE WORD too. Off (Poom, 2026-09-25: it spoiled the
+     * first syllable; the Jarvis button still beeps). The debug build's
+     * TEST_BEEP --es value on brings it back to measure before/after.
+     * Forgotten on restart (off again).
      */
-    @Volatile var beep: Boolean = true
+    @Volatile var beep: Boolean = false
 
     /**
      * Keep the last question's audio in the app's files (files/last_capture.wav,
@@ -257,7 +258,7 @@ object VoiceState : VoiceSink {
         appendLine("  detections : $detections")
         appendLine("  wake-only  : ${if (wakeOnly) "ON — no STT, chat or TTS" else "off"}")
         appendLine("  pre-roll   : ${if (preRoll) "on" else "OFF (TEST_PREROLL)"} last=${lastPreRollMs} ms")
-        if (!beep) appendLine("  beep       : OFF (TEST_BEEP)")
+        if (beep) appendLine("  beep       : ON after the wake word too (TEST_BEEP)")
         if (keepCapture) appendLine("  keep-capture: ON (TEST_KEEP_CAPTURE) - files/last_capture.wav")
         if (lastCancel.isNotEmpty()) appendLine("  last-cancel: $lastCancel")
         appendLine("  last-action: $lastAction")

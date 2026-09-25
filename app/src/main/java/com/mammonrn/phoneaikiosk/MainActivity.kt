@@ -264,6 +264,7 @@ class MainActivity : Activity() {
                 getString(R.string.jarvis_offline),
                 resting?.let { getString(R.string.jarvis_resting, it.word) },
             )
+            showListening(VoiceState.stt == "recording" && jarvisState.text == getString(R.string.jarvis_listening))
             handler.postDelayed(this, 1_000L)
         }
     }
@@ -1468,6 +1469,28 @@ class MainActivity : Activity() {
      * Shown because misheard Thai is the most common failure in the voice path,
      * and the person standing there is the only one who can catch it.
      */
+    private var listeningShown = false
+
+    /**
+     * NO BEEP AFTER THE WAKE WORD (Poom, 2026-09-25: the tone spoiled the first
+     * syllable — "พรุ่งนี้" misheard 4 of 4 times with it, right 4 of 5 without),
+     * so the screen has to say it instead, plainly: while Jarvis listens the
+     * card's title bar turns gold with black words "● จาร์วิส · กำลังฟัง พูดได้เลย"
+     * — a colour change AND a dot and words, never the colour alone.
+     */
+    private fun showListening(on: Boolean) {
+        if (on == listeningShown) return
+        listeningShown = on
+        val bar = jarvisState.parent as android.view.View
+        if (on) {
+            bar.setBackgroundColor(ContextCompat.getColor(this, R.color.retro_badge))
+            jarvisState.setTextColor(ContextCompat.getColor(this, R.color.retro_text))
+        } else {
+            bar.setBackgroundResource(R.drawable.retro_titlebar)
+            jarvisState.setTextColor(ContextCompat.getColor(this, R.color.retro_title_text))
+        }
+    }
+
     private fun transcriptLine(): String = buildString {
         // THE WAKE WORD HAS TO BE VISIBLE THE MOMENT IT LANDS. Before this, the
         // only sign the kiosk had heard you was the answer several seconds
