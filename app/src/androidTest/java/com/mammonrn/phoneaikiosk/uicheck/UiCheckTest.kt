@@ -71,17 +71,43 @@ class UiCheckTest {
 
     // ------------------------------------------------------------ moving about
 
-    /** The screen in front, never one on its way out. */
+    /**
+     * The screen in front: the Activity behind the window that has the focus,
+     * read from the window manager's own list of this process's windows.
+     *
+     * NOT from activity bookkeeping: the home screen is singleInstance and on the
+     * A07 both the test framework's monitor and the kiosk's own record named a
+     * home screen that was not the one on show. The window with the focus is.
+     * (Needs `am instrument --no-hidden-api-checks`, which scripts/ui-check passes.)
+     */
     private fun top(): Activity? {
-        // The test framework's own record of what is resumed (the kiosk's reference
-        // could still name a home screen on its way out).
         var found: Activity? = null
         inst.runOnMainSync {
-            found = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
-                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).firstOrNull { !it.isFinishing }
+            val roots = runCatching {
+                val wmg = Class.forName("android.view.WindowManagerGlobal")
+                val global = wmg.getMethod("getInstance").invoke(null)
+                @Suppress("UNCHECKED_CAST")
+                (wmg.getDeclaredField("mViews").apply { isAccessible = true }.get(global) as List<View>).toList()
+            }.getOrDefault(emptyList())
+            val shown = roots.filter { it.isShown && it.windowVisibility == View.VISIBLE }
+            val root = shown.lastOrNull { it.hasWindowFocus() } ?: shown.lastOrNull()
+            found = root?.let { activityOf(it) }
         }
-        // The home screen is singleInstance and can predate the monitor: the kiosk's own record then.
-        return found ?: KioskScreens.resumed?.get()?.takeUnless { it.isFinishing }
+        return found
+    }
+
+    private fun activityOf(root: View): Activity? {
+        fun unwrap(c: android.content.Context?): Activity? {
+            var x = c
+            while (x is android.content.ContextWrapper) {
+                if (x is Activity) return x
+                x = x.baseContext
+            }
+            return null
+        }
+        unwrap(root.context)?.let { return it }
+        if (root is ViewGroup) for (i in 0 until root.childCount) unwrap(root.getChildAt(i).context)?.let { return it }
+        return null
     }
 
     private fun settle(ms: Long = 900) {
@@ -96,19 +122,13 @@ class UiCheckTest {
      *
      * NEVER STARTED BY CLASS. The home screen is singleInstance in the home task;
      * started from here it opened a SECOND one in a new task and lock task went
-     * off for ten seconds (seen on the A07, 2026-09-25). Only when there is no
-     * home screen at all is it asked for the system's way (the HOME intent),
-     * which goes to the existing home task.
+     * off for ten seconds (seen on the A07, 2026-09-25); asked for with the HOME
+     * intent from here, lock task went off for fourteen. So the walk never starts
+     * it: the kiosk's own home screen is what is left when the others close.
      */
     private fun home() {
         inst.runOnMainSync { KioskScreens.leaveAllButHome("ui-check") }
-        if (!waitFor("MainActivity", 4000)) {
-            inst.runOnMainSync {
-                ctx.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                    .setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            waitFor("MainActivity")
-        }
+        waitFor("MainActivity")
         settle(1500)
     }
 

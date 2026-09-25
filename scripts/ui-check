@@ -44,7 +44,8 @@ fi
 echo "walking every screen…"
 adb logcat -c
 # ONLY=home,calc   only the screens whose names start with those
-adb shell am instrument -w ${ONLY:+-e only "$ONLY"} -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
+# --no-hidden-api-checks: the walk reads the window manager's list of windows (UiCheckTest.top).
+adb shell am instrument -w --no-hidden-api-checks ${ONLY:+-e only "$ONLY"} -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" | tail -4
 
 # The walk ends on the home screen; the instrumentation's end stops the app's
