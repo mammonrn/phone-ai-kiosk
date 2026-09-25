@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0, the calculator's metals): แร่เหล็ก: ก้อนหินขรุขระ. 16x16, rectangles only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M6,3h3v1h-3z M4,4h2v1h-2z M9,4h2v1h-2z M3,5h1v1h-1z M10,5h1v1h-1z M12,5h2v1h-2z M2,6h1v1h-1z M11,6h1v1h-1z M14,6h1v1h-1z M2,7h1v1h-1z M15,7h1v1h-1z M1,8h1v1h-1z M15,8h1v1h-1z M1,9h1v1h-1z M15,9h1v1h-1z M1,10h1v1h-1z M15,10h1v1h-1z M2,11h1v1h-1z M14,11h1v1h-1z M3,12h3v1h-3z M10,12h4v1h-4z M6,13h4v1h-4z" />
+    <path android:fillColor="#7A3F2A" android:pathData="M6,5h4v1h-4z M4,6h6v1h-6z M4,7h2v1h-2z M8,7h7v1h-7z M3,8h8v1h-8z M12,8h3v1h-3z M2,9h2v1h-2z M5,9h9v1h-9z M2,10h7v1h-7z M10,10h5v1h-5z M4,11h8v1h-8z" />
+    <path android:fillColor="#B06040" android:pathData="M6,4h3v1h-3z M4,5h2v1h-2z M3,6h1v1h-1z M12,6h2v1h-2z M3,7h1v1h-1z M2,8h1v1h-1z" />
+    <path android:fillColor="#3A1E14" android:pathData="M10,6h1v1h-1z M6,7h2v1h-2z M11,8h1v1h-1z M4,9h1v1h-1z M14,9h1v1h-1z M9,10h1v1h-1z M3,11h1v1h-1z M12,11h2v1h-2z M6,12h4v1h-4z" />
+</vector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0, the calculator's metals): สังกะสี: แผ่นลอน. 16x16, rectangles only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M0,4h1v1h-1z M3,4h2v1h-2z M7,4h2v1h-2z M11,4h2v1h-2z M15,4h1v1h-1z M0,5h1v1h-1z M2,5h1v1h-1z M5,5h1v1h-1z M7,5h1v1h-1z M10,5h1v1h-1z M12,5h1v1h-1z M15,5h1v1h-1z M0,6h2v1h-2z M6,6h1v1h-1z M11,6h1v1h-1z M15,6h1v1h-1z M0,7h1v1h-1z M6,7h1v1h-1z M11,7h1v1h-1z M15,7h1v1h-1z M0,8h1v1h-1z M6,8h1v1h-1z M11,8h1v1h-1z M15,8h1v1h-1z M0,9h16v1h-16z" />
+    <path android:fillColor="#8098A8" android:pathData="M3,6h3v1h-3z M8,6h3v1h-3z M13,6h2v1h-2z M2,7h4v1h-4z M7,7h4v1h-4z M12,7h3v1h-3z M1,8h5v1h-5z M7,8h4v1h-4z M12,8h3v1h-3z" />
+    <path android:fillColor="#D0E0EC" android:pathData="M3,5h2v1h-2z M8,5h2v1h-2z M13,5h2v1h-2z M2,6h1v1h-1z M7,6h1v1h-1z M12,6h1v1h-1z M1,7h1v1h-1z" />
+</vector>

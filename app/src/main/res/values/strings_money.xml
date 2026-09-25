@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The calculator's "ราคา" tab (0.61.0, calc/RatesPages): currencies and metals. -->
+<resources>
+    <string name="calc_tab_prices">ราคา</string>
+    <string name="money_slide_currency">แปลงค่าเงิน</string>
+    <string name="money_slide_metals">โลหะและแร่</string>
+    <string name="money_amount">จำนวนเงิน</string>
+    <string name="money_from">จากสกุล</string>
+    <string name="money_to">เป็นสกุล</string>
+    <string name="money_swap">⇅ สลับต้นทางกับปลายทาง</string>
+    <string name="money_choose_desc">%1$s แตะเพื่อเปลี่ยนสกุลเงิน</string>
+    <string name="money_formula">สูตร: จำนวน ÷ อัตราต่อ 1 ดอลลาร์ของสกุลต้นทาง × อัตราต่อ 1 ดอลลาร์ของสกุลปลายทาง</string>
+    <string name="money_bad_amount">จำนวนเงินต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป</string>
+    <string name="money_not_at_source">แหล่งข้อมูลนี้ไม่มีอัตราของ %1$s หรือ %2$s</string>
+    <string name="money_no_numbers">ยังไม่มีข้อมูลราคา จึงยังไม่แสดงตัวเลข</string>
+    <string name="money_no_numbers_short">ยังไม่มีข้อมูล</string>
+    <string name="money_pick_from">เลือกสกุลเงินต้นทาง แตะ ☆ เพื่อปักหมุดไว้บนสุด</string>
+    <string name="money_pick_to">เลือกสกุลเงินปลายทาง แตะ ☆ เพื่อปักหมุดไว้บนสุด</string>
+    <string name="money_pick_metal">เลือกสกุลเงินที่ใช้แสดงราคาโลหะ แตะ ☆ เพื่อปักหมุดไว้บนสุด</string>
+    <string name="money_search_hint">ค้นหา เช่น เยน, Japan, JPY</string>
+    <string name="money_none_found">ไม่พบสกุลเงินที่ค้นหา</string>
+    <string name="money_more">และอีก %1$d สกุล พิมพ์ค้นหาเพื่อดูเพิ่ม</string>
+    <string name="money_pin">ปักหมุด %1$s</string>
+    <string name="money_unpin">เลิกปักหมุด %1$s</string>
+    <string name="money_quantity">น้ำหนัก</string>
+    <string name="money_unit_ounce">ออนซ์ทรอย</string>
+    <string name="money_unit_gram">กรัม</string>
+    <string name="money_unit_kilogram">กิโลกรัม</string>
+    <string name="money_unit_baht">บาททอง</string>
+    <string name="money_gold_purity">ความบริสุทธิ์ของทองคำ</string>
+    <string name="money_purity_pure">99.99%</string>
+    <string name="money_purity_thai">96.5%</string>
+    <string name="money_show_in">แสดงราคาเป็นสกุล</string>
+    <string name="money_bad_quantity">น้ำหนักต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป</string>
+    <string name="money_no_free_source">ยังไม่มีแหล่งราคาฟรี</string>
+    <string name="money_metal_note">ราคานี้เป็นราคาตลาดโลกอ้างอิง ไม่ใช่ราคาซื้อขายหน้าร้าน ต่อน้ำหนักที่กรอก (%1$s) · บาททอง = 15.244 กรัม · ลำดับ 1–5 ตามมูลค่าตลาด 6–10 ตามมูลค่าการผลิตต่อปี</string>
+    <string name="money_fetching">กำลังดึงราคาล่าสุด…</string>
+    <string name="money_fetching_button">กำลังดึงราคา…</string>
+    <string name="money_refresh">อัปเดตราคาตอนนี้</string>
+    <string name="money_nothing_yet">ยังไม่มีข้อมูลราคา ต่ออินเทอร์เน็ตไม่ได้ทั้ง 3 แหล่ง กด “อัปเดตราคาตอนนี้” เมื่อมีอินเทอร์เน็ต</string>
+    <string name="money_source">ที่มา: %1$s · ราคาของวันที่ %2$s</string>
+    <string name="money_fetched">ดึงข้อมูลเมื่อ %1$s (%2$s)</string>
+    <string name="money_age_now">ไม่ถึง 1 ชั่วโมงที่แล้ว</string>
+    <string name="money_age_hours">%1$d ชั่วโมงที่แล้ว</string>
+    <string name="money_age_days">%1$d วันที่แล้ว</string>
+    <string name="money_offline_old">ต่ออินเทอร์เน็ตไม่ได้ ตัวเลขนี้เป็นข้อมูลเก่าที่เก็บไว้</string>
+    <string name="money_refresh_failed">อัปเดตไม่สำเร็จ ยังใช้ข้อมูลเดิมที่เก็บไว้</string>
+    <string name="money_src_jsdelivr">exchange-api (fawazahmed0) ผ่าน jsDelivr</string>
+    <string name="money_src_pages">exchange-api (fawazahmed0) ผ่าน currency-api.pages.dev (ลิงก์สำรอง)</string>
+    <string name="money_src_frankfurter">Frankfurter (อัตราอ้างอิงธนาคารกลางยุโรป, ไม่มีราคาโลหะ)</string>
+    <string name="metal_gold">ทองคำ</string>
+    <string name="metal_copper">ทองแดง</string>
+    <string name="metal_silver">เงิน</string>
+    <string name="metal_platinum">แพลทินัม</string>
+    <string name="metal_palladium">แพลเลเดียม</string>
+    <string name="metal_iron_ore">แร่เหล็ก</string>
+    <string name="metal_aluminium">อะลูมิเนียม</string>
+    <string name="metal_nickel">นิกเกิล</string>
+    <string name="metal_zinc">สังกะสี</string>
+    <string name="metal_lithium">ลิเทียม</string>
+</resources>

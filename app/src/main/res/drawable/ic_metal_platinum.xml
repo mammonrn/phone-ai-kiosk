@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0, the calculator's metals): แพลทินัม: แผ่นแบนมีมุมตัด. 16x16, rectangles only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M3,3h10v1h-10z M2,4h1v1h-1z M13,4h1v1h-1z M1,5h1v1h-1z M14,5h1v1h-1z M1,6h1v1h-1z M14,6h1v1h-1z M1,7h1v1h-1z M14,7h1v1h-1z M1,8h1v1h-1z M14,8h1v1h-1z M1,9h1v1h-1z M14,9h1v1h-1z M2,10h1v1h-1z M13,10h1v1h-1z M3,11h10v1h-10z" />
+    <path android:fillColor="#D8DEE8" android:pathData="M3,5h10v1h-10z M3,6h10v1h-10z M3,7h10v1h-10z M3,8h10v1h-10z M3,9h10v1h-10z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M3,4h10v1h-10z M2,5h1v1h-1z M2,6h1v1h-1z M2,7h1v1h-1z M2,8h1v1h-1z M2,9h1v1h-1z" />
+    <path android:fillColor="#8090A0" android:pathData="M13,5h1v1h-1z M13,6h1v1h-1z M13,7h1v1h-1z M13,8h1v1h-1z M13,9h1v1h-1z M3,10h10v1h-10z" />
+</vector>

@@ -354,6 +354,15 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "keep capture ${if (on) "ON" else "off"}")
             }
 
+            ACTION_RATES -> {
+                // 0.61.0: the calculator's price sources made to fail, to see the next one
+                // taken. --es fail jsdelivr,pages (or "none"). Forgotten on restart.
+                val names = intent.getStringExtra("fail").orEmpty().lowercase().split(',').map { it.trim() }
+                com.mammonrn.phoneaikiosk.calc.RateStore.failForTest = com.mammonrn.phoneaikiosk.calc.Money.Source.entries
+                    .filter { it.name.lowercase() in names }.toSet()
+                android.util.Log.i("KioskRates", "test fail=" + com.mammonrn.phoneaikiosk.calc.RateStore.failForTest.joinToString(",") { it.name.lowercase() })
+            }
+
             ACTION_BEEP -> {
                 // Is the first syllable lost under the wake tone? (0.61.0, DESIGN 11ก)
                 // --es value off, play the same clip N times, --es value on, again.
@@ -475,6 +484,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_WAKE_ONLY = "com.mammonrn.phoneaikiosk.TEST_WAKE_ONLY"
         const val ACTION_PREROLL = "com.mammonrn.phoneaikiosk.TEST_PREROLL"
         const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
+        const val ACTION_RATES = "com.mammonrn.phoneaikiosk.TEST_RATES"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"

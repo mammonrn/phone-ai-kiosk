@@ -52,11 +52,12 @@ class CalculatorActivity : Activity() {
     private lateinit var content: FrameLayout
     private val tabs = ArrayList<TextView>()
 
-    internal enum class Tab { KEYPAD, ELECTRICAL, SOLAR, HISTORY }
+    internal enum class Tab { KEYPAD, ELECTRICAL, SOLAR, PRICES, HISTORY }
     internal var tab = Tab.KEYPAD
 
     internal val electrical by lazy { ElectricalPages(this) }
     internal val solar by lazy { SolarPages(this) }
+    internal val prices by lazy { RatesPages(this) }
 
     /** The solar slides' squares (■ □), in the title bar beside the title: they cost no height (DESIGN.md 5จ). */
     internal lateinit var pageDots: LinearLayout
@@ -178,6 +179,7 @@ class CalculatorActivity : Activity() {
                 Tab.KEYPAD -> R.string.calc_tab_keypad
                 Tab.ELECTRICAL -> R.string.calc_tab_electrical
                 Tab.SOLAR -> R.string.calc_tab_solar
+                Tab.PRICES -> R.string.calc_tab_prices
                 Tab.HISTORY -> R.string.calc_tab_history
             })
             val view = TextView(this).apply {
@@ -214,6 +216,7 @@ class CalculatorActivity : Activity() {
             Tab.KEYPAD -> showKeypad()
             Tab.ELECTRICAL -> electrical.open()
             Tab.SOLAR -> solar.open()
+            Tab.PRICES -> prices.open()
             Tab.HISTORY -> showHistory()
         }
     }

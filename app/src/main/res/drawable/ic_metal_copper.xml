@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0, the calculator's metals): ทองแดง: ขดลวดสามรอบ. 16x16, rectangles only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M3,2h10v1h-10z M2,3h1v1h-1z M13,3h1v1h-1z M2,4h1v1h-1z M4,4h8v1h-8z M13,4h1v1h-1z M2,5h1v1h-1z M13,5h1v1h-1z M2,6h1v1h-1z M13,6h1v1h-1z M2,7h1v1h-1z M4,7h8v1h-8z M13,7h1v1h-1z M2,8h1v1h-1z M13,8h1v1h-1z M2,9h1v1h-1z M13,9h1v1h-1z M2,10h1v1h-1z M4,10h8v1h-8z M13,10h1v1h-1z M2,11h1v1h-1z M13,11h1v1h-1z M3,12h10v1h-10z" />
+    <path android:fillColor="#B85C1E" android:pathData="M3,4h1v1h-1z M12,4h1v1h-1z M3,5h10v1h-10z M3,7h1v1h-1z M12,7h1v1h-1z M3,8h10v1h-10z M3,10h1v1h-1z M12,10h1v1h-1z M3,11h10v1h-10z" />
+    <path android:fillColor="#F0A070" android:pathData="M3,3h10v1h-10z M3,6h10v1h-10z M3,9h10v1h-10z" />
+</vector>

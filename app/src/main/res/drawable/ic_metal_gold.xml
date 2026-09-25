@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0, the calculator's metals): ทองคำ: แท่งทองรูปคางหมู. 16x16, rectangles only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M4,4h8v1h-8z M3,5h1v1h-1z M12,5h1v1h-1z M3,6h1v1h-1z M13,6h1v1h-1z M2,7h1v1h-1z M14,7h1v1h-1z M2,8h1v1h-1z M15,8h1v1h-1z M1,9h1v1h-1z M1,10h15v1h-15z" />
+    <path android:fillColor="#E0B000" android:pathData="M5,6h8v1h-8z M4,7h10v1h-10z M3,8h12v1h-12z M2,9h14v1h-14z" />
+    <path android:fillColor="#FFF08A" android:pathData="M4,5h8v1h-8z M4,6h1v1h-1z M3,7h1v1h-1z" />
+</vector>
