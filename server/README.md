@@ -4,8 +4,8 @@ The only thing the kiosk phone is allowed to talk to. Phase 2: it takes a Thai
 question over HTTPS, asks Claude Haiku, and returns a short answer meant to be
 read aloud. It has no tools and returns `action: null` on every response.
 
-**Running in production** on 45.76.157.64 since 22 Sep 2026, behind
-`kiosk.xn--l3cgts1b3bzcvf.com`. Verified end to end from a Windows machine over
+**Running in production** on <IP ของ VPS> since 22 Sep 2026, behind
+`kiosk.<โดเมน>`. Verified end to end from a Windows machine over
 real HTTPS: a valid token gets a Thai reply with `action: null`, no token and a
 wrong token both get 401, `/` gets 404, and plain HTTP redirects. The API key is
 readable only by `kioskbroker` — `linuxuser` gets Permission denied, which is

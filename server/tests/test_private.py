@@ -69,7 +69,7 @@ def test_a_file_moved_to_another_name_does_not_open(tmp_path):
 # ============================================================ google auth
 
 CLIENT = google_auth.Client("client-id-value", "client-secret-value")
-BASE = "https://kiosk.xn--l3cgts1b3bzcvf.com"
+BASE = "https://kiosk.example.com"
 
 
 def _state_from(url):

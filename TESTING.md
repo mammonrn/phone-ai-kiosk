@@ -470,7 +470,7 @@ mic=open wake=listening stt=ok chat=ok tts=ok
 ชี้ไปเซิร์ฟเวอร์อื่นชั่วคราว (เช่นทดสอบกับ staging):
 
 ```powershell
-adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "https://kiosk.xn--l3cgts1b3bzcvf.com"
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_BROKER --es url "https://kiosk.<โดเมน>"
 ```
 
 ### ความหมายของแต่ละสถานะ
@@ -1593,7 +1593,7 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SET_SILENCE `
 
 1. VPS รันโค้ดรุ่นไหน — ต้องไม่ใช่รุ่นก่อน `f6ed1e3`:
    ```powershell
-   curl.exe -s https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+   curl.exe -s https://kiosk.<โดเมน>/healthz
    # {"status": "ok", "build": "<commit>"}   ไม่มี "build" = ยังไม่ได้ deploy รุ่นนี้
    ```
 2. บนจอ: กล่องจาร์วิสแสดง `ได้ยิน: …` ค้างไว้ 1 นาทีหลังจบแต่ละรอบ — ดูว่าระบบ

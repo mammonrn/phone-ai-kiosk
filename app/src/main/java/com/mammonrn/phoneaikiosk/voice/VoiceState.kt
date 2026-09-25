@@ -12,7 +12,8 @@ package com.mammonrn.phoneaikiosk.voice
 object VoiceState : VoiceSink {
 
     /** Where the broker is. Overridable for a staging host over adb. */
-    @Volatile var brokerBaseUrl: String = "https://kiosk.xn--l3cgts1b3bzcvf.com"
+    /** From the build (CI secret KIOSK_BROKER_URL, app/build.gradle.kts): no domain in the public repo. */
+    @Volatile var brokerBaseUrl: String = com.mammonrn.phoneaikiosk.BuildConfig.BROKER_URL
 
     @Volatile var mic: String = "off"
     @Volatile var detector: String = "unknown"

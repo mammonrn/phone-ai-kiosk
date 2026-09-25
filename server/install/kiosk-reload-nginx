@@ -21,7 +21,8 @@
 # Read what it did with:  journalctl -t kiosk-cert-hook
 set -euo pipefail
 
-DOMAIN=kiosk.xn--l3cgts1b3bzcvf.com
+# Filled in by install.sh from this server's kiosk domain (never in the repo).
+DOMAIN=__KIOSK_DOMAIN__
 TAG=kiosk-cert-hook
 
 # Every line goes to the journal and to stdout: the journal is what survives,

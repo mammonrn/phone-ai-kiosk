@@ -7,6 +7,14 @@ plugins {
     alias(libs.plugins.paparazzi)
 }
 
+// The broker's address (0.63.0, Poom: no domain in this public repo): from the CI
+// secret KIOSK_BROKER_URL, or -PkioskBrokerUrl=... for a build on the PC. CI refuses
+// to build an APK without it (build-apk.yml), so a kiosk can never get one with no
+// broker to talk to.
+val kioskBrokerUrl: String = providers.environmentVariable("KIOSK_BROKER_URL")
+    .orElse(providers.gradleProperty("kioskBrokerUrl")).getOrElse("")
+    .also { require(it.isEmpty() || Regex("^https://[a-z0-9.-]+/?$").matches(it)) { "KIOSK_BROKER_URL must be https://host" } }
+
 android {
     // COMPRESSED dex and native libraries (2026-09-23). With minSdk 28+ AGP
     // stores classes.dex uncompressed, and it stores .so files uncompressed
@@ -28,6 +36,10 @@ android {
     namespace = "com.mammonrn.phoneaikiosk"
     compileSdk = 37
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.mammonrn.phoneaikiosk"
         // minSdk 29 (Android 10) since 2026-09-23, Poom's decision: the Google
@@ -35,6 +47,8 @@ android {
         // Android 16, so nothing it runs is lost; 26 was the floor before.
         minSdk = 29
         targetSdk = 36
+
+        buildConfigField("String", "BROKER_URL", "\"${kioskBrokerUrl.trimEnd('/')}\"")
 
         versionCode = 78
         versionName = "0.61.0"

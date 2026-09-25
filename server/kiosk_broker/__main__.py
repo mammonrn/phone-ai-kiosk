@@ -544,7 +544,7 @@ def _botnoi_voices(conn, cfg, args) -> int:
     print("something this code knows, so it is not converted to dollars. NOT the phone's $5.")
     print()
     print("Listen to them side by side:")
-    print(f"  scp \"poom@45.76.157.64:{out.resolve()}/*\" .")
+    print(f"  scp \"<user>@<VPS address>:{out.resolve()}/*\" .")
     print()
     print(f"Production is unchanged: tts_provider={cfg.tts_provider}, voice={cfg.tts_voice}.")
     return 0

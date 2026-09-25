@@ -487,7 +487,7 @@ def test_nginx_has_the_two_routes_get_only_and_logs_no_query():
         block = conf.split(f"location = {route} {{", 1)[1].split("}\n", 2)
         text = "}".join(block[:2])
         assert "limit_except GET" in text and "error_log /dev/null" in text
-    assert conf.count("server_name ") == 2 and "server_name kiosk.xn--l3cgts1b3bzcvf.com;" in conf
+    assert conf.count("server_name ") == 2 and "server_name __KIOSK_DOMAIN__;" in conf
 
 
 def test_the_token_file_is_sealed_with_the_vault(tmp_path):

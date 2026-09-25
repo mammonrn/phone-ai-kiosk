@@ -7,7 +7,7 @@ three reasons, in order of how much they matter:
    console. A service-account JSON key can be neither — it is a credential that
    works from anywhere for everything the account can reach. For a key that
    sits on a VPS and is only ever used by one process to call one endpoint,
-   "restricted to Text-to-Speech, from 45.76.157.64" is a much smaller thing to
+   "restricted to Text-to-Speech, from the VPS's address" is a much smaller thing to
    lose than a service account.
 2. `google-cloud-texttospeech` pulls in grpcio, which is a long and
    occasionally failing build on a small box.

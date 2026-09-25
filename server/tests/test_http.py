@@ -202,7 +202,7 @@ def test_it_listens_on_loopback_only(live):
     # The machine's own public address must not answer.
     with socket.socket() as s:
         s.settimeout(2)
-        assert s.connect_ex(("45.76.157.64", cfg.port)) != 0
+        assert s.connect_ex(("192.0.2.1", cfg.port)) != 0
 
 
 # ------------------------------------------- refusing a body without poisoning

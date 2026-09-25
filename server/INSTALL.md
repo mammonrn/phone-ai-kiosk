@@ -1,6 +1,6 @@
 # ติดตั้ง kiosk broker (เฟส 2)
 
-> **เฟส 2 ขึ้น production แล้ว** ทดสอบจริงบน VPS 45.76.157.64 เมื่อ 22 ก.ย. 2569
+> **เฟส 2 ขึ้น production แล้ว** ทดสอบจริงบน VPS <IP ของ VPS> เมื่อ 22 ก.ย. 2569
 >
 > | ข้อ | ผล |
 > |---|---|
@@ -8,7 +8,7 @@
 > | คีย์ Haiku | ใส่แล้ว · `linuxuser` อ่านไฟล์ไม่ได้ (Permission denied) |
 > | `selftest` ยิง Anthropic จริง | ผ่าน in=1107 out=52 cost=$0.001367 |
 > | service | `active (running)` · listening 127.0.0.1:8770 budget $5.00/month |
-> | DNS | `kiosk.xn--l3cgts1b3bzcvf.com` → 45.76.157.64 |
+> | DNS | `kiosk.<โดเมน>` → <IP ของ VPS> |
 > | ใบรับรอง | `certonly --webroot` สำเร็จ หมดอายุ 21 ธ.ค. 2569 |
 > | `nginx -t` + reload | ผ่าน · thaitrack **200** · monthreport **302** |
 > | HTTPS `/healthz` | 200 ทั้งผ่านชื่อโดเมนจริงและ `--resolve` |
@@ -16,8 +16,8 @@
 >
 > **รอบ deploy ที่สอง (22 ก.ย. 2569):** service active · `/healthz` ตอบ ok ·
 > **INPUT TOKENS ลดจาก 1107 เหลือ 656** (−41%) cost $0.000941 ·
-> `certbot renew --dry-run --run-deploy-hooks` สำเร็จทั้งสามใบ (kiosk, ubet89.house,
-> xn--l3cgts1b3bzcvf.com) · หลังทดสอบ certbot: thaitrack 200 · monthreport 302 ·
+> `certbot renew --dry-run --run-deploy-hooks` สำเร็จทั้งสามใบ (kiosk, <โดเมนของ monthreport>,
+> <โดเมนหลัก>) · หลังทดสอบ certbot: thaitrack 200 · monthreport 302 ·
 > kiosk healthz 200
 >
 > **สองอย่างที่รอบนั้นเจอและแก้แล้ว:**
@@ -30,7 +30,7 @@
 ทุกขั้นในไฟล์นี้ **Poom ต้องรันเองบน VPS** เพราะต้องใช้ sudo
 
 ```bash
-ssh poom@45.76.157.64
+ssh <ผู้ใช้>@<IP ของ VPS>
 ```
 
 ผมไม่มี sudo จึงเตรียมสคริปต์กับไฟล์ config ไว้ให้ครบ แต่รันเองไม่ได้
@@ -197,7 +197,7 @@ GOOGLE_TTS_API_KEY=<API key ของ Google>
 3. Credentials → Create credentials → **API key**
 4. กด **Edit API key** แล้วตั้งสองอย่างนี้ (ข้อสำคัญที่สุด):
    - **API restrictions** → Restrict key → ติ๊กเฉพาะ **Cloud Text-to-Speech API**
-   - **Application restrictions** → **IP addresses** → ใส่ `45.76.157.64`
+   - **Application restrictions** → **IP addresses** → ใส่ `<IP ของ VPS>`
 5. ตั้งงบเตือนที่ Billing → Budgets & alerts เผื่อกรณีผิดพลาด
 
 **ทำไมต้องจำกัดทั้งสองชั้น:** API key ของ Google คือ bearer token ระดับโปรเจกต์
@@ -223,7 +223,7 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
 ดึงมาฟังบนคอม:
 
 ```powershell
-scp "poom@45.76.157.64:/tmp/voices/*.ogg" .
+scp "<ผู้ใช้>@<IP ของ VPS>:/tmp/voices/*.ogg" .
 ```
 
 ค่าใช้จ่ายทั้งชุด ~$0.03 🔶 (16 เสียง × ~60 ตัวอักษร × $0.00003)
@@ -256,7 +256,7 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
 ```
 
 ```powershell
-scp "poom@45.76.157.64:/tmp/say/*.ogg" .
+scp "<ผู้ใช้>@<IP ของ VPS>:/tmp/say/*.ogg" .
 ```
 
 จะได้ `as-written-Schedar.ogg` กับ `as-spoken-Schedar.ogg` ฟังเทียบได้เลย
@@ -291,7 +291,7 @@ KB="sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-br
 **1. อัปโหลดไฟล์ client JSON (ครั้งเดียว)** จากเครื่อง Windows ที่มีไฟล์:
 
 ```powershell
-scp "$HOME\Downloads\client_secret_*.json" poom@45.76.157.64:/tmp/google-client.json
+scp "$HOME\Downloads\client_secret_*.json" <ผู้ใช้>@<IP ของ VPS>:/tmp/google-client.json
 ```
 
 แล้วบน VPS:
@@ -440,15 +440,15 @@ DNS ของ `พัสดุไทย.com` อยู่ที่ GoDaddy (`ns5
 
 | ชนิด | ชื่อ | ค่า | TTL |
 |---|---|---|---|
-| A | `kiosk` | `45.76.157.64` | 600 |
+| A | `kiosk` | `<IP ของ VPS>` | 600 |
 
-(ชื่อโดเมนเต็มคือ `kiosk.xn--l3cgts1b3bzcvf.com` ซึ่งเป็นรูป punycode ของ
+(ชื่อโดเมนเต็มคือ `kiosk.<โดเมน>` ซึ่งเป็นรูป punycode ของ
 `kiosk.พัสดุไทย.com` — ในหน้าจัดการของ GoDaddy ใส่แค่ `kiosk` ในช่อง Name)
 
 รอแล้วเช็ค:
 
 ```bash
-dig +short A kiosk.xn--l3cgts1b3bzcvf.com     # ต้องได้ 45.76.157.64
+dig +short A kiosk.<โดเมน>     # ต้องได้ <IP ของ VPS>
 ```
 
 ---
@@ -461,7 +461,7 @@ dig +short A kiosk.xn--l3cgts1b3bzcvf.com     # ต้องได้ 45.76.157.
 
 ```bash
 sudo certbot certonly --webroot -w /var/www/html \
-  -d kiosk.xn--l3cgts1b3bzcvf.com
+  -d kiosk.<โดเมน>
 ```
 
 ---
@@ -488,8 +488,8 @@ sudo rm /etc/nginx/sites-enabled/kiosk
 sudo systemctl reload nginx
 
 # สองงานเดิมต้องยังตอบเหมือนเดิม: thaitrack 200, monthreport 302
-curl -s -o /dev/null -w 'thaitrack %{http_code}\n'   -k -H 'Host: xn--l3cgts1b3bzcvf.com' https://127.0.0.1/
-curl -s -o /dev/null -w 'monthreport %{http_code}\n' -k -H 'Host: ubet89.house'          https://127.0.0.1/
+curl -s -o /dev/null -w 'thaitrack %{http_code}\n'   -k -H 'Host: <โดเมนหลัก>' https://127.0.0.1/
+curl -s -o /dev/null -w 'monthreport %{http_code}\n' -k -H 'Host: <โดเมนของ monthreport>'          https://127.0.0.1/
 ```
 
 (ค่าตั้งต้นที่วัดไว้ 22 ก.ย. 2569 ก่อนแตะอะไร: thaitrack **200**, monthreport **302**)
@@ -532,10 +532,10 @@ sudo journalctl -t kiosk-cert-hook -n 30 --no-pager
 สิ่งที่ควรเห็นหลัง `certbot renew --dry-run --run-deploy-hooks` (สามใบ):
 
 ```
-kiosk-cert-hook: skipping 'ubet89.house' — not kiosk.xn--... and that certificate reloads itself
-kiosk-cert-hook: skipping 'xn--l3cgts1b3bzcvf.com' — not kiosk.xn--... and that certificate reloads itself
-kiosk-cert-hook: renewed kiosk.xn--l3cgts1b3bzcvf.com — testing nginx configuration before reloading
-kiosk-cert-hook: nginx reloaded — kiosk.xn--l3cgts1b3bzcvf.com is serving the renewed certificate
+kiosk-cert-hook: skipping '<โดเมนของ monthreport>' — not kiosk.<โดเมน> and that certificate reloads itself
+kiosk-cert-hook: skipping '<โดเมนหลัก>' — not kiosk.<โดเมน> and that certificate reloads itself
+kiosk-cert-hook: renewed kiosk.<โดเมน> — testing nginx configuration before reloading
+kiosk-cert-hook: nginx reloaded — kiosk.<โดเมน> is serving the renewed certificate
 ```
 
 บรรทัด `skipping` มีไว้ให้เห็นว่า hook **ทำงานแล้วและตั้งใจไม่ทำอะไร** กับใบของ
@@ -554,11 +554,11 @@ certbot ส่งมาให้ จึงไม่มีความลับ�
 
 ```bash
 # ใบของเรา -> ต้อง reload
-sudo RENEWED_LINEAGE=/etc/letsencrypt/live/kiosk.xn--l3cgts1b3bzcvf.com \
+sudo RENEWED_LINEAGE=/etc/letsencrypt/live/kiosk.<โดเมน> \
   /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
 
 # ใบของ thaitrack -> ต้องเงียบ ไม่ทำอะไร
-sudo RENEWED_LINEAGE=/etc/letsencrypt/live/xn--l3cgts1b3bzcvf.com \
+sudo RENEWED_LINEAGE=/etc/letsencrypt/live/<โดเมนหลัก> \
   /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
 ```
 
@@ -596,7 +596,7 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=... PYTHONPATH=... \
 
 ```powershell
 $t = "<token>"
-curl.exe -s -X POST https://kiosk.xn--l3cgts1b3bzcvf.com/v1/chat `
+curl.exe -s -X POST https://kiosk.<โดเมน>/v1/chat `
   -H "Authorization: Bearer $t" -H "Content-Type: application/json" `
   --data-raw '{"text":"สวัสดี ทดสอบระบบ"}'
 ```
@@ -607,16 +607,16 @@ curl.exe -s -X POST https://kiosk.xn--l3cgts1b3bzcvf.com/v1/chat `
 
 ```powershell
 # ไม่มี token -> 401
-curl.exe -s -o NUL -w "%{http_code}`n" -X POST https://kiosk.xn--l3cgts1b3bzcvf.com/v1/chat -H "Content-Type: application/json" --data-raw '{"text":"hi"}'
+curl.exe -s -o NUL -w "%{http_code}`n" -X POST https://kiosk.<โดเมน>/v1/chat -H "Content-Type: application/json" --data-raw '{"text":"hi"}'
 
 # token ผิด -> 401
-curl.exe -s -o NUL -w "%{http_code}`n" -X POST https://kiosk.xn--l3cgts1b3bzcvf.com/v1/chat -H "Authorization: Bearer wrong" -H "Content-Type: application/json" --data-raw '{"text":"hi"}'
+curl.exe -s -o NUL -w "%{http_code}`n" -X POST https://kiosk.<โดเมน>/v1/chat -H "Authorization: Bearer wrong" -H "Content-Type: application/json" --data-raw '{"text":"hi"}'
 
 # เส้นทางอื่น -> 404
-curl.exe -s -o NUL -w "%{http_code}`n" https://kiosk.xn--l3cgts1b3bzcvf.com/
+curl.exe -s -o NUL -w "%{http_code}`n" https://kiosk.<โดเมน>/
 
 # HTTP ต้องเด้งไป HTTPS -> 301
-curl.exe -s -o NUL -w "%{http_code}`n" http://kiosk.xn--l3cgts1b3bzcvf.com/v1/chat
+curl.exe -s -o NUL -w "%{http_code}`n" http://kiosk.<โดเมน>/v1/chat
 ```
 
 ---
@@ -861,7 +861,7 @@ sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker
 ดึงลง Windows แล้วฟัง:
 
 ```powershell
-scp "poom@45.76.157.64:/tmp/tts-compare/*" .
+scp "<ผู้ใช้>@<IP ของ VPS>:/tmp/tts-compare/*" .
 ```
 
 `save_file` ถูกตั้งเป็น `"False"` ทุกครั้ง — ไม่ทิ้งไฟล์ทดสอบไว้บนสตอเรจของเขา
@@ -1128,7 +1128,7 @@ sudo -u kioskbroker diff -r /home/kioskbroker/app/kiosk_broker ~/phone-ai-kiosk/
 ตรวจสิ่งที่รอบนี้เปลี่ยน:
 
 ```bash
-systemctl is-active kiosk-broker && curl -s -o /dev/null -w '%{http_code}\n' https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+systemctl is-active kiosk-broker && curl -s -o /dev/null -w '%{http_code}\n' https://kiosk.<โดเมน>/healthz
 ```
 
 ```bash
@@ -1189,9 +1189,9 @@ sudo systemctl restart kiosk-broker
 
 ```bash
 sudo nginx -t
-curl -s -o /dev/null -w 'thaitrack %{http_code}\n'   -k -H 'Host: xn--l3cgts1b3bzcvf.com' https://127.0.0.1/
-curl -s -o /dev/null -w 'monthreport %{http_code}\n' -k -H 'Host: ubet89.house'          https://127.0.0.1/
-curl -s -o /dev/null -w 'kiosk %{http_code}\n'       https://kiosk.xn--l3cgts1b3bzcvf.com/healthz
+curl -s -o /dev/null -w 'thaitrack %{http_code}\n'   -k -H 'Host: <โดเมนหลัก>' https://127.0.0.1/
+curl -s -o /dev/null -w 'monthreport %{http_code}\n' -k -H 'Host: <โดเมนของ monthreport>'          https://127.0.0.1/
+curl -s -o /dev/null -w 'kiosk %{http_code}\n'       https://kiosk.<โดเมน>/healthz
 ```
 
 ค่าที่ถูก: **200 / 302 / 200**
@@ -1417,7 +1417,7 @@ $B keys                          # QWEN_API_KEY ต้องขึ้น present
 $B stt-qwen-check                # ส่งเสียงเงียบ 1 วินาที: ต้องขึ้น result : ok
 ```
 ไม่ต้อง restart broker หลังใส่คีย์ broker อ่านคีย์นี้ตอนที่ต้องใช้
-IP whitelist ของคีย์คือ 45.76.157.64 จึงเรียกได้จาก VPS เท่านั้น
+IP whitelist ของคีย์คือ <IP ของ VPS> จึงเรียกได้จาก VPS เท่านั้น
 
 **สิ่งที่ตรวจจากเอกสารทางการ (2026-09-24):**
 - endpoint: `POST https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
@@ -1557,14 +1557,14 @@ $B keys                          # EWELINK_APP_ID และ EWELINK_APP_SECRET �
 $B ewelink-connect
 ```
 
-คำสั่งพิมพ์ลิงก์ `https://kiosk.xn--l3cgts1b3bzcvf.com/oauth/ewelink/start?t=...` ของโดเมนเราเอง
+คำสั่งพิมพ์ลิงก์ `https://kiosk.<โดเมน>/oauth/ewelink/start?t=...` ของโดเมนเราเอง
 (ไม่ใช่ลิงก์ของ eWeLink ซึ่งมี App ID อยู่ในนั้น) เปิดในเบราว์เซอร์ **ภายใน 10 นาที ใช้ได้ครั้งเดียว**
 แล้วเข้าสู่ระบบบัญชี eWeLink ของ Poom หน้าสุดท้ายจะบอก "เชื่อมต่อบัญชี eWeLink แล้ว"
 
 - code ที่ eWeLink ส่งกลับมีอายุ 30 วินาที broker แลกเป็น token ทันทีเอง ไม่ต้องทำอะไร
 - ภูมิภาคมาจาก eWeLink เอง บัญชีไทยควรเป็น `as` (Asia) ตามตารางในเอกสาร
 - Redirect URL ต้องตรงกับที่ตั้งไว้ใน dev.ewelink.cc ทุกตัวอักษร:
-  `https://kiosk.xn--l3cgts1b3bzcvf.com/oauth/ewelink/callback`
+  `https://kiosk.<โดเมน>/oauth/ewelink/callback`
 
 ### ขั้นที่ 4 — ตรวจ (อ่านอย่างเดียว)
 

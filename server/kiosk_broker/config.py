@@ -42,7 +42,9 @@ class Config:
     #: The kiosk's own public address, for the Google sign-in callback
     #: (google_auth.CALLBACK_PATH). Must match the redirect URI registered in
     #: the Cloud Console exactly.
-    public_base_url: str = "https://kiosk.xn--l3cgts1b3bzcvf.com"
+    #: Set in config.json by install.sh from this server's kiosk domain (0.63.0: the
+    #: domain is never written in this public repo).
+    public_base_url: str = ""
 
     # ---- speech to text -------------------------------------------------
     stt_model: str = "whisper-large-v3-turbo"

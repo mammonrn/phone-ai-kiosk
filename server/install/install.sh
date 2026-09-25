@@ -26,11 +26,35 @@ say() { printf '\n== %s\n' "$*"; }
 # ---------------------------------------------------------------- baseline
 # Recorded before anything changes, so "it still works" is a comparison rather
 # than an impression.
+# THE NAMES ARE READ FROM THIS SERVER, NEVER WRITTEN IN THIS PUBLIC REPO (0.63.0,
+# Poom): the kiosk's own domain from the site file installed before (or
+# KIOSK_DOMAIN=kiosk.<domain> on the first install), and the other sites on the
+# VPS (thaitrack, monthreport) from nginx's enabled sites.
+KIOSK_DOMAIN_FROM_ENV=${KIOSK_DOMAIN:-}
+KIOSK_DOMAIN=${KIOSK_DOMAIN:-}
+if [[ -z $KIOSK_DOMAIN && -f /etc/nginx/sites-available/kiosk ]]; then
+    KIOSK_DOMAIN=$(grep -m1 -oE 'server_name[[:space:]]+[^;[:space:]]+' /etc/nginx/sites-available/kiosk | awk '{print $2}')
+fi
+[[ $KIOSK_DOMAIN == __KIOSK_DOMAIN__ ]] && KIOSK_DOMAIN=""
+if ! [[ $KIOSK_DOMAIN =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+    echo "The kiosk's domain is not known. On the first install run:" >&2
+    echo "  sudo KIOSK_DOMAIN=kiosk.<your domain> bash server/install/install.sh" >&2
+    exit 1
+fi
+echo "  kiosk domain: from $( [[ -n ${KIOSK_DOMAIN_FROM_ENV:-} ]] && echo KIOSK_DOMAIN || echo 'the installed site file' )"
+other_hosts=$(grep -h -oE 'server_name[[:space:]]+[^;[:space:]]+' /etc/nginx/sites-enabled/* 2>/dev/null \
+    | awk '{print $2}' | grep -v -x -e '_' -e "$KIOSK_DOMAIN" -e 'localhost' | sort -u || true)
+site_codes() {
+    local out="" h
+    for h in $other_hosts; do
+        out+="$(curl -s -o /dev/null -w '%{http_code}' -k -H "Host: $h" https://127.0.0.1/ || echo 000) "
+    done
+    echo "$out"
+}
 say "Checking the existing sites before touching anything"
-before_thaitrack=$(curl -s -o /dev/null -w '%{http_code}' -k -H 'Host: xn--l3cgts1b3bzcvf.com' https://127.0.0.1/ || echo 000)
-before_monthreport=$(curl -s -o /dev/null -w '%{http_code}' -k -H 'Host: ubet89.house' https://127.0.0.1/ || echo 000)
-echo "  thaitrack=$before_thaitrack monthreport=$before_monthreport"
-if [[ $before_thaitrack == 000 || $before_monthreport == 000 ]]; then
+before_sites=$(site_codes)
+echo "  $(echo "$other_hosts" | wc -w) other site(s) answer: $before_sites"
+if [[ $before_sites == *000* ]]; then
     echo "  One of them is already not answering. Fix that first — this script will not" >&2
     echo "  be able to tell afterwards whether it was to blame." >&2
     exit 1
@@ -146,6 +170,20 @@ JSON
     echo "  wrote a default config.json"
 fi
 
+# The broker's own public address (Google's and eWeLink's sign-in pages come
+# back to it): from this server's kiosk domain, added once if the file lacks it.
+python3 - "$CONF_DIR/config.json" "https://$KIOSK_DOMAIN" <<'PY'
+import json, sys
+path, url = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    conf = json.load(f)
+if not conf.get("public_base_url"):
+    conf["public_base_url"] = url
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(conf, f, indent=2)
+    print("  public_base_url added to config.json")
+PY
+
 # The key file is created empty and only readable by the broker. Poom pastes
 # the key in; this script never sees it and neither does the journal.
 if [[ ! -f $CONF_DIR/env ]]; then
@@ -165,9 +203,10 @@ echo "  installed and enabled (not started — the key has to go in first)"
 
 # -------------------------------------------------------------------- nginx
 say "nginx site file"
-install -o root -g root -m 0644 "$REPO_SERVER_DIR/install/nginx-kiosk.conf" \
-    /etc/nginx/sites-available/kiosk
-echo "  written to /etc/nginx/sites-available/kiosk"
+sed "s/__KIOSK_DOMAIN__/$KIOSK_DOMAIN/g" "$REPO_SERVER_DIR/install/nginx-kiosk.conf" > /tmp/kiosk-nginx.$$
+install -o root -g root -m 0644 /tmp/kiosk-nginx.$$ /etc/nginx/sites-available/kiosk
+rm -f /tmp/kiosk-nginx.$$
+echo "  written to /etc/nginx/sites-available/kiosk (with this server's kiosk domain)"
 
 # First install: the file is written but not enabled, because the certificate it
 # references does not exist yet and `nginx -t` would fail on it. Every later run:
@@ -197,18 +236,17 @@ say "certbot deploy hook"
 # thaitrack's and monthreport's renewals are untouched by it — they were issued
 # with --nginx and reload themselves.
 install -d -o root -g root -m 0755 /etc/letsencrypt/renewal-hooks/deploy
-install -o root -g root -m 0755 "$REPO_SERVER_DIR/install/kiosk-reload-nginx" \
-    /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
+sed "s/__KIOSK_DOMAIN__/$KIOSK_DOMAIN/g" "$REPO_SERVER_DIR/install/kiosk-reload-nginx" > /tmp/kiosk-hook.$$
+install -o root -g root -m 0755 /tmp/kiosk-hook.$$ /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx
+rm -f /tmp/kiosk-hook.$$
 echo "  installed /etc/letsencrypt/renewal-hooks/deploy/kiosk-reload-nginx"
 echo "  (reloads nginx only after OUR certificate renews, and only if nginx -t passes)"
 
 # ----------------------------------------------------------------- recheck
 say "Checking the existing sites again"
-after_thaitrack=$(curl -s -o /dev/null -w '%{http_code}' -k -H 'Host: xn--l3cgts1b3bzcvf.com' https://127.0.0.1/ || echo 000)
-after_monthreport=$(curl -s -o /dev/null -w '%{http_code}' -k -H 'Host: ubet89.house' https://127.0.0.1/ || echo 000)
-echo "  thaitrack=$after_thaitrack (was $before_thaitrack)"
-echo "  monthreport=$after_monthreport (was $before_monthreport)"
-[[ $after_thaitrack == "$before_thaitrack" && $after_monthreport == "$before_monthreport" ]] \
+after_sites=$(site_codes)
+echo "  other sites: $after_sites (was $before_sites)"
+[[ $after_sites == "$before_sites" ]] \
     || { echo "  A site changed behaviour. Stop and investigate." >&2; exit 1; }
 
 cat <<'NEXT'
@@ -217,7 +255,7 @@ Done with the parts that need root. Still to do, in order:
 
   1. Put the API keys in /home/kioskbroker/.config/kiosk-broker/env
      (ANTHROPIC_API_KEY, and for phase 3 also GROQ_API_KEY and GOOGLE_TTS_API_KEY)
-  2. Add the DNS A record for kiosk.xn--l3cgts1b3bzcvf.com
+  2. Add the DNS A record for the kiosk's domain (kiosk.<your domain>)
   3. Issue the certificate (certbot certonly --webroot)
   4. Enable the nginx site, nginx -t, reload
   5. Issue a device token and test from outside
