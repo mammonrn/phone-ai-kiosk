@@ -1108,6 +1108,7 @@ class MainActivity : Activity() {
         // "จาร์วิส": the same as saying Hey Jarvis. The service decides whether
         // a question can start now (never on top of one already running).
         findViewById<android.view.View>(R.id.jarvis_button).setOnClickListener {
+            VoiceState.turnScreen = ""
             VoiceService.start(this, VoiceService.ACTION_BUTTON_LISTEN)
         }
 

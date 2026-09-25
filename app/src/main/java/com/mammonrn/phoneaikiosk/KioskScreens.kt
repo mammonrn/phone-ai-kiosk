@@ -104,7 +104,8 @@ object KioskScreens {
             if (activity !is MainActivity) closed(System.identityHashCode(activity))
         }
 
-        override fun onActivityStarted(activity: Activity) = Unit
+        // 0.61.0: Jarvis's state on every screen (ui/JarvisBadge), added once the screen's own views are in.
+        override fun onActivityStarted(activity: Activity) = com.mammonrn.phoneaikiosk.ui.JarvisBadges.attach(activity)
         override fun onActivityStopped(activity: Activity) = Unit
         override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     }

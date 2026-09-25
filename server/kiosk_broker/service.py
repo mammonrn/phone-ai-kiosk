@@ -17,7 +17,7 @@ import sqlite3
 import time
 from typing import Any
 
-from . import (actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
+from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, dashboard as dashboard_mod, free_tier,
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
@@ -568,8 +568,12 @@ def handle_chat(
     *,
     authorization: str | None,
     body: bytes,
+    screen: str | None = None,
 ) -> tuple[int, dict]:
     """One POST /v1/chat, start to finish.
+
+    [screen]: the X-Kiosk-Screen header — which screen's Jarvis button asked
+    (screen_context.py); None for the wake word and the home screen.
 
     Returns an HTTP status and the JSON body to send. Order matters: auth
     before anything that costs, the caps before the call, and the ledger write
@@ -609,6 +613,10 @@ def handle_chat(
         return 400, _error("bad_request", "ไม่พบข้อความที่จะถาม")
 
     text = text.strip()
+    # 0.61.0: a bare command from an app's own Jarvis button ("ต่อไป" on the music
+    # page) said in full — only when a code recogniser then takes it.
+    text, screen_why = screen_context.apply(
+        text, screen, lambda t: music.match(t) is not None or video.match(t) is not None or notes.match(t) is not None)
     if len(text) > cfg.max_text_chars:
         store.record_request(conn, device_id=device_id, day=day, outcome="text_too_long",
                              text_len=len(text))
@@ -688,12 +696,12 @@ def handle_chat(
         # notes= since 0.62.0 (notes.notes_match's reason), after it for the same reason.
         log.info("intent device=%s camera=%s reason=%s alarm=%s alarm_reason=%s"
                  " calendar=%s calendar_reason=%s maps=%s maps_word=%s chars=%d calendar_add=%s"
-                 " notes=%s",
+                 " notes=%s screen=%s",
                  label, "yes" if is_camera else "no", why,
                  "yes" if alarm is not None else "no", alarm_why,
                  "yes" if calendar_yes else "no", calendar_why,
                  maps, "yes" if speech_gate.has_maps_word(text) else "no", len(text), add_why,
-                 note_why)
+                 note_why, screen_why)
     def answer_in_code(reply: str, action: dict | None, intent: str) -> tuple[int, dict]:
         """A reply decided by code, no model, nothing paid: the camera and the
         alarms. Stored in the conversation like any other turn."""

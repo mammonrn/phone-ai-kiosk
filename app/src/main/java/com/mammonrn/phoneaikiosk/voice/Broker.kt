@@ -23,6 +23,9 @@ class Broker(private val baseUrl: String, private val token: String) {
     companion object {
         const val STT_PROVIDER_HEADER = "X-Stt-Provider"
         const val WAKE_HEADER = "X-Wake"
+        /** Which screen's Jarvis button asked (0.61.0): one of [SCREENS], nothing else ever. */
+        const val SCREEN_HEADER = "X-Kiosk-Screen"
+        val SCREENS = setOf("music", "video", "notes", "radio", "timer", "panel")
 
         /** "not-a-question (weak-wake,no-ask)" when the gate refused, else "". */
         fun gateRefusal(gate: JSONObject?): String {
@@ -163,8 +166,11 @@ class Broker(private val baseUrl: String, private val token: String) {
         val payload = JSONObject().put("text", text)
         if (conversationId != null) payload.put("conversation_id", conversationId)
 
+        // The screen its Jarvis button was pressed on, if any (VoiceState.turnScreen): a fixed word, never the screen's content.
+        val screen = VoiceState.turnScreen.takeIf { it in SCREENS }
         val body = post("/v1/chat", payload.toString().toByteArray(Charsets.UTF_8),
-                        "application/json; charset=utf-8").bytes
+                        "application/json; charset=utf-8",
+                        if (screen != null) mapOf(SCREEN_HEADER to screen) else emptyMap()).bytes
         val json = JSONObject(String(body, Charsets.UTF_8))
 
         return Answer(json.optString("reply"), json.optString("conversation_id"),

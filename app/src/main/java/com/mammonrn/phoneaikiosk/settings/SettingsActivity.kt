@@ -78,14 +78,18 @@ class SettingsActivity : Activity() {
     private class Category(val icon: Int, val label: (SettingsActivity) -> String,
                            val open: (SettingsActivity) -> Unit)
 
-    /** A heading and its icons on the panel's first page. */
-    private class Group(val title: Int, val items: List<Category>)
+    /** One icon on the panel's first page, or a folder of them (opened as a popup). */
+    private sealed class Tile {
+        class One(val category: Category) : Tile()
+        class Folder(val title: Int, val items: List<Category>) : Tile()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pixel = ResourcesCompat.getFont(this, R.font.press_start_2p) ?: Typeface.MONOSPACE
         thai = ResourcesCompat.getFont(this, R.font.plex_thai) ?: Typeface.DEFAULT
-        setContentView(buildWindow())
+        host = FrameLayout(this).apply { addView(buildWindow(), FrameLayout.LayoutParams(MATCH, MATCH)) }
+        setContentView(host)
         hideSystemBars()
         showHome()
     }
@@ -163,6 +167,7 @@ class SettingsActivity : Activity() {
     override fun onBackPressed() = goBack()
 
     private fun goBack() {
+        if (closeFolder()) return
         when (page) {
             Page.EDIT -> showAlarms()
             Page.LIGHT_NAME -> lights.back(null)
@@ -241,40 +246,18 @@ class SettingsActivity : Activity() {
     private fun showHome() {
         page = Page.HOME
         titleText.text = getString(R.string.settings_title)
-        // Three icons to a row, as many rows as there are categories: one
-        // row of fixed-width icons ran off the screen at the third (0.37.0).
+        // Three tiles to a row: a tile is one app, or a folder of them.
         val grid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.retro_field)
             setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS))
         }
-        for ((g, group) in GROUPS.withIndex()) {
-          grid.addView(label(getString(group.title)).apply {
-              setPadding(dp(UiScale.SPACE_XS), if (g == 0) 0 else dp(UiScale.SPACE_XS), 0, dp(UiScale.SPACE_XS))
-          }, LinearLayout.LayoutParams(MATCH, WRAP))
-          for (row in group.items.chunked(ICONS_PER_ROW)) {
-            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            grid.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
-            for ((index, category) in row.withIndex()) line.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                isClickable = true
-                setBackgroundResource(R.drawable.retro_button)
-                setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
-                setOnClickListener { category.open(this@SettingsActivity) }
-                addView(ImageView(context).apply { setImageResource(category.icon) },
-                        LinearLayout.LayoutParams(dp(UiScale.ICON_XL), dp(UiScale.ICON_XL)))
-                addView(text(category.label(this@SettingsActivity), UiScale.TEXT_BASE).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(0, dp(UiScale.SPACE_S), 0, 0)
-                })
-            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
-            // A short last row keeps the icons the same width as the rows above.
-            repeat(ICONS_PER_ROW - row.size) {
-                line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
+        addRows(grid, TILES.map { t ->
+            when (t) {
+                is Tile.One -> tile(t.category.icon, t.category.label(this), null) { t.category.open(this) }
+                is Tile.Folder -> folderTile(t)
             }
-        }
-        }
+        })
         setPage(ScrollView(this).apply { addView(LinearLayout(this@SettingsActivity).apply {
             orientation = LinearLayout.VERTICAL
             addView(grid, LinearLayout.LayoutParams(MATCH, WRAP))
@@ -282,6 +265,133 @@ class SettingsActivity : Activity() {
                 setPadding(dp(UiScale.SPACE_XS), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS), 0)
             })
         }) })
+    }
+
+    /** [views] three to a row; a short last row keeps them the width of the rows above. */
+    private fun addRows(into: LinearLayout, views: List<View>) {
+        for (row in views.chunked(ICONS_PER_ROW)) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            into.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
+            for ((index, v) in row.withIndex()) {
+                line.addView(v, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
+            }
+            repeat(ICONS_PER_ROW - row.size) {
+                line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
+            }
+        }
+    }
+
+    /** A raised tile: a 48dp picture ([icon], or [picture] for a folder) over its name. */
+    private fun tile(icon: Int, name: String, picture: View?, onClick: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        isClickable = true
+        setBackgroundResource(R.drawable.retro_button)
+        setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S))
+        setOnClickListener { onClick() }
+        contentDescription = name
+        addView(picture ?: ImageView(context).apply { setImageResource(icon) },
+                LinearLayout.LayoutParams(dp(UiScale.ICON_XL), dp(UiScale.ICON_XL)))
+        addView(text(name, UiScale.TEXT_BASE).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(UiScale.SPACE_S), 0, 0)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        })
+    }
+
+    /**
+     * A folder: its first four apps as small pictures, two by two in a sunken
+     * box — the way a phone shows a folder, and a different shape from one app's icon.
+     */
+    private fun folderTile(f: Tile.Folder): View {
+        val box = android.widget.GridLayout(this).apply {
+            columnCount = 2
+            setBackgroundResource(R.drawable.retro_sunken)
+            setPadding(dp(UiScale.BEVEL), dp(UiScale.BEVEL), 0, 0)
+        }
+        for (c in f.items.take(4)) box.addView(ImageView(this).apply {
+            setImageResource(c.icon); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, android.widget.GridLayout.LayoutParams().apply {
+            width = dp(FOLDER_MINI); height = dp(FOLDER_MINI); setMargins(0, 0, dp(UiScale.HAIRLINE), dp(UiScale.HAIRLINE))
+        })
+        val name = getString(R.string.settings_folder_name, getString(f.title), f.items.size)
+        return tile(0, name, box) { openFolder(f) }.apply {
+            contentDescription = getString(R.string.settings_folder_desc, getString(f.title),
+                f.items.joinToString(", ") { it.label(this@SettingsActivity) })
+        }
+    }
+
+    // -------------------------------------------------------------- the folder popup
+
+    private lateinit var host: FrameLayout
+    private var folderPopup: View? = null
+
+    /**
+     * The folder's apps in a window OVER this page (Poom): the page does not
+     * change, the rest is dimmed, a tap outside or X closes it. An app opened
+     * from it closes the popup first, so closing the app comes back to the
+     * panel as it was.
+     */
+    private fun openFolder(f: Tile.Folder) {
+        closeFolder()
+        val scrim = FrameLayout(this).apply {
+            setBackgroundColor(color(R.color.panel_scrim))
+            isClickable = true
+            setOnClickListener { closeFolder() }
+            contentDescription = getString(R.string.settings_folder_outside)
+        }
+        val window = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.retro_raised)
+            setPadding(dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET), dp(UiScale.WINDOW_INSET))
+            isClickable = true      // a tap on the window itself does not close it
+        }
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.retro_titlebar)
+            setPadding(dp(UiScale.SPACE_S), 0, 0, 0)
+        }
+        bar.addView(TextView(this).apply {
+            text = getString(f.title)
+            setTextColor(color(R.color.retro_title_text))
+            textSize = UiScale.TEXT_BASE
+            typeface = Typeface.create(thai, Typeface.BOLD)
+            maxLines = 1
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        bar.addView(FrameLayout(this).apply {
+            setBackgroundResource(R.drawable.retro_button)
+            contentDescription = getString(R.string.settings_folder_close, getString(f.title))
+            isClickable = true
+            setOnClickListener { closeFolder() }
+            addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
+                    FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
+        window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
+        val grid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.retro_field)
+            setPadding(dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_S), dp(UiScale.SPACE_XS))
+        }
+        addRows(grid, f.items.map { c ->
+            tile(c.icon, c.label(this), null) { closeFolder(); c.open(this) }
+        })
+        window.addView(grid, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.WINDOW_INSET) })
+        scrim.addView(window, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER).apply {
+            leftMargin = dp(UiScale.SPACE_L); rightMargin = dp(UiScale.SPACE_L)
+        })
+        host.addView(scrim, FrameLayout.LayoutParams(MATCH, MATCH))
+        folderPopup = scrim
+        android.util.Log.i("KioskPanel", "folder open items=${f.items.size}")
+    }
+
+    /** True when there was a popup to close. */
+    private fun closeFolder(): Boolean {
+        val p = folderPopup ?: return false
+        host.removeView(p)
+        folderPopup = null
+        android.util.Log.i("KioskPanel", "folder closed")
+        return true
     }
 
     // -------------------------------------------------------------- alarms
@@ -873,78 +983,86 @@ class SettingsActivity : Activity() {
         private const val REPEAT_START_MS = 450L
         private const val REPEAT_MS = 110L
         private const val ICONS_PER_ROW = 3
+        /** A folder's small pictures: four of them, two by two, inside the 48dp picture. */
+        private const val FOLDER_MINI = 22
         private const val REQUEST_AUTH = 37
         private const val REQUEST_DELETE = 38
 
         /**
-         * The panel's icons IN GROUPS (Poom 2026-09-25, CLAUDE.md 3ก), each under a
-         * short heading. ADD A SETTING HERE, in the group it belongs to: an icon, a
-         * name, and the page it opens (DESIGN.md 5ก). The order is the reason:
-         *  1. in the house and used most — the lights, the alarms, the torch — first,
-         *     on the first screen without scrolling;
-         *  2. media together; 3. tools together;
-         *  4. setting the phone up, with "ที่มาข้อมูล" always the very last icon.
+         * The panel's first page (Poom 2026-09-25, CLAUDE.md 3ก): FOLDERS by kind,
+         * each showing small pictures of the apps inside and opening as a popup
+         * over this page; the three used most — the lights, WiFi, the torch —
+         * stand alone in the top row; "ที่มาข้อมูล" is always the very last.
+         * ADD A SETTING HERE, in the folder it belongs to (DESIGN.md 5ก).
          */
-        private val GROUPS = listOf(
-            Group(R.string.settings_group_home, listOf(
-                // 0.47.0: name the lights, allow each one, see its state. Kept on
-                // the VPS; this is where they are set up, not switched.
-                Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
-                Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
-                // 0.62.0: the stopwatch and countdown (timer/TimerActivity), next to the alarms: a kitchen tool.
-                Category(R.drawable.ic_pixel_stopwatch, { it.getString(R.string.window_timer) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.timer.TimerActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
-                // 0.62.0: notes and the shopping list (notes/NotesActivity), kept on this phone only.
-                Category(R.drawable.ic_pixel_note, { it.getString(R.string.window_notes) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.notes.NotesActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
+        private val TILES = listOf(
+            Tile.One(
+                    // 0.47.0: name the lights, allow each one, see its state. Kept on
+                    // the VPS; this is where they are set up, not switched.
+                    Category(R.drawable.ic_pixel_bulb_on, { it.getString(R.string.window_lights) }) { it.lights.open() },
+            ),
+            Tile.One(
+                    // 0.42.0: WiFi opens the system's panel for one visit (WifiPanel);
+                    // the torch is a switch, and its label is its state.
+                    Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
+            ),
+            Tile.One(
+                    Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
+            ),
+            Tile.Folder(R.string.settings_folder_media, listOf(
+                    // 0.53.0: the music player. The music is in media/MusicService and
+                    // plays on when this screen closes.
+                    Category(R.drawable.ic_pixel_music, { it.getString(R.string.window_music) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                    // 0.56.0: the video player (media/VideoActivity); the sound plays on when it closes.
+                    Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                    // 0.61.0: the radio (radio/RadioActivity); it plays on when its screen closes.
+                    Category(R.drawable.ic_pixel_radio, { it.getString(R.string.window_radio) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.radio.RadioActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                    // 0.61.0: the phone's camera, for a photo (camera/CameraActivity).
+                    Category(R.drawable.ic_pixel_camera, { it.getString(R.string.window_camera) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.camera.CameraActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                        // 0.61.0: the voice recorder (recorder/RecorderActivity); the wake word rests while it records.
+                        Category(R.drawable.ic_pixel_mic, { it.getString(R.string.window_recorder) }) {
+                            it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.recorder.RecorderActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                        },
             )),
-            Group(R.string.settings_group_media, listOf(
-                // 0.53.0: the music player. The music is in media/MusicService and
-                // plays on when this screen closes.
-                Category(R.drawable.ic_pixel_music, { it.getString(R.string.window_music) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                // 0.56.0: the video player (media/VideoActivity); the sound plays on when it closes.
-                Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                // 0.61.0: the radio (radio/RadioActivity); it plays on when its screen closes.
-                Category(R.drawable.ic_pixel_radio, { it.getString(R.string.window_radio) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.radio.RadioActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                // 0.61.0: the phone's camera, for a photo (camera/CameraActivity).
-                Category(R.drawable.ic_pixel_camera, { it.getString(R.string.window_camera) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.camera.CameraActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                // 0.61.0: the voice recorder (recorder/RecorderActivity); the wake word rests while it records.
-                Category(R.drawable.ic_pixel_mic, { it.getString(R.string.window_recorder) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.recorder.RecorderActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
+            Tile.Folder(R.string.settings_folder_tools, listOf(
+                    Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
+                    // 0.62.0: the stopwatch and countdown (timer/TimerActivity), next to the alarms: a kitchen tool.
+                    Category(R.drawable.ic_pixel_stopwatch, { it.getString(R.string.window_timer) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.timer.TimerActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                    // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).
+                    Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                        // 0.62.0: notes and the shopping list (notes/NotesActivity), kept on this phone only.
+                        Category(R.drawable.ic_pixel_note, { it.getString(R.string.window_notes) }) {
+                            it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.notes.NotesActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                        },
+                        // 0.62.0: the compass and the spirit level (compass/CompassActivity).
+                        Category(R.drawable.ic_pixel_level, { it.getString(R.string.window_compass) }) {
+                            it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.compass.CompassActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                        },
             )),
-            Group(R.string.settings_group_tools, listOf(
-                // 0.44.0: the file manager, a screen of its own (files/FilesActivity).
-                Category(R.drawable.ic_pixel_folder, { it.getString(R.string.window_files) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.files.FilesActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).
-                Category(R.drawable.ic_pixel_calculator, { it.getString(R.string.window_calculator) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-                // 0.62.0: the compass and the spirit level (compass/CompassActivity).
-                Category(R.drawable.ic_pixel_level, { it.getString(R.string.window_compass) }) {
-                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.compass.CompassActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
-                },
-            )),
-            Group(R.string.settings_group_setup, listOf(
-                // 0.42.0: WiFi opens the system's panel for one visit (WifiPanel);
-                // the torch is a switch, and its label is its state.
-                Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
-                Category(R.drawable.ic_pixel_face, { it.getString(R.string.window_auth) }) { it.showAuth() },
-                Category(R.drawable.ic_pixel_sources, { it.getString(R.string.window_sources) }) { it.showSources() },
-            )),
+            Tile.One(
+                    // 0.44.0: the file manager, a screen of its own (files/FilesActivity).
+                    Category(R.drawable.ic_pixel_folder, { it.getString(R.string.window_files) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.files.FilesActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+            ),
+            Tile.One(
+                    Category(R.drawable.ic_pixel_face, { it.getString(R.string.window_auth) }) { it.showAuth() },
+            ),
+            Tile.One(
+                    Category(R.drawable.ic_pixel_sources, { it.getString(R.string.window_sources) }) { it.showSources() },
+            ),
         )
     }
 }

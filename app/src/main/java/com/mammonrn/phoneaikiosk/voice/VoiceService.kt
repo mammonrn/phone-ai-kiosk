@@ -368,6 +368,7 @@ class VoiceService : Service() {
                     clearScoreWatch()
                     // For the broker's speech gate: how sure the detector was.
                     // Locale.US so it is "0.430" and never "0,430".
+                    VoiceState.turnScreen = ""   // the wake word: asked from no particular screen
                     VoiceState.turnWake = String.format(java.util.Locale.US, "%.3f",
                                                         VoiceState.wakeScore)
                     // Something has to tell the person it heard them, or the
@@ -530,6 +531,7 @@ class VoiceService : Service() {
 
         try {
             val (outcome, conversationId) = pipeline.run(wav, VoiceState.conversationId)
+            VoiceState.turnScreen = ""   // the next question starts with no screen unless its button gives one
             VoiceState.conversationId = conversationId
             // ONE LINE WITH THE WHOLE WAIT IN IT, measured from the moment the
             // person stopped talking — which is when they start waiting, and is

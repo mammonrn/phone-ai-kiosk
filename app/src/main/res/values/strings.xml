@@ -650,4 +650,11 @@
     <string name="settings_group_media">สื่อ</string>
     <string name="settings_group_tools">เครื่องมือ</string>
     <string name="settings_group_setup">ตั้งค่าและข้อมูล</string>
+    <!-- Control Panel folders (0.61.0, Poom). -->
+    <string name="settings_folder_media">สื่อ</string>
+    <string name="settings_folder_tools">เครื่องมือ</string>
+    <string name="settings_folder_name">%1$s (%2$d)</string>
+    <string name="settings_folder_desc">โฟลเดอร์%1$s มี %2$s แตะเพื่อเปิด</string>
+    <string name="settings_folder_close">ปิดโฟลเดอร์%1$s</string>
+    <string name="settings_folder_outside">แตะนอกกรอบเพื่อปิดโฟลเดอร์</string>
 </resources>

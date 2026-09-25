@@ -154,7 +154,7 @@ def test_through_the_chat_endpoint_without_the_model(conn, cfg, caplog):
     # The intent line gains notes= at its END; the fields before it keep their shape.
     assert "calendar_add=" in written and " notes=add:shopping:named" in written
     line = next(l for l in written.splitlines() if "intent device=" in l)
-    assert line.rstrip().endswith("notes=add:shopping:named")
+    assert line.rstrip().endswith("notes=add:shopping:named screen=none")   # screen= (0.61.0) appended after it
     assert "นมจืด" not in written                  # the item is in no log line at all
 
 

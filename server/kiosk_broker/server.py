@@ -276,6 +276,7 @@ class Handler(BaseHTTPRequestHandler):
                 status, payload = handle_chat(
                     conn, self.config, self.client,
                     authorization=self.headers.get("Authorization"), body=body,
+                    screen=self.headers.get("X-Kiosk-Screen"),
                 )
             elif self.path == "/v1/health":
                 status, payload = handle_health(

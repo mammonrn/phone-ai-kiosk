@@ -47,4 +47,6 @@
     <color name="dvd_lcd_text">#FFB8F4FF</color>
     <!-- Behind words laid over a picture: black at 70%. -->
     <color name="video_scrim">#B3000000</color>
+    <!-- Behind a Control Panel folder popup: the page dimmed, still seen (0.61.0). -->
+    <color name="panel_scrim">#99000000</color>
 </resources>

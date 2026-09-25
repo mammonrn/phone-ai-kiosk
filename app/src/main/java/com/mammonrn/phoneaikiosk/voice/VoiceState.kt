@@ -50,6 +50,15 @@ object VoiceState : VoiceSink {
     @Volatile var beep: Boolean = false
 
     /**
+     * The screen a question was asked from, when it was asked with that
+     * screen's Jarvis button (JarvisBadge): "music", "video", "notes"… — sent
+     * with the question (Broker.chat) so a bare "ต่อไป" on the music page means
+     * the next song. Cleared when the turn ends; empty for the wake word and
+     * the home screen's button.
+     */
+    @Volatile var turnScreen: String = ""
+
+    /**
      * Keep the last question's audio in the app's files (files/last_capture.wav,
      * one file, overwritten) to measure the beep against the first syllable.
      * Off, and only the debug build's TEST_KEEP_CAPTURE turns it on; forgotten on restart.
