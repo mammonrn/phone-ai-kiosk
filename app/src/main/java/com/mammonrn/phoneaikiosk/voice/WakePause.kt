@@ -39,6 +39,9 @@ object WakePause {
         MUSIC("เล่นเพลง"),
         VIDEO("เล่นวิดีโอ"),
 
+        /** 0.61.0: the voice recorder (recorder/VoiceMemo), only while it is actually recording. */
+        RECORDER("บันทึกเสียง"),
+
         /** The debug build's adb switch (TEST_MEDIA_HOLD); never used by a real player. */
         TEST("ทดสอบ"),
     }

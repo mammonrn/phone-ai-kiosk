@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The voice recorder (0.61.0, DESIGN.md 5ฐ). Formal written Thai, like the file manager.
+     Its own file so the recorder's words never collide with another feature's. -->
+<resources>
+    <string name="window_recorder">บันทึกเสียง</string>
+
+    <string name="rec_state_idle">พร้อมบันทึก</string>
+    <string name="rec_state_recording">กำลังบันทึก</string>
+    <string name="rec_state_paused">หยุดชั่วคราว</string>
+    <string name="rec_state_saving">กำลังเก็บไฟล์…</string>
+
+    <string name="rec_start">เริ่มบันทึก</string>
+    <string name="rec_pause">หยุดชั่วคราว</string>
+    <string name="rec_resume">บันทึกต่อ</string>
+    <string name="rec_stop">หยุดและเก็บไฟล์</string>
+
+    <string name="rec_elapsed_desc">เวลาที่บันทึกแล้ว %1$s</string>
+    <string name="rec_level">ระดับเสียง</string>
+    <string name="rec_level_desc">ระดับเสียงจากไมโครโฟน</string>
+
+    <!-- Poom, locked: the wake word rests while recording. Says why, and what still works. -->
+    <string name="rec_note_resting">ระหว่างบันทึก จาร์วิสไม่ฟังคำปลุก และกลับมาฟังทันทีที่หยุดหรือหยุดชั่วคราว</string>
+    <string name="rec_note_closing">ออกจากหน้านี้ระหว่างบันทึก การบันทึกจะหยุดและเก็บไฟล์ทันที ไม่มีเสียงที่บันทึกแล้วหาย จอดับแล้วยังบันทึกต่อ</string>
+    <string name="rec_note_where">เก็บในเครื่องที่ %1$s เปิดดูได้จากจัดการไฟล์ด้วย</string>
+    <string name="rec_saved">เก็บ “%1$s” แล้ว ยาว %2$s</string>
+
+    <string name="rec_list_title">รายการบันทึก (%1$d)</string>
+    <string name="rec_list_empty">ยังไม่มีการบันทึก กด “เริ่มบันทึก” ด้านบนเพื่อเริ่ม</string>
+    <string name="rec_list_busy">หยุดการบันทึกก่อน จึงจะเปิด เปลี่ยนชื่อ หรือลบรายการได้</string>
+    <string name="rec_open_hint">แตะรายการเพื่อฟัง เปลี่ยนชื่อ หรือลบ</string>
+
+    <string name="rec_details_title">รายละเอียดการบันทึก</string>
+    <string name="rec_fact_date">วันที่บันทึก</string>
+    <string name="rec_fact_length">ความยาว</string>
+    <string name="rec_fact_size">ขนาด</string>
+    <string name="rec_fact_where">อยู่ที่</string>
+    <string name="rec_play">เล่น</string>
+    <string name="rec_rename">เปลี่ยนชื่อ</string>
+    <string name="rec_delete">ลบ</string>
+    <string name="rec_delete_confirm">ลบ “%1$s” ใช่หรือไม่ เมื่อลบแล้วจะกู้คืนไม่ได้ และต้องยืนยันตัวตนก่อน</string>
+    <string name="rec_delete_yes">ยืนยันตัวตนแล้วลบ</string>
+    <string name="rec_deleted">ลบ “%1$s” แล้ว</string>
+    <string name="rec_delete_failed">ยังไม่ได้ลบ เพราะลบไฟล์ไม่สำเร็จ</string>
+    <string name="rec_gone">ไม่พบการบันทึกนี้ในเครื่องแล้ว</string>
+
+    <string name="rec_new_name">ชื่อใหม่</string>
+    <string name="rec_renamed">เปลี่ยนชื่อเป็น “%1$s” แล้ว</string>
+    <string name="rec_rename_failed">เปลี่ยนชื่อไม่สำเร็จ เพราะเขียนไฟล์ไม่ได้</string>
+    <string name="rec_name_empty">กรุณาใส่ชื่อ</string>
+    <string name="rec_name_bad_char">ชื่อห้ามมีเครื่องหมาย / \\ : * ? \" &lt; &gt; |</string>
+    <string name="rec_name_dots">ชื่อห้ามขึ้นต้นด้วยจุด</string>
+    <string name="rec_name_too_long">ชื่อยาวได้ไม่เกิน 40 ตัวอักษร</string>
+    <string name="rec_name_taken">มีการบันทึกชื่อนี้อยู่แล้ว กรุณาใช้ชื่ออื่น</string>
+
+    <string name="rec_problem_no_folder">บันทึกไม่ได้ เพราะสร้างโฟลเดอร์สำหรับเก็บไฟล์ไม่ได้</string>
+    <string name="rec_problem_write">การบันทึกหยุด เพราะเขียนไฟล์ไม่ได้ ส่วนที่บันทึกไปแล้ว (ถ้ามี) อยู่ในรายการ</string>
+    <string name="rec_problem_space">การบันทึกหยุดและเก็บไฟล์แล้ว เพราะพื้นที่ในเครื่องเหลือน้อย</string>
+    <string name="rec_no_permission">ยังบันทึกไม่ได้ เพราะแอปยังไม่ได้สิทธิ์ “เข้าถึงไฟล์ทั้งหมด” ให้สิทธิ์จากหน้าจอนี้ไม่ได้ ต้องให้ผ่าน adb ตามวิธีใน TESTING.md</string>
+    <string name="rec_no_mic">ยังบันทึกไม่ได้ เพราะไมโครโฟนของจาร์วิสไม่ได้เปิดอยู่</string>
+    <string name="rec_mic_silent">ยังไม่ได้รับเสียงจากไมโครโฟน ถ้ายังเป็นแบบนี้ กรุณาหยุดแล้วลองใหม่</string>
+</resources>

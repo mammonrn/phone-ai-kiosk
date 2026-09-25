@@ -900,6 +900,10 @@ class SettingsActivity : Activity() {
             Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
                 it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java))
             },
+            // 0.61.0: the voice recorder (recorder/RecorderActivity); the wake word rests while it records.
+            Category(R.drawable.ic_pixel_mic, { it.getString(R.string.window_recorder) }) {
+                it.startActivity(Intent(it, com.mammonrn.phoneaikiosk.recorder.RecorderActivity::class.java))
+            },
         )
     }
 }

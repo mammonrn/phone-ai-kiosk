@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0): a desk microphone for the voice recorder. A grey
+     capsule head with a white highlight on the left (light from the top left) and
+     three grille bars, held in a black U on a short stand with a foot. Drawn from
+     squares; not any brand's microphone (DESIGN.md 8). 16x16 grid, four colours,
+     all from the window palette. The grey head reads on the navy title bar and on
+     the grey panel alike. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M6,0h4v1h-4z M5,1h1v1h-1z M10,1h1v1h-1z
+        M4,2h1v7h-1z M11,2h1v7h-1z M5,9h1v1h-1z M10,9h1v1h-1z M6,10h4v1h-4z
+        M2,6h1v4h-1z M13,6h1v4h-1z M3,10h1v1h-1z M12,10h1v1h-1z M4,11h8v1h-8z
+        M7,12h2v2h-2z M4,14h8v1h-8z" />
+    <path android:fillColor="#C0C0C0" android:pathData="M6,1h4v1h-4z M5,2h6v7h-6z M6,9h4v1h-4z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M6,2h1v6h-1z" />
+    <path android:fillColor="#808080" android:pathData="M8,3h2v1h-2z M8,5h2v1h-2z M8,7h2v1h-2z" />
+</vector>
