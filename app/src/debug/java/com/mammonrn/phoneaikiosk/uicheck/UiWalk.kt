@@ -471,6 +471,12 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
             }
             waitFor("VideoActivity"); settle(4000)
             grows("playing")
+            // As a spoken "เปิดวิดีโอ…" does it: Jarvis's reply pauses the film, then it goes on.
+            mainSync { player.service?.quietForJarvis() }
+            SystemClock.sleep(2000)
+            mainSync { player.service?.resumeAfterJarvis() }
+            settle(3000)
+            grows("after Jarvis spoke")
             showControls()
             val fill = views().firstOrNull { (it as? TextView)?.text?.toString()?.startsWith("เต็มจอ") == true }
             if (fill != null && (fill as TextView).text.contains("ปิด")) { mainSync { fill.performClick() }; settle(1500) }

@@ -343,9 +343,9 @@ class VideoService : Service(), WakePause.Media {
         if (usingVlc) {
             player.clearVideoSurfaceView(v)
             vlc?.attach(v)
-            // A picture that arrives after VLC started: its video output is opened again on
-            // it — but only on a surface that exists; otherwise when it is created (below).
-            if (fresh && v.holder.surface?.isValid == true) vlc?.reopenVideo()
+            // A picture that arrives after VLC started: VLC opens it again once the surface
+            // exists (surfaceWatch below) — never on a surface that is not there yet.
+            if (fresh && v.holder.surface?.isValid == true) surfaceWatch.surfaceCreated(v.holder)
         } else { vlc?.attach(null); player.setVideoSurfaceView(v) }
         logFrames(if (fresh) "attach-new" else "attach-same")
     }
@@ -363,9 +363,15 @@ class VideoService : Service(), WakePause.Media {
         override fun surfaceCreated(holder: android.view.SurfaceHolder) {
             val v = view ?: return
             if (!usingVlc || v.holder !== holder) return
-            vlc?.attach(v)
-            vlc?.resized(v.width, v.height)
-            vlc?.reopenVideo()
+            val deck = vlc ?: return
+            deck.attach(v)
+            deck.resized(v.width, v.height)
+            // Opened again FROM WHERE IT IS, not by switching the video track off and on:
+            // on the A07 a VCD so switched showed one picture and stalled (16 decoded,
+            // 1 shown, the sound running on). Loading at the current time is the way a
+            // film opened from the list already starts, and that shows its pictures.
+            val film = loadedVideo
+            if (film != null) deck.load(film.track, positionMs(), vlcWant) else deck.reopenVideo()
             logFrames("surface-created")
         }
         override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) = Unit
