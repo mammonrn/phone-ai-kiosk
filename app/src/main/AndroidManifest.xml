@@ -234,6 +234,14 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Google Drive (0.61.0), opened from the file manager. Our own
+             activity, so lock task mode allows it; not exported. -->
+        <activity
+            android:name=".drive.DriveActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- The picture viewer (0.59.0), opened from the file manager: one picture,
              zoomed with two fingers. Our own activity, so lock task mode allows it. -->
         <activity

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Drive in the file manager (0.61.0, DESIGN.md 5ฑ). Its own file so
+     strings.xml is not touched by this feature. Formal written Thai, as the
+     rest of the file manager (FileManagerTest). -->
+<resources>
+    <string name="drive_title">Google Drive</string>
+    <string name="drive_crumb">Drive ของฉัน</string>
+    <string name="drive_root_name">Google Drive</string>
+    <string name="drive_root_sub">ไฟล์ใน Google Drive ของเจ้าของเครื่อง</string>
+    <string name="drive_upload_button">อัปโหลดไป Google Drive</string>
+
+    <string name="drive_checking">กำลังติดต่อ Google Drive…</string>
+    <string name="drive_not_connected">ยังไม่ได้เชื่อมต่อ Google Drive</string>
+    <string name="drive_connect">เชื่อมต่อ</string>
+    <string name="drive_connect_needs_approval">ยังเชื่อมต่อจากหน้าจอนี้ไม่ได้ การเชื่อมต่อครั้งแรกต้องเปิดหน้าขออนุญาตของ Google ซึ่งเป็นแอปนอก kiosk ผู้ดูแลระบบต้องอนุมัติให้เปิดหน้านั้นใน kiosk ก่อน</string>
+    <string name="drive_retry">ลองใหม่</string>
+    <string name="drive_privacy">เครื่องนี้ต่อกับ Google Drive โดยตรง ไม่ผ่านเซิร์ฟเวอร์ รหัสเข้าใช้งานอยู่ในหน่วยความจำขณะเปิดใช้เท่านั้น ไม่ถูกบันทึกลงไฟล์ การลบคือย้ายไปถังขยะของ Drive ซึ่งกู้คืนได้ภายใน 30 วัน</string>
+
+    <string name="drive_status_connected">เชื่อมต่อแล้ว</string>
+    <string name="drive_status_needs_approval">ต้องให้เจ้าของบัญชีอนุญาตครั้งแรกในหน้าของ Google และผู้ดูแลระบบยังไม่ได้อนุมัติให้หน้านั้นเปิดใน kiosk</string>
+    <string name="drive_status_needs_consent">ต้องให้เจ้าของบัญชีอนุญาตครั้งแรก กรุณากด “เชื่อมต่อ” แล้วเลือก “อนุญาต” ในหน้าของ Google</string>
+    <string name="drive_status_not_registered">Google ยังไม่รู้จักแอปนี้ ต้องลงทะเบียนแอปใน Google Cloud Console ก่อน (OAuth client แบบ Android)</string>
+    <string name="drive_status_no_account">ไม่พบบัญชี Google ในเครื่อง หรือต้องลงชื่อเข้าใช้บัญชีใหม่</string>
+    <string name="drive_status_no_network">ไม่ได้ต่ออินเทอร์เน็ต หรือติดต่อ Google ไม่ได้ กรุณาตรวจ WiFi แล้วกด “ลองใหม่”</string>
+    <string name="drive_status_no_play_services">บริการ Google Play ในเครื่องไม่พร้อม (ไม่มี ถูกปิด หรือต้องอัปเดต)</string>
+    <string name="drive_status_timed_out">Google ไม่ตอบภายในเวลาที่กำหนด กรุณากด “ลองใหม่”</string>
+    <string name="drive_status_disconnected">ยกเลิกการเชื่อมต่อแล้ว กด “เชื่อมต่อ” เมื่อต้องการใช้อีกครั้ง</string>
+    <string name="drive_status_cancelled">ปิดหน้าขออนุญาตของ Google โดยยังไม่ได้อนุญาต</string>
+    <string name="drive_status_failed">เชื่อมต่อ Google Drive ไม่สำเร็จ กรุณากด “ลองใหม่”</string>
+
+    <string name="drive_disconnect">ยกเลิกการเชื่อมต่อ Google Drive</string>
+    <string name="drive_disconnect_confirm">ยกเลิกการเชื่อมต่อ Google Drive หรือไม่ ไฟล์ใน Drive ไม่ถูกลบ เชื่อมต่อใหม่ได้ภายหลัง</string>
+    <string name="drive_disconnect_yes">ยกเลิกการเชื่อมต่อ</string>
+    <string name="drive_disconnected_done">ยกเลิกการเชื่อมต่อแล้ว และแจ้ง Google ให้ถอนสิทธิ์แล้ว</string>
+    <string name="drive_disconnected_local">เครื่องนี้หยุดใช้ Google Drive แล้ว แต่แจ้ง Google ให้ถอนสิทธิ์ไม่สำเร็จ ถอนเองได้ที่ myaccount.google.com/permissions</string>
+
+    <string name="drive_problem_not_found">ไม่พบรายการนี้ใน Google Drive แล้ว อาจถูกย้ายหรือลบจากที่อื่น</string>
+    <string name="drive_problem_permission">ไม่มีสิทธิ์ทำรายการนี้ อาจเป็นไฟล์ที่ผู้อื่นแชร์มา</string>
+    <string name="drive_problem_full">พื้นที่ Google Drive เต็ม</string>
+    <string name="drive_problem_busy">Google Drive ไม่ว่างชั่วคราว กรุณารอสักครู่แล้วลองใหม่</string>
+    <string name="drive_problem_api_off">ยังไม่ได้เปิด Google Drive API ในโปรเจกต์ Google Cloud</string>
+    <string name="drive_problem_space">พื้นที่ในเครื่องไม่พอ</string>
+    <string name="drive_problem_other">ทำรายการกับ Google Drive ไม่สำเร็จ กรุณาลองใหม่</string>
+
+    <string name="drive_empty_pick">ไม่มีโฟลเดอร์ย่อย อัปโหลดไว้ที่โฟลเดอร์นี้ได้</string>
+    <string name="drive_new_folder">โฟลเดอร์ใหม่</string>
+    <string name="drive_folder_name">ชื่อโฟลเดอร์</string>
+    <string name="drive_pick_upload">เลือกโฟลเดอร์ใน Google Drive สำหรับอัปโหลด “%1$s”</string>
+    <string name="drive_upload_here">อัปโหลดที่นี่</string>
+
+    <string name="drive_native_kind">ไฟล์ของ Google (เอกสาร ชีต สไลด์ ฯลฯ)</string>
+    <string name="drive_native_note">ไฟล์ประเภทนี้เปิดได้เฉพาะในโปรแกรมของ Google จึงเปิดหรือดาวน์โหลดในเครื่องนี้ไม่ได้ เปลี่ยนชื่อหรือย้ายไปถังขยะได้</string>
+    <string name="drive_open">เปิด</string>
+    <string name="drive_download">ดาวน์โหลดลงเครื่อง (Download › Drive)</string>
+    <string name="drive_trash">ย้ายไปถังขยะ</string>
+    <string name="drive_trash_yes">ย้ายไปถังขยะ</string>
+    <string name="drive_trash_confirm_file">ย้าย “%1$s” ไปถังขยะของ Google Drive หรือไม่</string>
+    <string name="drive_trash_confirm_folder">ย้ายโฟลเดอร์ “%1$s” และทุกอย่างข้างในไปถังขยะของ Google Drive หรือไม่</string>
+    <string name="drive_trash_note">รายการในถังขยะของ Google Drive กู้คืนได้ที่ drive.google.com ภายใน 30 วัน เครื่องนี้ไม่ลบถาวร</string>
+
+    <string name="drive_working_trash">กำลังย้าย “%1$s” ไปถังขยะ</string>
+    <string name="drive_working_download">กำลังดาวน์โหลด “%1$s”</string>
+    <string name="drive_working_upload">กำลังอัปโหลด “%1$s”</string>
+    <string name="drive_working_open">กำลังเตรียมเปิด “%1$s”</string>
+    <string name="drive_progress">%1$s จาก %2$s</string>
+    <string name="drive_stopped">หยุดแล้ว ไม่มีไฟล์ที่ทำไม่เสร็จเหลืออยู่</string>
+
+    <string name="drive_done_trash">ย้าย “%1$s” ไปถังขยะของ Google Drive แล้ว</string>
+    <string name="drive_done_download">ดาวน์โหลด “%1$s” ลงโฟลเดอร์ Download › Drive แล้ว</string>
+    <string name="drive_done_upload">อัปโหลด “%1$s” แล้ว</string>
+    <string name="drive_done_rename">เปลี่ยนชื่อเป็น “%1$s” แล้ว</string>
+    <string name="drive_done_mkdir">สร้างโฟลเดอร์ “%1$s” แล้ว</string>
+</resources>

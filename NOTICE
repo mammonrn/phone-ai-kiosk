@@ -163,6 +163,13 @@ Terms of Service: https://developers.google.com/ml-kit/terms. It finds the face,
 its five landmarks for alignment, and the eye-open probability for the blink.
 Nothing is sent to Google by it.
 
+Google Play services auth — Google Drive's access token (0.61.0)
+----------------------------------------------------------------
+com.google.android.gms:play-services-auth (AuthorizationClient), under the
+Android Software Development Kit License: https://developer.android.com/studio/terms.
+It asks Google Play services on the phone for a Drive access token; the Drive
+calls themselves are this project's own code (drive/DriveApi.kt).
+
 CameraX — the front camera (0.37.0)
 -----------------------------------
 androidx.camera, Apache-2.0. Open only while a verification or an enrolment is

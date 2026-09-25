@@ -40,6 +40,11 @@ smbj = "0.14.0"
 # ALAC, WAV, MP3, AAC, Opus) is decoded by Android's own MediaCodec. The
 # ffmpeg extension (DSD, APE, WavPack) is the ~22 MB Poom ruled out.
 media3 = "1.11.1"
+# Google Drive straight from the phone (0.61.0, Poom): Google Identity Services'
+# AuthorizationClient only, for a Drive access token. No client id is compiled
+# in (the Android OAuth client is matched by package name + SHA-1) and no
+# google-api-client: the Drive REST calls are plain HttpURLConnection + org.json.
+playServicesAuth = "22.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -54,6 +59,7 @@ androidx-lifecycle-livedata = { group = "androidx.lifecycle", name = "lifecycle-
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }
 smbj = { group = "com.hierynomus", name = "smbj", version.ref = "smbj" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 mlkit-face = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
 
 [plugins]
