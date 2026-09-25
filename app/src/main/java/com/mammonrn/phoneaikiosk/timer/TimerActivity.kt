@@ -34,8 +34,17 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * นาฬิกาจับเวลา / นับถอยหลัง (0.62.0, Poom approved, DESIGN.md 5ณ): one app,
- * two modes switched by the option row at the top.
+ * "เวลา" (0.63.0, Poom): นาฬิกาปลุก · จับเวลา · นับถอยหลัง — one app of three pages
+ * turned sideways by the calculator's own [SlideDeck] (■ □ □ in the title bar),
+ * one icon in the Control Panel's tools folder. Was the stopwatch and countdown
+ * of 0.62.0 (DESIGN.md 5ณ); the alarms were a page of the Control Panel.
+ *
+ * THE ALARMS STAY WHERE THEY LIVE. The page lists them, switches them on and
+ * off and deletes them (asked once) through AlarmStore as before; adding and
+ * changing one opens the Control Panel's own alarm editor, the one that has
+ * always set them, for that alarm alone — and closing it comes back here. The
+ * alarms set, their ringing with the screen off and every voice command are
+ * the same code as before.
  *
  * THIS SCREEN ONLY DRAWS. The counting is [TimerClock]'s, the process's: X,
  * "กลับหน้าหลัก", Back and Hey Jarvis (KioskScreens closes every screen,
@@ -47,7 +56,20 @@ import java.util.Locale
  * The one thing leaving does: a countdown that is RINGING when the screen is
  * closed counts as seen — the sound stops, as the stop button would.
  */
-class TimerActivity : Activity() {
+class TimerActivity : Activity(), com.mammonrn.phoneaikiosk.calc.SlideHost {
+
+    /** The three pages, in this order. */
+    enum class Slide(val title: Int) { ALARMS(R.string.time_slide_alarms), STOPWATCH(R.string.time_slide_stopwatch), COUNTDOWN(R.string.time_slide_countdown) }
+
+    override val activity: Activity get() = this
+    override val pageDots: LinearLayout get() = frame.dots
+    override fun setPage(view: View) = frame.setPage(view)
+    override fun dp(value: Int): Int = r.dp(value)
+    override fun color(id: Int): Int = r.color(id)
+
+    private lateinit var deck: com.mammonrn.phoneaikiosk.calc.SlideDeck<Slide>
+    /** Asked once to delete, in place, like the Control Panel's alarm page. */
+    private var confirmingDelete: Int? = null
 
     private lateinit var r: Retro
     private lateinit var pixel: Typeface
@@ -73,8 +95,15 @@ class TimerActivity : Activity() {
         pixel = ResourcesCompat.getFont(this, R.font.press_start_2p) ?: Typeface.MONOSPACE
         r = Retro(this, thai)
         TimerClock.load(this)
-        frame = ToolWindow(this, r, R.drawable.ic_pixel_stopwatch, onClose = { closeApp() }, onHome = { goHome() })
+        frame = ToolWindow(this, r, R.drawable.ic_pixel_alarm_clock, onClose = { closeApp() }, onHome = { goHome() })
         setContentView(frame.root)
+        val first = when (intent?.getStringExtra(EXTRA_SLIDE)) {
+            "alarms" -> Slide.ALARMS
+            "stopwatch" -> Slide.STOPWATCH
+            "countdown" -> Slide.COUNTDOWN
+            else -> if (TimerClock.showCountdown) Slide.COUNTDOWN else Slide.STOPWATCH
+        }
+        deck = com.mammonrn.phoneaikiosk.calc.SlideDeck(this, { Slide.entries.toList() }, { getString(it.title) }, { slidePage(it) }, first)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
                 android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { finish() }
@@ -133,6 +162,7 @@ class TimerActivity : Activity() {
         if (intent?.getBooleanExtra(EXTRA_RING, false) != true) return
         intent.removeExtra(EXTRA_RING)
         TimerClock.showMode(this, countdownMode = true)
+        if (::deck.isInitialized) deck.show(Slide.COUNTDOWN)
         if (TimerClock.countdown.state == Countdown.State.RINGING && VoiceState.alarmRinging.isEmpty()) {
             VoiceService.start(this, VoiceService.ACTION_TIMER_RING)
         }
@@ -163,8 +193,9 @@ class TimerActivity : Activity() {
     private fun layoutKey(): String {
         val cd = TimerClock.countdown
         val sw = TimerClock.stopwatch
-        return "${TimerClock.showCountdown}|${cd.state}|${cd.canStart()}|" +
-            "${sw.running}|${sw.isClear}|${sw.laps.size}|${VoiceState.alarmRinging.isNotEmpty()}"
+        return "${deck.current}|${TimerClock.showCountdown}|${cd.state}|${cd.canStart()}|" +
+            "${sw.running}|${sw.isClear}|${sw.laps.size}|${VoiceState.alarmRinging.isNotEmpty()}|" +
+            "${VoiceState.alarmsVersion}|$confirmingDelete"
     }
 
     private fun draw() {
@@ -173,28 +204,122 @@ class TimerActivity : Activity() {
         digits = null; stateWord = null; endsAt = null; otherLine = null
         wheelValues.clear()
         presetButtons.clear()
-        frame.title.text = getString(R.string.timer_title)
+        frame.title.text = getString(R.string.window_time)
         val ringing = TimerClock.countdown.state == Countdown.State.RINGING
         // A ringing end keeps the screen lit until someone sees it.
         if (ringing && drawnSound == true) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (ringing) {
+            // The one thing to do while it rings: no pages to turn.
+            frame.dots.visibility = View.GONE
+            val page = r.column().apply { setPadding(0, 0, 0, r.dp(UiScale.SPACE_S)) }
+            drawRinging(page)
+            frame.setPage(ScrollView(this).apply { addView(page) })
+        } else {
+            deck.open()
+        }
+        refresh()
+    }
+
+    /** One of the three pages, built by [deck] (a turn builds the next one). */
+    private fun slidePage(slide: Slide): View {
+        digits = null; stateWord = null; endsAt = null; otherLine = null
+        wheelValues.clear()
+        presetButtons.clear()
         val page = r.column().apply { setPadding(0, 0, 0, r.dp(UiScale.SPACE_S)) }
-        if (ringing) drawRinging(page) else {
-            page.addView(r.row().apply {
-                addView(r.option(getString(R.string.timer_mode_stopwatch), !TimerClock.showCountdown) {
-                    TimerClock.showMode(this@TimerActivity, false)
-                }, LinearLayout.LayoutParams(0, r.dp(UiScale.TOUCH), 1f))
-                addView(r.option(getString(R.string.timer_mode_countdown), TimerClock.showCountdown) {
-                    TimerClock.showMode(this@TimerActivity, true)
-                }, LinearLayout.LayoutParams(0, r.dp(UiScale.TOUCH), 1f))
-            }, LinearLayout.LayoutParams(MATCH, WRAP))
+        page.addView(r.bold(getString(slide.title), UiScale.TEXT_HEADING), LinearLayout.LayoutParams(MATCH, WRAP))
+        if (slide == Slide.ALARMS) {
+            drawAlarms(page)
+        } else {
+            // Which of the two the voice and the home card read as "shown" (TimerClock).
+            val countdown = slide == Slide.COUNTDOWN
+            if (TimerClock.showCountdown != countdown) TimerClock.showMode(this, countdown)
             otherLine = r.text("", UiScale.TEXT_NOTE, dim = true).apply { visibility = View.GONE }
             page.addView(otherLine, LinearLayout.LayoutParams(MATCH, WRAP))
             page.addView(lcd(), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = r.dp(UiScale.SPACE_S) })
-            if (TimerClock.showCountdown) drawCountdown(page) else drawStopwatch(page)
+            if (countdown) drawCountdown(page) else drawStopwatch(page)
         }
-        frame.setPage(ScrollView(this).apply { addView(page) })
-        refresh()
+        drawnKey = layoutKey()
+        return ScrollView(this).apply { addView(page) }
+    }
+
+    // ------------------------------------------------------------ the alarms (0.63.0)
+
+    /** The alarms as the Control Panel listed them: on/off, time, name, repeat; change, delete, add. */
+    private fun drawAlarms(page: LinearLayout) {
+        val book = com.mammonrn.phoneaikiosk.alarm.AlarmStore.load(this)
+        if (book.alarms.isEmpty()) {
+            page.addView(r.text(getString(R.string.alarms_empty), UiScale.TEXT_BASE),
+                         LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = r.dp(UiScale.SPACE_M) })
+        }
+        for (alarm in book.alarms) page.addView(alarmRow(book, alarm),
+            LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = r.dp(UiScale.SPACE_S) })
+        val full = book.alarms.size >= com.mammonrn.phoneaikiosk.alarm.AlarmBook.MAX_ALARMS
+        page.addView(r.button(getString(if (full) R.string.alarms_full else R.string.alarm_add), big = true, enabled = !full) {
+            editAlarm(-1)
+        }, LinearLayout.LayoutParams(MATCH, r.dp(UiScale.PRIMARY)).apply { topMargin = r.dp(UiScale.SPACE_M) })
+    }
+
+    private fun alarmRow(book: com.mammonrn.phoneaikiosk.alarm.AlarmBook,
+                         alarm: com.mammonrn.phoneaikiosk.alarm.AlarmBook.Alarm): View = r.column().apply {
+        setBackgroundResource(R.drawable.retro_sunken)
+        setPadding(r.dp(UiScale.SPACE_S), r.dp(UiScale.SPACE_S), r.dp(UiScale.SPACE_S), r.dp(UiScale.SPACE_S))
+        val top = r.row().apply { gravity = Gravity.CENTER_VERTICAL }
+        // The tick box is the on/off switch: a 48dp target with the word beside it.
+        top.addView(r.row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            contentDescription = getString(if (alarm.enabled) R.string.alarm_on else R.string.alarm_off)
+            setOnClickListener {
+                book.setEnabled(alarm.id, !alarm.enabled)
+                com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(this@TimerActivity, book)
+                drawnKey = ""
+            }
+            addView(ImageView(context).apply {
+                setImageResource(if (alarm.enabled) R.drawable.ic_pixel_check_on else R.drawable.ic_pixel_check_off)
+            }, LinearLayout.LayoutParams(r.dp(UiScale.ICON_L), r.dp(UiScale.ICON_L)))
+            addView(r.text(getString(if (alarm.enabled) R.string.alarm_on else R.string.alarm_off), UiScale.TEXT_NOTE).apply {
+                setPadding(r.dp(UiScale.SPACE_XS), 0, r.dp(UiScale.SPACE_S), 0)
+            })
+        }, LinearLayout.LayoutParams(WRAP, r.dp(UiScale.TOUCH)))
+        top.addView(r.text(com.mammonrn.phoneaikiosk.ui.RetroType.pixelify(
+            com.mammonrn.phoneaikiosk.voice.DashboardState.clock12(alarm.time), pixel), UiScale.TEXT_VALUE, dim = !alarm.enabled),
+            LinearLayout.LayoutParams(WRAP, WRAP))
+        top.addView(r.text(alarm.label, UiScale.TEXT_ITEM, dim = !alarm.enabled).apply {
+            setPadding(r.dp(UiScale.SPACE_S), 0, 0, 0)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        addView(top)
+        val bottom = r.row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, r.dp(UiScale.SPACE_S), 0, 0)
+        }
+        if (confirmingDelete == alarm.id) {
+            // Deleting cannot be undone, so it asks once, in place.
+            bottom.addView(r.text(getString(R.string.alarm_delete_confirm), UiScale.TEXT_NOTE), LinearLayout.LayoutParams(0, WRAP, 1f))
+            bottom.addView(r.button(getString(R.string.alarm_delete)) {
+                book.remove(alarm.id)
+                com.mammonrn.phoneaikiosk.alarm.AlarmStore.save(this@TimerActivity, book)
+                confirmingDelete = null
+            }, LinearLayout.LayoutParams(WRAP, r.dp(UiScale.TOUCH)))
+            bottom.addView(r.button(getString(R.string.cancel)) { confirmingDelete = null },
+                LinearLayout.LayoutParams(WRAP, r.dp(UiScale.TOUCH)).apply { marginStart = r.dp(UiScale.SPACE_S) })
+        } else {
+            bottom.addView(r.text(com.mammonrn.phoneaikiosk.alarm.AlarmBook.repeatText(alarm), UiScale.TEXT_NOTE, dim = true),
+                LinearLayout.LayoutParams(0, WRAP, 1f))
+            bottom.addView(r.button(getString(R.string.edit)) { editAlarm(alarm.id) },
+                LinearLayout.LayoutParams(WRAP, r.dp(UiScale.TOUCH)))
+            bottom.addView(r.button(getString(R.string.alarm_delete)) { confirmingDelete = alarm.id },
+                LinearLayout.LayoutParams(WRAP, r.dp(UiScale.TOUCH)).apply { marginStart = r.dp(UiScale.SPACE_S) })
+        }
+        addView(bottom)
+    }
+
+    /** The Control Panel's alarm editor, for this alarm alone (-1: a new one); it comes back here. */
+    private fun editAlarm(id: Int) {
+        startActivity(Intent(this, com.mammonrn.phoneaikiosk.settings.SettingsActivity::class.java)
+            .putExtra(com.mammonrn.phoneaikiosk.settings.SettingsActivity.EXTRA_EDIT_ALARM, id))
     }
 
     /** The read-out: green Press Start 2P digits on black, the state in words under them. */
@@ -494,6 +619,8 @@ class TimerActivity : Activity() {
         private const val REPEAT_START_MS = 450L
         private const val REPEAT_MS = 110L
         const val EXTRA_RING = "com.mammonrn.phoneaikiosk.TIMER_RING"
+        /** The page to open on: "alarms", "stopwatch" or "countdown". */
+        const val EXTRA_SLIDE = "com.mammonrn.phoneaikiosk.TIME_SLIDE"
 
         /** This screen on its "หมดเวลา" page, over whatever is in front. */
         /** The screen to the front with no sound: a countdown missed while the phone was off. */

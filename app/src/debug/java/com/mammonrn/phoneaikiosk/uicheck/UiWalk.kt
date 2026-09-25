@@ -377,9 +377,19 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         openApp("สื่อ", "กล้อง", "CameraActivity"); check("camera", picture = false)
         openApp("สื่อ", "บันทึกเสียง", "RecorderActivity"); check("recorder")
 
-        openApp("เครื่องมือ", "นาฬิกาปลุก", null); check("alarms")
-        openApp("เครื่องมือ", "จับเวลา", "TimerActivity"); check("timer-countdown")
-        press("○ นาฬิกาจับเวลา"); check("timer-stopwatch")
+        // "เวลา" (0.63.0): three swiped pages, and the alarm editor it opens.
+        openApp("เครื่องมือ", "เวลา", "TimerActivity")
+        for ((k, name) in listOf("alarms", "stopwatch", "countdown").withIndex()) {
+            slideTo(k + 1)
+            check("time-${k + 1}-$name")
+        }
+        slideTo(1)
+        if (wanted("time-alarm-editor") && press(ctx.getString(R.string.alarm_add))) {
+            waitFor("SettingsActivity")
+            check("time-alarm-editor")
+            press(ctx.getString(R.string.cancel))
+            waitFor("TimerActivity")
+        }
         openApp("เครื่องมือ", "โน้ต", "NotesActivity"); check("notes")
         openApp("เครื่องมือ", "ระดับน้ำ", "CompassActivity"); check("level")
 
@@ -504,6 +514,17 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         results.put(JSONObject().put("name", name).put("activity", "VideoActivity").put("pass", issues.isEmpty())
             .put("issues", JSONArray(issues)).put("exceptions", JSONArray(exceptions)).put("picture", false))
         File(out, "results.json").writeText(results.toString(1))
+    }
+
+    /** The page squares' own words say where it is ("หน้า 2 จาก 3"); pressed until page [k]. */
+    private fun slideTo(k: Int) {
+        repeat(4) {
+            val at = views().firstNotNullOfOrNull { v ->
+                Regex("หน้า (\\d+) จาก").find(v.contentDescription?.toString().orEmpty())?.groupValues?.get(1)?.toInt()
+            } ?: return
+            if (at == k) return
+            press("หน้า ")
+        }
     }
 
     /** Full screen on: the button reads "เต็มจอ เปิด" (its words, not a guess from the layout). */

@@ -92,7 +92,19 @@ class SettingsActivity : Activity() {
         setContentView(host)
         hideSystemBars()
         showHome()
+        // 0.63.0: opened by the "เวลา" app to add or change one alarm — the editor only;
+        // saving, cancelling, Back and X all go back to that app (it is under this one).
+        if (intent.hasExtra(EXTRA_EDIT_ALARM)) {
+            editOnly = true
+            val id = intent.getIntExtra(EXTRA_EDIT_ALARM, -1)
+            showEdit(AlarmStore.load(this).alarms.firstOrNull { it.id == id })
+        }
     }
+
+    /** Opened for one alarm by the "เวลา" app: leaving the editor closes this screen. */
+    private var editOnly = false
+
+    private fun afterEdit() { if (editOnly) finish() else showAlarms() }
 
     override fun onResume() {
         super.onResume()
@@ -169,7 +181,7 @@ class SettingsActivity : Activity() {
     private fun goBack() {
         if (closeFolder()) return
         when (page) {
-            Page.EDIT -> showAlarms()
+            Page.EDIT -> afterEdit()
             Page.LIGHT_NAME -> lights.back(null)
             Page.ALARMS, Page.SOURCES, Page.AUTH, Page.LIGHTS -> showHome()
             Page.HOME -> goHome()
@@ -223,7 +235,7 @@ class SettingsActivity : Activity() {
             setBackgroundResource(R.drawable.retro_button)
             contentDescription = getString(R.string.settings_close)
             isClickable = true
-            setOnClickListener { goHome() }
+            setOnClickListener { if (editOnly) finish() else goHome() }
             addView(ImageView(context).apply { setImageResource(R.drawable.ic_pixel_close) },
                     FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
@@ -868,9 +880,9 @@ class SettingsActivity : Activity() {
                     return@button
                 }
                 AlarmStore.save(this@SettingsActivity, book)
-                showAlarms()
+                afterEdit()
             }, LinearLayout.LayoutParams(0, dp(UiScale.PRIMARY), 1f))
-            addView(button(getString(R.string.cancel), big = true) { showAlarms() },
+            addView(button(getString(R.string.cancel), big = true) { afterEdit() },
                     LinearLayout.LayoutParams(0, dp(UiScale.PRIMARY), 1f).apply { marginStart = dp(UiScale.SPACE_S) })
         }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(UiScale.SPACE_M) })
 
@@ -985,6 +997,8 @@ class SettingsActivity : Activity() {
     internal fun color(id: Int): Int = ContextCompat.getColor(this, id)
 
     companion object {
+        /** The alarm to change (its id), or -1 for a new one: the editor alone (timer/TimerActivity). */
+        const val EXTRA_EDIT_ALARM = "com.mammonrn.phoneaikiosk.EDIT_ALARM"
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         private const val REPEAT_START_MS = 450L
@@ -1040,9 +1054,9 @@ class SettingsActivity : Activity() {
                         },
             )),
             Tile.Folder(R.string.settings_folder_tools, listOf(
-                    Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_alarms) }) { it.showAlarms() },
-                    // 0.62.0: the stopwatch and countdown (timer/TimerActivity), next to the alarms: a kitchen tool.
-                    Category(R.drawable.ic_pixel_stopwatch, { it.getString(R.string.window_timer) }) {
+                    // 0.63.0 (Poom): "เวลา" — the alarms, the stopwatch and the countdown, one app of
+                    // three swiped pages (timer/TimerActivity), where two icons were.
+                    Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_time) }) {
                         it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.timer.TimerActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                     },
                     // 0.52.0: the engineering calculator, a screen of its own (calc/CalculatorActivity).

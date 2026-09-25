@@ -54,7 +54,11 @@ class TimerCompassScreenTest {
         val compassWords = Regex("""R\.string\.(\w+)""").findAll(compass).map { it.groupValues[1] }.toSet()
         val timerXml = file("src/main/res/values/strings_timer.xml").readText()
         val compassXml = file("src/main/res/values/strings_compass.xml").readText()
-        for (w in timerWords - "settings_home") assertTrue(w, "name=\"$w\"" in timerXml)
+        // 0.63.0: the "เวลา" app's alarm page says what the Control Panel's alarm page always
+        // said, in the same words (one flow, one wording) — those stay in strings.xml.
+        val alarmWords = setOf("alarms_empty", "alarms_full", "alarm_add", "alarm_on", "alarm_off",
+                               "alarm_delete", "alarm_delete_confirm", "cancel", "edit")
+        for (w in timerWords - "settings_home" - alarmWords) assertTrue(w, "name=\"$w\"" in timerXml)
         for (w in compassWords) assertTrue(w, "name=\"$w\"" in compassXml)
     }
 
@@ -72,12 +76,13 @@ class TimerCompassScreenTest {
     }
 
     @Test
-    fun `the Control Panel opens them - the timer beside the alarms, the compass with the tools`() {
+    fun `the Control Panel opens them - one "เวลา" tile in the tools folder, the level beside it`() {
         val panel = src("settings/SettingsActivity.kt")
-        val home = panel.substringAfter("Group(R.string.settings_group_home").substringBefore("Group(R.string.settings_group_media")
-        assertTrue(home.indexOf("window_alarms") < home.indexOf("timer.TimerActivity"))
-        assertTrue("Origin.PANEL" in home.substringAfter("timer.TimerActivity").substringBefore("\n"))
-        val tools = panel.substringAfter("Group(R.string.settings_group_tools").substringBefore("Group(R.string.settings_group_setup")
+        val tools = panel.substringAfter("Tile.Folder(R.string.settings_folder_tools").substringBefore("\n            )),")
+        // 0.63.0 (Poom): the alarms, the stopwatch and the countdown are one app, one icon.
+        assertTrue("R.string.window_time" in tools && "timer.TimerActivity" in tools)
+        assertTrue("Origin.PANEL" in tools.substringAfter("timer.TimerActivity").substringBefore("\n"))
+        assertTrue("window_alarms" !in tools)
         assertTrue("compass.CompassActivity" in tools)
         val manifest = file("src/main/AndroidManifest.xml").readText()
         for (name in listOf(".timer.TimerActivity", ".compass.CompassActivity")) {

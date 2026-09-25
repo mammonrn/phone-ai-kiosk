@@ -57,4 +57,8 @@
     <!-- The home screen's alarm card while the end rings (VoiceState.alarmRinging). -->
     <string name="timer_ringing_card">หมดเวลานับถอยหลัง %1$s</string>
     <string name="timer_cd_missed">นับถอยหลังครบเวลาเมื่อ %1$s ตอนมือถือปิดอยู่ เลยมาเกิน 1 ชั่วโมงจึงไม่ส่งเสียง</string>
+    <string name="window_time">เวลา</string>
+    <string name="time_slide_alarms">นาฬิกาปลุก</string>
+    <string name="time_slide_stopwatch">จับเวลา</string>
+    <string name="time_slide_countdown">นับถอยหลัง</string>
 </resources>

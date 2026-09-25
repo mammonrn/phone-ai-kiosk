@@ -31,6 +31,8 @@ class ToolWindow(private val activity: Activity, private val r: Retro, icon: Int
     val root: View
     val title: TextView
     val content: FrameLayout
+    /** ■ □ □ for a screen of swiped pages (calc/SlideDeck), in the title bar; GONE otherwise. */
+    val dots: LinearLayout
 
     init {
         val outer = LinearLayout(activity).apply {
@@ -61,6 +63,14 @@ class ToolWindow(private val activity: Activity, private val r: Retro, icon: Int
             ellipsize = TextUtils.TruncateAt.END
         }
         bar.addView(title, LinearLayout.LayoutParams(0, Retro.WRAP, 1f))
+        dots = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            minimumWidth = r.dp(UiScale.TOUCH)
+            setPadding(r.dp(UiScale.SPACE_S), 0, r.dp(UiScale.SPACE_S), 0)
+            visibility = View.GONE
+        }
+        bar.addView(dots, LinearLayout.LayoutParams(Retro.WRAP, r.dp(UiScale.TOUCH)))
         bar.addView(FrameLayout(activity).apply {
             setBackgroundResource(R.drawable.retro_button)
             contentDescription = Origin.closeWords(activity)

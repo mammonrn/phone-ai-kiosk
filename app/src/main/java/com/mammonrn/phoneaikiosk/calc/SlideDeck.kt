@@ -31,7 +31,7 @@ import kotlin.math.abs
  * built by the tab's own code — this class knows nothing of formulas.
  */
 internal class SlideDeck<K>(
-    private val a: CalculatorActivity,
+    private val a: SlideHost,
     private val keys: () -> List<K>,
     private val title: (K) -> String,
     private val view: (K) -> View,
@@ -40,7 +40,7 @@ internal class SlideDeck<K>(
     var current: K = first
         private set
 
-    private val frame = SlideFrame(a) { step -> turn(step) }
+    private val frame = SlideFrame(a.activity) { step -> turn(step) }
 
     /** The tab opens: the slide it was on, the squares in the title bar. */
     fun open() {
@@ -59,7 +59,7 @@ internal class SlideDeck<K>(
         val next = (list.indexOf(current) + step).coerceIn(0, list.lastIndex)
         if (list[next] == current) return
         current = list[next]
-        a.currentFocus?.clearFocus()
+        a.activity.currentFocus?.clearFocus()
         render()
     }
 
@@ -80,7 +80,7 @@ internal class SlideDeck<K>(
         val said = ArrayList<String>()
         for ((n, k) in list.withIndex()) {
             val on = k == current
-            host.addView(View(a).apply {
+            host.addView(View(a.activity).apply {
                 background = GradientDrawable().apply {
                     if (on) setColor(a.color(R.color.retro_title_text))
                     setStroke(a.dp(UiScale.HAIRLINE), a.color(R.color.retro_title_text))
@@ -88,9 +88,9 @@ internal class SlideDeck<K>(
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams(a.dp(PagedPanel.SQUARE_DP), a.dp(PagedPanel.SQUARE_DP)).apply { if (n > 0) marginStart = a.dp(UiScale.SPACE_XS) })
             val name = title(k)
-            said.add(if (on) a.getString(R.string.solar_dot_showing, name) else name)
+            said.add(if (on) a.activity.getString(R.string.solar_dot_showing, name) else name)
         }
-        host.contentDescription = a.getString(R.string.solar_dots, list.indexOf(current) + 1, list.size, said.joinToString(", "))
+        host.contentDescription = a.activity.getString(R.string.solar_dots, list.indexOf(current) + 1, list.size, said.joinToString(", "))
         host.isClickable = true
         host.setOnClickListener {
             val l = keys()

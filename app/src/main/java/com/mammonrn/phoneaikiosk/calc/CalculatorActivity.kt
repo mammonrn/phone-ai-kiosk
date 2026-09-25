@@ -45,7 +45,9 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
  * are said in Thai words, never as NaN. Memory, the angle unit and the
  * history survive a restart (SharedPreferences, [PREFS]).
  */
-class CalculatorActivity : Activity() {
+class CalculatorActivity : Activity(), SlideHost {
+
+    override val activity: Activity get() = this
 
     internal lateinit var thai: Typeface
     internal lateinit var pixel: Typeface
@@ -61,7 +63,7 @@ class CalculatorActivity : Activity() {
     internal val units by lazy { UnitsPages(this) }
 
     /** The solar slides' squares (■ □), in the title bar beside the title: they cost no height (DESIGN.md 5จ). */
-    internal lateinit var pageDots: LinearLayout
+    override lateinit var pageDots: LinearLayout
 
     // ------------------------------------------------------------ state
 
@@ -226,7 +228,7 @@ class CalculatorActivity : Activity() {
         }
     }
 
-    internal fun setPage(view: View) {
+    override fun setPage(view: View) {
         content.removeAllViews()
         content.addView(view, FrameLayout.LayoutParams(MATCH, MATCH))
     }
@@ -586,10 +588,10 @@ class CalculatorActivity : Activity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
-    internal fun dp(value: Int): Int = TypedValue.applyDimension(
+    override fun dp(value: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
 
-    internal fun color(id: Int): Int = ContextCompat.getColor(this, id)
+    override fun color(id: Int): Int = ContextCompat.getColor(this, id)
 
     companion object {
         const val PREFS = "calculator"
