@@ -2165,3 +2165,17 @@ sudo journalctl -u kiosk-broker -n 50 | grep "intent device"   # บน VPS: ท
 - **เข็มทิศ:** A07 **ไม่มีเซนเซอร์แม่เหล็ก** (`sensors rotation=false magnet=false accel=true`) หน้าเข็มทิศบอกว่าใช้ไม่ได้ ระดับน้ำใช้ได้
 - **โน้ต:** พิมพ์เพิ่ม ติ๊ก เอาออก ได้ · สั่งด้วยเสียงต้องรอ deploy broker ก่อน
 - **วัดเสียงบี๊บ (ทำเองทั้งหมด):** edge-tts "Hey Jarvis" เสียงอังกฤษ + ประโยคไทยเสียง th-TH Neural เว้น 200 ms → ด่านตรวจ `TEST_STT_FILE --es path /sdcard/Download/x.wav` (ผลอยู่ใน `files/stt_probe.txt` ไม่ลง log) ใช้เฉพาะคลิปที่ถอดถูกทั้งประโยค → เล่นผ่านลำโพงคอม `TEST_KEEP_CAPTURE on` ดึง `files/last_capture.wav` ทุกรอบ เทียบ `TEST_BEEP on/off` จบแล้วปิดสวิตช์และลบไฟล์ · ถ้าส่งไฟล์ที่มีช่วงศูนย์ล้วน (digital silence) broker ตอบ Failure ให้ใช้การลดเสียงแทน
+
+### v0.61.0 (ต่อ 2) — โฟลเดอร์ในแผงควบคุม, ปุ่ม taskbar, สัญลักษณ์สถานะ, ปุ่มจาร์วิสในแอป (A07, 2026-09-25)
+
+debug APK จาก CI · แพ็กเกจ `com.mammonrn.phoneaikiosk.debug` (broadcast ต้องมี `-p` เป็นชื่อนี้ ไม่งั้นแอปไม่ได้รับ) · activity ไม่ได้ export จึง `am start` ไม่ได้ ต้องเปิดผ่านแผงควบคุมด้วย uiautomator + tap
+
+| ตรวจ | วิธี | ผล |
+|---|---|---|
+| ปุ่ม taskbar A/B/C | `TEST_TASKBAR --ei style N` → เปิดแผงควบคุม → `TEST_HOME` (สไตล์ใช้ตอน onResume) → uiautomator bounds | ✅ "แผงควบคุม" บรรทัดเดียว · `card_jarvis` 394px (210dp) · `exit_corner` [585,1465][720,1600] เท่ากันทั้งสามแบบ |
+| แผงควบคุม + ป๊อปอัป | แคปหน้าแผง, "เครื่องมือ (5)", "สื่อ (5)" | ✅ ครบ 3 แถว / ป๊อปอัป 2 แถว ช่องในแถวสูงเท่ากัน (รอบแรกแถวไม่เต็มสูง 0 แล้วรอบสองเต็มจอ แก้เป็น `Space` match_parent) |
+| สถานะ 6 แบบ หน้าแรก | พร้อม: เฉยๆ · ฟัง: `TEST_LISTEN` · คิด/พูด: `TEST_ASK --es text 'กี่โมงแล้ว'` แคปรัว · พัก: `TEST_MEDIA_HOLD --ez on true` · ใช้ไม่ได้: `svc wifi disable; svc data disable` แล้วเปิดคืนทันที | ✅ ครบ 6 รูป |
+| สถานะหน้าเพลง | เหมือนข้างบน | ✅ พร้อม/พัก/ใช้ไม่ได้ในสี Winamp · ฟัง/คิด/พูด: ตาของจาร์วิสพากลับหน้าแรก (DESIGN 11) จึงเห็นบนหน้าแรก |
+| ปุ่มจาร์วิสในแอป | เปิดแอป → tap โหนด content-desc "จาร์วิสพร้อมฟัง…" → `logcat -s KioskVoice` | ✅ 6/6 (panel music video radio timer notes): `jarvis button pressed screen=X` → `BUTTON_LISTEN` → `capture started` |
+| บริบทหน้าจอ (ฝั่งมือถือ) | `TEST_ASK --es screen music --es text '…'` | ✅ `turn screen=music` แล้วตาถัดไป `turn screen=none` · ฝั่ง broker รอ deploy (ทดสอบ `tests/test_screen_context.py`) |
+| Hey Jarvis ในหน้าแอป | เปิดแอป แล้วลำโพง PC พูด "Hey Jarvis" (Windows SpeechSynthesizer) | ✅ 4/4 ครั้งแรก: เพลง 0.970 · วิทยุ 0.543 · จับเวลา 0.975 · โน้ต 0.912 |
