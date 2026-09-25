@@ -402,8 +402,13 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         openApp("สื่อ", "เครื่องเล่นวิดีโอ", "VideoActivity")
         if (!press("ดูถึง", anywhere = true) && !press("ยังไม่ได้ดู", anywhere = true)) { results.put(JSONObject().put("name", "video-full").put("pass", false)
             .put("issues", JSONArray(listOf("no video in the list")))); return }
+        // Poom's place in that film, read before the player saves a new one (every 5 s),
+        // and put back when the walk is done: the walk must not move where he left off.
+        val player = com.mammonrn.phoneaikiosk.media.VideoPlayer
+        val film = player.current
+        val place = film?.let { player.savedPlace(ctx, it) }
         settle(2500)
-        com.mammonrn.phoneaikiosk.media.VideoPlayer.pause(ctx)
+        player.pause(ctx)
         settle()
         // The controls up first: hidden, the full-screen button is not there to press.
         showControls()
@@ -421,6 +426,12 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         })
         com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(false) } }
         settle(1500)
+        player.stop(ctx)
+        settle()
+        if (film != null && place != null) {
+            player.savePlace(ctx, film, place, film.track.durationMs)
+            android.util.Log.i("KioskUiCheck", "video place put back")
+        }
     }
 
     /** Full screen on: the button reads "เต็มจอ เปิด" (its words, not a guess from the layout). */
