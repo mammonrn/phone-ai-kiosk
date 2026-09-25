@@ -31,13 +31,13 @@
     <string name="radio_stopped_noisy">หยุดแล้ว เพราะถอดหูฟัง</string>
 
     <!-- the list -->
-    <string name="radio_list_empty">ยังไม่มีสถานีในรายการ เพิ่มได้จากแท็บ "ค้นหาสถานีไทย" หรือปุ่ม "เพิ่มสถานีเอง"</string>
+    <string name="radio_list_empty">ยังไม่มีสถานีในรายการ เพิ่มได้จากแท็บ "ค้นหาสถานีไทย" หรือปุ่ม "เพิ่มสถานีด้วยตนเอง"</string>
     <string name="radio_star_on">ถอดดาว</string>
     <string name="radio_star_off">ติดดาว</string>
     <string name="radio_starred">(ติดดาว)</string>
     <string name="radio_edit_list">แก้ไขรายการ</string>
     <string name="radio_edit_done">เสร็จ</string>
-    <string name="radio_add_own">เพิ่มสถานีเอง</string>
+    <string name="radio_add_own">เพิ่มสถานีด้วยตนเอง</string>
     <string name="radio_rename">แก้ไข</string>
     <string name="radio_remove">เอาออก</string>
     <string name="radio_remove_confirm">เอาสถานี "%1$s" ออกจากรายการใช่หรือไม่</string>

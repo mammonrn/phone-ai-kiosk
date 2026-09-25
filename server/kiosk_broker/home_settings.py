@@ -162,12 +162,12 @@ def view(ctx: home_control.Context, *, now: float | None = None) -> tuple[int, d
 def _find(ctx: home_control.Context, key: str, now):
     home, _, error = home_control.read(ctx, now=now)
     if home is None:
-        return None, None, (503, _refusal("not-connected", "ยังไม่ได้เชื่อมต่อระบบไฟบ้านครับ"))
+        return None, None, (503, _refusal("not-connected", "ยังไม่ได้เชื่อมต่อระบบไฟบ้าน"))
     secret_key = vault.key(ctx.key_path)
     for d in home.get("devices", []):
         if d.get("kind") in ewelink.SWITCHABLE_KINDS and hmac.compare_digest(device_key(secret_key, d["id"]), key):
             return home, d, None
-    return None, None, (404, _refusal("unknown-device", "ไม่พบอุปกรณ์นี้แล้วครับ กรุณาเปิดหน้านี้ใหม่"))
+    return None, None, (404, _refusal("unknown-device", "ไม่พบอุปกรณ์นี้แล้ว กรุณาเปิดหน้านี้ใหม่"))
 
 
 def _refusal(code: str, message: str) -> dict:
@@ -197,15 +197,15 @@ def rename(ctx: home_control.Context, key: str, channel, name: str, *,
         return refusal
     index = _channel(device, channel)
     if index is False:
-        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์ครับ")
+        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์")
     new = clean(name)
     if len(new) > MAX_NAME:
-        return 400, _refusal("too-long", f"ชื่อยาวได้ไม่เกิน {MAX_NAME} ตัวอักษรครับ")
+        return 400, _refusal("too-long", f"ชื่อยาวได้ไม่เกิน {MAX_NAME} ตัวอักษร")
     if new and lights.normalize(new) in lights.GENERIC:
-        return 400, _refusal("too-generic", f"ชื่อ \"{new}\" กว้างเกินไปครับ จาร์วิสจะสั่งผิดดวงเวลาพูดว่าเปิดไฟ "
+        return 400, _refusal("too-generic", f"ชื่อ \"{new}\" กว้างเกินไป จาร์วิสจะสั่งผิดดวงเวลาพูดว่าเปิดไฟ "
                                              "กรุณาตั้งชื่อที่บอกว่าดวงไหน เช่น ไฟหน้าบ้าน")
     if new and not lights._keys(new):
-        return 400, _refusal("too-short", "ชื่อสั้นเกินไปครับ จาร์วิสจะฟังไม่ออก กรุณาตั้งชื่ออย่างน้อย 2 ตัวอักษร")
+        return 400, _refusal("too-short", "ชื่อสั้นเกินไป จาร์วิสจะฟังไม่ออก กรุณาตั้งชื่ออย่างน้อย 2 ตัวอักษร")
 
     own = home_control.names(ctx.home_dir)
     allow = home_control.allowlist(ctx.home_dir)
@@ -236,12 +236,12 @@ def rename(ctx: home_control.Context, key: str, channel, name: str, *,
         me = (device["id"], index)
         pair = next((p for p in fresh if me in p), next(iter(fresh)))
         a, b = sorted(pair, key=lambda w: w != me)
-        return 409, _refusal("duplicate", f"ชื่อ \"{names[a]}\" ซ้ำกับ \"{names[b]}\" ครับ "
+        return 409, _refusal("duplicate", f"ชื่อ \"{names[a]}\" ซ้ำกับ \"{names[b]}\" "
                                           "จาร์วิสจะแยกไม่ออกเวลาสั่งด้วยเสียง กรุณาตั้งชื่ออื่น")
     home_control.save_names(ctx.home_dir, changed)
     log.info("home name via=screen target=%s set=%s", _short(device, index), "yes" if new else "removed")
     status, body = view(ctx, now=now)
-    message = "บันทึกชื่อแล้วครับ สั่งด้วยเสียงได้ทันที" if new else "ลบชื่อที่ตั้งเองแล้วครับ"
+    message = "บันทึกชื่อแล้ว สั่งด้วยเสียงได้ทันที" if new else "ลบชื่อที่ตั้งไว้แล้ว"
     return status, {"ok": True, "message": message, "view": body}
 
 
@@ -255,7 +255,7 @@ def set_allowed(ctx: home_control.Context, key: str, channel, allowed: bool, *,
     index = _channel(device, channel)
     count = len(device.get("channels") or [])
     if index is False or (count and index is None) or (not count and index is not None):
-        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์ครับ")
+        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์")
     allow = home_control.allowlist(ctx.home_dir)
     if not count:
         if allowed:
@@ -275,7 +275,7 @@ def set_allowed(ctx: home_control.Context, key: str, channel, allowed: bool, *,
     home_control.save_allowlist(ctx.home_dir, allow)
     log.info("home allow via=screen target=%s allowed=%s", _short(device, index), "yes" if allowed else "no")
     status, body = view(ctx, now=now)
-    return status, {"ok": True, "message": "อนุญาตให้สั่งแล้วครับ" if allowed else "หยุดการสั่งดวงนี้แล้วครับ",
+    return status, {"ok": True, "message": "อนุญาตให้สั่งแล้ว" if allowed else "หยุดการสั่งดวงนี้แล้ว",
                     "view": body}
 
 
@@ -289,9 +289,9 @@ def set_icon(ctx: home_control.Context, key: str, channel, icon: str, *,
     index = _channel(device, channel)
     count = len(device.get("channels") or [])
     if index is False or (count and index is None) or (not count and index is not None):
-        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์ครับ")
+        return 400, _refusal("bad-channel", "ไม่พบช่องนี้ของสวิตช์")
     if icon and icon not in home_control.ICON_CHOICES:
-        return 400, _refusal("bad-icon", "ไม่มีไอคอนนี้ครับ")
+        return 400, _refusal("bad-icon", "ไม่มีไอคอนนี้")
     own = home_control.icons(ctx.home_dir)
     entry = dict(own.get(device["id"]) or {}) if isinstance(own.get(device["id"]), dict) else {}
     channels = dict(entry.get("channels") or {})
@@ -315,4 +315,4 @@ def set_icon(ctx: home_control.Context, key: str, channel, icon: str, *,
     home_control.save_icons(ctx.home_dir, own)
     log.info("home icon via=screen target=%s icon=%s", _short(device, index), icon or "default")
     status, body = view(ctx, now=now)
-    return status, {"ok": True, "message": "เปลี่ยนไอคอนแล้วครับ", "view": body}
+    return status, {"ok": True, "message": "เปลี่ยนไอคอนแล้ว", "view": body}

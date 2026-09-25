@@ -811,6 +811,8 @@ class MainActivity : Activity() {
     /** A line in the Jarvis window about the lights card, in place of the last turn. */
     private fun homeSay(line: String) {
         if (line.isEmpty()) return
+        // Shown, not spoken: written Thai (0.64.0), whatever the broker's sentence was made for.
+        @Suppress("NAME_SHADOWING") val line = com.mammonrn.phoneaikiosk.ui.ScreenWords.formal(line)
         VoiceState.heard = ""
         VoiceState.reply = ""
         VoiceState.lastCancel = ""
@@ -1532,12 +1534,12 @@ class MainActivity : Activity() {
         }
         when {
             VoiceState.wake == "heard" && VoiceState.heard.isEmpty() ->
-                append("ฟังอยู่ครับ เชิญถามได้เลย")
+                append("กำลังฟัง กรุณาพูดคำถาม")
             VoiceState.lastCancel.isNotEmpty() && VoiceState.heard.isEmpty() ->
                 // Short on purpose: a kiosk that explains itself at length every
                 // time somebody says its name and then changes their mind is
                 // worse than one that just goes quiet.
-                append("ไม่ได้ยินคำถามครับ")
+                append("ไม่ได้ยินคำถาม")
         }
         if (VoiceState.heard.isNotEmpty()) {
             if (isNotEmpty()) append("\n")

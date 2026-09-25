@@ -42,7 +42,7 @@ class HomeSettingsTest {
         val switch = page.devices[1]
         assertEquals("สวิตช์ 3 ช่อง · Livingroom · ออนไลน์", HomeSettings.describe(switch))
         val (ch1, ch2, ch3) = switch.channels
-        assertEquals("ชื่อที่ตั้งเอง", HomeSettings.source(ch1.ownName, ch1.ewelinkName))
+        assertEquals("ชื่อที่ตั้งไว้", HomeSettings.source(ch1.ownName, ch1.ewelinkName))
         assertEquals("ยังไม่ได้ตั้งชื่อ", HomeSettings.source(ch2.ownName, ch2.ewelinkName))
         assertEquals("ชื่อจาก eWeLink", HomeSettings.source("", "Channel1"))
         assertEquals("เปิดอยู่", HomeSettings.state(true, ch1.on))
@@ -60,7 +60,7 @@ class HomeSettingsTest {
     @Test
     fun `not connected, a refusal and nonsense all come back as words`() {
         assertEquals("not-connected", HomeSettings.parse("""{"ok": false, "error": "not-connected"}""").error)
-        assertEquals("ส่งคำขอถี่เกินไปครับ กรุณารอสักครู่",
+        assertEquals("ส่งคำขอถี่เกินไป กรุณารอสักครู่",
             HomeSettings.parse("""{"ok": false, "error": {"code": "rate", "message": "ส่งคำขอถี่เกินไปครับ กรุณารอสักครู่"}}""").error)
         assertEquals(HomeSettings.FAILED, HomeSettings.parse("""{"ok": false, "error": {"code": "http_404", "message": ""}}""").error)
         assertEquals("unreadable", HomeSettings.parse("<html>").error)
@@ -71,7 +71,7 @@ class HomeSettingsTest {
         val saved = HomeSettings.parseChanged("""{"ok": true, "message": "บันทึกชื่อแล้วครับ สั่งด้วยเสียงได้ทันที",
             "view": $house}""")
         assertTrue(saved.ok)
-        assertEquals("บันทึกชื่อแล้วครับ สั่งด้วยเสียงได้ทันที", saved.message)
+        assertEquals("บันทึกชื่อแล้ว สั่งด้วยเสียงได้ทันที", saved.message)
         assertEquals(2, saved.page!!.devices.size)
         val clash = HomeSettings.parseChanged("""{"ok": false, "error": {"code": "duplicate",
             "message": "ชื่อ \"หน้าบ้าน\" ซ้ำกับ \"ไฟหน้าบ้าน\" ครับ"}}""")

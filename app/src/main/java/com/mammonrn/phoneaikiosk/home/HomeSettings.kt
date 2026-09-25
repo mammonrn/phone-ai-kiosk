@@ -14,7 +14,7 @@ import org.json.JSONObject
 object HomeSettings {
 
     /** The formal line when the broker gave none (an older broker, nginx). */
-    const val FAILED = "ระบบขัดข้องครับ กรุณาลองใหม่อีกครั้ง"
+    const val FAILED = "ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง"
 
     /** At most, as the broker checks too. */
     const val MAX_NAME = 40
@@ -56,7 +56,7 @@ object HomeSettings {
 
     fun parse(json: JSONObject): Page {
         val refusal = json.optJSONObject("error")
-        if (refusal != null) return Page(emptyList(), false, refusal.optString("message").ifEmpty { FAILED })
+        if (refusal != null) return Page(emptyList(), false, com.mammonrn.phoneaikiosk.ui.ScreenWords.formal(refusal.optString("message")).ifEmpty { FAILED })
         val devices = ArrayList<Device>()
         val list = json.optJSONArray("devices")
         for (i in 0 until (list?.length() ?: 0)) {
@@ -93,9 +93,9 @@ object HomeSettings {
         val json = JSONObject(body)
         val refusal = json.optJSONObject("error")
         if (!json.optBoolean("ok", false) || refusal != null) {
-            Changed(false, refusal?.optString("message").orEmpty().ifEmpty { FAILED }, null)
+            Changed(false, com.mammonrn.phoneaikiosk.ui.ScreenWords.formal(refusal?.optString("message").orEmpty()).ifEmpty { FAILED }, null)
         } else {
-            Changed(true, json.optString("message").ifEmpty { "บันทึกแล้วครับ" },
+            Changed(true, com.mammonrn.phoneaikiosk.ui.ScreenWords.formal(json.optString("message")).ifEmpty { "บันทึกแล้ว" },
                     json.optJSONObject("view")?.let { parse(it) })
         }
     } catch (e: Exception) {
@@ -135,7 +135,7 @@ object HomeSettings {
 
     /** Where the name on screen came from, so Poom knows what voice will hear. */
     fun source(ownName: String, ewelinkName: String): String = when {
-        ownName.isNotEmpty() -> "ชื่อที่ตั้งเอง"
+        ownName.isNotEmpty() -> "ชื่อที่ตั้งไว้"
         ewelinkName.isNotEmpty() -> "ชื่อจาก eWeLink"
         else -> "ยังไม่ได้ตั้งชื่อ"
     }

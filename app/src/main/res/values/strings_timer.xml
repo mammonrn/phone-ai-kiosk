@@ -45,7 +45,7 @@
     <string name="timer_cd_resume">นับต่อ</string>
     <string name="timer_cd_cancel">ยกเลิก</string>
     <string name="timer_cd_zero">ตั้งเวลาอย่างน้อย 1 วินาทีก่อนเริ่ม</string>
-    <string name="timer_note_countdown">ปิดหน้านี้ได้ และจอดับได้ นับถอยหลังยังเดินต่อ ครบเวลาจะมีเสียงปลุก และหน้านี้จะขึ้นมาเอง</string>
+    <string name="timer_note_countdown">ปิดหน้านี้ได้ และจอดับได้ นับถอยหลังยังเดินต่อ ครบเวลาจะมีเสียงปลุก และหน้านี้จะเปิดขึ้นโดยอัตโนมัติ</string>
 
     <!-- The end. -->
     <string name="timer_ring_title">หมดเวลา</string>

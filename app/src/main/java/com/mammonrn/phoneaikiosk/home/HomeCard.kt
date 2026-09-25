@@ -52,7 +52,7 @@ object HomeCard {
     data class Switched(val ok: Boolean, val on: Boolean?, val online: Boolean?, val message: String)
 
     private val TARGET = Regex("^[A-Za-z0-9_-]{1,64}$")
-    private const val FAILED = "ระบบขัดข้องครับ กรุณาลองใหม่อีกครั้ง"
+    private const val FAILED = "ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง"
 
     data class System(val id: String, val name: String, val devices: List<Device>)
 
@@ -148,13 +148,13 @@ object HomeCard {
         canTap(device) -> ""
         // 0.51.1: at most 70 characters with the longest name allowed (40),
         // Poom's rule for everything Jarvis says. See HomeCardTest.
-        !device.online || device.reason == "offline" -> "${device.name} ออฟไลน์อยู่ครับ สั่งไม่ได้"
+        !device.online || device.reason == "offline" -> "${device.name} ออฟไลน์อยู่ จึงสั่งไม่ได้"
         device.reason == "not-allowed" ->
-            "${device.name} ยังไม่อนุญาตครับ ตั้งที่แผงควบคุม".takeIf { it.length <= 70 }
-                ?: "${device.name} ยังไม่อนุญาตให้สั่งครับ"
-        device.reason == "stopped" -> "ตอนนี้ปิดการสั่งไฟไว้ครับ"
-        else -> "ไม่ทราบสถานะของ ${device.name} ครับ สั่งไม่ได้".takeIf { it.length <= 70 }
-            ?: "ไม่ทราบสถานะของ ${device.name} ครับ"
+            "${device.name} ยังไม่ได้รับอนุญาต ตั้งได้ที่แผงควบคุม".takeIf { it.length <= 70 }
+                ?: "${device.name} ยังไม่ได้รับอนุญาตให้สั่ง"
+        device.reason == "stopped" -> "ขณะนี้ปิดการสั่งไฟไว้"
+        else -> "ไม่ทราบสถานะของ ${device.name} จึงสั่งไม่ได้".takeIf { it.length <= 70 }
+            ?: "ไม่ทราบสถานะของ ${device.name}"
     }
 
     /** The broker's answer to POST /v1/home/switch; a refusal's message is shown as it is. */

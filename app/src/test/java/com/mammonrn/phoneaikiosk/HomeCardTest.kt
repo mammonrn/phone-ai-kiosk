@@ -111,9 +111,9 @@ class HomeCardTest {
         val d = HomeCard.parse(tappable)!!.systems.single().devices
         assertEquals(listOf(true, false, false, false, false), d.map(HomeCard::canTap))
         assertEquals("", HomeCard.whyNot(d[0]))
-        assertEquals("Light2 ออฟไลน์อยู่ครับ สั่งไม่ได้", HomeCard.whyNot(d[1]))
+        assertEquals("Light2 ออฟไลน์อยู่ จึงสั่งไม่ได้", HomeCard.whyNot(d[1]))
         assertTrue("แผงควบคุม" in HomeCard.whyNot(d[2]))
-        assertEquals("ตอนนี้ปิดการสั่งไฟไว้ครับ", HomeCard.whyNot(d[3]))
+        assertEquals("ขณะนี้ปิดการสั่งไฟไว้", HomeCard.whyNot(d[3]))
         // Icons: as chosen, by kind when none, and nothing that is not ours.
         assertEquals(listOf("bulb", "fan", "switch", "bulb", "bulb"), d.map { it.icon })
     }
@@ -136,7 +136,7 @@ class HomeCardTest {
             "message": "ปิด Light1 แล้วครับ"}""")
         assertEquals(false, HomeCard.apply(card, "k1aa", off).systems.single().devices[0].on)
         val failed = HomeCard.parseSwitched("")
-        assertEquals("ระบบขัดข้องครับ กรุณาลองใหม่อีกครั้ง", failed.message)
+        assertEquals("ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง", failed.message)
         assertEquals(card, HomeCard.apply(card, "k1aa", failed))
         val offline = HomeCard.parseSwitched("""{"ok": false, "result": "offline", "on": true, "online": false,
             "message": "Light1 ออฟไลน์อยู่ครับ ยังสั่งไม่ได้"}""")

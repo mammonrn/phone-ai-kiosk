@@ -170,7 +170,7 @@ class CalendarActivity : Activity() {
             e?.status == 409 -> State.NOT_CONNECTED
             else -> State.ERROR
         }
-        errorWords = if (state == State.ERROR) (e?.message ?: getString(R.string.calendar_offline)) else ""
+        errorWords = if (state == State.ERROR) getString(R.string.calendar_offline) else ""
         pendingRetry = retry
         Log.i(TAG, "refused status=${e?.status ?: -1} state=$state")
         draw()
@@ -456,7 +456,7 @@ class CalendarActivity : Activity() {
             load(month)
         }, { f ->
             saving = false
-            if (f?.status == 400) { editError = f.message ?: ""; state = State.READY; draw() }
+            if (f?.status == 400) { editError = com.mammonrn.phoneaikiosk.ui.ScreenWords.formal(f.message ?: ""); state = State.READY; draw() }
             else refused(f) { save() }
         })
     }
