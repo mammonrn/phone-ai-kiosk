@@ -903,6 +903,10 @@ class SettingsActivity : Activity() {
                 Category(R.drawable.ic_pixel_video, { it.getString(R.string.window_video) }) {
                     it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                 },
+                // 0.61.0: the radio (radio/RadioActivity); it plays on when its screen closes.
+                Category(R.drawable.ic_pixel_radio, { it.getString(R.string.window_radio) }) {
+                    it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.radio.RadioActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                },
                 // 0.61.0: the phone's camera, for a photo (camera/CameraActivity).
                 Category(R.drawable.ic_pixel_camera, { it.getString(R.string.window_camera) }) {
                     it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.camera.CameraActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))

@@ -41,6 +41,8 @@ object WakePause {
 
         /** 0.61.0: the voice recorder (recorder/VoiceMemo), only while it is actually recording. */
         RECORDER("บันทึกเสียง"),
+        /** The radio (0.61.0): lowered, not paused, while Jarvis is asked something. */
+        RADIO("เล่นวิทยุ"),
 
         /** The debug build's adb switch (TEST_MEDIA_HOLD); never used by a real player. */
         TEST("ทดสอบ"),

@@ -1,0 +1,18 @@
+{
+ "version": 1,
+ "stations": [
+  {"id": "cool93", "name": "Cool Fahrenheit 93", "url": "https://coolism-web.cdn.byteark.com/;stream/1", "fav": false},
+  {"id": "efm94", "name": "EFM 94", "url": "https://atimeonline.smartclick.co.th/efm", "fav": false},
+  {"id": "green1065", "name": "Green Wave 106.5", "url": "https://atimeonline2.smartclick.co.th/green", "fav": false},
+  {"id": "hotwave", "name": "Hotwave (Chill Online)", "url": "https://atimeonline.smartclick.co.th/hotwave", "fav": false},
+  {"id": "met107", "name": "Met 107", "url": "https://play-fm107.mcot.net/fm107/fm107.m3u8", "fav": false},
+  {"id": "smooth1055", "name": "Smooth FM 105.5", "url": "https://play-fm1055.mcot.net/fm1055/fm1055.m3u8", "fav": false},
+  {"id": "active99", "name": "FM 99 Active", "url": "https://play-fm99.mcot.net/fm99/fm99.m3u8", "fav": false},
+  {"id": "news1005", "name": "MCOT News FM 100.5", "url": "https://play-fm1005.mcot.net/fm1005/fm1005.m3u8", "fav": false},
+  {"id": "think965", "name": "คลื่นความคิด 96.5", "url": "https://play-fm965.mcot.net/fm965/fm965.m3u8", "fav": false},
+  {"id": "ltm95", "name": "ลูกทุ่งมหานคร FM 95", "url": "https://play-fm95.mcot.net/fm95/fm95.m3u8", "fav": false},
+  {"id": "rakthai90", "name": "ลูกทุ่งรักไทย FM 90", "url": "https://radio11.plathong.net/8896/;stream.mp3", "fav": false},
+  {"id": "prd925", "name": "สวท. FM 92.5", "url": "https://cdn-edge.iiptvcdn.com/radio_edge/45d4-d521-cbfc-d686-0123/playlist.m3u8", "fav": false},
+  {"id": "prd891", "name": "สวท. AM 891", "url": "https://cdn-edge.iiptvcdn.com/radio_edge/51dd-90a9-c6ae-c7f7-49d4/playlist.m3u8", "fav": false}
+ ]
+}

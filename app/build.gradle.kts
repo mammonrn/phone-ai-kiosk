@@ -189,6 +189,8 @@ dependencies {
 
     // The music player (0.53.0): ExoPlayer alone. See libs.versions.toml.
     implementation(libs.media3.exoplayer)
+    // The radio's HLS stations (0.61.0).
+    implementation(libs.media3.exoplayer.hls)
 
     // Google Drive (0.61.0): the access token from Google Play services, in
     // memory only. See drive/DriveAuth.kt and libs.versions.toml.

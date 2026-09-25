@@ -60,6 +60,8 @@ androidx-annotation = { group = "androidx.annotation", name = "annotation", vers
 smbj = { group = "com.hierynomus", name = "smbj", version.ref = "smbj" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+# The radio (0.61.0): Thai stations that stream as HLS (.m3u8), e.g. MCOT's regional ones.
+media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
 mlkit-face = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
 
 [plugins]

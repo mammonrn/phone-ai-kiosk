@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0): the radio of ic_pixel_radio in white with the
+     gold tuning window, for navy title bars and the notification (DESIGN.md 6:
+     icons on navy use light colours). 16x16 grid, two colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFF" android:pathData="M2,1h1v1h-1z M3,2h1v1h-1z M4,3h1v1h-1z M5,4h1v1h-1z
+        M1,5h14v1h-14z M1,13h14v1h-14z M1,6h1v7h-1z M14,6h1v7h-1z
+        M4,7h3v1h-3z M3,8h1v1h-1z M5,8h1v1h-1z M7,8h1v1h-1z M3,9h2v1h-2z M6,9h2v1h-2z
+        M3,10h1v1h-1z M5,10h1v1h-1z M7,10h1v1h-1z M4,11h3v1h-3z
+        M11,7h1v2h-1z M9,10h2v2h-2z M12,10h1v2h-1z
+        M2,14h2v1h-2z M12,14h2v1h-2z" />
+    <path android:fillColor="#FFD700" android:pathData="M9,7h2v2h-2z M12,7h1v2h-1z" />
+</vector>

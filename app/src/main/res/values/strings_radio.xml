@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The radio (0.61.0, DESIGN.md 5ฏ). Its own file, so the other features of
+     this round do not touch the same lines of strings.xml. -->
+<resources>
+    <string name="window_radio">วิทยุ</string>
+    <string name="radio_tab_list">สถานี</string>
+    <string name="radio_tab_search">ค้นหาสถานีไทย</string>
+
+    <!-- the state, always in words -->
+    <string name="radio_state_stopped">หยุดอยู่</string>
+    <string name="radio_state_connecting">กำลังเชื่อมต่อ…</string>
+    <string name="radio_state_playing">กำลังเล่น</string>
+    <string name="radio_state_failed">เล่นไม่ได้</string>
+    <string name="radio_none_chosen">ยังไม่ได้เลือกสถานี แตะชื่อสถานีด้านล่างเพื่อฟัง</string>
+    <string name="radio_play">เล่น</string>
+    <string name="radio_stop">หยุด</string>
+    <string name="radio_song">เพลง: %1$s</string>
+
+    <!-- why a station does not play -->
+    <string name="radio_err_timeout">เล่นไม่ได้: สถานีไม่ตอบภายใน %1$d วินาที</string>
+    <string name="radio_err_stalled">หยุดแล้ว: สัญญาณจากสถานีขาดนานเกิน 30 วินาที</string>
+    <string name="radio_err_ended">หยุดแล้ว: สถานีหยุดส่งเสียง</string>
+    <string name="radio_err_http">เล่นไม่ได้: สถานีตอบว่าไม่มีเสียงที่ที่อยู่นี้ (รหัส %1$d)</string>
+    <string name="radio_err_plain">เล่นไม่ได้: สถานีนี้ส่งเสียงแบบไม่เข้ารหัส (http) ซึ่งแอปนี้ยังไม่อนุญาต</string>
+    <string name="radio_err_offline">เล่นไม่ได้: เครื่องไม่ได้ต่ออินเทอร์เน็ต</string>
+    <string name="radio_err_connect">เล่นไม่ได้: ต่อเข้าสถานีไม่ได้</string>
+    <string name="radio_err_format">เล่นไม่ได้: เครื่องนี้ไม่รู้จักรูปแบบเสียงของสถานีนี้</string>
+    <string name="radio_err_playlist">เล่นไม่ได้: เปิดรายการที่อยู่ของสถานีไม่ได้</string>
+    <string name="radio_err_generic">เล่นไม่ได้: การเชื่อมต่อกับสถานีขาด</string>
+    <string name="radio_stopped_focus">หยุดแล้ว เพราะแอปอื่นเริ่มเล่นเสียง</string>
+    <string name="radio_stopped_noisy">หยุดแล้ว เพราะถอดหูฟัง</string>
+
+    <!-- the list -->
+    <string name="radio_list_empty">ยังไม่มีสถานีในรายการ เพิ่มได้จากแท็บ "ค้นหาสถานีไทย" หรือปุ่ม "เพิ่มสถานีเอง"</string>
+    <string name="radio_star_on">ถอดดาว</string>
+    <string name="radio_star_off">ติดดาว</string>
+    <string name="radio_starred">(ติดดาว)</string>
+    <string name="radio_edit_list">แก้ไขรายการ</string>
+    <string name="radio_edit_done">เสร็จ</string>
+    <string name="radio_add_own">เพิ่มสถานีเอง</string>
+    <string name="radio_rename">แก้ไข</string>
+    <string name="radio_remove">เอาออก</string>
+    <string name="radio_remove_confirm">เอาสถานี "%1$s" ออกจากรายการใช่หรือไม่</string>
+    <string name="radio_cancel">ยกเลิก</string>
+    <string name="radio_plain_note">http: ยังเล่นไม่ได้</string>
+
+    <!-- add or edit -->
+    <string name="radio_add_title">เพิ่มสถานี</string>
+    <string name="radio_edit_title">แก้ไขสถานี</string>
+    <string name="radio_name">ชื่อสถานี</string>
+    <string name="radio_url">ที่อยู่ของเสียง (URL)</string>
+    <string name="radio_url_hint">เช่น ที่อยู่ที่ลงท้ายด้วย .m3u8, .mp3, .pls หรือที่อยู่ของสถานีที่ขึ้นต้นด้วย https://</string>
+    <string name="radio_save">บันทึก</string>
+    <string name="radio_refuse_name_empty">กรุณาใส่ชื่อสถานี</string>
+    <string name="radio_refuse_name_long">ชื่อยาวเกิน 40 ตัวอักษร</string>
+    <string name="radio_refuse_url_bad">ที่อยู่ต้องขึ้นต้นด้วย https:// หรือ http:// แล้วตามด้วยชื่อเว็บ</string>
+    <string name="radio_refuse_url_long">ที่อยู่ยาวเกินไป</string>
+    <string name="radio_refuse_duplicate">มีสถานีที่อยู่นี้ในรายการแล้ว</string>
+    <string name="radio_refuse_full">รายการเต็มแล้ว (200 สถานี) กรุณาเอาสถานีที่ไม่ฟังออกก่อน</string>
+    <string name="radio_refuse_missing">ไม่พบสถานีนี้ในรายการแล้ว</string>
+    <string name="radio_plain_warning">ที่อยู่นี้ใช้ http ซึ่งแอปนี้ยังไม่อนุญาต จึงบันทึกได้แต่ยังเล่นไม่ได้</string>
+
+    <!-- the directory search -->
+    <string name="radio_search_words">ชื่อสถานี (เว้นว่างได้)</string>
+    <string name="radio_search_go">ค้นหา</string>
+    <string name="radio_search_intro">ค้นหาสถานีไทยจาก Radio Browser (ฐานข้อมูลสถานีวิทยุออนไลน์แบบเปิด) เรียงตามคะแนนโหวต แตะ "เพิ่ม" เพื่อเอาสถานีเข้ารายการของเครื่องนี้</string>
+    <string name="radio_searching">กำลังค้นหา…</string>
+    <string name="radio_search_failed">ค้นหาไม่ได้: ต่อ Radio Browser ไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่</string>
+    <string name="radio_search_none">ไม่พบสถานีไทยที่ตรงกับคำค้นหา</string>
+    <string name="radio_search_count">พบ %1$d สถานี</string>
+    <string name="radio_search_hidden">ซ่อน %1$d สถานีที่ใช้ http เพราะแอปนี้ยังไม่อนุญาต</string>
+    <string name="radio_add">เพิ่ม</string>
+    <string name="radio_added">อยู่ในรายการแล้ว</string>
+    <string name="radio_votes">%1$d โหวต</string>
+</resources>

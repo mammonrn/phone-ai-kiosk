@@ -142,6 +142,7 @@ object VideoPlayer {
     /** Plays [videos][start], from where it was left last time. Music stops: one sound at a time. */
     fun play(context: Context, videos: List<Video>, start: Int) = run(context) {
         MusicPlayer.quietForVideo(context)
+        com.mammonrn.phoneaikiosk.radio.RadioPlayer.quietForMedia(context)
         before = null
         list = videos; index = start.coerceIn(0, videos.lastIndex)
         it.load(current!!, play = true)
@@ -157,6 +158,7 @@ object VideoPlayer {
     /** Plays [video] alone, never added to a playlist; the list and its place come back after ([endSingle]). */
     fun playSingle(context: Context, video: Video) = run(context) {
         MusicPlayer.quietForVideo(context)
+        com.mammonrn.phoneaikiosk.radio.RadioPlayer.quietForMedia(context)
         if (before == null) before = list to index
         list = listOf(video); index = 0
         it.load(video, play = true)
@@ -176,6 +178,7 @@ object VideoPlayer {
         // Too hot: play is refused, and the screen says why (HeatLadder step 3+).
         if (HeatWatch.step.pause) { error = context.getString(R.string.video_heat_pause); changed(); return@run }
         MusicPlayer.quietForVideo(context)
+        com.mammonrn.phoneaikiosk.radio.RadioPlayer.quietForMedia(context)
         if (s.loaded) s.playNow() else current?.let { s.load(it, true) }
     }
     /** Paused on purpose (a button, a spoken "หยุด"): not started again when a question ends. */
