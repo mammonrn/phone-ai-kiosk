@@ -121,6 +121,7 @@ class VoiceService : Service() {
         WakePause.clock = { android.os.SystemClock.elapsedRealtime() }
         WakePause.post = { block -> alarmHandler.post(block) }
         WakePause.log = { message -> Log.i(TAG, message) }
+        MicTap.log = { message -> Log.i("KioskRec", message) }
     }
 
     // ------------------------------------------------------------ soak test
@@ -305,6 +306,9 @@ class VoiceService : Service() {
                 // the wake word (PreRoll). Only what the detector hears anyway,
                 // and never while deaf: playback and alarms are not the room.
                 if (deaf) preRoll.clear() else preRoll.add(frame, read, peak)
+                // THE VOICE RECORDER (0.61.0) reads this same stream rather than
+                // opening a second capture (MicTap). Nothing during a Jarvis turn.
+                MicTap.offer(frame, read, peak, busy)
 
                 // SILENCE, NOT NOTHING. This used to skip the detector entirely
                 // while deaf and then reset() it on the way back — and reset
@@ -586,6 +590,8 @@ class VoiceService : Service() {
                 "%.1f°C  plugged=%s".format(tenths / 10.0, plugged != 0))
         }
         writer.println("  wake-pause   : ${WakePause.describe()}")
+        writer.println("  mic-tap      : ${if (MicTap.isOpen) "recorder reading" else "off"} " +
+            "passed=${MicTap.passed} held_back=${MicTap.heldBack}")
         writer.println("  capture-mode : ${machine.mode}")
         writer.println("  armed        : ${machine.isArmed()}")
         val deafFor = hearingFrom.get() - android.os.SystemClock.elapsedRealtime()

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0): "record" for the voice recorder's buttons — a round
+     red dot in steps, the red of the low battery (#CC0000), with a black shadow on
+     the bottom and right (light from the top left). Always has its word under it
+     ("เริ่มบันทึก", "บันทึกต่อ"). 16x16, two colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#CC0000" android:pathData="M6,2h4v1h-4z M4,3h8v1h-8z M3,4h10v2h-10z
+        M2,6h12v4h-12z M3,10h10v2h-10z M4,12h8v1h-8z M6,13h4v1h-4z" />
+    <path android:fillColor="#000000" android:pathData="M14,6h1v4h-1z M13,10h1v2h-1z M12,12h1v1h-1z
+        M10,13h2v1h-2z M6,14h4v1h-4z" />
+</vector>
