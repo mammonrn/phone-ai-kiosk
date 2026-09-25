@@ -42,6 +42,7 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
 fi
 
 echo "walking every screen…"
+adb logcat -c
 # ONLY=home,calc   only the screens whose names start with those
 adb shell am instrument -w ${ONLY:+-e only "$ONLY"} -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" | tail -4
@@ -55,10 +56,19 @@ if adb shell dumpsys activity activities | grep -q "mLockTaskModeState=LOCKED"; 
 else
   echo "WARNING: the kiosk is NOT LOCKED — open it from the home button and check"
 fi
+# The walk must never take the kiosk out of lock task, not even for a moment.
+if adb logcat -d | grep -q "updateLockTaskModeEnabled: false"; then
+  echo "FAIL: lock task went OFF during the walk (logcat: updateLockTaskModeEnabled: false)"
+  lock_broke=1
+else
+  echo "lock task: on for the whole walk"
+  lock_broke=0
+fi
 
 mkdir -p "$OUT"
 adb pull "/sdcard/Android/data/$PKG/files/ui-check" "$OUT" >/dev/null || { echo "no results on the phone"; exit 1; }
 PYTHONIOENCODING=utf-8 python tools/ui/report.py "$OUT/ui-check" "$OUT"
 status=$?
+[ "$lock_broke" = "1" ] && status=1
 echo "took $(( $(date +%s) - started )) s · $OUT"
 exit $status

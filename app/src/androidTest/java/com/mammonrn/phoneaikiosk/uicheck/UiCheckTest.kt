@@ -90,18 +90,25 @@ class UiCheckTest {
         inst.waitForIdleSync()
     }
 
+    /**
+     * Back to the kiosk's own home screen: every other screen of ours closed the
+     * kiosk's way (as Hey Jarvis does), and the home screen comes forward by itself.
+     *
+     * NEVER STARTED BY CLASS. The home screen is singleInstance in the home task;
+     * started from here it opened a SECOND one in a new task and lock task went
+     * off for ten seconds (seen on the A07, 2026-09-25). Only when there is no
+     * home screen at all is it asked for the system's way (the HOME intent),
+     * which goes to the existing home task.
+     */
     private fun home() {
-        // Every other screen of ours closed first — the kiosk's own way (as Hey
-        // Jarvis does), so the next step never starts on a stale page.
         inst.runOnMainSync { KioskScreens.leaveAllButHome("ui-check") }
-        settle(500)
-        // Brought to the front, NOT made again: CLEAR_TOP finished the kiosk's own home
-        // screen and started a second one (seen in the walk: views of a finished screen).
-        inst.runOnMainSync {
-            ctx.startActivity(Intent(ctx, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        if (!waitFor("MainActivity", 4000)) {
+            inst.runOnMainSync {
+                ctx.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                    .setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            waitFor("MainActivity")
         }
-        waitFor("MainActivity")
         settle(1500)
     }
 
