@@ -163,3 +163,37 @@ def test_stale_dust_is_not_told_as_now(cfg):
     board._cache["air:20.05:99.89"] = (old, dashboard_mod.Panel(True, {"pm25": 8.8, "pm25_word": "ดีมาก"}))
     assert "ฝุ่น PM2.5 ยังไม่มีข้อมูล ห้ามเดา" in dashboard_mod.weather_detail_line(board)
     forget_dashboards()
+
+
+# ---- tomorrow and the day after, each by its own numbers (2026-09-25) ------
+
+_DAILY = {"time": ["2026-09-25", "2026-09-26", "2026-09-27", "2026-09-28"],
+          "temperature_2m_max": [30.9, 31.2, 29.6, 30.0],
+          "temperature_2m_min": [23.3, 23.4, 22.8, 23.0],
+          "precipitation_probability_max": [53, 80, 97, 75]}
+
+
+def test_day_lines_give_tomorrow_and_the_day_after_by_their_own_numbers():
+    # 2026-09-26 is a Saturday, 2026-09-27 a Sunday.
+    assert forecast.day_lines(_DAILY) == "พรุ่งนี้(ส.) สูง 31 ต่ำ 23 ฝน 80% · มะรืน(อา.) สูง 30 ต่ำ 23 ฝน 97%"
+
+
+def test_day_lines_leave_out_a_day_with_no_numbers_and_are_none_with_none():
+    daily = dict(_DAILY, temperature_2m_max=[30.9, None, 29.6])
+    assert forecast.day_lines(daily) == "มะรืน(อา.) สูง 30 ต่ำ 23 ฝน 97%"
+    assert forecast.day_lines({"time": ["2026-09-25"], "temperature_2m_max": [30.0]}) is None
+    assert forecast.day_lines({}) is None
+
+
+def test_the_detail_line_puts_each_day_first_so_tomorrow_is_answerable(cfg, monkeypatch):
+    forget_dashboards()
+    board = _dashboard(cfg)
+    monkeypatch.setattr(dashboard_mod, "fetch_weather", lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetched")))
+    board._cache["weather:20.05:99.89"] = (time.time() - 60, dashboard_mod.Panel(True, {
+        "temp_c": 27.2, "rain_chance": 53, "days": forecast.day_lines(_DAILY),
+        "outlook": "3 วันข้างหน้า ฝนตกทุกวัน โอกาส 75–97% ส่วนใหญ่ช่วงบ่าย อุณหภูมิใกล้เคียงเดิม"}))
+    line = dashboard_mod.weather_detail_line(board)
+    assert line.startswith("รายวัน(ตอบพรุ่งนี้/มะรืนจากนี้): พรุ่งนี้(ส.) สูง 31 ต่ำ 23 ฝน 80%")
+    assert "พยากรณ์(ECMWF): 3 วันข้างหน้า" in line and "ฝุ่น PM2.5" in line
+    assert len(line) <= dashboard_mod.MAX_WEATHER_DETAIL_CHARS
+    forget_dashboards()

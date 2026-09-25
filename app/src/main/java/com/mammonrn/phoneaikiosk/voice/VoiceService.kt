@@ -711,8 +711,9 @@ class VoiceService : Service() {
             // 0.59.0: only the playlists are searched (Poom: "ค้นเฉพาะใน playlist ที่มีอยู่").
             { com.mammonrn.phoneaikiosk.media.PlaylistStore.read(context) {
                 it.searchable(com.mammonrn.phoneaikiosk.media.Playlist.Kind.MUSIC) } }, deck)
-        VoiceState.lastAction = "music:$command:${if (failure == null) "ok" else "not-done"}"
-        Log.i(TAG, "action music command=$command done=${failure == null}")
+        val done = failure == null || isDoneWords(failure)
+        VoiceState.lastAction = "music:$command:${if (done) (if (failure == null) "ok" else "ok-guessed") else "not-done"}"
+        Log.i(TAG, "action music command=$command done=$done guessed=${isDoneWords(failure)}")
         return failure
     }
 
@@ -750,8 +751,9 @@ class VoiceService : Service() {
                     it.searchable(com.mammonrn.phoneaikiosk.media.Playlist.Kind.VIDEO)
                 }.map { com.mammonrn.phoneaikiosk.media.Video(it) }
             }, deck)
-        VoiceState.lastAction = "video:$command:${if (failure == null) "ok" else "not-done"}"
-        Log.i(TAG, "action video command=$command done=${failure == null}")
+        val done = failure == null || isDoneWords(failure)
+        VoiceState.lastAction = "video:$command:${if (done) (if (failure == null) "ok" else "ok-guessed") else "not-done"}"
+        Log.i(TAG, "action video command=$command done=$done guessed=${isDoneWords(failure)}")
         return failure
     }
 

@@ -43,10 +43,21 @@ object VideoVoice {
 
     private fun playFound(query: String, library: List<Video>, deck: Deck): String? {
         if (library.isEmpty()) return NO_VIDEOS
-        val found = MusicLibrary.find(library.map { it.track }, query) ?: return notFound(query)
-        val first = found.tracks.first()
-        deck.play(library, library.indexOfFirst { it.track == first })
-        return null
+        val found = MusicLibrary.find(library.map { it.track }, query)
+        if (found != null) {
+            val first = found.tracks.first()
+            deck.play(library, library.indexOfFirst { it.track == first })
+            return null
+        }
+        // Heard wrong? The closest title, said by its real name; two alike, asked which (0.61.0, Poom).
+        return when (val g = MusicLibrary.guess(library.map { it.track }, query)) {
+            is MusicLibrary.Guess.One -> {
+                deck.play(library, library.indexOfFirst { it.track == g.track })
+                com.mammonrn.phoneaikiosk.voice.doneWords("เปิดวิดีโอ \"${MusicVoice.cut(g.track.title, 40)}\" ครับ")
+            }
+            is MusicLibrary.Guess.Two -> "หมายถึงวิดีโอ \"${MusicVoice.cut(g.first.title, 20)}\" หรือ \"${MusicVoice.cut(g.second.title, 20)}\" ครับ"
+            MusicLibrary.Guess.None -> notFound(query)
+        }
     }
 
     /** "เปิดวิดีโอ" alone: go on with the one left paused, or say there is none to pick. */

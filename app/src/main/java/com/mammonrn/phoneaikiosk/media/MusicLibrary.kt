@@ -83,6 +83,57 @@ object MusicLibrary {
         return null
     }
 
+    // ------------------------------------------------------------ a title heard wrong (0.61.0, Poom)
+
+    /** What a spoken title matched when [find] found nothing: one title, two too close to call, or none. */
+    sealed class Guess {
+        data class One(val track: Track, val score: Double) : Guess()
+        data class Two(val first: Track, val second: Track) : Guess()
+        object None : Guess()
+    }
+
+    /** At least this alike to be taken (1 = the same). */
+    const val GUESS_MIN = 0.6
+    /** The best must be this far ahead of the next, or the phone asks which. */
+    const val GUESS_MARGIN = 0.15
+
+    /**
+     * The title the transcriber most likely meant, when [find] found nothing.
+     * The speech-to-text gets Thai titles wrong in the vowels far more than in
+     * the consonants — on the A07 "ทะเลสีชมพู" came back as "ทรสีชมพู",
+     * "ทรสี ชมพุง", "ทรัล สี ชมพูง" — so a title is scored three ways and the
+     * best counts: edit distance and shared letter pairs of the whole
+     * normalised title, and edit distance of its consonants alone.
+     */
+    fun guess(tracks: List<Track>, spoken: String): Guess {
+        val q = key(spoken)
+        if (q.length < 3 || tracks.isEmpty()) return Guess.None
+        val scored = tracks.distinctBy { key(it.title) }.map { it to likeness(q, key(it.title)) }
+            .sortedByDescending { it.second }
+        val best = scored.first()
+        if (best.second < GUESS_MIN) return Guess.None
+        val next = scored.getOrNull(1)
+        if (next != null && next.second >= GUESS_MIN && best.second - next.second < GUESS_MARGIN) return Guess.Two(best.first, next.first)
+        return Guess.One(best.first, best.second)
+    }
+
+    /** 0..1: how alike two normalised titles are (see [guess]). */
+    internal fun likeness(a: String, b: String): Double {
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        fun edits(x: String, y: String) = 1.0 - distance(x, y).toDouble() / maxOf(x.length, y.length, 1)
+        val sa = consonants(a); val sb = consonants(b)
+        return maxOf(edits(a, b), pairs(a, b), if (sa.isNotEmpty() && sb.isNotEmpty()) edits(sa, sb) else 0.0)
+    }
+
+    private fun pairs(a: String, b: String): Double {
+        val x = a.windowed(2).toSet(); val y = b.windowed(2).toSet()
+        if (x.isEmpty() || y.isEmpty()) return 0.0
+        return 2.0 * (x intersect y).size / (x.size + y.size)
+    }
+
+    /** Thai vowels and vowel marks out: what is left is the consonants (and any Latin letters, digits). */
+    private fun consonants(s: String): String = s.filterNot { it in 'ะ'..'ฺ' || it in 'เ'..'ๅ' || it == '็' || it == 'ํ' || it == '๎' }
+
     private fun bestTitle(hits: List<Track>, q: String): Track =
         hits.minByOrNull { kotlin.math.abs(key(it.title).length - q.length) } ?: hits.first()
 

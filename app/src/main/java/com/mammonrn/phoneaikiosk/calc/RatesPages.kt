@@ -48,8 +48,8 @@ internal class RatesPages(private val a: CalculatorActivity) {
     private var picking: String? = null
     private var query = ""
 
-    private var from: String get() = prefs.getString("from", "USD")!!; set(v) { prefs.edit().putString("from", v).apply() }
-    private var to: String get() = prefs.getString("to", "THB")!!; set(v) { prefs.edit().putString("to", v).apply() }
+    private var from: String get() = prefs.getString("from", "THB")!!; set(v) { prefs.edit().putString("from", v).apply() }
+    private var to: String get() = prefs.getString("to", "USD")!!; set(v) { prefs.edit().putString("to", v).apply() }
     private var metalCurrency: String get() = prefs.getString("metal_cur", "THB")!!; set(v) { prefs.edit().putString("metal_cur", v).apply() }
     private var amountText: String get() = prefs.getString("amount", "1")!!; set(v) { prefs.edit().putString("amount", v).apply() }
     private var qtyText: String get() = prefs.getString("qty", "1")!!; set(v) { prefs.edit().putString("qty", v).apply() }

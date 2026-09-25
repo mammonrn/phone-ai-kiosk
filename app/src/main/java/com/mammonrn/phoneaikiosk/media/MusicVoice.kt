@@ -65,10 +65,23 @@ object MusicVoice {
 
     private fun playFound(query: String, library: List<Track>, deck: Deck): String? {
         if (library.isEmpty()) return NO_MUSIC
-        val found = MusicLibrary.find(library, query) ?: return notFound(query)
-        deck.play(found.tracks)
-        return null
+        val found = MusicLibrary.find(library, query)
+        if (found != null) { deck.play(found.tracks); return null }
+        // Heard wrong? The closest title, said by its real name; two alike, asked which (0.61.0, Poom).
+        return when (val g = MusicLibrary.guess(library, query)) {
+            is MusicLibrary.Guess.One -> { deck.play(listOf(g.track)); com.mammonrn.phoneaikiosk.voice.doneWords(playing(g.track.title)) }
+            is MusicLibrary.Guess.Two -> which(g.first.title, g.second.title)
+            MusicLibrary.Guess.None -> notFound(query)
+        }
     }
+
+    /** "เปิดเพลง “ทะเลสีชมพู” ครับ" — the title actually opened, cut to keep the line short. */
+    fun playing(title: String): String = "เปิดเพลง \"${cut(title, 40)}\" ครับ"
+
+    /** "หมายถึงเพลง “A” หรือ “B” ครับ" — two titles too close to choose between. */
+    fun which(a: String, b: String): String = "หมายถึงเพลง \"${cut(a, 20)}\" หรือ \"${cut(b, 20)}\" ครับ"
+
+    internal fun cut(s: String, max: Int): String = if (s.length > max) s.take(max - 1).trimEnd() + "…" else s
 
     /** "เปิดเพลง" alone: go on with the list, or play everything from the start. */
     private fun playAny(library: () -> List<Track>, deck: Deck): String? {

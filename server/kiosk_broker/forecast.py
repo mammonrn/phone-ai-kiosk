@@ -118,3 +118,39 @@ def _rainy_part(hourly: dict | None, ahead: range) -> str | None:
     if not averages:
         return None
     return max(averages, key=averages.get)
+
+
+#: Tomorrow and the day after, each by its own numbers, for a spoken question
+#: (2026-09-25: asked about tomorrow, Jarvis said "พรุ่งนี้ผมดูให้ไม่ได้ครับ แต่
+#: พยากรณ์ 3 วัน…" — it had the three-day sentence and no day of its own).
+DAY_NAMES = ("พรุ่งนี้", "มะรืน")
+
+
+def day_lines(daily: dict) -> str | None:
+    """"พรุ่งนี้(ศ.) สูง 31 ต่ำ 23 ฝน 80% · มะรืน(ส.) สูง 30 ต่ำ 23 ฝน 60%", from the
+    same daily block as the outlook; a day with no high is left out; None when
+    neither day has one."""
+    highs = daily.get("temperature_2m_max") or []
+    lows = daily.get("temperature_2m_min") or []
+    chances = daily.get("precipitation_probability_max") or []
+    times = daily.get("time") or []
+
+    def at(values, i):
+        return values[i] if isinstance(values, list) and i < len(values) and values[i] is not None else None
+
+    out = []
+    for n, name in enumerate(DAY_NAMES, start=1):
+        high = at(highs, n)
+        if high is None:
+            continue
+        day = _weekday(at(times, n)) if at(times, n) else None
+        part = f"{name}({day})" if day else name
+        part += f" สูง {round(float(high))}"
+        low = at(lows, n)
+        if low is not None:
+            part += f" ต่ำ {round(float(low))}"
+        chance = at(chances, n)
+        if chance is not None:
+            part += f" ฝน {int(round(float(chance)))}%"
+        out.append(part)
+    return " · ".join(out) or None

@@ -118,7 +118,11 @@ class TurnPipeline(
         if (first != null && first.type in DONE_BEFORE_SPEAKING) {
             val failure = perform(first)
             action = null
-            if (failure != null && first.type in ANSWERED_ON_PHONE) {
+            if (isDoneWords(failure)) {
+                // Done, in the phone's words (the real title opened).
+                reply = failure!!.removePrefix(DONE_MARK)
+                state.reply = reply
+            } else if (failure != null && first.type in ANSWERED_ON_PHONE) {
                 // 0.62.0: the phone's own words ARE the answer (a list read
                 // from this phone's file), not a failure.
                 reply = failure
@@ -237,6 +241,17 @@ val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE
 
 /** 0.62.0: actions whose words, when there are any, are the answer itself — not a failure. */
 val ANSWERED_ON_PHONE = setOf(KioskAction.NOTE_READ)
+
+/**
+ * Marks words an action returns when it WAS done but the phone's own words are
+ * truer than the broker's — a song opened under its real title after the
+ * transcriber heard it wrong (0.61.0). Not a failure; never spoken (dropped).
+ */
+const val DONE_MARK = "\u2063"
+
+fun doneWords(words: String): String = DONE_MARK + words
+
+fun isDoneWords(words: String?): Boolean = words != null && words.startsWith(DONE_MARK)
 
 class KioskAction(
     val type: String,

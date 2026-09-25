@@ -314,6 +314,8 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
         "uv_max": _first_number(daily.get("uv_index_max")),
         # The next three days in one sentence (forecast.py), or None.
         "outlook": forecast.outlook(daily, hourly),
+        # Tomorrow and the day after by their own numbers (forecast.day_lines), or None.
+        "days": forecast.day_lines(daily),
         "model": "ECMWF",
     }
 
@@ -845,7 +847,7 @@ def weather_line(board: "Dashboard", now: float | None = None) -> str:
 _ASKS_WEATHER_DETAIL = ("พรุ่งนี้", "มะรืน", "พยากรณ์", "ฝน", "ร่ม", "ลม", "ยูวี", "uv",
                         "แดดแรง", "ฝุ่น", "pm", "สัปดาห์", "วันไหน", "อีกกี่วัน")
 
-MAX_WEATHER_DETAIL_CHARS = 200
+MAX_WEATHER_DETAIL_CHARS = 280
 
 
 def asks_weather_detail(text: str) -> bool:
@@ -876,6 +878,10 @@ def weather_detail_line(board: "Dashboard", now: float | None = None) -> str:
     if found is None or found[0] > MAX_WEATHER_AGE_SECONDS:
         parts.append("พยากรณ์: ยังไม่มีข้อมูล ห้ามเดา")
     data = {} if parts else found[1]
+    # Each day first, so a question about tomorrow is answered from tomorrow's
+    # own numbers and never "ดูให้ไม่ได้" beside a forecast that has them.
+    if data.get("days"):
+        parts.append("รายวัน(ตอบพรุ่งนี้/มะรืนจากนี้): " + data["days"])
     if data.get("outlook"):
         parts.append(f"พยากรณ์(ECMWF): {data['outlook']}")
     today = []
