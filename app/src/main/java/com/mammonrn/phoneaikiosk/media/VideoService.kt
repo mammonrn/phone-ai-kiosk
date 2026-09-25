@@ -337,17 +337,43 @@ class VideoService : Service(), WakePause.Media {
 
     fun attachView(v: SurfaceView) {
         val fresh = view !== v
+        view?.holder?.removeCallback(surfaceWatch)
         view = v
+        v.holder.addCallback(surfaceWatch)
         if (usingVlc) {
             player.clearVideoSurfaceView(v)
             vlc?.attach(v)
-            // A picture that arrives after VLC started: its video output is opened again on it.
-            if (fresh) vlc?.reopenVideo()
+            // A picture that arrives after VLC started: its video output is opened again on
+            // it — but only on a surface that exists; otherwise when it is created (below).
+            if (fresh && v.holder.surface?.isValid == true) vlc?.reopenVideo()
         } else { vlc?.attach(null); player.setVideoSurfaceView(v) }
         logFrames(if (fresh) "attach-new" else "attach-same")
     }
 
+    /**
+     * THE .DAT BLACK SCREEN (0.63.0, Poom on the A07: sound, no picture). The screen
+     * handed its SurfaceView over before the surface existed (logged: "surface=invalid
+     * 0x0 shown=false"), VLC's video output was opened again at once on nothing, and
+     * nothing opened it once the surface came — the sound played on a black screen.
+     * Now VLC's video output is opened again whenever the surface is created (first
+     * shown, turned, full screen), for as long as VLC plays on it. Media3 follows the
+     * surface by itself.
+     */
+    private val surfaceWatch = object : android.view.SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+            val v = view ?: return
+            if (!usingVlc || v.holder !== holder) return
+            vlc?.attach(v)
+            vlc?.resized(v.width, v.height)
+            vlc?.reopenVideo()
+            logFrames("surface-created")
+        }
+        override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+        override fun surfaceDestroyed(holder: android.view.SurfaceHolder) = Unit
+    }
+
     fun detachView(v: SurfaceView) {
+        v.holder.removeCallback(surfaceWatch)
         if (view === v) view = null
         player.clearVideoSurfaceView(v)
         vlc?.attach(null)
@@ -397,6 +423,16 @@ class VideoService : Service(), WakePause.Media {
             handler.postDelayed(this, 5_000)
         }
     }
+
+    /**
+     * The engine playing and the pictures it has SHOWN so far (VLC's displayed
+     * pictures, Media3's rendered frames): the UI check's video test counts these
+     * before and after a turn and a change of film (0.63.0, the .DAT black screen).
+     */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    internal fun shownFrames(): Pair<String, Int> =
+        if (usingVlc) "vlc" to (vlc?.frameStats()?.second ?: -1)
+        else "media3" to (player.videoDecoderCounters?.also { it.ensureUpdated() }?.renderedOutputBufferCount ?: -1)
 
     /**
      * Pictures decoded and shown so far, from the engine itself (0.63.0: a .DAT

@@ -361,6 +361,7 @@ class VlcDeck(context: Context, private val events: Events, private val movie: B
      * but never shown is a surface problem, not a file problem — and a count,
      * unlike a screenshot, cannot be fooled by how SurfaceView is captured.
      */
+    // "--stats" (0.63.0): without it VLC counts nothing and every number here is 0.
     fun frameStats(): Triple<Int, Int, Int>? {
         val s = player.media?.stats ?: return null
         return Triple(s.decodedVideo, s.displayedPictures, s.lostPictures)
@@ -451,7 +452,7 @@ class VlcDeck(context: Context, private val events: Events, private val movie: B
 
         /** The app's one LibVLC. Subtitles next to a video are picked up; nothing is recorded or streamed out. */
         fun lib(context: Context): LibVLC = shared ?: synchronized(this) {
-            shared ?: LibVLC(context.applicationContext, arrayListOf("--no-stats", "--audio-time-stretch")).also { shared = it }
+            shared ?: LibVLC(context.applicationContext, arrayListOf("--stats", "--audio-time-stretch")).also { shared = it }
         }
     }
 }

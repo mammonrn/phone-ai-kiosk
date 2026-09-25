@@ -372,6 +372,7 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         openApp("สื่อ", "เครื่องเล่นเพลง", "MusicActivity"); check("music")
         openApp("สื่อ", "เครื่องเล่นวิดีโอ", "VideoActivity"); check("video-list")
         videoFull()
+        videoFrames()
         openApp("สื่อ", "วิทยุ", "RadioActivity"); check("radio")
         openApp("สื่อ", "กล้อง", "CameraActivity"); check("camera", picture = false)
         openApp("สื่อ", "บันทึกเสียง", "RecorderActivity"); check("recorder")
@@ -432,6 +433,71 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
             player.savePlace(ctx, film, place, film.track.durationMs)
             android.util.Log.i("KioskUiCheck", "video place put back")
         }
+    }
+
+    /**
+     * THE PICTURE IS REALLY SHOWN (0.63.0, Poom: a .DAT played its sound on a black
+     * screen). For the first film of each engine in the video playlists — VLC
+     * (.DAT, .mpg…) and Media3 (.mp4…) — the pictures the engine SHOWED are counted
+     * while it plays, after full screen and a turn, and after changing to the next
+     * film. A count that does not grow while the time runs is a black screen,
+     * whatever a screenshot would say. Poom's place in each film is put back.
+     */
+    private fun videoFrames() {
+        if (!wanted("video-frames")) return
+        val player = com.mammonrn.phoneaikiosk.media.VideoPlayer
+        val videos = com.mammonrn.phoneaikiosk.media.PlaylistStore.read(ctx) {
+            it.searchable(com.mammonrn.phoneaikiosk.media.Playlist.Kind.VIDEO)
+        }.map { com.mammonrn.phoneaikiosk.media.Video(it) }
+        val places = videos.associateWith { player.savedPlace(ctx, it) }
+        fun engine(v: com.mammonrn.phoneaikiosk.media.Video) =
+            com.mammonrn.phoneaikiosk.media.PlayerChoice.forName(v.track.path)
+        for (want in listOf(com.mammonrn.phoneaikiosk.media.PlayerChoice.Engine.VLC,
+                            com.mammonrn.phoneaikiosk.media.PlayerChoice.Engine.MEDIA3)) {
+            val name = "video-frames-${want.name.lowercase()}"
+            val at = videos.indexOfFirst { engine(it) == want }
+            if (at < 0) { note(name, listOf(), listOf("no ${want.name} video in the playlists to try")); continue }
+            val issues = ArrayList<String>()
+            fun shown(): Pair<String, Int> { var r = "none" to -1; mainSync { r = player.service?.shownFrames() ?: r }; return r }
+            fun grows(step: String) {
+                val a = shown(); SystemClock.sleep(3000); val b = shown()
+                if (b.second <= a.second) issues.add("$step: no picture shown (${b.first} ${a.second} → ${b.second} in 3 s)")
+            }
+            home()
+            mainSync { player.play(ctx, videos, at) }
+            mainSync {
+                ctx.startActivity(android.content.Intent(ctx, com.mammonrn.phoneaikiosk.media.VideoActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            waitFor("VideoActivity"); settle(4000)
+            grows("playing")
+            showControls()
+            val fill = views().firstOrNull { (it as? TextView)?.text?.toString()?.startsWith("เต็มจอ") == true }
+            if (fill != null && (fill as TextView).text.contains("ปิด")) { mainSync { fill.performClick() }; settle(1500) }
+            com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(true) } }
+            settle(3000)
+            grows("full screen, turned")
+            com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(false) } }
+            settle(2000)
+            val next = (at + 1) % videos.size
+            if (next != at) {
+                mainSync { player.play(ctx, videos, next) }
+                settle(4000)
+                grows("next film (${engine(videos[next]).name})")
+            }
+            mainSync { player.stop(ctx) }
+            settle()
+            note(name, issues, emptyList())
+        }
+        for ((v, place) in places) player.savePlace(ctx, v, place, v.track.durationMs)
+        android.util.Log.i("KioskUiCheck", "video places put back n=${places.size}")
+    }
+
+    /** A result with no picture of its own (the video test's counts). */
+    private fun note(name: String, issues: List<String>, exceptions: List<String>) {
+        results.put(JSONObject().put("name", name).put("activity", "VideoActivity").put("pass", issues.isEmpty())
+            .put("issues", JSONArray(issues)).put("exceptions", JSONArray(exceptions)).put("picture", false))
+        File(out, "results.json").writeText(results.toString(1))
     }
 
     /** Full screen on: the button reads "เต็มจอ เปิด" (its words, not a guess from the layout). */
