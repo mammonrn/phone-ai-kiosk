@@ -72,7 +72,16 @@ class UiCheckTest {
     // ------------------------------------------------------------ moving about
 
     /** The screen in front, never one on its way out. */
-    private fun top(): Activity? = KioskScreens.resumed?.get()?.takeUnless { it.isFinishing }
+    private fun top(): Activity? {
+        // The test framework's own record of what is resumed (the kiosk's reference
+        // could still name a home screen on its way out).
+        var found: Activity? = null
+        inst.runOnMainSync {
+            found = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).firstOrNull { !it.isFinishing }
+        }
+        return found
+    }
 
     private fun settle(ms: Long = 900) {
         inst.waitForIdleSync()
