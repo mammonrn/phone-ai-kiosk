@@ -163,6 +163,19 @@ class CalendarActivity : Activity() {
         }, { e -> refused(e) { load(m, tries = 6) } })
     }
 
+    /**
+     * For scripts/ui-check only: [month] (or [dayShown]'s page) drawn from an EMPTY answer —
+     * no appointments, no holidays, nothing from the broker — so the walk sees the grid,
+     * the วันพระ and their notes without the identity check. Nothing is stored or sent.
+     */
+    fun showEmptyForCheck(month: YearMonth, dayShown: LocalDate? = null) {
+        loaded[month] = CalendarModel.Month(emptyList(), emptyList(), holidaysOk = true)
+        this.month = month
+        if (dayShown != null) { day = dayShown; page = Page.DAY } else page = Page.MONTH
+        state = State.READY
+        draw()
+    }
+
     /** A refusal in the screen's words; [retry] is what runs again after the identity check. */
     private fun refused(e: Broker.Failure?, retry: () -> Unit) {
         state = when {
@@ -255,6 +268,9 @@ class CalendarActivity : Activity() {
                 setTextColor(r.color(R.color.retro_bad))
             }, LinearLayout.LayoutParams(MATCH, WRAP))
         }
+        for (line in CalendarModel.holyNotes(month)) {
+            body.addView(r.text(line, UiScale.TEXT_NOTE), LinearLayout.LayoutParams(MATCH, WRAP))
+        }
         body.addView(r.button(getString(R.string.calendar_add), big = true) { startEdit(null, day.takeIf {
             YearMonth.from(it) == month } ?: month.atDay(1).takeIf { month != YearMonth.now(ZONE) } ?: today) },
             LinearLayout.LayoutParams(MATCH, r.dp(UiScale.PRIMARY)).apply { topMargin = r.dp(UiScale.SPACE_M) })
@@ -316,6 +332,12 @@ class CalendarActivity : Activity() {
             })
             body.addView(r.text("${mark.symbol} ${h.title} · $kind", UiScale.TEXT_BASE),
                 LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = r.dp(UiScale.SPACE_XS) })
+        }
+        Lunar.on(day)?.let { holy ->
+            body.addView(r.text("${CalendarModel.Mark.HOLY.symbol} วันพระ · ${holy.label}", UiScale.TEXT_BASE),
+                LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = r.dp(UiScale.SPACE_XS) })
+            body.addView(r.text(getString(R.string.calendar_holy_computed), UiScale.TEXT_NOTE, dim = true),
+                LinearLayout.LayoutParams(MATCH, WRAP))
         }
         val events = CalendarModel.eventsOn(m, day)
         if (events.isEmpty()) {

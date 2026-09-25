@@ -43,12 +43,12 @@ class CalendarModelTest {
 
     @Test fun `marks are shapes - an appointment, a public holiday, anything else on the holiday calendar`() {
         assertEquals(listOf(Mark.APPOINTMENT), CalendarModel.marks(m, LocalDate.of(2026, 10, 5)))
-        assertEquals(listOf(Mark.APPOINTMENT), CalendarModel.marks(m, LocalDate.of(2026, 10, 11)))   // inside a 3-day trip
+        assertEquals(listOf(Mark.APPOINTMENT, Mark.HOLY), CalendarModel.marks(m, LocalDate.of(2026, 10, 11)))   // inside a 3-day trip, and แรม 15 ค่ำ เดือนสิบ
         assertEquals(listOf(Mark.HOLIDAY), CalendarModel.marks(m, LocalDate.of(2026, 10, 23)))
-        assertEquals(listOf(Mark.OBSERVANCE), CalendarModel.marks(m, LocalDate.of(2026, 10, 26)))
-        assertEquals(listOf(Mark.OBSERVANCE), CalendarModel.marks(m, LocalDate.of(2026, 11, 24)))
+        assertEquals(listOf(Mark.OBSERVANCE, Mark.HOLY), CalendarModel.marks(m, LocalDate.of(2026, 10, 26)))
+        assertEquals(listOf(Mark.OBSERVANCE, Mark.HOLY), CalendarModel.marks(m, LocalDate.of(2026, 11, 24)))
         assertEquals(emptyList<Mark>(), CalendarModel.marks(m, LocalDate.of(2026, 10, 6)))
-        assertEquals(setOf("●", "◆", "◇"), Mark.values().map { it.symbol }.toSet())
+        assertEquals(setOf("●", "◆", "◇", "▲"), Mark.values().map { it.symbol }.toSet())
     }
 
     @Test fun `a day lists the whole-day ones first, then by time, and names the nameless`() {

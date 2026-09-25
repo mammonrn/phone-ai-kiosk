@@ -12,7 +12,7 @@ import java.time.YearMonth
  *
  * The year is the Buddhist year (Poom: พ.ศ.). A day's marks are SHAPES, not only
  * colours: ● an appointment, ◆ a public holiday, ◇ an observance or a day of
- * unknown kind on Google's holiday calendar.
+ * unknown kind on Google's holiday calendar, ▲ a วันพระ (computed on the phone, [Lunar]).
  */
 object CalendarModel {
 
@@ -30,7 +30,7 @@ object CalendarModel {
     /** One answer from the broker. [holidaysOk] false: the appointments stand, the holidays are missing. */
     data class Month(val events: List<Appointment>, val holidays: List<Holiday>, val holidaysOk: Boolean)
 
-    enum class Mark(val symbol: String) { APPOINTMENT("●"), HOLIDAY("◆"), OBSERVANCE("◇") }
+    enum class Mark(val symbol: String) { APPOINTMENT("●"), HOLIDAY("◆"), OBSERVANCE("◇"), HOLY("▲") }
 
     fun parse(json: JSONObject): Month {
         val events = ArrayList<Appointment>()
@@ -76,6 +76,23 @@ object CalendarModel {
         val kinds = holidaysOn(m, day).map { it.kind }
         if (Kind.HOLIDAY in kinds) add(Mark.HOLIDAY)
         else if (kinds.isNotEmpty()) add(Mark.OBSERVANCE)
+        if (Lunar.on(day) != null) add(Mark.HOLY)
+    }
+
+    /**
+     * The words under a month about its วันพระ: always that they are computed; the
+     * อธิกมาส or อธิกวาร of a lunar year that touches the month; a warning for a year
+     * that may be a day off; nothing to say outside the computed years but that.
+     */
+    fun holyNotes(month: YearMonth): List<String> = buildList {
+        val years = listOfNotNull(Lunar.yearOf(month.atDay(1)), Lunar.yearOf(month.atEndOfMonth())).distinct()
+        if (years.isEmpty()) { add("ไม่มีวันพระในเดือนนี้ เพราะคำนวณไว้เฉพาะปี ${Lunar.FIRST_YEAR}–${Lunar.LAST_YEAR}"); return@buildList }
+        add("▲ วันพระคำนวณจากปฏิทินจันทรคติ ไม่ใช่ประกาศทางการ")
+        for (be in years) {
+            if (Lunar.adhikamasa(be)) add("ปีจันทรคติ $be มีเดือนแปดสองหน (อธิกมาส)")
+            if (Lunar.adhikavara(be)) add("ปีจันทรคติ $be เดือนเจ็ดมี 30 วัน (อธิกวาร)")
+            if (Lunar.uncertain(be)) add("ปีจันทรคติ $be ยังไม่ได้ตรวจเทียบกับปฏิทินที่พิมพ์ วันพระตั้งแต่เดือนเจ็ดอาจคลาด 1 วัน")
+        }
     }
 
     private val MONTHS = listOf("มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม",
@@ -105,6 +122,7 @@ object CalendarModel {
             append(dayTitle(day))
             if (n > 0) append(" มีนัด $n นัด")
             for (x in h) append(" · ${x.title}")
+            Lunar.on(day)?.let { append(" · วันพระ ${it.label}") }
         }
     }
 }

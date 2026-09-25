@@ -394,6 +394,14 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         // The calendar opens on what it can show without the identity check (never
         // started here: the check's camera is not photographed and needs a face).
         openApp("เครื่องมือ", "ปฏิทิน", "CalendarActivity"); settle(3000); check("calendar")
+        // วันพระ (0.65): a month with เดือนแปดสองหน and a วันพระ's day, drawn from an empty answer.
+        for ((name, day) in listOf("calendar-holy-month" to null, "calendar-holy-day" to java.time.LocalDate.of(2026, 7, 29))) {
+            if (!wanted(name)) continue
+            val cal = top() as? com.mammonrn.phoneaikiosk.calendar.CalendarActivity ?: continue
+            main.post { cal.showEmptyForCheck(java.time.YearMonth.of(2026, 7), day) }
+            settle()
+            check(name)
+        }
         openApp("เครื่องมือ", "ระดับน้ำ", "CompassActivity"); check("level")
 
         openApp("เครื่องมือ", "เครื่องคิดเลข", "CalculatorActivity")

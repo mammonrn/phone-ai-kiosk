@@ -13,7 +13,8 @@
     <string name="calendar_prev_month">เดือนก่อน</string>
     <string name="calendar_next_month">เดือนถัดไป</string>
     <string name="calendar_this_month">กลับไปเดือนนี้</string>
-    <string name="calendar_legend">● มีนัด   ◆ วันหยุดราชการ   ◇ วันสำคัญหรือวันอื่นในปฏิทินวันหยุด</string>
+    <string name="calendar_legend">● มีนัด   ◆ วันหยุดราชการ   ◇ วันสำคัญหรือวันอื่นในปฏิทินวันหยุด   ▲ วันพระ</string>
+    <string name="calendar_holy_computed">คำนวณจากปฏิทินจันทรคติ ไม่ใช่ประกาศทางการ</string>
     <string name="calendar_holidays_missing">ดึงวันหยุดไม่ได้ในขณะนี้ จึงแสดงเฉพาะนัด</string>
     <string name="calendar_holidays_note">วันหยุดมาจากปฏิทินวันหยุดไทยของ Google วันหยุดพิเศษที่ประกาศกะทันหันอาจขึ้นช้า</string>
     <string name="calendar_add">เพิ่มนัด</string>
