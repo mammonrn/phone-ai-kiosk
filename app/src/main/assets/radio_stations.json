@@ -13,6 +13,7 @@
   {"id": "ltm95", "name": "ลูกทุ่งมหานคร FM 95", "url": "https://play-fm95.mcot.net/fm95/fm95.m3u8", "fav": false},
   {"id": "rakthai90", "name": "ลูกทุ่งรักไทย FM 90", "url": "https://radio11.plathong.net/8896/;stream.mp3", "fav": false},
   {"id": "prd925", "name": "สวท. FM 92.5", "url": "https://cdn-edge.iiptvcdn.com/radio_edge/45d4-d521-cbfc-d686-0123/playlist.m3u8", "fav": false},
-  {"id": "prd891", "name": "สวท. AM 891", "url": "https://cdn-edge.iiptvcdn.com/radio_edge/51dd-90a9-c6ae-c7f7-49d4/playlist.m3u8", "fav": false}
+  {"id": "prd891", "name": "สวท. AM 891", "url": "https://cdn-edge.iiptvcdn.com/radio_edge/51dd-90a9-c6ae-c7f7-49d4/playlist.m3u8", "fav": false},
+  {"id": "lukthungnet", "name": "ลูกทุ่งเน็ตเวิร์ค", "url": "http://media.login.in.th:8200/;stream.mp3", "fav": false}
  ]
 }

@@ -124,7 +124,7 @@ class RadioBookTest {
     }
 
     @Test
-    fun `the seed in the APK is a valid list of https stations`() {
+    fun `the seed in the APK is a valid list of stations that can all play`() {
         val seed = listOf(File("src/main/assets/radio_stations.json"), File("app/src/main/assets/radio_stations.json"))
             .first { it.exists() }
         val read = RadioBook.decode(seed.readText())
@@ -132,7 +132,28 @@ class RadioBookTest {
         val count = Regex("\"id\"").findAll(seed.readText()).count()
         assertEquals("every seed entry must survive decoding", count, read!!.stations.size)
         assertTrue(read.stations.isNotEmpty())
-        // The app allows no cleartext: a seed station that could not play would be a broken promise.
-        assertTrue(read.stations.all { it.url.startsWith("https://") })
+        // A seed station that could not play would be a broken promise: https, or http only
+        // from a domain the network security config allows (Poom 2026-09-25).
+        assertTrue(read.stations.all { it.url.startsWith("https://") || !StreamKind.plainBlocked(it.url) })
+    }
+
+    /** Poom 2026-09-25: http only for the app's own stations' domains — the code and the XML say the same. */
+    @Test
+    fun `http is allowed only for the listed stations' domains, the same in the code and the config`() {
+        fun read(p: String) = listOf(java.io.File(p), java.io.File("app/$p")).first { it.exists() }.readText()
+        val xml = read("src/main/res/xml/network_security_config.xml")
+        assertTrue("<base-config cleartextTrafficPermitted=\"false\" />" in xml)
+        val domains = Regex("<domain[^>]*>([^<]+)</domain>").findAll(xml).map { it.groupValues[1].trim() }.toSet()
+        assertEquals(com.mammonrn.phoneaikiosk.radio.StreamKind.PLAIN_ALLOWED_HOSTS, domains)
+        val seed = read("src/main/assets/radio_stations.json")
+        val plainHosts = Regex("\"url\": \"(http://[^\"]+)\"").findAll(seed)
+            .map { com.mammonrn.phoneaikiosk.radio.StreamKind.host(it.groupValues[1]) }.toSet()
+        assertEquals("every allowed domain is a listed station's, and every listed http station is allowed", domains, plainHosts)
+        val manifest = read("src/main/AndroidManifest.xml")
+        assertTrue("android:networkSecurityConfig=\"@xml/network_security_config\"" in manifest)
+        assertFalse("usesCleartextTraffic" in manifest)
+        assertFalse(com.mammonrn.phoneaikiosk.radio.StreamKind.plainBlocked("http://media.login.in.th:8200/;stream.mp3"))
+        assertTrue(com.mammonrn.phoneaikiosk.radio.StreamKind.plainBlocked("http://other.example:8000/live"))
+        assertFalse(com.mammonrn.phoneaikiosk.radio.StreamKind.plainBlocked("https://other.example/live"))
     }
 }

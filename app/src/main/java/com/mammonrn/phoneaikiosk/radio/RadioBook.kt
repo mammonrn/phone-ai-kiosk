@@ -174,8 +174,22 @@ object StreamKind {
         }
     }
 
-    /** An http:// stream: Android refuses it in this app unless cleartext is allowed (DESIGN.md 5ฏ). */
+    /** An http:// stream (not encrypted). */
     fun plain(url: String): Boolean = url.trim().lowercase().startsWith("http://")
+
+    /**
+     * The hosts allowed to send http (Poom, 2026-09-25): ONLY the domains of the
+     * app's own station list, the same names as res/xml/network_security_config.xml
+     * (RadioBookTest holds the two together). Any other http station — one added
+     * by hand or found in the search — still cannot play.
+     */
+    val PLAIN_ALLOWED_HOSTS = setOf("media.login.in.th")
+
+    fun host(url: String): String =
+        url.trim().substringAfter("://").substringBefore('/').substringBefore('?').substringBefore(':').lowercase()
+
+    /** An http stream Android will refuse in this app: http, and not one of [PLAIN_ALLOWED_HOSTS]. */
+    fun plainBlocked(url: String): Boolean = plain(url) && host(url) !in PLAIN_ALLOWED_HOSTS
 
     /**
      * The first stream address in a .pls or .m3u playlist's text ("File1=…"

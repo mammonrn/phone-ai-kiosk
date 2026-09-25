@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 0.61.0 (Poom): no plain http anywhere in the app, EXCEPT the domains of the
+     radio stations in the app's own list (assets/radio_stations.json) that only
+     stream over http. Kept equal to StreamKind.PLAIN_ALLOWED_HOSTS by RadioBookTest.
+     A station added by hand or found in the search that is http still cannot play. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">media.login.in.th</domain>
+    </domain-config>
+</network-security-config>

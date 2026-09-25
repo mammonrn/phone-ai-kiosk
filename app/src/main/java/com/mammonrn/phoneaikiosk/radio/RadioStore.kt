@@ -20,6 +20,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  * the calling thread. Main thread only.
  */
 object RadioStore {
+    private const val PREFS = "radio"
+    private const val OFFERED = "offered_seeds"
 
     private const val FILE = "radio_stations.json"
     private const val SEED = "radio_stations.json"
@@ -48,7 +50,7 @@ object RadioStore {
         val file = File(context.filesDir, FILE)
         if (file.exists()) {
             val read = runCatching { RadioBook.decode(file.readText()) }.getOrNull()
-            if (read != null) return read
+            if (read != null) return offerNewSeeds(context, read)
             val kept = File(context.filesDir, "radio_stations.bad.json")
             file.renameTo(kept)
             Log.w(TAG, "station list unreadable: kept aside, seed used")
@@ -56,8 +58,29 @@ object RadioStore {
         val seed = runCatching { context.assets.open(SEED).use { it.readBytes().toString(Charsets.UTF_8) } }
             .getOrNull()?.let(RadioBook::decode) ?: RadioBook(emptyList())
         save(context, seed)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putStringSet(OFFERED, seed.stations.map { it.id }.toSet()).apply()
         Log.i(TAG, "station list seeded: ${seed.stations.size}")
         return seed
+    }
+
+    /**
+     * A station added to the app's own list later (ลูกทุ่งเน็ตเวิร์ค, 0.61.0) is
+     * appended once to a list already on the phone. One the owner removed is
+     * never brought back: every seed id offered is remembered.
+     */
+    private fun offerNewSeeds(context: Context, book: RadioBook): RadioBook {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val offered = prefs.getStringSet(OFFERED, null) ?: book.stations.map { it.id }.toSet()
+        val seed = runCatching { context.assets.open(SEED).use { it.readBytes().toString(Charsets.UTF_8) } }
+            .getOrNull()?.let(RadioBook::decode) ?: return book
+        val fresh = seed.stations.filter { it.id !in offered && book.stations.none { s -> s.id == it.id } }
+        prefs.edit().putStringSet(OFFERED, offered + seed.stations.map { it.id }).apply()
+        if (fresh.isEmpty()) return book
+        val merged = RadioBook(book.stations + fresh)
+        save(context, merged)
+        Log.i(TAG, "new stations from the app's list: ${fresh.size}")
+        return merged
     }
 
     private fun save(context: Context, book: RadioBook) {

@@ -352,7 +352,7 @@ class RadioActivity : Activity() {
             current && RadioPlayer.state == RadioPlayer.State.CONNECTING -> getString(R.string.radio_state_connecting)
             current && RadioPlayer.state == RadioPlayer.State.PLAYING -> getString(R.string.radio_state_playing)
             current && RadioPlayer.state == RadioPlayer.State.FAILED -> getString(R.string.radio_state_failed)
-            StreamKind.plain(station.url) -> getString(R.string.radio_plain_note)
+            StreamKind.plainBlocked(station.url) -> getString(R.string.radio_plain_note)
             else -> null
         }
         if (note != null) words.addView(retro.text(note, UiScale.TEXT_NOTE, dim = !current).apply {
@@ -432,7 +432,7 @@ class RadioActivity : Activity() {
         retro.hideKeyboard(url)
         form = null
         show(Tab.LIST)
-        if (StreamKind.plain(u)) android.widget.Toast.makeText(this, R.string.radio_plain_warning, android.widget.Toast.LENGTH_LONG).show()
+        if (StreamKind.plainBlocked(u)) android.widget.Toast.makeText(this, R.string.radio_plain_warning, android.widget.Toast.LENGTH_LONG).show()
     }
 
     private fun refusalWords(why: RadioBook.Refusal): Int = when (why) {
