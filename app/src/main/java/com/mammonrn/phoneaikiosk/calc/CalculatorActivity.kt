@@ -168,7 +168,9 @@ class CalculatorActivity : Activity() {
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
         pageDots = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER
+            // Two pages' squares are 34dp: the target is at least 48 (0.63.0 layout check).
+            minimumWidth = dp(UiScale.TOUCH)
             setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
             visibility = View.GONE
         }

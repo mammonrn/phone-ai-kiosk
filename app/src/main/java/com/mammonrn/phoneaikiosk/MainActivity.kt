@@ -761,11 +761,15 @@ class MainActivity : Activity() {
                 setTextColor(ContextCompat.getColor(this@MainActivity,
                     if (bulb == HomeCard.Bulb.ON || mine) R.color.retro_text else R.color.retro_dim))
                 maxLines = 1
+                // A long name ("ไฟเหลืองหน้าบ้าน") shrinks to fit before it is cut (0.63.0 layout check).
+                androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                    this, 10, sp(R.dimen.type_secondary).toInt().coerceAtLeast(11), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 includeFontPadding = false
                 setPadding(dp(4), 0, dp(2), 0)
+                gravity = android.view.Gravity.CENTER_VERTICAL
                 importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         }
 
     /** Our own pixel art (res/drawable), by picture and state. */

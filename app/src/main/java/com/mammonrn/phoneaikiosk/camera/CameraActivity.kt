@@ -270,9 +270,11 @@ class CameraActivity : Activity(), LifecycleOwner {
 
     private fun drawButtons() {
         if (!::shutter.isInitialized) return
-        val lens = getString(if (front) R.string.camera_lens_front else R.string.camera_lens_back)
-        flip.text = getString(R.string.camera_switch, lens)
-        flip.contentDescription = flip.text
+        // The button says what a tap does ("ใช้กล้องหน้า"); the screen reader also says which is on.
+        val now = getString(if (front) R.string.camera_lens_front else R.string.camera_lens_back)
+        val other = getString(if (front) R.string.camera_lens_back else R.string.camera_lens_front)
+        flip.text = getString(R.string.camera_switch, other)
+        flip.contentDescription = getString(R.string.camera_switch_said, now, other)
         r.setEnabledButton(flip, hasFront && hasBack && !busy) { switchLens() }
         r.setEnabledButton(shutter, capture != null && !busy) { takePhoto() }
         r.setEnabledButton(last, lastPath != null && !busy) { openLast() }

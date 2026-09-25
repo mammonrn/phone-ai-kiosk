@@ -324,7 +324,8 @@ class MusicActivity : Activity() {
         }
         timeView = TextView(this).apply {
             typeface = pixel; textSize = UiScale.AMP_TIME; setTextColor(color(R.color.retro_lcd))
-            gravity = Gravity.END; maxLines = 1
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL; maxLines = 1
+            minHeight = dp(UiScale.TOUCH)      // tappable: a finger's height (0.63.0 layout check)
             // Tap the time: elapsed or remaining, like the reference.
             isClickable = true
             setOnClickListener { remaining = !remaining; refreshTime() }

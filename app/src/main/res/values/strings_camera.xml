@@ -3,7 +3,8 @@
 <resources>
     <string name="window_camera">กล้อง</string>
     <string name="camera_take">ถ่ายรูป</string>
-    <string name="camera_switch">สลับกล้อง (ตอนนี้: %1$s)</string>
+    <string name="camera_switch">ใช้%1$s</string>
+    <string name="camera_switch_said">ตอนนี้ใช้%1$s แตะเพื่อใช้%2$s</string>
     <string name="camera_lens_back">กล้องหลัง</string>
     <string name="camera_lens_front">กล้องหน้า</string>
     <string name="camera_open_last">ดูรูปล่าสุด</string>

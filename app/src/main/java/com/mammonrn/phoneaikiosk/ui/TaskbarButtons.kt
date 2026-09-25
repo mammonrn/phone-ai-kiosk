@@ -45,6 +45,10 @@ object TaskbarButtons {
         val thai = ResourcesCompat.getFont(activity, R.font.plex_thai) ?: Typeface.DEFAULT
         fun icon(id: Int, size: Int): Drawable = ContextCompat.getDrawable(activity, id)!!.mutate().apply { setBounds(0, 0, dp(size), dp(size)) }
 
+        // At least a finger's height (48dp, 0.63.0 layout check: they were 35dp).
+        // The Jarvis window above stays well over its 156dp.
+        jarvis.minHeight = dp(UiScale.TOUCH)
+        panel.minimumHeight = dp(UiScale.TOUCH)
         jarvis.typeface = Typeface.create(thai, Typeface.BOLD)
         jarvis.compoundDrawablePadding = dp(6)
         jarvis.gravity = Gravity.CENTER

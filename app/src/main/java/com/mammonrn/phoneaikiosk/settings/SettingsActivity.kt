@@ -385,6 +385,8 @@ class SettingsActivity : Activity() {
             leftMargin = dp(UiScale.SPACE_L); rightMargin = dp(UiScale.SPACE_L)
         })
         host.addView(scrim, FrameLayout.LayoutParams(MATCH, MATCH))
+        // Dimmed for the eye, hidden for TalkBack: the tiles behind are not there while it is open.
+        host.getChildAt(0)?.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         folderPopup = scrim
         android.util.Log.i("KioskPanel", "folder open items=${f.items.size}")
     }
@@ -393,6 +395,7 @@ class SettingsActivity : Activity() {
     private fun closeFolder(): Boolean {
         val p = folderPopup ?: return false
         host.removeView(p)
+        host.getChildAt(0)?.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         folderPopup = null
         android.util.Log.i("KioskPanel", "folder closed")
         return true

@@ -228,10 +228,19 @@ object JarvisBadges {
         val home = activity is MainActivity
         val badge = JarvisBadge(activity, theme(activity), if (home) null else screen(activity)).apply { tag = TAG_KEY }
         if (home) {
-            val size = dp(HOME_SIZE)
-            content.addView(badge, FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(HOME_TOP); marginEnd = dp(HOME_END)
-            })
+            // At the end of the weather window's title bar, IN its row (0.63.0): laid
+            // over it, the badge was a sign on top of a tappable bar.
+            val bar = activity.findViewById<LinearLayout>(com.mammonrn.phoneaikiosk.R.id.weather_titlebar)
+            if (bar != null) {
+                bar.setPadding(bar.paddingStart, bar.paddingTop, dp(HOME_END_PAD), bar.paddingBottom)
+                bar.addView(badge, LinearLayout.LayoutParams(dp(HOME_SIZE), dp(HOME_SIZE)).apply {
+                    gravity = Gravity.CENTER_VERTICAL; marginStart = dp(UiScale.SPACE_XS)
+                })
+            } else {
+                content.addView(badge, FrameLayout.LayoutParams(dp(HOME_SIZE), dp(HOME_SIZE), Gravity.TOP or Gravity.END).apply {
+                    topMargin = dp(HOME_TOP); marginEnd = dp(HOME_END)
+                })
+            }
             return
         }
         overlay(content, badge, ::dp)
@@ -292,8 +301,10 @@ object JarvisBadges {
 
     /** In an app: 36dp, inside the 48dp title bar. */
     const val SIZE = 36
-    /** On the home screen: at the end of the weather window's title bar. */
-    const val HOME_SIZE = 28
+    /** On the home screen: at the end of the weather window's title bar, as tall as its text. */
+    const val HOME_SIZE = 21
+    /** The title bar's end padding once the badge is in the row (it was 34 to leave room for it). */
+    const val HOME_END_PAD = 6
     const val HOME_TOP = 12
     const val HOME_END = 12
 }
