@@ -2102,3 +2102,21 @@ sudo journalctl -u kiosk-broker -n 100 | grep -E "calendar-add|calendar_add="
 **Poom ตรวจและลบนัดทดสอบเอง:** เปิด Google Calendar (แอปหรือเว็บ) ไปที่วันพรุ่งนี้
 ต้องเห็นนัด "ไปทดสอบจาร์วิส" เวลา 14:00–15:00 และในรายละเอียดมีคำว่า "เพิ่มโดยจาร์วิส"
 แตะนัดนั้นแล้วกดลบเอง (จาร์วิสลบนัดไม่ได้ และไม่มีคำสั่งลบ)
+
+## v0.61.0 — สุ่มใหม่ทุกรอบ, audio focus ของ VLC, แอปพื้นฐาน (กล้อง บันทึกเสียง Drive วิทยุ), ปุ่มปิดกลับหน้าที่มา, แผงควบคุมเป็นหมวด
+
+- **สุ่ม × โหมดซ้ำ:** playlist ทดสอบ 10 รายการ (เพลงละ 25 วินาที มี ALAC ผ่าน VLC และไฟล์ที่หายไป 1 รายการ) ติดตามลำดับจาก `music_session.txt` ทุก 2 วินาที ไม่ log ชื่อเพลง ทั้ง 6 คู่ต้องได้: ปิด/ปิด ครบแล้วหยุด · ปิด/ทั้งรายการ วนกลับต้น · ปิด/เพลงเดียว ซ้ำ · เปิด/ปิด ครบรวมเพลงที่เพิ่มระหว่างเล่นแล้วหยุด · **เปิด/ทั้งรายการ รอบที่สองลำดับต่างจากรอบแรก** · เปิด/เพลงเดียว ซ้ำ
+- **audio focus ของ VLC (debug):** เล่นไฟล์ VLC แล้ว
+  ```
+  adb shell "am broadcast -a com.mammonrn.phoneaikiosk.TEST_FOCUS -p com.mammonrn.phoneaikiosk.debug --es kind transient|duck|loss --ei ms 3000"
+  ```
+  ต้องได้ `KioskVlc: vlc: focus lost for a moment` → `focus back` (เล่นต่อเอง) / `ducked` → `focus back` / `focus lost` + `KioskMusic: state paused` (ไม่เล่นต่อเอง) และ `dumpsys audio` ส่วน focus stack มี client `VlcDeck`
+- **จาร์วิสพูดทับไฟล์ VLC:** `TEST_PERFORM --ez as_turn true` ระหว่างเพลง VLC → `dumpsys audio` player ของแอปเป็น `paused` ระหว่างคำถาม แล้ว `started` หลังจบ (อย่าใช้คำสั่ง `quieter` ซ้ำ ๆ มันลดเสียงจริง)
+- **แถบสมดุล:** ไฟล์ VLC → แถบไม่มีปุ่มเลื่อน จาง แตะแล้วบรรทัดชื่อเพลงขึ้น "ปรับเสียงซ้ายขวาไม่ได้…" และค่า `balance` ใน `shared_prefs/music.xml` ไม่เปลี่ยน / ไฟล์ Media3 → แถบกลับปกติ
+- **หน้าเพิ่มไฟล์:** ติ๊ก 2 → ยกเลิก → เปิดใหม่ ทุกตัวเลขเป็น 0 / เพิ่มจริงแล้วเปิดใหม่ ทุกตัวเลขเป็น 0
+- **กล้อง:** ตรวจด้วย log เท่านั้น **ห้ามแคปตอนกล้องเปิด** `KioskCamera: camera bound lens=back|front`, `photo saved ... exists=true`, ออกจากหน้า `camera closed` รูปอยู่ `DCIM/Kiosk` ตัวจัดการไฟล์เห็น และ "ดูรูปล่าสุด" เปิด `ImageViewerActivity`
+- **บันทึกเสียง:** `KioskRec: mic handed to recorder`, `wake pause on source=recorder` ระหว่างอัด Hey Jarvis ต้องไม่มี `wake word detected` หลังหยุด `wake pause off` แล้ว Hey Jarvis จับได้ทันที ไฟล์ `.ogg` ใน `Recordings/Kiosk` เปิดจากตัวจัดการไฟล์เล่นในเครื่องเล่นเพลงแบบไฟล์เดียว
+- **Drive (ยังไม่มีค่าจาก Poom):** แตะ "Google Drive" ในตัวจัดการไฟล์ → "ยังไม่ได้เชื่อมต่อ Google Drive" พร้อมเหตุผล ไม่ค้าง แตะ "เชื่อมต่อ" ไม่เปิดอะไร lock task ยัง LOCKED log `KioskDrive: consent needed by=com.google.android.gms`
+- **ปุ่มปิด:** เปิดแต่ละแอปจากแผงควบคุมแล้วกด X → กลับ `SettingsActivity` / Drive → X → `FilesActivity` / การ์ดเพลงหน้าแรก → X → `MainActivity` / LOCKED ตลอด
+- **สวิตช์วัดเสียงบี๊บ (debug, สำหรับ Poom พูดเอง):** `TEST_BEEP --es value off|on` ปิด/เปิดเสียงติ๊ดตอนได้ยินคำปลุก · `TEST_KEEP_CAPTURE --es value on|off` เก็บเสียงคำถามล่าสุดไว้ที่ `files/last_capture.wav` (ทับทุกครั้ง, off = ลบไฟล์) ดึงด้วย `adb exec-out run-as com.mammonrn.phoneaikiosk.debug cat files/last_capture.wav > last_capture.wav` ทั้งสองสวิตช์หายเมื่อแอปเริ่มใหม่
+- **การวัดด้วยเสียงสังเคราะห์ใช้ไม่ได้ (2026-09-25):** เสียงไทย Pattara จากลำโพงคอมถูกถอดเพี้ยนทั้งประโยค (เช่น "แม่ฟ้าหลวง…", "ดูกล้อง") ไม่ว่าจะเปิดหรือปิดบี๊บ และการพูดต่อจาก "Jarvis" ทันที (เว้น 30 ms) ทำให้ทั้งคำสั่งต่ำกว่าเกณฑ์เสียงพูด → `no-speech-after-wake` จึงต้องวัดด้วยเสียงคนจริงเท่านั้น
