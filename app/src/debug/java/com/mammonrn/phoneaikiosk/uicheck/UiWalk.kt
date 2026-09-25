@@ -391,6 +391,9 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
             waitFor("TimerActivity")
         }
         openApp("เครื่องมือ", "โน้ต", "NotesActivity"); check("notes")
+        // The calendar opens on what it can show without the identity check (never
+        // started here: the check's camera is not photographed and needs a face).
+        openApp("เครื่องมือ", "ปฏิทิน", "CalendarActivity"); settle(3000); check("calendar")
         openApp("เครื่องมือ", "ระดับน้ำ", "CompassActivity"); check("level")
 
         openApp("เครื่องมือ", "เครื่องคิดเลข", "CalculatorActivity")

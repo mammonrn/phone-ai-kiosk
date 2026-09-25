@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The calendar app (0.63.0, calendar/CalendarActivity). Written as the screen's
+     own words: what is happening, and the one thing to do next. -->
+<resources>
+    <string name="window_calendar">ปฏิทิน</string>
+    <string name="calendar_loading">กำลังโหลดปฏิทิน…</string>
+    <string name="calendar_verify_why">ปฏิทินเป็นข้อมูลส่วนตัว กรุณายืนยันตัวตนก่อนดู เพิ่ม หรือแก้ไขนัด</string>
+    <string name="calendar_verify_button">ยืนยันตัวตนเพื่อเปิดปฏิทิน</string>
+    <string name="calendar_no_identity">ยังไม่ได้ลงทะเบียนใบหน้าหรือรูปแบบ กรุณาตั้งค่าที่แผงควบคุม › ยืนยันตัวตน</string>
+    <string name="calendar_not_connected">ยังไม่ได้เชื่อมบัญชี Google ของตู้ จึงเปิดปฏิทินไม่ได้</string>
+    <string name="calendar_offline">ตอนนี้เชื่อมต่อปฏิทินไม่ได้ กรุณาลองใหม่อีกครั้ง</string>
+    <string name="calendar_retry">ลองใหม่</string>
+    <string name="calendar_prev_month">เดือนก่อน</string>
+    <string name="calendar_next_month">เดือนถัดไป</string>
+    <string name="calendar_this_month">กลับไปเดือนนี้</string>
+    <string name="calendar_legend">● มีนัด   ◆ วันหยุดราชการ   ◇ วันสำคัญหรือวันอื่นในปฏิทินวันหยุด</string>
+    <string name="calendar_holidays_missing">ดึงวันหยุดไม่ได้ในขณะนี้ จึงแสดงเฉพาะนัด</string>
+    <string name="calendar_holidays_note">วันหยุดมาจากปฏิทินวันหยุดไทยของ Google วันหยุดพิเศษที่ประกาศกะทันหันอาจขึ้นช้า</string>
+    <string name="calendar_add">เพิ่มนัด</string>
+    <string name="calendar_edit">แก้ไขนัด</string>
+    <string name="calendar_add_on_day">เพิ่มนัดในวันนี้</string>
+    <string name="calendar_back_to_month">◄ %1$s</string>
+    <string name="calendar_day_empty">วันนี้ยังไม่มีนัด</string>
+    <string name="calendar_kind_holiday">วันหยุดราชการ</string>
+    <string name="calendar_kind_observance">วันสำคัญ (ไม่ใช่วันหยุด)</string>
+    <string name="calendar_kind_unknown">อยู่ในปฏิทินวันหยุด (ไม่ได้ระบุว่าหยุดหรือไม่)</string>
+    <string name="calendar_delete">ลบ</string>
+    <string name="calendar_delete_confirm">ลบนัดนี้ใช่ไหม ต้องยืนยันตัวตนก่อนลบ นัดที่ลบจะอยู่ในถังขยะของ Google Calendar 30 วัน</string>
+    <string name="calendar_delete_verify">ยืนยันตัวตนแล้วลบ</string>
+    <string name="calendar_deleted">ลบนัดแล้ว</string>
+    <string name="calendar_saved">บันทึกนัดแล้ว</string>
+    <string name="calendar_title_label">ชื่อนัด</string>
+    <string name="calendar_title_hint">เช่น หาหมอฟัน</string>
+    <string name="calendar_title_missing">กรุณาใส่ชื่อนัด</string>
+    <string name="calendar_date_label">วันที่</string>
+    <string name="calendar_day_earlier">เลื่อนไปวันก่อน</string>
+    <string name="calendar_day_later">เลื่อนไปวันถัดไป</string>
+    <string name="calendar_timed">มีเวลา</string>
+    <string name="calendar_all_day">ทั้งวัน</string>
+    <string name="calendar_start_label">เวลาเริ่ม</string>
+    <string name="calendar_end_label">เวลาจบ</string>
+    <string name="calendar_earlier">เร็วขึ้น 15 นาที</string>
+    <string name="calendar_later">ช้าลง 15 นาที</string>
+    <string name="calendar_save">บันทึกนัด</string>
+    <string name="calendar_saving">กำลังบันทึก…</string>
+</resources>

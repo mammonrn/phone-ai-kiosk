@@ -168,6 +168,7 @@ object JarvisBadges {
         "RadioActivity" -> "radio"
         "TimerActivity" -> "timer"
         "SettingsActivity" -> "panel"
+        "CalendarActivity" -> "calendar"
         else -> null
     }
 

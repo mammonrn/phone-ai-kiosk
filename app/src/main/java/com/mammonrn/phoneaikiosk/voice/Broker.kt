@@ -25,7 +25,7 @@ class Broker(private val baseUrl: String, private val token: String) {
         const val WAKE_HEADER = "X-Wake"
         /** Which screen's Jarvis button asked (0.61.0): one of [SCREENS], nothing else ever. */
         const val SCREEN_HEADER = "X-Kiosk-Screen"
-        val SCREENS = setOf("music", "video", "notes", "radio", "timer", "panel")
+        val SCREENS = setOf("music", "video", "notes", "radio", "timer", "panel", "calendar")
 
         /** "not-a-question (weak-wake,no-ask)" when the gate refused, else "". */
         fun gateRefusal(gate: JSONObject?): String {
@@ -222,6 +222,24 @@ class Broker(private val baseUrl: String, private val token: String) {
      * approved on the VPS — and a refusal arrives as a Failure whose message
      * is Thai fit to say ("การลงทะเบียนนี้ยังไม่ได้รับอนุมัติครับ").
      */
+    // ------------------------------------------------ the calendar app (0.63.0)
+    // Poom's appointments and the Thai holidays, behind the identity grant: a 403
+    // "verify_identity" means the identity check first. Never through /v1/chat.
+
+    fun calendarList(from: String, to: String): JSONObject = JSONObject(String(
+        post("/v1/calendar/list", JSONObject().put("from", from).put("to", to).toString().toByteArray(Charsets.UTF_8),
+             "application/json; charset=utf-8").bytes, Charsets.UTF_8))
+
+    /** Adds ([event] without "id") or changes one appointment; its id. */
+    fun calendarSave(event: JSONObject): String = JSONObject(String(
+        post("/v1/calendar/save", event.toString().toByteArray(Charsets.UTF_8), "application/json; charset=utf-8").bytes,
+        Charsets.UTF_8)).optString("id")
+
+    fun calendarDelete(id: String) {
+        post("/v1/calendar/delete", JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8),
+             "application/json; charset=utf-8")
+    }
+
     fun grant(identityId: String, method: String) {
         post("/v1/auth/grant",
              JSONObject().put("identity_id", identityId).put("method", method)

@@ -316,6 +316,12 @@
             android:name=".timer.TimerActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <!-- 0.63.0: the calendar app (Poom's Google Calendar through the broker,
+             behind the identity check). Ours, so lock task allows it. -->
+        <activity
+            android:name=".calendar.CalendarActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".compass.CompassActivity"
             android:exported="false"

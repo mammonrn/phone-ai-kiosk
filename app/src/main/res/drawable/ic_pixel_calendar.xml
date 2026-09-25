@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.63.0): a wall calendar for the calendar app. A black
+     outline, two black rings over a navy header band, a white page with a grid of
+     grey days and one navy day marked. Drawn from squares; not any brand's
+     calendar (DESIGN.md 8). 16x16 grid, four colours from the window palette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M1,2h14v1h-14z M1,3h1v12h-1z M14,3h1v12h-1z
+        M2,14h12v1h-12z M4,1h1v3h-1z M11,1h1v3h-1z" />
+    <path android:fillColor="#000080" android:pathData="M2,3h2v2h-2z M5,3h6v2h-6z M12,3h2v2h-2z M9,10h2v2h-2z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M2,5h12v9h-12z" />
+    <path android:fillColor="#808080" android:pathData="M3,7h2v2h-2z M6,7h2v2h-2z M9,7h2v2h-2z M12,7h1v2h-1z
+        M3,10h2v2h-2z M6,10h2v2h-2z M12,10h1v2h-1z" />
+</vector>

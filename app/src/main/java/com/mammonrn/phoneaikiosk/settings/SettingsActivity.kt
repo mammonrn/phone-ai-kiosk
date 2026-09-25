@@ -1054,6 +1054,10 @@ class SettingsActivity : Activity() {
                         },
             )),
             Tile.Folder(R.string.settings_folder_tools, listOf(
+                    // 0.63.0 (Poom): Poom's Google Calendar and the Thai holidays (calendar/CalendarActivity).
+                    Category(R.drawable.ic_pixel_calendar, { it.getString(R.string.window_calendar) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.calendar.CalendarActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
                     // 0.63.0 (Poom): "เวลา" — the alarms, the stopwatch and the countdown, one app of
                     // three swiped pages (timer/TimerActivity), where two icons were.
                     Category(R.drawable.ic_pixel_alarm_clock, { it.getString(R.string.window_time) }) {
