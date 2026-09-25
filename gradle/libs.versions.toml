@@ -78,3 +78,4 @@ mlkit-face = { group = "com.google.mlkit", name = "face-detection", version.ref 
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+paparazzi = { id = "app.cash.paparazzi", version = "2.0.0-alpha05" }

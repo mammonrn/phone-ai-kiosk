@@ -4,6 +4,7 @@ import java.security.MessageDigest
 plugins {
     // AGP 9 has built-in Kotlin support, so no separate kotlin-android plugin.
     alias(libs.plugins.android.application)
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -36,7 +37,9 @@ android {
         targetSdk = 36
 
         // scripts/ui-check: the on-phone walk of every screen (app/src/androidTest).
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Our own runner: AndroidJUnitRunner finishes every activity as a test
+        // starts, which took the kiosk's locked home screen down (UiCheckInstrumentation).
+        testInstrumentationRunner = "com.mammonrn.phoneaikiosk.uicheck.UiCheckInstrumentation"
 
         versionCode = 78
         versionName = "0.61.0"

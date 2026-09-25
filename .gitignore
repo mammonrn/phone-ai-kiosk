@@ -24,3 +24,6 @@ docs/refs/
 # LibVLC is fetched by its pinned checksum, never committed (app/build.gradle.kts).
 app/libs/libvlc-*.aar
 app/libs/libvlc-*.aar.part
+
+# Paparazzi output (differences on a failed compare)
+app/out/

@@ -72,43 +72,11 @@ class UiCheckTest {
     // ------------------------------------------------------------ moving about
 
     /**
-     * The screen in front: the Activity behind the window that has the focus,
-     * read from the window manager's own list of this process's windows.
-     *
-     * NOT from activity bookkeeping: the home screen is singleInstance and on the
-     * A07 both the test framework's monitor and the kiosk's own record named a
-     * home screen that was not the one on show. The window with the focus is.
-     * (Needs `am instrument --no-hidden-api-checks`, which scripts/ui-check passes.)
+     * The screen in front, from the kiosk's own record (KioskScreens), never one
+     * on its way out. (The walk runs under [UiCheckInstrumentation], which does
+     * not finish the home screen as AndroidJUnitRunner did.)
      */
-    private fun top(): Activity? {
-        var found: Activity? = null
-        inst.runOnMainSync {
-            val roots = runCatching {
-                val wmg = Class.forName("android.view.WindowManagerGlobal")
-                val global = wmg.getMethod("getInstance").invoke(null)
-                @Suppress("UNCHECKED_CAST")
-                (wmg.getDeclaredField("mViews").apply { isAccessible = true }.get(global) as List<View>).toList()
-            }.getOrDefault(emptyList())
-            val shown = roots.filter { it.isShown && it.windowVisibility == View.VISIBLE }
-            val root = shown.lastOrNull { it.hasWindowFocus() } ?: shown.lastOrNull()
-            found = root?.let { activityOf(it) }
-        }
-        return found
-    }
-
-    private fun activityOf(root: View): Activity? {
-        fun unwrap(c: android.content.Context?): Activity? {
-            var x = c
-            while (x is android.content.ContextWrapper) {
-                if (x is Activity) return x
-                x = x.baseContext
-            }
-            return null
-        }
-        unwrap(root.context)?.let { return it }
-        if (root is ViewGroup) for (i in 0 until root.childCount) unwrap(root.getChildAt(i).context)?.let { return it }
-        return null
-    }
+    private fun top(): Activity? = KioskScreens.resumed?.get()?.takeUnless { it.isFinishing }
 
     private fun settle(ms: Long = 900) {
         inst.waitForIdleSync()

@@ -44,9 +44,9 @@ fi
 echo "walking every screen…"
 adb logcat -c
 # ONLY=home,calc   only the screens whose names start with those
-# --no-hidden-api-checks: the walk reads the window manager's list of windows (UiCheckTest.top).
-adb shell am instrument -w --no-hidden-api-checks ${ONLY:+-e only "$ONLY"} -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
-  "$PKG.test/androidx.test.runner.AndroidJUnitRunner" | tail -4
+# Our own runner (UiCheckInstrumentation): it leaves the kiosk's home screen and lock task alone.
+adb shell am instrument -w ${ONLY:+-e only "$ONLY"} \
+  "$PKG.test/com.mammonrn.phoneaikiosk.uicheck.UiCheckInstrumentation" | tail -4
 
 # The walk ends on the home screen; the instrumentation's end stops the app's
 # process, so the kiosk is started again and must be LOCKED.

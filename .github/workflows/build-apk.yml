@@ -103,6 +103,22 @@ jobs:
         # found after an artifact has been published.
         run: ./gradlew testDebugUnitTest --stacktrace
 
+      - name: Compare screen pictures (Paparazzi)
+        # 0.63.0 (Poom): screens that need no real data are drawn on the runner and
+        # compared with the pictures in app/src/test/snapshots/images; a screen that
+        # changed without meaning to fails here, with the difference in the report.
+        # A change that IS meant: `./gradlew recordPaparazziDebug` and commit the pictures.
+        run: ./gradlew verifyPaparazziDebug --stacktrace
+
+      - name: Upload Paparazzi differences
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: paparazzi-differences
+          path: app/out/failures
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Build debug APK
         env:
           # Empty when the secret is absent, which makes build.gradle.kts fall
