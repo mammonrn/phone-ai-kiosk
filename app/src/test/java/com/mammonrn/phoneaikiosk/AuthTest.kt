@@ -218,6 +218,26 @@ class AuthTest {
     // --------------------------------------------------------- AccessGrant
 
     @Test
+    fun `inside the hour only a plain check skips the camera, never a change of face or pattern`() {
+        val V = com.mammonrn.phoneaikiosk.auth.VerifyActivity
+        assertTrue(V.skipsCamera(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.VERIFY, enrolled = true, grantOpen = true, fresh = false))
+        // Poom 2026-09-26: adding, changing or deleting the face or the pattern always scans.
+        assertFalse(V.skipsCamera(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.ENROLL, enrolled = true, grantOpen = true, fresh = false))
+        assertFalse(V.skipsCamera(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.SET_PATTERN, enrolled = true, grantOpen = true, fresh = false))
+        assertFalse(V.skipsCamera(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.VERIFY, enrolled = true, grantOpen = true, fresh = true))
+        assertFalse(V.skipsCamera(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.VERIFY, enrolled = true, grantOpen = false, fresh = false))
+        assertFalse(V.skipsCamera(com.mammonrn.phoneaikiosk.auth.VerifyActivity.Mode.VERIFY, enrolled = false, grantOpen = true, fresh = false))
+    }
+
+    @Test
+    fun `every check on the identity page is a fresh scan`() {
+        val src = java.io.File("src/main/java/com/mammonrn/phoneaikiosk/settings/SettingsActivity.kt").readText()
+        val calls = Regex("""VerifyActivity\.intent\(([^)]*)\)""").findAll(src).map { it.groupValues[1] }.toList()
+        assertTrue("no identity checks found", calls.isNotEmpty())
+        for (c in calls) assertTrue("not fresh: $c", c.replace(Regex("""\s+"""), " ").contains("fresh = true"))
+    }
+
+    @Test
     fun `a pass opens an hour, then it closes itself`() {
         var now = 1_000L
         AccessGrant.clock = { now }

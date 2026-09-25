@@ -536,7 +536,9 @@ class SettingsActivity : Activity() {
 
     private fun openVerify(mode: VerifyActivity.Mode) {
         @Suppress("DEPRECATION")
-        startActivityForResult(VerifyActivity.intent(this, mode), REQUEST_AUTH)
+        // Every check on this page is a real scan, inside the hour too (Poom 2026-09-26):
+        // enrolling, changing the pattern, and the test.
+        startActivityForResult(VerifyActivity.intent(this, mode, fresh = true), REQUEST_AUTH)
     }
 
     /**
@@ -643,8 +645,9 @@ class SettingsActivity : Activity() {
                     deleteAfterPass = deleteKey
                     deleteNote = null
                     @Suppress("DEPRECATION")
+                    // Deleting the face or the pattern: a real scan, never the hour.
                     startActivityForResult(VerifyActivity.intent(this@SettingsActivity,
-                        VerifyActivity.Mode.VERIFY), REQUEST_DELETE)
+                        VerifyActivity.Mode.VERIFY, fresh = true), REQUEST_DELETE)
                 }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f))
                 addView(button(getString(R.string.cancel)) {
                     confirmingAuthDelete = null

@@ -120,7 +120,7 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
         // 0.66 (Poom): one pass is good for an hour, for every function. Inside it the
         // check passes at once — no camera — and the hour is NOT extended: the broker is
         // asked for a grant only as long as what is left of this one.
-        if (enrolled && AccessGrant.isOpen()) {
+        if (skipsCamera(target, enrolled, AccessGrant.isOpen(), intent.getBooleanExtra(EXTRA_FRESH, false))) {
             passedByGrant()
             handler.postDelayed(idleTimeout, IDLE_MS)
             return
@@ -507,8 +507,8 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
         val left = AccessGrant.remainingMs()
         log("verify skipped: grant open left_s=${left / 1000}")
         when (target) {
-            Mode.ENROLL -> { hint.text = getString(R.string.auth_privacy); startEnroll() }
-            Mode.SET_PATTERN -> startSetPattern()
+            // Never here: changing the face or the pattern always scans (skipsCamera).
+            Mode.ENROLL, Mode.SET_PATTERN -> finishWith(OUTCOME_FAILED, null)
             Mode.VERIFY -> {
                 startService(Intent(this, com.mammonrn.phoneaikiosk.voice.VoiceService::class.java)
                     .setAction(com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_AUTH_PASSED)
@@ -714,9 +714,26 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
         const val STATS_EVERY_MS = 3_000L
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
 
-        fun intent(context: Context, mode: Mode, returnHome: Boolean = false): Intent =
+        /**
+         * [fresh]: a real scan even inside the hour — adding, changing or deleting the
+         * face or the pattern, and the Control Panel's test (Poom 2026-09-26: "กันคนอื่น
+         * เปลี่ยนเป็นหน้าตัวเองตอน Poom ไม่อยู่").
+         */
+        fun intent(context: Context, mode: Mode, returnHome: Boolean = false, fresh: Boolean = false): Intent =
             Intent(context, VerifyActivity::class.java)
                 .putExtra(EXTRA_MODE, mode.name)
                 .putExtra(EXTRA_RETURN_HOME, returnHome)
+                .putExtra(EXTRA_FRESH, fresh)
+
+        const val EXTRA_FRESH = "fresh"
+
+        /**
+         * Whether the check passes at once on the open hour, without the camera (0.66):
+         * only a plain check (VERIFY) that did not ask for a fresh scan, with something
+         * enrolled. Enrolling a face or setting a pattern NEVER does — whoever holds the
+         * kiosk inside Poom's hour must not make it recognise them.
+         */
+        fun skipsCamera(mode: Mode, enrolled: Boolean, grantOpen: Boolean, fresh: Boolean): Boolean =
+            mode == Mode.VERIFY && enrolled && grantOpen && !fresh
     }
 }
