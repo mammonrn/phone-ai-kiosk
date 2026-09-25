@@ -275,10 +275,12 @@ class SettingsActivity : Activity() {
             for ((index, v) in row.withIndex()) {
                 line.addView(v, LinearLayout.LayoutParams(0, MATCH, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
             }
-            // The filler too is MATCH: a row whose children are not ALL match_parent
-            // takes its height from the others only, and a short row came out 0 high.
+            // The filler too is MATCH — a row whose children are not ALL match_parent
+            // takes its height from the others only, and a short row came out 0 high —
+            // and a Space, which is 0 high on its own (a plain View takes all the room
+            // there is, and in the folder popup the short row filled the screen).
             repeat(ICONS_PER_ROW - row.size) {
-                line.addView(View(this), LinearLayout.LayoutParams(0, MATCH, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
+                line.addView(android.widget.Space(this), LinearLayout.LayoutParams(0, MATCH, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
             }
         }
     }
