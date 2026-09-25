@@ -354,6 +354,32 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskStats", "keep capture ${if (on) "ON" else "off"}")
             }
 
+            ACTION_STT_FILE -> {
+                // 0.61.0: a test clip straight into the broker's speech-to-text — the same
+                // call a real turn makes — to check a synthetic clip is heard right before
+                // it is used to measure the beep. --es path /sdcard/Download/x.wav. The
+                // text goes to files/stt_probe.txt (a test phrase; never the log).
+                val path = intent.getStringExtra("path").orEmpty()
+                val app = context.applicationContext
+                val pending = goAsync()
+                Thread {
+                    val out = java.io.File(app.filesDir, "stt_probe.txt")
+                    try {
+                        val token = com.mammonrn.phoneaikiosk.voice.TokenStore(app).token() ?: error("no token")
+                        com.mammonrn.phoneaikiosk.voice.VoiceState.turnWake = ""
+                        val text = com.mammonrn.phoneaikiosk.voice.Broker(
+                            com.mammonrn.phoneaikiosk.voice.VoiceState.brokerBaseUrl, token).transcribe(java.io.File(path).readBytes())
+                        out.writeText(text)
+                        android.util.Log.i("KioskStats", "stt probe chars=${text.length} gate=${com.mammonrn.phoneaikiosk.voice.VoiceState.lastGate}")
+                    } catch (e: Exception) {
+                        out.writeText("ERROR ${e.javaClass.simpleName}")
+                        android.util.Log.i("KioskStats", "stt probe failed ${e.javaClass.simpleName}")
+                    } finally {
+                        pending.finish()
+                    }
+                }.start()
+            }
+
             ACTION_RATES -> {
                 // 0.61.0: the calculator's price sources made to fail, to see the next one
                 // taken. --es fail jsdelivr,pages (or "none"). Forgotten on restart.
@@ -485,6 +511,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_PREROLL = "com.mammonrn.phoneaikiosk.TEST_PREROLL"
         const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
         const val ACTION_RATES = "com.mammonrn.phoneaikiosk.TEST_RATES"
+        const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"
         const val ACTION_HOME = "com.mammonrn.phoneaikiosk.TEST_HOME"
