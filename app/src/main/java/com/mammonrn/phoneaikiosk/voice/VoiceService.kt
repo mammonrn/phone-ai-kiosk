@@ -754,6 +754,8 @@ class VoiceService : Service() {
             override fun resume() { player.resume(context); openScreen() }
             override fun pause() = player.pause(context)
             override fun stop() = player.stop(context)
+            override val last get() = player.current
+            override fun inProgress(video: com.mammonrn.phoneaikiosk.media.Video) = player.savedPlace(context, video) > 0
         }
         val command = action.params["command"].orEmpty()
         val failure = com.mammonrn.phoneaikiosk.media.VideoVoice.perform(

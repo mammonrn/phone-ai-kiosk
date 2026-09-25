@@ -31,6 +31,10 @@ object VideoVoice {
         fun resume()
         fun pause()
         fun stop()
+        /** The video watched last (open or not), for picking among parts of one story. */
+        val last: Video? get() = null
+        /** Whether [video] was left part-way (a place is kept for it). */
+        fun inProgress(video: Video): Boolean = false
     }
 
     /** Null when done (the broker's words stand), else the words to say instead. */
@@ -43,6 +47,18 @@ object VideoVoice {
 
     private fun playFound(query: String, library: List<Video>, deck: Deck): String? {
         if (library.isEmpty()) return NO_VIDEOS
+        // PARTS OF ONE STORY (0.63.0, Poom): "คู่โจร" with คู่โจร1 and คู่โจร2 — the part
+        // watched last, else one left part-way (the latest), else the first; its
+        // real title is said every time. Names alike that are NOT parts still ask.
+        val parts = MusicLibrary.parts(library.map { it.track }, query)
+        if (parts.isNotEmpty()) {
+            val videos = parts.mapNotNull { t -> library.firstOrNull { it.track == t } }
+            val pick = videos.firstOrNull { it.track == deck.last?.track }
+                ?: videos.lastOrNull { deck.inProgress(it) }
+                ?: videos.first()
+            deck.play(library, library.indexOf(pick))
+            return com.mammonrn.phoneaikiosk.voice.doneWords("เปิดวิดีโอ \"${MusicVoice.cut(pick.track.title, 40)}\" ครับ")
+        }
         val found = MusicLibrary.find(library.map { it.track }, query)
         if (found != null) {
             val first = found.tracks.first()

@@ -83,6 +83,38 @@ object MusicLibrary {
         return null
     }
 
+    // ------------------------------------------------------------ parts of one story (0.63.0, Poom)
+
+    // In key() form: tone marks gone, so "ตอนที่" is written "ตอนที".
+    private val SEQUEL = Regex("^(.+?)(?:ภาค|ตอนที|ตอน|part|pt|ep|vol)?(?<!\\d)(\\d{1,3})$")
+
+    /**
+     * "คู่โจร1" → ("คู่โจร", 1); "Toy Story 2" → ("toystory", 2); "ภาค 3", "ตอนที่ 4",
+     * "Part 2" the same. Null when the title does not end in a part number (a
+     * year like "2024" is four digits and is not one).
+     */
+    fun sequel(title: String): Pair<String, Int>? {
+        val k = key(title).map { if (it in '๐'..'๙') '0' + (it - '๐') else it }.joinToString("")
+        val m = SEQUEL.matchEntire(k) ?: return null
+        val stem = m.groupValues[1]
+        return if (stem.length < 2) null else stem to m.groupValues[2].toInt()
+    }
+
+    /**
+     * The parts of one story [spoken] names without its number ("เปิดวิดีโอ
+     * คู่โจร" with คู่โจร1 and คู่โจร2 in the list), in part order; empty when it
+     * names one title, a part by number, or titles that are not parts of one.
+     */
+    fun parts(tracks: List<Track>, spoken: String): List<Track> {
+        val q = key(spoken)
+        if (q.length < 2 || sequel(spoken) != null) return emptyList()
+        val numbered = tracks.mapNotNull { t -> sequel(t.title)?.let { t to it } }
+            .filter { (_, s) -> s.first == q || (q.length >= 3 && s.first.contains(q)) }
+        val stems = numbered.map { it.second.first }.toSet()
+        if (numbered.size < 2 || stems.size != 1) return emptyList()
+        return numbered.sortedBy { it.second.second }.map { it.first }.distinctBy { key(it.title) }
+    }
+
     // ------------------------------------------------------------ a title heard wrong (0.61.0, Poom)
 
     /** What a spoken title matched when [find] found nothing: one title, two too close to call, or none. */
