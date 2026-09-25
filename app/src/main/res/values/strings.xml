@@ -657,4 +657,8 @@
     <string name="settings_folder_desc">โฟลเดอร์%1$s มี %2$s แตะเพื่อเปิด</string>
     <string name="settings_folder_close">ปิดโฟลเดอร์%1$s</string>
     <string name="settings_folder_outside">แตะนอกกรอบเพื่อปิดโฟลเดอร์</string>
+    <!-- The home taskbar's buttons (0.61.0, ui/TaskbarButtons). -->
+    <string name="taskbar_jarvis_a">ถามจาร์วิส</string>
+    <string name="taskbar_jarvis_c">● พูดกับจาร์วิส</string>
+    <string name="taskbar_panel_a">แผงควบคุม</string>
 </resources>

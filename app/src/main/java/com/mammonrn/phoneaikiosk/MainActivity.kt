@@ -1107,6 +1107,7 @@ class MainActivity : Activity() {
 
         // "จาร์วิส": the same as saying Hey Jarvis. The service decides whether
         // a question can start now (never on top of one already running).
+        com.mammonrn.phoneaikiosk.ui.TaskbarButtons.apply(this)
         findViewById<android.view.View>(R.id.jarvis_button).setOnClickListener {
             VoiceState.turnScreen = ""
             VoiceService.start(this, VoiceService.ACTION_BUTTON_LISTEN)
@@ -1192,6 +1193,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        com.mammonrn.phoneaikiosk.ui.TaskbarButtons.apply(this)
         handler.post(tick)
         handler.post(followSpeech)
         hideSystemBars()

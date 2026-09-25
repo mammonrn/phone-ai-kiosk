@@ -178,6 +178,8 @@
             android:layout_marginTop="7dp"
             android:padding="5dp">
 
+            <!-- paddingEnd 34dp (0.61.0): room at the end for Jarvis's state badge
+                 (ui/JarvisBadge), which sits over the top right of every screen. -->
             <LinearLayout
                 android:id="@+id/weather_titlebar"
                 android:layout_width="match_parent"
@@ -186,7 +188,7 @@
                 android:background="@drawable/retro_titlebar"
                 android:gravity="center_vertical"
                 android:paddingStart="6dp"
-                android:paddingEnd="6dp"
+                android:paddingEnd="34dp"
                 android:paddingTop="2dp"
                 android:paddingBottom="2dp">
 

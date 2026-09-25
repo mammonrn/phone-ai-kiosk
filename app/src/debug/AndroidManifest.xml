@@ -45,6 +45,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_PREROLL" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_BEEP" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_RATES" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_TASKBAR" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_STT_FILE" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_FOCUS" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE" />

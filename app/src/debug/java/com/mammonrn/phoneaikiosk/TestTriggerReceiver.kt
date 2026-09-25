@@ -380,6 +380,13 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }.start()
             }
 
+            ACTION_TASKBAR -> {
+                // 0.61.0: the three taskbar designs for Poom to choose from: --ei style 0|1|2 (A, B, C).
+                val style = intent.getIntExtra("style", 0)
+                com.mammonrn.phoneaikiosk.ui.TaskbarButtons.style = style
+                android.util.Log.i("KioskHome", "taskbar style=$style (reopen home to see it)")
+            }
+
             ACTION_RATES -> {
                 // 0.61.0: the calculator's price sources made to fail, to see the next one
                 // taken. --es fail jsdelivr,pages (or "none"). Forgotten on restart.
@@ -511,6 +518,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_PREROLL = "com.mammonrn.phoneaikiosk.TEST_PREROLL"
         const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
         const val ACTION_RATES = "com.mammonrn.phoneaikiosk.TEST_RATES"
+        const val ACTION_TASKBAR = "com.mammonrn.phoneaikiosk.TEST_TASKBAR"
         const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"
