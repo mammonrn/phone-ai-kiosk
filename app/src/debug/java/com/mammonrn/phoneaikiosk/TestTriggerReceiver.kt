@@ -68,6 +68,9 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 }
                 val app = runCatching { com.mammonrn.phoneaikiosk.social.SocialVisit.App.valueOf(intent.getStringExtra("app") ?: "") }
                     .getOrDefault(com.mammonrn.phoneaikiosk.social.SocialVisit.App.FACEBOOK)
+                // --el limit_ms N: this visit's limit (0 = the real one), to see the limit end it.
+                com.mammonrn.phoneaikiosk.social.SocialVisit.limitMs = intent.getLongExtra("limit_ms", 0L)
+                    .takeIf { it > 0 } ?: com.mammonrn.phoneaikiosk.social.SocialVisit.LIMIT_MS
                 val front = com.mammonrn.phoneaikiosk.KioskScreens.resumed?.get()
                 val result = when (intent.getStringExtra("do")) {
                     "end" -> { com.mammonrn.phoneaikiosk.social.SocialVisit.end(context, "test"); "ended" }

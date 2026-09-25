@@ -64,6 +64,10 @@ object SocialVisit {
     val META_PACKAGES = listOf("com.facebook.lite", "com.facebook.katana", "com.instagram.android")
 
     const val LIMIT_MS = 30 * 60_000L
+
+    /** The limit used; only the debug test visit shortens it, to see it end on the phone. */
+    @Volatile
+    var limitMs = LIMIT_MS
     const val CALL_GRACE_MS = 5 * 60_000L
     private const val MIC_POLL_MS = 3_000L
     private const val TAG = "KioskSocial"
@@ -178,7 +182,7 @@ object SocialVisit {
             override fun onReceive(c: Context, i: Intent) = end(c, "screen-off")
         }
         context.registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))
-        main.postDelayed({ limitReached(context) }, LIMIT_MS)
+        main.postDelayed({ limitReached(context) }, limitMs)
         main.postDelayed(object : Runnable {
             override fun run() {
                 if (active == null) return

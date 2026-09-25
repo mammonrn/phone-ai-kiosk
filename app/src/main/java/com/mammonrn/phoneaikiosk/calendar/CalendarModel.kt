@@ -87,7 +87,7 @@ object CalendarModel {
     fun holyNotes(month: YearMonth): List<String> = buildList {
         val years = listOfNotNull(Lunar.yearOf(month.atDay(1)), Lunar.yearOf(month.atEndOfMonth())).distinct()
         if (years.isEmpty()) { add("ไม่มีวันพระในเดือนนี้ เพราะคำนวณไว้เฉพาะปี ${Lunar.FIRST_YEAR}–${Lunar.LAST_YEAR}"); return@buildList }
-        add("▲ วันพระคำนวณจากปฏิทินจันทรคติ ไม่ใช่ประกาศทางการ")
+        add("วันพระคำนวณจากปฏิทินจันทรคติ ไม่ใช่ประกาศทางการ")
         for (be in years) {
             if (Lunar.adhikamasa(be)) add("ปีจันทรคติ $be มีเดือนแปดสองหน (อธิกมาส)")
             if (Lunar.adhikavara(be)) add("ปีจันทรคติ $be เดือนเจ็ดมี 30 วัน (อธิกวาร)")
