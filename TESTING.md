@@ -2235,3 +2235,22 @@ debug APK จาก CI · แพ็กเกจ `com.mammonrn.phoneaikiosk.debug
 ### ตัวถอดเสียง Qwen + Groq สำรอง (broker, รอ deploy)
 - `tests/test_stt_fallback.py` 16 ข้อ: Qwen ตอบ → Groq ไม่ถูกเรียก / Qwen 500, 429, 401, หมดเวลา, ไม่มี key → Groq+คำใบ้ และ log `stt fallback … reason=` / 403 `AllocationQuota.FreeTierOnly` → log "qwen free quota used up (Stop on Exhaust)" และข้าม Qwen 1 ชั่วโมง แล้วลองใหม่ / 403 อื่นเป็น auth / ไม่มีเสียง (empty) ไม่สลับ / provider ที่ขอเจาะจงไม่สลับ / สองตัวล้ม = error เดียว / คิดเงินเฉพาะตัวที่ทำงาน / เตือนวันละครั้งเมื่อโควตาฟรีเหลือ <20%
 - บนเครื่องจริงรอ Poom deploy — แล้วจำลอง Qwen ล้มบน VPS ไม่ได้โดยไม่แตะ VPS จึงยืนยันด้วย test ข้างบน
+
+## v0.65.0 — วันพระ (คำนวณ), Facebook / Instagram หลังสแกนหน้า, ตัวถอดเสียงรุ่นใหม่ (ทดสอบเท่านั้น)
+
+**วันพระ:** `LunarTest` (unit test) ตรวจ 49 วันพระของปี 2569 และจุดเริ่ม ชนิด และจุดจบของทุกปีจันทรคติ 2541–2570 / บนเครื่องดูจาก `scripts/ui-check` หน้า `calendar-holy-month` และ `calendar-holy-day` (วาดจากคำตอบว่าง ไม่มีข้อมูลนัด)
+
+**Facebook / Instagram — ทางออกทุกทางและทางเข้าอื่น:** รันบนคอม (Git Bash) ตู้ต้อง LOCKED อยู่บนหน้าจอของตู้
+```
+scripts/social-check FACEBOOK
+scripts/social-check INSTAGRAM
+```
+ตรวจ: ไม่มีการเยี่ยมชม → ลิงก์และการเปิดแอปตรงๆ ไม่ขึ้น / ระหว่างเยี่ยมชม → ลิงก์ไปเบราว์เซอร์ไม่เปิด / จบด้วยปุ่มย้อนกลับ ทาง "Hey Jarvis" (TEST_LISTEN) ปิดหน้าจอ และครบเวลา (ย่อเหลือ 20 วินาทีเฉพาะการทดสอบ) → allowlist กลับเป็นของตู้ ตู้ขึ้นหน้า / การแจ้งเตือนถูกปฏิเสธ / จบด้วย LOCKED
+- สคริปต์ข้ามการสแกนหน้าด้วย debug broadcast `TEST_SOCIAL_VISIT` ซึ่งทำงานเฉพาะเมื่อ `--es nonce` ตรงกับ system property `debug.kiosk.social_nonce` (ยาว 16 ตัวขึ้นไป) ที่ตั้งได้จาก adb เท่านั้น แอปอื่นตั้งไม่ได้ สคริปต์ตั้งเองและล้างตอนจบ
+- ไม่พิมพ์อะไรในแอป ไม่แตะบัญชี / เส้นทางจริงจากแผงควบคุมถึงกล้องยืนยันตัวตนตรวจด้วย log นับจำนวน (`KioskAuth`, `KioskSocial`) ไม่แคปหน้าจอตอนกล้องเปิด
+
+**ตัวถอดเสียงรุ่นใหม่ (หลัง deploy broker 0.65):** ผ่าน debug override เท่านั้น ไม่ใช่ค่าหลัก
+```
+tools/voice/run_stt_clips.sh CLIPS RESULTS.tsv qwen qwen31 funasr
+```
+ไม่เกิน 30 คลิป ≤300 วินาทีต่อตัว และ ≤30% ของเพดาน STT รายวันของ broker (300 → ≤90 ครั้ง) / โทเค็นของ qwen-audio-3.1 อยู่ใน journal ของ broker บรรทัด `stt qwen31 usage ...`
