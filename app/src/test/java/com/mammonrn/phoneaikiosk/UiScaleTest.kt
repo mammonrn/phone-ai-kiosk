@@ -21,7 +21,7 @@ class UiScaleTest {
     /** The Control Panel's screens: the panel's own pages and every screen it opens. */
     private val screens: List<File> by lazy {
         file("$src/settings").listFiles()!!.filter { it.name.endsWith(".kt") } +
-            listOf("files/FilesActivity.kt", "calc/CalculatorActivity.kt", "calc/ElectricalPages.kt",
+            listOf("files/FilesActivity.kt", "calc/CalculatorActivity.kt", "calc/ElectricalPages.kt", "calc/SolarPages.kt",
                    "media/MusicActivity.kt", "media/AmpViews.kt", "media/VideoActivity.kt", "media/DvdViews.kt",
                    "auth/VerifyActivity.kt",
                    // 0.59.0: the shared folder browser, its parts, the playlists and the picture viewer

@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The calculator's solar mode (0.62.0, DESIGN.md 5จ "โซลาร์เซลล์"). Formal written Thai,
+     like the rest of the calculator. Its own file so these words never collide with another feature's. -->
+<resources>
+    <string name="calc_tab_solar">โซลาร์</string>
+
+    <!-- The slides: where you are, and how to move. -->
+    <string name="solar_where">หน้า %1$d จาก %2$d · ปัดซ้ายหรือขวาเพื่อเปลี่ยนหน้า</string>
+    <string name="solar_dots">หน้า %1$d จาก %2$d: %3$s แตะเพื่อไปหน้าถัดไป หรือปัดซ้ายขวาบนเนื้อหา</string>
+    <string name="solar_dot_showing">%1$s กำลังแสดง</string>
+    <string name="solar_estimate">ผลเป็นค่าประมาณ การติดตั้งจริงควรให้ช่างไฟฟ้าตรวจ</string>
+
+    <!-- On-grid or off-grid, on the first slide. -->
+    <string name="solar_grid_on">ออนกริด</string>
+    <string name="solar_grid_off">ออฟกริด</string>
+    <string name="solar_grid_on_note">ออนกริด: ต่อกับไฟบ้าน ไม่มีแบตเตอรี่ จึงไม่มีหน้าแบตเตอรี่และชาร์จคอนโทรลเลอร์</string>
+    <string name="solar_grid_off_note">ออฟกริด: ใช้แบตเตอรี่ มีหน้าแบตเตอรี่และชาร์จคอนโทรลเลอร์เพิ่ม</string>
+
+    <!-- The slides' titles and what each is for. -->
+    <string name="solar_page_panels">ขนาดแผง</string>
+    <string name="solar_page_battery">แบตเตอรี่</string>
+    <string name="solar_page_inverter">อินเวอร์เตอร์</string>
+    <string name="solar_page_controller">ชาร์จคอนโทรลเลอร์</string>
+    <string name="solar_page_strings">การต่อสตริง</string>
+    <string name="solar_page_wire">สายไฟ</string>
+    <string name="solar_page_payback">คืนทุน</string>
+    <string name="solar_hint_panels">หากำลังแผงรวมและจำนวนแผงจากไฟที่ใช้ต่อวัน ดูไฟที่ใช้ได้จากบิลค่าไฟ: หน่วยต่อเดือนหารด้วย 30</string>
+    <string name="solar_hint_battery">หาขนาดแบตเตอรี่ที่เก็บไฟพอใช้ตามจำนวนวันที่ต้องการ</string>
+    <string name="solar_hint_inverter">หาขนาดอินเวอร์เตอร์จากเครื่องใช้ไฟฟ้าที่เปิดพร้อมกัน</string>
+    <string name="solar_hint_controller">หากระแสของชาร์จคอนโทรลเลอร์ แบบ MPPT หรือ PWM</string>
+    <string name="solar_hint_strings">หาจำนวนแผงที่ต่ออนุกรมได้ในหนึ่งสตริง ใช้ค่าจากเอกสารข้อมูลของแผงและของเครื่อง</string>
+    <string name="solar_hint_wire">หาขนาดสายทองแดงฝั่งไฟตรงจากแรงดันตก</string>
+    <string name="solar_hint_payback">หาเงินที่ประหยัดได้และระยะเวลาคืนทุน</string>
+
+    <!-- Choices on the slides. -->
+    <string name="solar_lithium">ลิเธียม</string>
+    <string name="solar_lead_acid">ตะกั่วกรด</string>
+    <string name="solar_volts">%1$d V</string>
+    <string name="solar_system_v">แรงดันระบบแบตเตอรี่</string>
+    <string name="solar_chemistry">ชนิดแบตเตอรี่</string>
+    <string name="solar_mppt">MPPT</string>
+    <string name="solar_pwm">PWM</string>
+
+    <!-- Each field: the label over it (with its unit), and its name in an error. -->
+    <string name="solar_l_daily_kwh">ไฟที่ใช้ต่อวัน (kWh)</string>
+    <string name="solar_n_daily_kwh">ไฟที่ใช้ต่อวัน</string>
+    <string name="solar_l_sun_hours">ชั่วโมงแดดเต็มต่อวัน (ชั่วโมง)</string>
+    <string name="solar_n_sun_hours">ชั่วโมงแดด</string>
+    <string name="solar_l_loss" formatted="false">ความสูญเสียของระบบ (%)</string>
+    <string name="solar_n_loss">ความสูญเสียของระบบ</string>
+    <string name="solar_l_panel_w">กำลังต่อแผง (W)</string>
+    <string name="solar_n_panel_w">กำลังต่อแผง</string>
+    <string name="solar_l_days">จำนวนวันที่ต้องสำรองไฟ (วัน)</string>
+    <string name="solar_n_days">จำนวนวันที่ต้องสำรองไฟ</string>
+    <string name="solar_l_dod" formatted="false">ระดับการคายประจุที่ใช้ได้ DoD (%)</string>
+    <string name="solar_n_dod">ระดับการคายประจุ (DoD)</string>
+    <string name="solar_l_efficiency" formatted="false">ประสิทธิภาพอินเวอร์เตอร์และแบตเตอรี่รวมกัน (%)</string>
+    <string name="solar_n_efficiency">ประสิทธิภาพ</string>
+    <string name="solar_n_battery_v">แรงดันแบตเตอรี่</string>
+    <string name="solar_l_running_w">กำลังไฟรวมของเครื่องที่เปิดพร้อมกัน (W)</string>
+    <string name="solar_n_running_w">กำลังไฟขณะทำงาน</string>
+    <string name="solar_l_peak_w">กำลังไฟสูงสุดขณะเครื่องสตาร์ท (W) ไม่จำเป็นต้องระบุ</string>
+    <string name="solar_n_peak_w">กำลังไฟขณะสตาร์ท</string>
+    <string name="solar_l_array_w">กำลังแผงรวม (W)</string>
+    <string name="solar_n_array_w">กำลังแผงรวม</string>
+    <string name="solar_l_isc">กระแสลัดวงจรของแผง Isc (A)</string>
+    <string name="solar_l_isc_optional">กระแสลัดวงจรของแผง Isc (A) ไม่จำเป็นต้องระบุ</string>
+    <string name="solar_n_isc">Isc</string>
+    <string name="solar_l_parallel">จำนวนสตริงที่ต่อขนาน</string>
+    <string name="solar_n_parallel">จำนวนสตริงที่ต่อขนาน</string>
+    <string name="solar_l_voc">แรงดันเปิดวงจรของแผง Voc (V)</string>
+    <string name="solar_n_voc">Voc</string>
+    <string name="solar_l_vmp">แรงดันที่กำลังสูงสุดของแผง Vmp (V)</string>
+    <string name="solar_n_vmp">Vmp</string>
+    <string name="solar_l_coef_voc" formatted="false">สัมประสิทธิ์อุณหภูมิของ Voc (%/°C)</string>
+    <string name="solar_n_coef_voc">สัมประสิทธิ์อุณหภูมิของ Voc</string>
+    <string name="solar_l_coef_vmp" formatted="false">สัมประสิทธิ์อุณหภูมิของ Vmp หรือ Pmax (%/°C)</string>
+    <string name="solar_n_coef_vmp">สัมประสิทธิ์อุณหภูมิของ Vmp</string>
+    <string name="solar_l_min_temp">อุณหภูมิอากาศต่ำสุด (°C)</string>
+    <string name="solar_n_min_temp">อุณหภูมิต่ำสุด</string>
+    <string name="solar_l_cell_temp">อุณหภูมิแผงตอนร้อนที่สุด (°C)</string>
+    <string name="solar_n_cell_temp">อุณหภูมิแผงตอนร้อนที่สุด</string>
+    <string name="solar_l_max_v">แรงดันเข้าสูงสุดของเครื่อง (V)</string>
+    <string name="solar_n_max_v">แรงดันเข้าสูงสุดของเครื่อง</string>
+    <string name="solar_l_mppt_min">แรงดันต่ำสุดของช่วง MPPT (V)</string>
+    <string name="solar_n_mppt_min">แรงดันต่ำสุดของช่วง MPPT</string>
+    <string name="solar_l_current">กระแสในสาย (A)</string>
+    <string name="solar_n_current">กระแสในสาย</string>
+    <string name="solar_l_length">ความยาวสาย ระยะทางเดียว (m)</string>
+    <string name="solar_n_length">ความยาวสาย</string>
+    <string name="solar_l_voltage">แรงดันของวงจร (V)</string>
+    <string name="solar_n_voltage">แรงดันของวงจร</string>
+    <string name="solar_l_drop" formatted="false">แรงดันตกที่ยอมได้ (%)</string>
+    <string name="solar_n_drop">แรงดันตกที่ยอมได้</string>
+    <string name="solar_l_cost">ค่าติดตั้งทั้งระบบ (บาท)</string>
+    <string name="solar_n_cost">ค่าติดตั้ง</string>
+    <string name="solar_l_price">ค่าไฟต่อหน่วย (บาท/kWh)</string>
+    <string name="solar_n_price">ค่าไฟต่อหน่วย</string>
+    <string name="solar_l_produced">ไฟจากแผงที่ใช้แทนไฟบ้านต่อวัน (kWh)</string>
+    <string name="solar_n_produced">ไฟจากแผงที่ใช้ต่อวัน</string>
+
+    <!-- Why a field cannot be used: %1$s is the field's name, %2$s the limit. -->
+    <string name="solar_error">ผิดพลาด: %1$s</string>
+    <string name="solar_check">โปรดตรวจ: %1$s</string>
+    <string name="solar_e_missing">กรุณากรอก%1$s</string>
+    <string name="solar_e_not_number">%1$s ต้องเป็นตัวเลข</string>
+    <string name="solar_e_not_positive">%1$s ต้องมากกว่า 0</string>
+    <string name="solar_e_negative">%1$s ต้องไม่ติดลบ</string>
+    <string name="solar_e_below">%1$s ต้องไม่ต่ำกว่า %2$s</string>
+    <string name="solar_e_above">%1$s ต้องไม่เกิน %2$s</string>
+    <string name="solar_e_not_whole">%1$s ต้องเป็นจำนวนเต็ม</string>
+    <string name="solar_e_not_negative">%1$s ต้องเป็นค่าติดลบตามเอกสารข้อมูลของแผง เช่น -0.28</string>
+    <string name="solar_e_vmp">Vmp ต้องน้อยกว่า Voc</string>
+    <string name="solar_e_mppt">แรงดันต่ำสุดของช่วง MPPT ต้องน้อยกว่าแรงดันเข้าสูงสุดของเครื่อง</string>
+    <string name="solar_e_cell">อุณหภูมิแผงตอนร้อนที่สุดต้องสูงกว่าอุณหภูมิต่ำสุด</string>
+    <string name="solar_e_peak">กำลังไฟขณะสตาร์ทต้องไม่น้อยกว่ากำลังไฟขณะทำงาน</string>
+
+    <!-- 1. Panels -->
+    <string name="solar_r_array">ต้องใช้แผงรวม %1$s W</string>
+    <string name="solar_r_panels">แผง %1$s W จำนวน %2$d แผง (รวม %3$s W)</string>
+    <string name="solar_r_made">แผงชุดนี้ผลิตไฟได้ประมาณ %1$s kWh ต่อวัน</string>
+    <string name="solar_x_panels">สูตร: กำลังแผงรวม = kWh ต่อวัน × 1000 ÷ (ชั่วโมงแดด × (1 − ความสูญเสีย)) · จำนวนแผง = กำลังแผงรวม ÷ กำลังต่อแผง ปัดขึ้น</string>
+    <string name="solar_note_panels" formatted="false">ชั่วโมงแดดเต็ม 4.5 ชั่วโมงเป็นค่าเฉลี่ยโดยประมาณของประเทศไทย ความสูญเสีย 20% รวมความร้อน ฝุ่น สายไฟ และอินเวอร์เตอร์ แก้ได้ทั้งสองค่า</string>
+
+    <!-- 2. Battery -->
+    <string name="solar_r_battery_ah">แบตเตอรี่ %1$s Ah ที่ %2$s V</string>
+    <string name="solar_r_battery_wh">ไฟที่ต้องเก็บ %1$s Wh (%2$s kWh)</string>
+    <string name="solar_x_battery">สูตร: Wh = kWh ต่อวัน × 1000 × จำนวนวัน ÷ (DoD × ประสิทธิภาพ) · Ah = Wh ÷ แรงดันระบบ</string>
+    <string name="solar_note_battery" formatted="false">ค่าตั้งต้น: DoD ลิเธียม 90% ตะกั่วกรด 50% ประสิทธิภาพอินเวอร์เตอร์และแบตเตอรี่รวมกัน 90% แก้ได้ตามเอกสารของสินค้า</string>
+
+    <!-- 3. Inverter -->
+    <string name="solar_r_inv_continuous">อินเวอร์เตอร์กำลังต่อเนื่องอย่างน้อย %1$s W</string>
+    <string name="solar_r_inv_surge">รับกำลังกระชาก (surge) ได้อย่างน้อย %1$s W</string>
+    <string name="solar_x_inverter" formatted="false">สูตร: กำลังต่อเนื่อง = กำลังไฟขณะทำงาน × 1.25 · กำลังกระชาก = กำลังไฟขณะสตาร์ท × 1.25 (เผื่อ 25% ทั้งสองค่า)</string>
+    <string name="solar_w_no_peak">ไม่ได้กรอกกำลังไฟขณะสตาร์ท จึงใช้กำลังไฟขณะทำงานแทน มอเตอร์ ปั๊มน้ำ และคอมเพรสเซอร์ของตู้เย็นหรือเครื่องปรับอากาศ มักกินไฟขณะสตาร์ทสูงกว่าปกติหลายเท่า</string>
+
+    <!-- 4. Charge controller -->
+    <string name="solar_r_controller">ชาร์จคอนโทรลเลอร์ %1$s อย่างน้อย %2$s A</string>
+    <string name="solar_x_mppt">สูตร MPPT: กระแส = กำลังแผงรวม ÷ แรงดันแบตเตอรี่ × 1.25</string>
+    <string name="solar_x_pwm">สูตร PWM: กระแส = Isc × จำนวนสตริงที่ต่อขนาน × 1.25</string>
+    <string name="solar_note_pwm">PWM ต้องใช้แผงที่แรงดันเหมาะกับแบตเตอรี่ เช่น แผง 36 เซลล์กับแบตเตอรี่ 12 V ถ้าแรงดันแผงสูงกว่านี้มาก ควรใช้ MPPT</string>
+    <string name="solar_note_mppt">ตรวจแรงดันเข้าสูงสุดของเครื่องกับหน้าการต่อสตริงด้วย</string>
+
+    <!-- 5. Strings -->
+    <string name="solar_r_series">ต่ออนุกรมได้ %1$d ถึง %2$d แผงต่อสตริง</string>
+    <string name="solar_r_series_none">ไม่มีจำนวนแผงที่ใช้ได้: ต้องต่ออย่างน้อย %1$d แผง แต่ต่อได้สูงสุด %2$d แผง กรุณาเลือกเครื่องที่รับช่วงแรงดันได้กว้างกว่านี้</string>
+    <string name="solar_r_series_zero">แม้แผงเดียว Voc ตอนอากาศเย็นที่สุด (%1$s V) ก็เกินแรงดันเข้าสูงสุดของเครื่อง (%2$s V)</string>
+    <string name="solar_r_voc_cold">Voc ตอนเย็นที่สุด %1$s V ต่อแผง จึงต่อได้สูงสุด %2$d แผง (%3$s V)</string>
+    <string name="solar_r_vmp_hot">Vmp ตอนร้อนที่สุด %1$s V ต่อแผง จึงต้องต่ออย่างน้อย %2$d แผง (%3$s V)</string>
+    <string name="solar_r_string_current">กระแสต่อสตริง Isc × 1.25 = %1$s A กรุณาตรวจกับกระแสเข้าสูงสุดของเครื่อง</string>
+    <string name="solar_x_strings">สูตร: Voc เย็น = Voc × (1 + สัมประสิทธิ์ ÷ 100 × (อุณหภูมิต่ำสุด − 25)) · Vmp ร้อน = Vmp × (1 + สัมประสิทธิ์ ÷ 100 × (อุณหภูมิแผง − 25)) · สูงสุด = แรงดันเข้าสูงสุด ÷ Voc เย็น ปัดลง · ต่ำสุด = แรงดัน MPPT ต่ำสุด ÷ Vmp ร้อน ปัดขึ้น</string>
+    <string name="solar_note_strings" formatted="false">ค่าตั้งต้น: อุณหภูมิต่ำสุด 10°C แผงร้อนที่สุด 70°C สัมประสิทธิ์ Voc -0.28 และ Vmp -0.35 %/°C ควรแก้ตามเอกสารข้อมูลของแผงที่ใช้จริง</string>
+
+    <!-- 6. Wire -->
+    <string name="solar_r_wire">สายทองแดงอย่างน้อย %1$s ตร.มม.</string>
+    <string name="solar_r_wire_needed">ขนาดที่คำนวณได้ %1$s ตร.มม. ปัดขึ้นเป็นขนาดมาตรฐาน</string>
+    <string name="solar_r_wire_drop">แรงดันตกในสายขนาดนี้ %1$s V (%2$s%%)</string>
+    <string name="solar_r_wire_none">ไม่มีขนาดใดถึง 120 ตร.มม. ที่แรงดันตกไม่เกิน %1$s%%</string>
+    <string name="solar_r_wire_largest">สาย 120 ตร.มม. ยังตก %1$s V (%2$s%%) กรุณาเพิ่มแรงดันระบบ ย่นระยะสาย หรือแบ่งวงจร</string>
+    <string name="solar_x_wire">สูตร: พื้นที่หน้าตัด = 2 × ความยาว × กระแส × 0.0175 ÷ (แรงดัน × แรงดันตกที่ยอมได้) · คูณ 2 เพราะไฟเดินทั้งสายไปและสายกลับ · 0.0175 คือความต้านทานของทองแดง (Ω·มม.²/ม.)</string>
+
+    <!-- 7. Payback -->
+    <string name="solar_r_month">ประหยัดได้ประมาณ %1$s บาทต่อเดือน</string>
+    <string name="solar_r_year">หรือ %1$s บาทต่อปี</string>
+    <string name="solar_r_years">คืนทุนในประมาณ %1$s ปี</string>
+    <string name="solar_x_payback">สูตร: ต่อปี = kWh ต่อวัน × 365 × ค่าไฟต่อหน่วย · ต่อเดือน = ต่อปี ÷ 12 · คืนทุน = ค่าติดตั้ง ÷ ต่อปี</string>
+    <string name="solar_note_payback">ค่าไฟ 4.2 บาทต่อหน่วยเป็นค่าตั้งต้นโดยประมาณ กรุณาแก้ตามบิลจริง ยังไม่รวมการเสื่อมของแผง ค่าบำรุงรักษา และการเปลี่ยนแบตเตอรี่</string>
+    <string name="solar_w_long_payback">ระยะคืนทุนนานกว่า 25 ปี ซึ่งใกล้หรือเกินอายุการรับประกันทั่วไปของแผง</string>
+</resources>

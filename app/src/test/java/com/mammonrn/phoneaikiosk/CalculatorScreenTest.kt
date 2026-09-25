@@ -16,7 +16,8 @@ class CalculatorScreenTest {
     private fun file(path: String): String =
         listOf(File(path), File("app/$path")).first { it.exists() }.readText()
 
-    private val calc = listOf("CalculatorActivity.kt", "ElectricalPages.kt", "CalcEngine.kt", "Electrical.kt")
+    private val calc = listOf("CalculatorActivity.kt", "ElectricalPages.kt", "CalcEngine.kt", "Electrical.kt",
+                                  "Solar.kt", "SolarPages.kt")
         .associateWith { file("src/main/java/com/mammonrn/phoneaikiosk/calc/$it") }
 
     @Test
@@ -31,7 +32,7 @@ class CalculatorScreenTest {
 
     @Test
     fun `it opens nothing but the home screen and never touches the mic or the speaker`() {
-        val screen = calc.getValue("CalculatorActivity.kt") + calc.getValue("ElectricalPages.kt")
+        val screen = calc.getValue("CalculatorActivity.kt") + calc.getValue("ElectricalPages.kt") + calc.getValue("SolarPages.kt")
         assertEquals(1, Regex("startActivity\\(").findAll(screen).count())
         assertTrue("Intent(this, MainActivity::class.java)" in screen)
         for (outside in listOf("AudioRecord", "MediaRecorder", "MediaPlayer", "AudioManager", "TextToSpeech",
@@ -42,7 +43,7 @@ class CalculatorScreenTest {
 
     @Test
     fun `the engine is plain Kotlin`() {
-        for (name in listOf("CalcEngine.kt", "Electrical.kt")) {
+        for (name in listOf("CalcEngine.kt", "Electrical.kt", "Solar.kt")) {
             assertFalse("$name imports Android", "import android." in calc.getValue(name))
         }
     }
