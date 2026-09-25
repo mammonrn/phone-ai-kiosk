@@ -53,7 +53,7 @@ def wav_info(audio: bytes) -> tuple[int, float]:
     rather than assuming it, because the duration is what the bill is for.
     """
     if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-        raise SttError("รูปแบบไฟล์เสียงนี้ยังใช้ไม่ได้ครับ", "not a RIFF/WAVE file")
+        raise SttError("รูปแบบไฟล์เสียงนี้ยังใช้ไม่ได้ครับ", "not a RIFF/WAVE file", kind="bad_audio")
     channels, rate = struct.unpack_from("<HI", audio, 22)
     bits = struct.unpack_from("<H", audio, 34)[0]
     bytes_per_second = rate * channels * max(bits // 8, 1)

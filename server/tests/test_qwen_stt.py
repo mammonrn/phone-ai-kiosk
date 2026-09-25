@@ -1,5 +1,6 @@
 """The "qwen" transcriber (0.50.0): Qwen3-ASR-Flash in Alibaba's Singapore
-region, beside groq, groq-hints and google. Not the default."""
+region, beside groq, groq-hints and google. The default since 0.63.0; the
+fallback to groq-hints is in test_stt_fallback.py."""
 
 from __future__ import annotations
 
@@ -63,10 +64,10 @@ def _stt(conn, cfg, fake, provider="qwen"):
                       qwen_transport=fake)
 
 
-def test_qwen_is_a_choice_and_never_the_default(cfg):
+def test_qwen_is_the_default(cfg):
     assert "qwen" in stt_router.PROVIDERS
     assert stt_router.choose("qwen", cfg.stt_provider) == "qwen"
-    assert stt_router.choose(None, cfg.stt_provider) == "groq-hints" == cfg.stt_provider
+    assert stt_router.choose(None, cfg.stt_provider) == "qwen" == cfg.stt_provider
 
 
 def test_the_request_is_the_documented_one(conn, cfg, hints, key):

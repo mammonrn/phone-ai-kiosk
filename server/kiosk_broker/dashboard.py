@@ -850,6 +850,36 @@ _ASKS_WEATHER_DETAIL = ("พรุ่งนี้", "มะรืน", "พย�
 MAX_WEATHER_DETAIL_CHARS = 280
 
 
+#: 0.63.0 (Poom): "ราคาทองวันนี้เท่าไหร่" was answered "ผมดูให้ไม่ได้" while
+#: the price stood on the kiosk's own screen. Only a question naming gold
+#: pays for the line; ทอง with its tone mark (ท้อง, belly) is another word.
+_ASKS_ABOUT_GOLD = ("ทอง", "gold")
+#: Older than this the price is not "today's" any more (the association
+#: announces several times a day; the dashboard fetches every few minutes).
+MAX_GOLD_AGE_SECONDS = 36 * 3600
+NO_GOLD_LINE = "ราคาทอง: ยังไม่มีข้อมูล ห้ามเดา"
+
+
+def asks_about_gold(text: str) -> bool:
+    squashed = "".join((text or "").split()).lower()
+    return any(word in squashed for word in _ASKS_ABOUT_GOLD)
+
+
+def gold_line(found: tuple[int, dict] | None) -> str:
+    """One prompt line from the dashboard's cached gold panel, never fetched:
+    the same numbers the screen shows, 96.5% gold, baht per baht-weight."""
+    if found is None or found[0] > MAX_GOLD_AGE_SECONDS:
+        return NO_GOLD_LINE
+    data = found[1]
+    try:
+        parts = (f"ทองแท่ง ขาย {data['bar_sell']:,.0f} รับซื้อ {data['bar_buy']:,.0f}, "
+                 f"ทองรูปพรรณ ขาย {data['ornament_sell']:,.0f} รับซื้อ {data['ornament_buy']:,.0f}")
+    except (KeyError, TypeError, ValueError):
+        return NO_GOLD_LINE
+    when = f" ประกาศ {data['updated']}" if data.get("updated") else ""
+    return (f"ราคาทอง 96.5% บาทละ สมาคมค้าทองคำ{when} (รู้ราคานี้ ตอบจากค่านี้สั้นๆ): {parts}")
+
+
 def asks_weather_detail(text: str) -> bool:
     squashed = "".join((text or "").split()).lower()
     return any(word in squashed for word in _ASKS_WEATHER_DETAIL)

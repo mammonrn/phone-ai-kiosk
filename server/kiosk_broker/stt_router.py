@@ -1,24 +1,26 @@
 """Which transcriber, and what it cost.
 
-Three on the server, for the comparison Poom asked for:
+Four on the server:
 
-  groq        Groq whisper-large-v3-turbo, with no hints — how it was until
-              2026-09-23.
-  groq-hints  THE DEFAULT (Poom's choice, from his own voice): the same call
-              with Groq's documented `prompt` carrying the words in
-              stt_hints.json. Same price and speed as groq; it heard "กล้อง"
-              where groq heard "กล่อง".
+  qwen        THE DEFAULT since 0.63.0 (Poom 2026-09-25, after the A07
+              comparison: the key part of a command right 94% vs 33%):
+              Alibaba Cloud Qwen3-ASR-Flash, Singapore, with the words in
+              stt_hints.json as its system-message context. See qwen_stt.py.
+  groq-hints  THE AUTOMATIC FALLBACK when Qwen fails, times out or its free
+              quota is used up (see falls_back below): Groq
+              whisper-large-v3-turbo with Groq's documented `prompt` carrying
+              the same words. The default from 2026-09-23 to 0.63.0.
+  groq        The same call with no hints — how it was until 2026-09-23.
   google      Google Cloud Speech-to-Text v1, latest_short, th-TH, with the
               same words as speechContexts phrases.
-  qwen        Alibaba Cloud Qwen3-ASR-Flash, Singapore (0.50.0), with the same
-              words as its system-message context. See qwen_stt.py.
 
 The fourth — Android's own on-device recognizer — never reaches this module:
 it would transcribe on the phone. See TESTING.md for why it is not switched on.
 
 A PER-REQUEST CHOICE comes from the phone's `X-Stt-Provider` header, which is
 set only by the debug build's adb override and forgotten on restart. Anything
-not in PROVIDERS is ignored and the configured default is used.
+not in PROVIDERS is ignored and the configured default is used. A provider
+named that way NEVER falls back: a comparison has to hear the one it asked for.
 """
 
 from __future__ import annotations
@@ -31,6 +33,49 @@ from .pricing import Pricing
 from .stt import Transcript
 
 PROVIDERS = ("groq", "groq-hints", "google", "qwen")
+
+#: Failures a second transcriber cannot do better on: the first one heard
+#: nobody ("empty"), or the file is not audio at all.
+NO_FALLBACK = frozenset({"empty", "bad_audio"})
+
+#: After Qwen says its quota is used up (403 AllocationQuota.*, "Stop on
+#: Exhaust"), it is not asked again for this long: every question would
+#: otherwise wait for a refusal first. Then one question tries it again, so
+#: turning billing on in the console takes effect within the hour.
+QUOTA_REST_S = 3600.0
+_quota_rest_until = 0.0
+
+
+def fallback_for(requested: str | None, chosen: str, fallback: str) -> str | None:
+    """The transcriber to try when `chosen` fails, or None: only for the
+    configured default (never a provider the request named), only when the
+    fallback is a real, different one."""
+    if (requested or "").strip().lower() in PROVIDERS:
+        return None
+    if fallback in PROVIDERS and fallback != chosen:
+        return fallback
+    return None
+
+
+def falls_back(exc: stt.SttError) -> bool:
+    """Whether another transcriber is worth asking after `exc`."""
+    return getattr(exc, "kind", "") not in NO_FALLBACK
+
+
+def note_quota_exhausted(now: float) -> None:
+    global _quota_rest_until
+    _quota_rest_until = now + QUOTA_REST_S
+
+
+def quota_resting(now: float) -> bool:
+    """True while Qwen is being skipped after a quota refusal."""
+    return now < _quota_rest_until
+
+
+def reset_quota_rest() -> None:
+    """For tests."""
+    global _quota_rest_until
+    _quota_rest_until = 0.0
 
 
 @dataclass(frozen=True)
@@ -48,7 +93,7 @@ def choose(requested: str | None, default: str) -> str:
     wanted = (requested or "").strip().lower()
     if wanted in PROVIDERS:
         return wanted
-    return default if default in PROVIDERS else "groq-hints"
+    return default if default in PROVIDERS else "qwen"
 
 
 def cost_of(provider: str, pricing: Pricing, *, groq_model: str, google_model: str,

@@ -63,13 +63,14 @@ def _stt(conn, cfg, *, provider=None, groq=None, google=None, audio=None):
 
 # ------------------------------------------------------------ the choice ---
 
-def test_groq_hints_is_the_default():
-    """Poom's decision after the comparison on his own voice."""
+def test_qwen_is_the_default_and_groq_hints_the_fallback():
+    """Poom's decision after the A07 comparison (0.63.0); groq-hints before."""
     from kiosk_broker.config import Config
-    assert Config.__dataclass_fields__["stt_provider"].default == "groq-hints"
+    assert Config.__dataclass_fields__["stt_provider"].default == "qwen"
+    assert Config.__dataclass_fields__["stt_fallback"].default == "groq-hints"
     assert stt_router.choose(None, "groq-hints") == "groq-hints"
     # A config naming something unknown falls back to the default, not to plain groq.
-    assert stt_router.choose(None, "nonsense") == "groq-hints"
+    assert stt_router.choose(None, "nonsense") == "qwen"
 
 
 def test_the_default_can_still_be_overridden_per_request_and_by_config():

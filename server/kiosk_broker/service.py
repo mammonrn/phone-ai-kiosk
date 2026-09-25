@@ -75,6 +75,9 @@ def system_prompt_for(cfg: Config, text: str) -> str:
         system += "\n" + dashboard_mod.weather_detail_line(_dashboard(cfg))
     if oil_mod.asks_about_oil(text):
         system += "\n" + oil_mod.oil_line(_dashboard(cfg).latest("oil"))
+    # Gold the same way (0.63.0): the screen's own price, only when asked.
+    if dashboard_mod.asks_about_gold(text):
+        system += "\n" + dashboard_mod.gold_line(_dashboard(cfg).latest("gold"))
     # Map questions only: where the kiosk is, and that place names arrive
     # through a transcriber (2026-09-23, "ภูชี้ฟ้าเชียงราย" came in as "พูชีฟ้า
     # เซ็นลาย"). The model corrects the name to the real place nearby that
@@ -543,6 +546,33 @@ def _allowances(cfg: Config, pricing: Pricing) -> dict[str, free_tier.Allowance]
     return free_tier.allowances(pricing, voice_family=cfg.tts_voice_family,
                                 google_stt_model=cfg.google_stt_model,
                                 qwen_stt_model=cfg.qwen_stt_model)
+
+
+#: Warn below this share of Qwen's free seconds left (0.63.0, Poom: under 20%).
+QWEN_QUOTA_LOW_SHARE = 0.20
+#: When the one-off free seconds end, whatever is left (pricing.json). After
+#: that Poom turns billing on himself — DESIGN.md.
+QWEN_FREE_ENDS = "2026-12-23"
+#: Days the low quota was already logged on. free_tier warns once, at the
+#: crossing; this repeats it once a day so it is in the journal whenever
+#: somebody looks.
+_qwen_quota_warned: set[str] = set()
+
+
+def _warn_about_qwen_quota(conn: sqlite3.Connection, cfg: Config, pricing: Pricing, day: str) -> None:
+    if day in _qwen_quota_warned:
+        return
+    allowance = _allowances(cfg, pricing).get(free_tier.STT_QWEN)
+    if allowance is None or not allowance.free:
+        return
+    status = free_tier.status(conn, allowance)
+    left = max(0.0, 1.0 - status["share"])
+    if left < QWEN_QUOTA_LOW_SHARE:
+        _qwen_quota_warned.add(day)
+        log.warning("qwen free quota low: %.0f of %.0f seconds left (%d%%) by this broker's count;"
+                    " check Model Studio > Free Quota; it ends %s",
+                    max(0.0, allowance.free - status["used"]), allowance.free, int(left * 100),
+                    QWEN_FREE_ENDS)
 
 
 #: Months already warned about in this process: once a month is plenty for a
@@ -1018,28 +1048,33 @@ def handle_stt(
                              text_len=None, endpoint="stt")
         return 415, _error("unsupported_media_type", "รูปแบบไฟล์เสียงนี้ยังใช้ไม่ได้ครับ")
 
-    # Groq unless config says otherwise, or the phone's debug override named
-    # another transcriber for this one request. See stt_router.py. Chosen
-    # before the caps so the budget reserves THIS transcriber's worst case.
+    # Qwen unless config says otherwise (0.63.0), or the phone's debug override
+    # named another transcriber for this one request. See stt_router.py.
+    # Chosen before the caps so the budget reserves THIS transcriber's worst
+    # case — and the fallback's, when that is dearer, since it may run instead.
     chosen = stt_router.choose(provider, cfg.stt_provider)
+    fallback = stt_router.fallback_for(provider, chosen, cfg.stt_fallback)
+    worst = cfg.worst_case_stt_usd_for(chosen)
+    if fallback:
+        worst = max(worst, cfg.worst_case_stt_usd_for(fallback))
 
     refusal = _check_caps(conn, cfg, device_id=device_id, day=day, month=month, endpoint="stt",
-                          worst_case_usd=cfg.worst_case_stt_usd_for(chosen), text_len=None)
+                          worst_case_usd=worst, text_len=None)
     if refusal:
         return refusal
 
     pricing = Pricing.load(cfg.pricing_path)
 
-    def bill(seconds: float) -> float:
+    def bill(seconds: float, used: str) -> float:
         model, cost, billed = stt_router.cost_of(
-            chosen, pricing, groq_model=cfg.stt_model, google_model=cfg.google_stt_model,
+            used, pricing, groq_model=cfg.stt_model, google_model=cfg.google_stt_model,
             seconds=seconds, qwen_model=cfg.qwen_stt_model)
-        if chosen == "qwen":
+        if used == "qwen":
             # Qwen's one-off 36,000 free seconds come off first (0.50.0).
             cost = free_tier.charge(
                 conn, _allowances(cfg, pricing).get(free_tier.STT_QWEN), billed,
                 lambda paid: pricing.qwen_stt_cost(cfg.qwen_stt_model, paid))
-        if chosen == "google":
+        if used == "google":
             # Google's 60 free minutes a month come off first (Poom, 2026-09-23).
             # `cost` above is the list price; this is what is actually paid.
             cost = free_tier.charge(
@@ -1049,32 +1084,64 @@ def handle_stt(
                            cost_usd=cost, service="stt", quantity=billed, unit="seconds")
         return cost
 
-    started = time.monotonic()
-    try:
+    def run(which: str):
         # The Qwen key is read when it is needed, like eWeLink's: set-key
         # needs no restart, and a broker that never uses qwen never reads it.
-        secret = envfile.reader(cfg.env_path) if chosen == "qwen" else (lambda _n: None)
-        transcript = stt_router.transcribe(
-            chosen, groq_client=client, google_key=google_key, audio=body,
+        secret = envfile.reader(cfg.env_path) if which == "qwen" else (lambda _n: None)
+        return stt_router.transcribe(
+            which, groq_client=client, google_key=google_key, audio=body,
             filename=filename, language=cfg.stt_language, groq_model=cfg.stt_model,
             google_model=cfg.google_stt_model, hints_path=cfg.home / stt_hints.FILENAME,
             pricing=pricing, google_transport=google_transport,
             qwen_key=secret("QWEN_API_KEY") or "", qwen_model=cfg.qwen_stt_model,
-            qwen_workspace=secret("QWEN_WORKSPACE_ID"), qwen_transport=qwen_transport).transcript
-    except stt.SttError as exc:
+            qwen_workspace=secret("QWEN_WORKSPACE_ID"), qwen_transport=qwen_transport,
+            qwen_timeout=cfg.qwen_stt_timeout_s).transcript
+
+    def failed(exc: stt.SttError, which: str) -> tuple[int, dict]:
         # Groq answering 200 with an empty transcript is still a billed request.
         # Recording it is what stops "say nothing at it repeatedly" from being a
         # way to use the service for free.
         if exc.seconds is not None:
-            bill(exc.seconds)
+            bill(exc.seconds, which)
         store.record_request(conn, device_id=device_id, day=day, outcome="stt_error",
                              text_len=None, endpoint="stt")
         log.warning("stt failed device=%s provider=%s bytes=%d detail=%s",
-                    label, chosen, len(body), exc.detail)
+                    label, which, len(body), exc.detail)
         return 502, _error("stt_error", exc.user_message)
+
+    # THE FALLBACK (0.63.0, Poom): Qwen first; Groq with hints when Qwen fails,
+    # times out or is out of quota. Logged every time it is used, with why.
+    started = time.monotonic()
+    used, fell_back = chosen, ""
+    if fallback and chosen == "qwen" and stt_router.quota_resting(time.time()):
+        used, fell_back = fallback, "quota-resting"
+        log.warning("stt fallback device=%s from=%s to=%s reason=%s",
+                    label, chosen, fallback, fell_back)
+    try:
+        transcript = run(used)
+    except stt.SttError as exc:
+        if not (fallback and used == chosen and stt_router.falls_back(exc)):
+            return failed(exc, used)
+        if exc.seconds is not None:
+            bill(exc.seconds, used)
+        fell_back = exc.kind or "error"
+        if exc.kind == "quota" and chosen == "qwen":
+            stt_router.note_quota_exhausted(time.time())
+            log.warning("qwen free quota used up (Stop on Exhaust): %s for the next %d min;"
+                        " detail=%s", fallback, int(stt_router.QUOTA_REST_S // 60), exc.detail)
+        log.warning("stt fallback device=%s from=%s to=%s reason=%s detail=%s ms=%d",
+                    label, used, fallback, fell_back, exc.detail,
+                    int((time.monotonic() - started) * 1000))
+        used = fallback
+        try:
+            transcript = run(used)
+        except stt.SttError as exc2:
+            return failed(exc2, used)
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
-    cost = bill(transcript.seconds)
+    cost = bill(transcript.seconds, used)
+    if used == "qwen":
+        _warn_about_qwen_quota(conn, cfg, pricing, day)
 
     # THE GATE: was this a question at all? Decided here, after the audio was
     # paid for and before the model is — see speech_gate.py for every rule. A
@@ -1096,7 +1163,8 @@ def handle_stt(
     groq_text = transcript.text
     second = maps_rescue.rescue(
         conn, text=transcript.text, audio=body, audio_seconds=transcript.seconds,
-        provider=chosen, enabled=cfg.maps_rescue, inputs=lambda: _rescue_inputs(cfg, pricing),
+        provider=used, enabled=cfg.maps_rescue and not fell_back,
+        inputs=lambda: _rescue_inputs(cfg, pricing),
         qwen_model=cfg.qwen_stt_model, language=cfg.stt_language,
         hints_path=cfg.home / stt_hints.FILENAME, pricing=pricing,
         timeout_s=cfg.maps_rescue_timeout_s, strip_wake=source == "wake",
@@ -1122,21 +1190,22 @@ def handle_stt(
     # and only while Poom has analysis mode switched on — see analysis.py.
     log.info("stt %s device=%s provider=%s text_from=%s rescue=%s bytes=%d seconds=%.1f"
              " chars_out=%d cost=%.6f ms=%d rescue_ms=%d"
-             " gate=%s doubts=%s no_speech=%s logprob=%s wake=%s wake_cut=%s",
-             "ok" if verdict.passed else "gated", label, chosen,
-             "qwen" if second.used_qwen else chosen, second.status, len(body), transcript.seconds,
+             " gate=%s doubts=%s no_speech=%s logprob=%s wake=%s wake_cut=%s fallback=%s",
+             "ok" if verdict.passed else "gated", label, used,
+             "qwen" if second.used_qwen else used, second.status, len(body), transcript.seconds,
              len(transcript.text), cost, elapsed_ms, second.ms, verdict.reason,
              ",".join(verdict.doubts) or "-", _num(getattr(transcript, "no_speech_prob", None)),
              _num(getattr(transcript, "avg_logprob", None)),
-             source if wake_score is None else f"{wake_score:.3f}", "yes" if wake_cut else "no")
+             source if wake_score is None else f"{wake_score:.3f}", "yes" if wake_cut else "no",
+             fell_back or "-")
     analysis.record_stt(conn, cfg.home, device=label,
-                        provider=f"{chosen}+qwen" if second.used_qwen else chosen,
+                        provider=f"{used}+qwen" if second.used_qwen else used,
                         text=transcript.text, audio_seconds=transcript.seconds, audio=body,
                         stt_ms=elapsed_ms + second.ms,
                         cost_usd=cost, intent=(actions.camera_match(transcript.text)[1]
                                                if verdict.passed else f"gated:{verdict.reason}"))
 
-    return 200, {"text": transcript.text if verdict.passed else "", "provider": chosen,
+    return 200, {"text": transcript.text if verdict.passed else "", "provider": used,
                  "rescue": second.status, "gate": verdict.as_json()}
 
 

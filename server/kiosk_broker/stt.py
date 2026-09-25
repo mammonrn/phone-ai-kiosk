@@ -22,10 +22,17 @@ class SttError(RuntimeError):
     something to return over HTTP or write to a log.
     """
 
-    def __init__(self, user_message: str, detail: str, seconds: float | None = None):
+    def __init__(self, user_message: str, detail: str, seconds: float | None = None,
+                 kind: str = ""):
         super().__init__(detail)
         self.user_message = user_message
         self.detail = detail
+        #: What went wrong, as one fixed word, for deciding whether another
+        #: transcriber could do better (0.63.0, stt_router.falls_back): "quota",
+        #: "auth", "no_key", "rate_limit", "http", "network", "response" — or
+        #: "empty" (the vendor heard nothing: nobody else would either) and
+        #: "bad_audio". "" where nobody has said.
+        self.kind = kind
         #: Set when Groq answered successfully but the transcript was unusable.
         #: They charged for it, so the caller still has to put it in the ledger;
         #: a failure that quietly escapes the budget is a failure that can be

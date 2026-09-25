@@ -3,6 +3,8 @@ exactly as it was (Poom, 2026-09-24). See maps_rescue.py."""
 
 from __future__ import annotations
 
+import dataclasses
+
 import json
 import logging
 import time
@@ -39,6 +41,14 @@ def hints(cfg):
                                 "qwen_phrases": ["ภูชี้ฟ้า", "ดอยตุง"]}, ensure_ascii=False),
                     encoding="utf-8")
     return path
+
+
+@pytest.fixture
+def cfg(cfg):
+    # The second opinion exists for a broker whose main transcriber is
+    # groq-hints — the default until 0.63.0 and still a config choice. With
+    # Qwen as the main one there is nothing to rescue (test_stt_fallback.py).
+    return dataclasses.replace(cfg, stt_provider="groq-hints")
 
 
 def _stt(conn, cfg, groq_text, qwen, provider=None, wake=None, seconds=3.0):

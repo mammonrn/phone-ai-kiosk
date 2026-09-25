@@ -50,12 +50,13 @@ def test_every_safety_rule_survived_the_shrinking():
         "อีเมล",           # no email
         "ปฏิทิน",          # no calendar
         "ไดรฟ์",           # no drive
-        "อุปกรณ์",         # cannot control devices
+        "อุปกรณ์",         # cannot control devices (the kiosk's code does, 0.63.0)
+        "ห้ามบอกว่าทำแล้ว",  # never claims the kiosk did what only the code does
         "ห้ามเดา",         # must not invent numbers
         "เซิร์ฟเวอร์",      # knows nothing about the server
         "ไม่ทราบ",         # says so rather than guessing
         "คำสั่งระบบ",       # will not reveal the system prompt
-        "ปฏิเสธ",          # refuses out-of-scope requests
+        "ปฏิเสธ",          # refuses rule changes and role play
     ]
     missing = [rule for rule in required if rule not in SYSTEM_PROMPT]
     assert not missing, f"safety rules dropped from the prompt: {missing}"
@@ -99,7 +100,8 @@ def test_it_is_meaningfully_smaller_than_the_first_production_version():
     thing that needed it, and the ceiling is what stops the rest creeping."""
     # 0.43.0: 1,143 — 11 over the first version, for "unsure, not a guess"
     # (persona.py). Still the ceiling that stops the rest creeping.
-    assert len(SYSTEM_PROMPT) < 1150
+    # 0.63.0: 1,322 — the sentences that work by voice (Poom approved; persona.py).
+    assert len(SYSTEM_PROMPT) < 1330
     assert len(SYSTEM_PROMPT) <= MAX_PROMPT_CHARS
 
 

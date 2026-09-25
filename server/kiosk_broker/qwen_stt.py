@@ -57,6 +57,10 @@ DEFAULT_MODEL = "qwen3-asr-flash-2026-02-10"
 MAX_CONTEXT_CHARS = 400
 
 MAX_RESPONSE_BYTES = 256 * 1024
+
+#: The error code Alibaba answers 403 with once the free quota is used up and
+#: "Stop on Exhaust" is on in the console: "AllocationQuota.FreeTierOnly".
+QUOTA_CODE_PREFIX = "AllocationQuota"
 _WORKSPACE = re.compile(r"^[A-Za-z0-9-]{4,64}$")
 
 
@@ -104,7 +108,7 @@ def recognize(*, api_key: str, audio: bytes, language: str = "th", model: str = 
               timeout: float = 20.0, transport=None) -> Transcript:
     """One synchronous recognition. `transport(request, timeout)` is for tests."""
     if not api_key:
-        raise SttError("ระบบถอดเสียงยังต่อไม่ได้ครับ", "no Qwen key")
+        raise SttError("ระบบถอดเสียงยังต่อไม่ได้ครับ", "no Qwen key", kind="no_key")
     body = json.dumps(request_body(audio, model=model, language=language, hints=hints)).encode("utf-8")
     _, local_seconds = wav_info(audio)
     request = urllib.request.Request(
@@ -117,20 +121,30 @@ def recognize(*, api_key: str, audio: bytes, language: str = "th", model: str = 
             raw = response.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         code = _error_code(exc)
+        if exc.code == 403 and code.startswith(QUOTA_CODE_PREFIX):
+            # Stop-on-Exhaust (Poom, 0.63.0): the free seconds are gone and the
+            # console refuses rather than bills. Not an auth problem.
+            raise SttError("ระบบถอดเสียงยังต่อไม่ได้ครับ", f"qwen quota_exhausted {exc.code} {code}",
+                           kind="quota") from None
         if exc.code in (401, 403):
-            raise SttError("ระบบถอดเสียงยังต่อไม่ได้ครับ", f"qwen auth {exc.code} {code}") from None
+            raise SttError("ระบบถอดเสียงยังต่อไม่ได้ครับ", f"qwen auth {exc.code} {code}",
+                           kind="auth") from None
         if exc.code == 429:
             raise SttError("ตอนนี้คนใช้เยอะครับ ลองอีกครั้งในอีกสักครู่",
-                           f"qwen rate_limit {code}") from None
-        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", f"qwen http {exc.code} {code}") from None
+                           f"qwen rate_limit {code}", kind="rate_limit") from None
+        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", f"qwen http {exc.code} {code}",
+                       kind="http") from None
     except (urllib.error.URLError, OSError) as exc:
-        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", f"qwen {type(exc).__name__}") from None
+        # A timeout is an OSError too (socket.timeout / TimeoutError).
+        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", f"qwen {type(exc).__name__}",
+                       kind="network") from None
     if len(raw) > MAX_RESPONSE_BYTES:
-        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", "qwen response too large")
+        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", "qwen response too large", kind="response")
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
-        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", "qwen response not JSON") from None
+        raise SttError("ถอดเสียงไม่สำเร็จครับ ลองอีกครั้งนะ", "qwen response not JSON",
+                       kind="response") from None
 
     usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
     try:
@@ -146,7 +160,7 @@ def recognize(*, api_key: str, audio: bytes, language: str = "th", model: str = 
         text = ""
     if not text:
         raise SttError("ไม่ได้ยินว่าพูดอะไรครับ ลองพูดอีกครั้งนะ",
-                       f"qwen empty transcript, duration={seconds:.1f}", seconds=seconds)
+                       f"qwen empty transcript, duration={seconds:.1f}", seconds=seconds, kind="empty")
     return Transcript(text=text, seconds=seconds)
 
 

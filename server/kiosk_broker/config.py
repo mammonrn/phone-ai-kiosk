@@ -48,15 +48,23 @@ class Config:
     stt_model: str = "whisper-large-v3-turbo"
     stt_language: str = "th"
 
-    #: Which transcriber /v1/stt uses when the phone does not ask for one:
-    #: "groq-hints" (THE DEFAULT, Poom's decision on 2026-09-23), "groq" or
-    #: "google". Chosen from Poom's own voice: "ขอดูกล้องหน่อยครับ" came back
-    #: "ขอดูกล่องหน่อย" from plain groq and "ขอดูกล้อง หน่อย" with the hints, at
-    #: the same price and speed; google also got it right at 4x the time and
-    #: 15x the cost, and stays available for comparison. Settable in
-    #: config.json; the phone's debug-build adb override still wins per request
-    #: and resets when the app restarts. See stt_router.py.
-    stt_provider: str = "groq-hints"
+    #: Which transcriber /v1/stt uses when the phone does not ask for one.
+    #: "qwen" since 0.63.0 (Poom 2026-09-25): on 118 Thai clips through this
+    #: broker from the A07 it got the key part of a command right 94% of the
+    #: time against groq-hints' 33%, ~100 ms slower. Before that "groq-hints"
+    #: (2026-09-23, chosen from Poom's own voice over plain groq and google).
+    #: Settable in config.json; the phone's debug-build adb override still
+    #: wins per request and resets when the app restarts. See stt_router.py.
+    stt_provider: str = "qwen"
+    #: Tried automatically when the default fails, times out or is out of
+    #: quota — never for a provider the request named, never after an empty
+    #: transcript (nobody spoke). Every use is logged "stt fallback".
+    stt_fallback: str = "groq-hints"
+    #: How long Qwen gets before the fallback is asked instead. Qwen answered
+    #: in 736 ms median and 947 ms at p90 on the A07 run (phone's clock,
+    #: including starting the request); 5 s is several times that and still
+    #: leaves Groq time inside a turn.
+    qwen_stt_timeout_s: float = 5.0
 
     #: Google Speech-to-Text v1 model for the "google" transcriber. latest_short
     #: lists th-TH and model adaptation on Google's supported-languages page.
