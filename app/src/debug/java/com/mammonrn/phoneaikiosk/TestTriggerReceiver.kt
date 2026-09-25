@@ -375,7 +375,8 @@ class TestTriggerReceiver : BroadcastReceiver() {
                         android.util.Log.i("KioskStats", "stt probe chars=${text.length} gate=${com.mammonrn.phoneaikiosk.voice.VoiceState.lastGate}")
                     } catch (e: Exception) {
                         out.writeText("ERROR ${e.javaClass.simpleName}")
-                        android.util.Log.i("KioskStats", "stt probe failed ${e.javaClass.simpleName}")
+                        android.util.Log.i("KioskStats", "stt probe failed ${e.javaClass.simpleName}" +
+                            ((e as? com.mammonrn.phoneaikiosk.voice.Broker.Failure)?.let { " status=${it.status} code=${it.code}" } ?: ""))
                     } finally {
                         pending.finish()
                     }
