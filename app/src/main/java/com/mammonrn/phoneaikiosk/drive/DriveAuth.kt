@@ -79,6 +79,8 @@ object DriveAuth {
     const val CONSENT_MAX_MS = 5L * 60 * 1000
     private val timer = android.os.Handler(android.os.Looper.getMainLooper())
     private var withdraw: Runnable? = null
+    /** The decision itself, clock passed in (ConsentWindow, tested with a fake clock). */
+    val window = ConsentWindow(CONSENT_MAX_MS)
 
     const val GMS_PACKAGE = "com.google.android.gms"
     /** Full Drive: list, open, upload, rename, and move to Drive's trash. Never deleted for good (DriveApi). */
@@ -207,7 +209,7 @@ object DriveAuth {
             // Google's screen closes too, not only its permission (it would be left on screen outside the list).
             shownBy.get()?.let { a -> runCatching { a.finishActivity(REQUEST_CONSENT) } }
             withdrawn(app, "timeout")
-        }.also { timer.postDelayed(it, CONSENT_MAX_MS) }
+        }.also { window.open(android.os.SystemClock.elapsedRealtime()); timer.postDelayed(it, CONSENT_MAX_MS) }
         Log.i(TAG, "consent allowlist added for at most ${CONSENT_MAX_MS / 60_000} min")
         setDisconnected(activity, false)
         return try {
@@ -221,11 +223,21 @@ object DriveAuth {
         }
     }
 
+    /**
+     * The five minutes checked on the clock too (the Drive screen calls this when it
+     * comes back): a timer that did not fire — the process frozen, say — cannot
+     * leave Play services in the list.
+     */
+    fun withdrawIfExpired(context: Context) {
+        if (window.expired(android.os.SystemClock.elapsedRealtime())) withdrawn(context, "timeout")
+    }
+
     /** The kiosk's own allowlist again: on every Drive screen resume and after the consent answers. */
     fun restoreAllowlist(context: Context) = WifiPanel.restore(context)
 
     /** Play services out of the locked task again, the timer stopped, and why — in the log. */
     private fun withdrawn(context: Context, why: String) {
+        window.close()
         withdraw?.let { timer.removeCallbacks(it) }
         withdraw = null
         restoreAllowlist(context)

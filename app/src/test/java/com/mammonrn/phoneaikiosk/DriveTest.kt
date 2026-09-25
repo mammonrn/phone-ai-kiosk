@@ -307,4 +307,28 @@ class DriveTest {
 
     private fun file(path: String): String =
         listOf(File(path), File("app/$path")).first { it.exists() }.readText().replace("\r\n", "\n")
+
+    /** Poom 2026-09-25: the five-minute case, on a simulated clock — no need to take the Drive grant away. */
+    @Test
+    fun `Google's screen is withdrawn after five minutes on a simulated clock`() {
+        val w = com.mammonrn.phoneaikiosk.drive.ConsentWindow(DriveAuth.CONSENT_MAX_MS)
+        assertFalse(w.expired(0))                         // nothing open, nothing to withdraw
+        w.open(now = 10_000)
+        assertTrue(w.isOpen)
+        assertFalse(w.expired(10_000 + 60_000))           // one minute: still allowed
+        assertEquals(60_000L, w.remaining(10_000 + 4 * 60_000))
+        assertFalse(w.expired(10_000 + 5 * 60_000 - 1))   // a millisecond before five minutes
+        assertTrue(w.expired(10_000 + 5 * 60_000))        // five minutes: withdrawn
+        assertTrue(w.expired(5_000))                      // a clock that went backwards: withdrawn
+        assertTrue(w.close())
+        assertFalse(w.isOpen)
+        assertFalse(w.expired(10_000 + 10 * 60_000))      // after closing, nothing left open
+        assertFalse(w.close())
+        // Wired: the timer arms the window, withdrawing closes it, the Drive screen checks it on resume.
+        val auth = source("drive/DriveAuth.kt")
+        assertTrue("window.open(android.os.SystemClock.elapsedRealtime())" in auth)
+        assertTrue("window.close()" in auth.substringAfter("private fun withdrawn(").substringBefore("\n    }"))
+        val screen = source("drive/DriveActivity.kt")
+        assertTrue("DriveAuth.withdrawIfExpired(this)" in screen.substringAfter("override fun onResume()").substringBefore("\n    }"))
+    }
 }

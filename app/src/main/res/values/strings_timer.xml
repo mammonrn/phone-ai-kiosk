@@ -56,4 +56,5 @@
     <string name="timer_ring_quiet">เสียงหยุดเองแล้วหลังดังครบ 10 นาที กด [ตกลง] เพื่อตั้งเวลาใหม่</string>
     <!-- The home screen's alarm card while the end rings (VoiceState.alarmRinging). -->
     <string name="timer_ringing_card">หมดเวลานับถอยหลัง %1$s</string>
+    <string name="timer_cd_missed">นับถอยหลังครบเวลาเมื่อ %1$s ตอนมือถือปิดอยู่ เลยมาเกิน 1 ชั่วโมงจึงไม่ส่งเสียง</string>
 </resources>

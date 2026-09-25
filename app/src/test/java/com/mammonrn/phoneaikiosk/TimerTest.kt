@@ -192,4 +192,26 @@ class TimerTest {
         val sw = Stopwatch().start(500_000, wall).rebased(nowElapsed = 20_000, nowWall = wall + 60_000)
         assertEquals(60_000, sw.elapsed(20_000))
     }
+
+    /** Poom 2026-09-25: an end missed while the phone was off rings only if it is at most an hour late. */
+    @Test
+    fun `a countdown missed by more than an hour while off is shown, not rung`() {
+        val hour = com.mammonrn.phoneaikiosk.timer.Countdown.LATE_RING_MAX_MS
+        // Set 5 min at wall 10:00 (elapsed 1,000); the phone was off; back at wall 10:30 → rebased, 25 min late.
+        val started = com.mammonrn.phoneaikiosk.timer.Countdown(setMs = 300_000).start(now = 1_000, wallNow = 36_000_000)
+        val back30 = started.rebased(nowElapsed = 5_000, nowWall = 36_000_000 + 30 * 60_000)
+        assertTrue(back30.due(5_000))
+        assertFalse("25 minutes late: rings", back30.tooLateToRing(5_000))
+        // Back at 11:06 → 61 minutes late: not rung, the due time kept.
+        val back66 = started.rebased(nowElapsed = 5_000, nowWall = 36_000_000 + 66 * 60_000)
+        assertTrue(back66.tooLateToRing(5_000))
+        val missed = back66.missed()
+        assertEquals(com.mammonrn.phoneaikiosk.timer.Countdown.State.IDLE, missed.state)
+        assertEquals(36_000_000 + 300_000L, missed.missedWall)
+        assertEquals(300_000L, missed.setMs)
+        // Exactly one hour late still rings; starting again clears the note.
+        val atHour = started.rebased(nowElapsed = 5_000, nowWall = 36_000_000 + 300_000 + hour)
+        assertFalse(atHour.tooLateToRing(5_000))
+        assertEquals(0L, missed.start(now = 9_000, wallNow = 40_000_000).missedWall)
+    }
 }

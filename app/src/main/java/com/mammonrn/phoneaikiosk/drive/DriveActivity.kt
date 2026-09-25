@@ -117,6 +117,7 @@ class DriveActivity : Activity() {
         super.onResume()
         hideSystemBars()
         // Play services may have been allowed in the locked task for the consent screen: never past it.
+        DriveAuth.withdrawIfExpired(this)
         DriveAuth.restoreAllowlist(this)
     }
 

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.61.0): a spirit level - a wooden bar with a bubble in its glass. 16x16, rectangles only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M0,5h16v1h-16z M0,6h1v1h-1z M15,6h1v1h-1z M0,7h1v1h-1z M6,7h1v1h-1z M10,7h1v1h-1z M15,7h1v1h-1z M0,8h1v1h-1z M6,8h1v1h-1z M10,8h1v1h-1z M15,8h1v1h-1z M0,9h1v1h-1z M6,9h1v1h-1z M10,9h1v1h-1z M15,9h1v1h-1z M0,10h1v1h-1z M15,10h1v1h-1z M0,11h16v1h-16z" />
+    <path android:fillColor="#F0E0A0" android:pathData="M1,6h14v1h-14z" />
+    <path android:fillColor="#D8B040" android:pathData="M1,7h5v1h-5z M11,7h4v1h-4z M1,8h5v1h-5z M11,8h4v1h-4z M1,9h5v1h-5z M11,9h4v1h-4z" />
+    <path android:fillColor="#906820" android:pathData="M1,10h14v1h-14z" />
+    <path android:fillColor="#40B0E0" android:pathData="M7,7h3v1h-3z M7,8h1v1h-1z M9,8h1v1h-1z M7,9h3v1h-3z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M8,8h1v1h-1z" />
+</vector>

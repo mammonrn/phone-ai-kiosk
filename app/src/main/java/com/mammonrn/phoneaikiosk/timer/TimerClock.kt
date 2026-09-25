@@ -78,6 +78,7 @@ object TimerClock {
             endAt = p.getLong("cd_end", 0L),
             endWall = p.getLong("cd_end_wall", 0L),
             leftMs = p.getLong("cd_left", 0L),
+            missedWall = p.getLong("cd_missed", 0L),
         )
         stopwatch = Stopwatch(
             running = p.getBoolean("sw_running", false),
@@ -141,7 +142,17 @@ object TimerClock {
      */
     fun ringIfDue(context: Context, source: String): Boolean {
         load(context)
-        if (!countdown.due(SystemClock.elapsedRealtime())) return false
+        val now = SystemClock.elapsedRealtime()
+        if (!countdown.due(now)) return false
+        if (countdown.tooLateToRing(now)) {
+            // More than an hour late (the phone was off): no sound; the screen says when it was due.
+            val lateMin = countdown.lateBy(now) / 60_000
+            change(context) { countdown = countdown.missed(); showCountdown = true }
+            book(context)
+            Log.i(TAG, "countdown missed late_min=$lateMin source=$source (not rung)")
+            runCatching { context.startActivity(TimerActivity.showIntent(context)) }
+            return true
+        }
         change(context) { countdown = countdown.ring() }
         book(context)
         Log.i(TAG, "countdown ended source=$source set_s=${countdown.setMs / 1000}")
@@ -203,6 +214,7 @@ object TimerClock {
             .putLong("cd_end", countdown.endAt)
             .putLong("cd_end_wall", countdown.endWall)
             .putLong("cd_left", countdown.leftMs)
+            .putLong("cd_missed", countdown.missedWall)
             .putBoolean("sw_running", stopwatch.running)
             .putLong("sw_start", stopwatch.startedAt)
             .putLong("sw_start_wall", stopwatch.startWall)

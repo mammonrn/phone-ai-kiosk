@@ -110,8 +110,8 @@ class CompassActivity : Activity(), SensorEventListener {
         gravitySensor = sensors.getDefaultSensor(Sensor.TYPE_GRAVITY)
         Log.i(TAG, "sensors rotation=${rotationSensor != null} magnet=${magnetSensor != null} " +
             "accel=${accelSensor != null} gravity=${gravitySensor != null}")
-        levelMode = getPreferences(Context.MODE_PRIVATE).getBoolean(KEY_LEVEL, false)
-        frame = ToolWindow(this, r, R.drawable.ic_pixel_compass, onClose = { closeApp() }, onHome = { goHome() })
+        levelMode = !COMPASS_OFFERED || getPreferences(Context.MODE_PRIVATE).getBoolean(KEY_LEVEL, false)
+        frame = ToolWindow(this, r, R.drawable.ic_pixel_level, onClose = { closeApp() }, onHome = { goHome() })
         setContentView(frame.root)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -228,7 +228,7 @@ class CompassActivity : Activity(), SensorEventListener {
         dial = null; bubble = null; levelWord = null; axes = null
         frame.title.text = getString(R.string.compass_title)
         val page = r.column().apply { setPadding(0, 0, 0, r.dp(UiScale.SPACE_S)) }
-        page.addView(r.row().apply {
+        if (COMPASS_OFFERED) page.addView(r.row().apply {
             addView(r.option(getString(R.string.compass_mode_compass), !levelMode) { switchMode(false) },
                     LinearLayout.LayoutParams(0, r.dp(UiScale.TOUCH), 1f))
             addView(r.option(getString(R.string.compass_mode_level), levelMode) { switchMode(true) },
@@ -496,6 +496,13 @@ class CompassActivity : Activity(), SensorEventListener {
     companion object {
         private const val TAG = "KioskCompass"
         private const val KEY_LEVEL = "level_mode"
+
+        /**
+         * The compass mode (Poom, 2026-09-25): hidden. The A07 has no magnetometer
+         * (measured: sensors magnet=false), so the screen is the spirit level
+         * only, named and drawn as one. The compass code stays for a phone that has one.
+         */
+        const val COMPASS_OFFERED = false
         private const val DRAW_MS = 100L
         private const val HEADING_ALPHA = 0.2
         private const val LEVEL_ALPHA = 0.2

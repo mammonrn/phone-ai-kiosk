@@ -934,7 +934,7 @@ class SettingsActivity : Activity() {
                     it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.calc.CalculatorActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                 },
                 // 0.62.0: the compass and the spirit level (compass/CompassActivity).
-                Category(R.drawable.ic_pixel_compass, { it.getString(R.string.window_compass) }) {
+                Category(R.drawable.ic_pixel_level, { it.getString(R.string.window_compass) }) {
                     it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.compass.CompassActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                 },
             )),

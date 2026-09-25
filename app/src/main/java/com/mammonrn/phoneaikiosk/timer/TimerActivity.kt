@@ -239,8 +239,13 @@ class TimerActivity : Activity() {
             }
             endsAt?.let {
                 val running = cd.state == Countdown.State.RUNNING
-                it.visibility = if (running) View.VISIBLE else View.GONE
+                // Poom (2026-09-25): an end that came while the phone was off more than an hour
+                // ago is not rung; this line says when it was due instead.
+                val missed = cd.state == Countdown.State.IDLE && cd.missedWall > 0
+                it.visibility = if (running || missed) View.VISIBLE else View.GONE
                 if (running) it.text = getString(R.string.timer_cd_ends_at, clock(System.currentTimeMillis() + cd.remaining(now)))
+                else if (missed) it.text = getString(R.string.timer_cd_missed,
+                    java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale("th", "TH")).format(java.util.Date(cd.missedWall)))
             }
             digits?.contentDescription = getString(R.string.timer_digits_left, TimerText.thai(cd.remaining(now)))
         } else {
@@ -491,6 +496,10 @@ class TimerActivity : Activity() {
         const val EXTRA_RING = "com.mammonrn.phoneaikiosk.TIMER_RING"
 
         /** This screen on its "หมดเวลา" page, over whatever is in front. */
+        /** The screen to the front with no sound: a countdown missed while the phone was off. */
+        fun showIntent(context: Context): Intent = Intent(context, TimerActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+
         fun ringIntent(context: Context): Intent = Intent(context, TimerActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             .putExtra(EXTRA_RING, true)

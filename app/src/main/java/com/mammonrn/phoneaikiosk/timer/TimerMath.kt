@@ -21,6 +21,12 @@ data class Countdown(
     val endWall: Long = 0L,
     /** PAUSED: what is left. */
     val leftMs: Long = 0L,
+    /**
+     * IDLE after an end that came while the phone was off more than
+     * [LATE_RING_MAX_MS] ago: the wall-clock time it was due, to say so
+     * instead of ringing (Poom, 2026-09-25). 0 when there is nothing to say.
+     */
+    val missedWall: Long = 0L,
 ) {
     enum class State { IDLE, RUNNING, PAUSED, RINGING }
 
@@ -41,17 +47,26 @@ data class Countdown(
     fun start(now: Long, wallNow: Long): Countdown {
         if (!canStart()) return this
         val left = if (state == State.PAUSED) leftMs else setMs
-        return copy(state = State.RUNNING, endAt = now + left, endWall = wallNow + left, leftMs = 0L)
+        return copy(state = State.RUNNING, endAt = now + left, endWall = wallNow + left, leftMs = 0L, missedWall = 0L)
     }
 
     fun pause(now: Long): Countdown =
         if (state != State.RUNNING) this
         else copy(state = State.PAUSED, leftMs = remaining(now), endAt = 0L, endWall = 0L)
 
-    /** Back to the length that was set, ready to start again. */
+    /** Back to the length that was set, ready to start again (a missed end's note goes too). */
     fun reset(): Countdown = Countdown(setMs = setMs)
 
-    fun ring(): Countdown = copy(state = State.RINGING, endAt = 0L, endWall = 0L, leftMs = 0L)
+    fun ring(): Countdown = copy(state = State.RINGING, endAt = 0L, endWall = 0L, leftMs = 0L, missedWall = 0L)
+
+    /** How long past its end a due countdown is at [now] (0 when not due). */
+    fun lateBy(now: Long): Long = if (due(now)) now - endAt else 0L
+
+    /** Due, but too late to ring (the phone was off): ring only within [LATE_RING_MAX_MS]. */
+    fun tooLateToRing(now: Long): Boolean = due(now) && lateBy(now) > LATE_RING_MAX_MS
+
+    /** Ended unheard: ready again with the same length, and when it was due kept to be said. */
+    fun missed(): Countdown = Countdown(setMs = setMs, missedWall = endWall)
 
     /** The ringing was stopped (or seen): ready again with the same length. */
     fun acknowledge(): Countdown = if (state == State.RINGING) reset() else this
@@ -97,6 +112,8 @@ data class Countdown(
 
     companion object {
         const val DEFAULT_MS = 5 * 60_000L
+        /** An end that came while the phone was off rings when it is back only within this (Poom: 1 hour). */
+        const val LATE_RING_MAX_MS = 60 * 60_000L
         const val MAX_HOURS = 23
         /** 23:59:59, the most the wheels can show. */
         const val MAX_MS = ((MAX_HOURS * 60L + 59) * 60L + 59) * 1000L
