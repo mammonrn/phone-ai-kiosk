@@ -52,4 +52,4 @@ def test_nothing_changes_without_a_screen_or_for_a_real_question():
 
 
 def test_only_known_screen_words_ever_count():
-    assert screen_context.SCREENS == {"music", "video", "notes", "radio", "timer", "panel"}
+    assert screen_context.SCREENS == {"music", "video", "notes", "radio", "timer", "panel", "calendar"}

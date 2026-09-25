@@ -21,7 +21,8 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd)
+               auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd,
+               calendar_app, holidays_q)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -436,6 +437,117 @@ def handle_home_allow(conn: sqlite3.Connection, cfg: Config, *, authorization: s
     return home_settings.set_allowed(ctx, target[0], target[1], allowed)
 
 
+# ------------------------------------------------------------ the calendar app (0.63.0)
+
+def _calendar_app(conn: sqlite3.Connection, cfg: Config, authorization: str | None, endpoint: str):
+    """The device, the Google token and the grant for one calendar-app request;
+    or the refusal. Private: a live identity grant, exactly as for the voice."""
+    day = limits.day_key(cfg.budget_timezone)
+    device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint=endpoint)
+    if refusal:
+        return None, None, refusal
+    device_id, label = int(device["id"]), str(device["label"])
+    rate = limits.check_rate(conn, device_id=device_id, per_minute=30, per_day=600, day=day,
+                             endpoint=endpoint)
+    if not rate.allowed:
+        store.record_request(conn, device_id=device_id, day=day, outcome=rate.code,
+                             text_len=None, endpoint=endpoint)
+        return None, None, (429, _error(rate.code, rate.message))
+    if not identity.granted(conn, device_id):
+        log.info("calendar-app device=%s endpoint=%s verify", label, endpoint)
+        return None, None, (403, _error("verify_identity", VERIFY_FIRST_REPLY))
+    if not google_auth.connected(cfg.google_token_path):
+        return None, None, (409, _error("not_connected", calendar_add.NOT_CONNECTED_REPLY))
+    try:
+        client = google_auth.load_client(cfg.google_client_path)
+        token = google_auth.access_token(client, key_path=cfg.vault_key_path,
+                                         token_path=cfg.google_token_path)
+    except Exception as exc:  # noqa: BLE001 — nothing was asked of Google yet
+        log.warning("calendar-app device=%s token failed: %s", label, type(exc).__name__)
+        return None, None, (502, _error("calendar_error", "ตอนนี้ต่อปฏิทินไม่ได้ครับ ลองใหม่อีกครั้ง"))
+    store.record_request(conn, device_id=device_id, day=day, outcome="ok", text_len=None, endpoint=endpoint)
+    return label, token, None
+
+
+def handle_calendar_list(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                         body: bytes, get=None) -> tuple[int, dict]:
+    """POST /v1/calendar/list {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"}: the
+    appointments and the Thai holidays of those days. The holidays failing
+    leaves the appointments standing (the screen says which part is missing)."""
+    raw = _json_object(body)
+    try:
+        first, last = calendar_app.parse_range(str((raw or {}).get("from", "")), str((raw or {}).get("to", "")))
+    except calendar_app.BadRequest as exc:
+        return 400, _error("bad_request", str(exc))
+    label, token, refusal = _calendar_app(conn, cfg, authorization, "calendar")
+    if refusal:
+        return refusal
+    started = time.monotonic()
+    try:
+        events = calendar_app.list_events(token, cfg.clock_timezone, first, last, get=get)
+    except calendar_app.CalendarAppError as exc:
+        log.warning("calendar-app device=%s list failed: %s", label, exc)
+        return 502, _error("calendar_error", "ตอนนี้ดึงนัดไม่ได้ครับ ลองใหม่อีกครั้ง")
+    holidays, holidays_ok = [], True
+    try:
+        holidays = calendar_app.list_holidays(token, cfg.clock_timezone, first, last, get=get)
+    except calendar_app.CalendarAppError as exc:
+        holidays_ok = False
+        log.warning("calendar-app device=%s holidays failed: %s", label, exc)
+    log.info("calendar-app device=%s list days=%d events=%d holidays=%d holidays_ok=%s ms=%d", label,
+             (last - first).days + 1, len(events), len(holidays), holidays_ok,
+             int((time.monotonic() - started) * 1000))
+    return 200, {"events": events, "holidays": holidays, "holidaysOk": holidays_ok}
+
+
+def handle_calendar_save(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                         body: bytes, send=None) -> tuple[int, dict]:
+    """POST /v1/calendar/save {id?, title, date, allDay, start, end}: adds or changes one."""
+    raw = _json_object(body)
+    if raw is None:
+        return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
+    try:
+        calendar_app.event_body(raw, cfg.clock_timezone)        # checked before the grant is used
+    except calendar_app.BadRequest as exc:
+        return 400, _error("bad_request", str(exc))
+    label, token, refusal = _calendar_app(conn, cfg, authorization, "calendar-write")
+    if refusal:
+        return refusal
+    kind = "change" if raw.get("id") else "add"
+    try:
+        event_id = calendar_app.save(token, raw, cfg.clock_timezone, send=send)
+    except calendar_app.BadRequest as exc:
+        return 400, _error("bad_request", str(exc))
+    except calendar_app.CalendarAppError as exc:
+        log.warning("calendar-app device=%s %s failed http=%s sure=%s", label, kind, exc.http or "-",
+                    "yes" if exc.sure else "no")
+        return 502, _error("calendar_error", "บันทึกนัดไม่สำเร็จ ยังไม่ได้เปลี่ยนปฏิทิน" if exc.sure
+                           else "ไม่แน่ใจว่าบันทึกสำเร็จไหม กรุณาดูปฏิทินก่อนบันทึกใหม่")
+    log.info("calendar-app device=%s %s ok", label, kind)
+    return 200, {"id": event_id}
+
+
+def handle_calendar_delete(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
+                           body: bytes, send=None) -> tuple[int, dict]:
+    """POST /v1/calendar/delete {"id"}: deletes one (Google keeps it in its bin 30 days)."""
+    raw = _json_object(body)
+    event_id = (raw or {}).get("id")
+    if not calendar_app.valid_id(event_id):
+        return 400, _error("bad_request", "ไม่พบนัดนี้")
+    label, token, refusal = _calendar_app(conn, cfg, authorization, "calendar-write")
+    if refusal:
+        return refusal
+    try:
+        calendar_app.delete(token, event_id, send=send)
+    except calendar_app.CalendarAppError as exc:
+        log.warning("calendar-app device=%s delete failed http=%s sure=%s", label, exc.http or "-",
+                    "yes" if exc.sure else "no")
+        return 502, _error("calendar_error", "ลบนัดไม่สำเร็จ" if exc.sure
+                           else "ไม่แน่ใจว่าลบสำเร็จไหม กรุณาดูปฏิทินอีกครั้ง")
+    log.info("calendar-app device=%s delete ok", label)
+    return 200, {"deleted": True}
+
+
 def _ewelink_page(title: str, message: str) -> bytes:
     return google_auth.page(title, message)
 
@@ -646,7 +758,8 @@ def handle_chat(
     # 0.61.0: a bare command from an app's own Jarvis button ("ต่อไป" on the music
     # page) said in full — only when a code recogniser then takes it.
     text, screen_why = screen_context.apply(text, screen, lambda t: any(
-        m(t) is not None for m in (music.match, video.match, notes.match, timers.match, radio_cmd.match)))
+        m(t) is not None for m in (music.match, video.match, notes.match, timers.match, radio_cmd.match))
+        or calendar_read.asks_for_calendar(t) or holidays_q.match(t))
     if len(text) > cfg.max_text_chars:
         store.record_request(conn, device_id=device_id, day=day, outcome="text_too_long",
                              text_len=len(text))
@@ -832,6 +945,23 @@ def handle_chat(
         log_intent("skipped")
         action, reply = video.action_and_reply(heard_video)
         return answer_in_code(reply, action, f"video:{heard_video['command']}")
+
+    # ---- the next Thai holiday (0.63.0): public days from Google's holiday
+    # calendar, answered in code; no identity check, never guessed. ----------
+    if not is_camera and alarm is None and not calendar_yes and holidays_q.match(text):
+        log_intent("skipped")
+        if not google_auth.connected(cfg.google_token_path):
+            reply = holidays_q.NOT_CONNECTED
+        else:
+            try:
+                client = google_auth.load_client(cfg.google_client_path)
+                token = google_auth.access_token(client, key_path=cfg.vault_key_path,
+                                                 token_path=cfg.google_token_path)
+                reply = holidays_q.answer(token, cfg.clock_timezone, clock.now_in(cfg.clock_timezone).date())
+            except Exception as exc:  # noqa: BLE001 — a token problem must not end the conversation
+                log.warning("holidays device=%s failed: %s", label, type(exc).__name__)
+                reply = holidays_q.FAILED
+        return answer_in_code(reply, None, "holidays")
 
     private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:

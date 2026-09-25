@@ -18,7 +18,7 @@ import re
 
 from . import thai_numbers
 
-SCREENS = frozenset({"music", "video", "notes", "radio", "timer", "panel"})
+SCREENS = frozenset({"music", "video", "notes", "radio", "timer", "panel", "calendar"})
 
 _TAIL = re.compile(r"(?:ให้หน่อย|หน่อย|ด้วย|นะ|ครับ|ค่ะ|คะ|จ้ะ)+$")
 _WAKE = re.compile(r"^(?:เฮ[ย์]?|hey)?(?:จา[ร]?[์]?วิส|jarvis)")
@@ -50,6 +50,7 @@ _TIMER = (
 )
 #: A bare length on the countdown's page: "5 นาที", "ห้านาที", "ครึ่งชั่วโมง".
 _LENGTH = re.compile(r"^(?:\d+(?:ชั่วโมง|ชม|นาที|วินาที)(?:ครึ่ง)?)+$|^ครึ่งชั่วโมง$")
+_CAL_WHAT = re.compile(r"^(วันนี้|พรุ่งนี้)?มี(?:อะไร|อะไรบ้าง|ไรบ้าง)$")
 _NOTES = (
     (re.compile(r"^(?:อ่าน|อ่านรายการ|มีอะไรบ้าง|อ่านให้ฟัง)$"), "อ่านรายการซื้อของ"),
 )
@@ -78,6 +79,11 @@ def candidate(text: str, screen: str | None) -> str | None:
         if pattern.match(t):
             return full
     raw = " ".join((text or "").split())
+    if screen == "calendar":
+        # On the calendar's page "มีอะไร" is about appointments: "พรุ่งนี้มีอะไร" = "พรุ่งนี้มีนัดอะไร".
+        m = _CAL_WHAT.match(t)
+        if m:
+            return f"{m.group(1) or 'วันนี้'}มีนัดอะไรบ้าง"
     if screen == "timer" and _LENGTH.match("".join(thai_numbers.to_digits(text or "").split())):
         return "จับเวลา " + raw
     if screen in ("music", "video", "radio"):
