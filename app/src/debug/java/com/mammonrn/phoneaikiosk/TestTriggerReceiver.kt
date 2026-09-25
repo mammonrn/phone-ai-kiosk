@@ -144,6 +144,38 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .putExtra(VoiceService.EXTRA_AS_TURN, intent.getBooleanExtra("as_turn", false)))
             }
 
+            ACTION_LAYOUT_REPORT -> {
+                // 0.63.0 (tools/layout/check_layout.py): every TextView on the screen
+                // in front whose text the screen cuts — "…" (ellipsized) or lines
+                // taller than the view (clipped). uiautomator reports the whole text
+                // either way, so only the views can tell. Bounds and the view's id
+                // name only, never the text: the script matches bounds to its dump.
+                val activity = com.mammonrn.phoneaikiosk.KioskScreens.resumed?.get()
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    val root = activity?.window?.decorView
+                    var cut = 0
+                    fun walk(v: android.view.View) {
+                        if (!v.isShown) return
+                        if (v is android.widget.TextView && v.text.isNotEmpty()) {
+                            val layout = v.layout
+                            val ellipsized = layout != null && (0 until layout.lineCount).any { layout.getEllipsisCount(it) > 0 }
+                            val room = v.height - v.compoundPaddingTop - v.compoundPaddingBottom
+                            val clipped = layout != null && room > 0 && layout.height > room + 2
+                            if (ellipsized || clipped) {
+                                val at = IntArray(2); v.getLocationOnScreen(at)
+                                val id = if (v.id > 0) runCatching { v.resources.getResourceEntryName(v.id) }.getOrDefault("-") else "-"
+                                android.util.Log.i("KioskLayout", "cut kind=${if (ellipsized) "ellipsis" else "clipped"}" +
+                                    " bounds=[${at[0]},${at[1]}][${at[0] + v.width},${at[1] + v.height}] id=$id")
+                                cut++
+                            }
+                        }
+                        if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                    }
+                    root?.let { walk(it) }
+                    android.util.Log.i("KioskLayout", "report done screen=${activity?.javaClass?.simpleName ?: "none"} cut=$cut")
+                }
+            }
+
             ACTION_VIDEO_ROTATE -> {
                 // 0.57.0: the sensor's word, for a test without turning the phone:
                 // --es to landscape|portrait. Only in full screen and not locked.
@@ -522,6 +554,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_BEEP = "com.mammonrn.phoneaikiosk.TEST_BEEP"
         const val ACTION_RATES = "com.mammonrn.phoneaikiosk.TEST_RATES"
         const val ACTION_TASKBAR = "com.mammonrn.phoneaikiosk.TEST_TASKBAR"
+        const val ACTION_LAYOUT_REPORT = "com.mammonrn.phoneaikiosk.TEST_LAYOUT_REPORT"
         const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"

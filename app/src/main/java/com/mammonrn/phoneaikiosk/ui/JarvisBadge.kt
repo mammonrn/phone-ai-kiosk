@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.voice.JarvisStatus
 import com.mammonrn.phoneaikiosk.voice.VoiceService
@@ -84,7 +85,17 @@ class JarvisBadge(context: Context, private val theme: Theme, private val screen
     }
 
     override fun onDraw(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
+        // A pressable badge is a 48dp touch area (the minimum, UiScale.TOUCH)
+        // with the 36dp button drawn in its middle (0.63.0, the layout check).
+        val box = if (pressable) minOf(width, height, (JarvisBadges.SIZE * resources.displayMetrics.density).toInt())
+                  else minOf(width, height)
+        canvas.save()
+        canvas.translate((width - box) / 2f, (height - box) / 2f)
+        drawBox(canvas, box.toFloat(), box.toFloat())
+        canvas.restore()
+    }
+
+    private fun drawBox(canvas: Canvas, w: Float, h: Float) {
         if (pressable) {
             // A raised 1995 button in the app's colours; gold while listening, like the home card.
             paint.color = if (status == JarvisStatus.LISTENING) theme.listeningFace else theme.face
@@ -193,23 +204,91 @@ object JarvisBadges {
         content.findViewWithTag<View>(TAG_KEY)?.visibility = if (shown) View.VISIBLE else View.GONE
     }
 
-    /** Adds the badge over the screen, top right, once. */
+    /**
+     * Adds the badge to the screen, once.
+     *
+     * IN AN APP IT IS PART OF THE TITLE BAR (0.63.0): put in the row that holds
+     * the window's X, just before the X, so the row makes room for it. Laid
+     * OVER the screen instead (0.61.0) it covered whatever sat by the X — the
+     * calculator's page squares, found by Poom on the A07. The X is found by
+     * where it is (the clickable view in the top-right corner), since every
+     * screen draws its own title bar. A screen that rebuilds its title bar
+     * (the video player's pages) gets the badge again on its next layout. A
+     * screen with no such row keeps the badge over it, and says so in the log
+     * (`badge placed … mode=overlay`) for tools/layout/check_layout.py.
+     *
+     * The home screen keeps its fixed place at the end of the weather window's
+     * title bar, which leaves room for it.
+     */
     fun attach(activity: Activity) {
         val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
         if (content.findViewWithTag<View>(TAG_KEY) != null) return
         val d = activity.resources.displayMetrics.density
         fun dp(v: Int) = (v * d).toInt()
         val home = activity is MainActivity
-        val size = dp(if (home) HOME_SIZE else SIZE)
         val badge = JarvisBadge(activity, theme(activity), if (home) null else screen(activity)).apply { tag = TAG_KEY }
-        val lp = FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
-            if (home) { topMargin = dp(HOME_TOP); marginEnd = dp(HOME_END) }
-            // An app's window: frame 8 + inset 4, then the 48dp title bar with X at its right.
-            else { topMargin = dp(UiScale.FRAME + UiScale.WINDOW_INSET + (UiScale.TOUCH - SIZE) / 2)
-                   marginEnd = dp(UiScale.FRAME + UiScale.WINDOW_INSET + UiScale.TOUCH + UiScale.SPACE_XS) }
+        if (home) {
+            val size = dp(HOME_SIZE)
+            content.addView(badge, FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(HOME_TOP); marginEnd = dp(HOME_END)
+            })
+            return
         }
-        content.addView(badge, lp)
+        overlay(content, badge, ::dp)
+        val name = activity.javaClass.simpleName
+        content.viewTreeObserver.addOnGlobalLayoutListener {
+            // Placed already and still on screen: nothing to do. Its row thrown
+            // away with a rebuilt title bar: placed again.
+            if (badge.parent !== content && badge.isAttachedToWindow) return@addOnGlobalLayoutListener
+            val close = findClose(content, dp(CORNER_DP)) ?: return@addOnGlobalLayoutListener
+            val row = close.parent as? LinearLayout ?: return@addOnGlobalLayoutListener
+            if (row.orientation != LinearLayout.HORIZONTAL || badge.parent === row) return@addOnGlobalLayoutListener
+            (badge.parent as? ViewGroup)?.removeView(badge)
+            row.addView(badge, row.indexOfChild(close), LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            })
+            android.util.Log.i("KioskUi", "badge placed screen=$name mode=titlebar")
+        }
+        android.util.Log.i("KioskUi", "badge placed screen=$name mode=overlay-until-layout")
     }
+
+    /** Over the screen by the X's usual place, until (or unless) the title bar takes it. */
+    private fun overlay(content: ViewGroup, badge: View, dp: (Int) -> Int) {
+        content.addView(badge, FrameLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH), Gravity.TOP or Gravity.END).apply {
+            // An app's window: frame 8 + inset 4, then the 48dp title bar with X at its right.
+            topMargin = dp(UiScale.FRAME + UiScale.WINDOW_INSET)
+            marginEnd = dp(UiScale.FRAME + UiScale.WINDOW_INSET + UiScale.TOUCH)
+        })
+    }
+
+    /**
+     * The window's X: the smallest shown, clickable view whose top-right corner
+     * is within [corner] px of the screen's top-right corner (below the frame).
+     */
+    private fun findClose(content: ViewGroup, corner: Int): View? {
+        val width = content.width.takeIf { it > 0 } ?: return null
+        val at = IntArray(2)
+        content.getLocationInWindow(at)
+        val (left0, top0) = at[0] to at[1]
+        var best: View? = null
+        var bestArea = Int.MAX_VALUE
+        fun walk(v: View) {
+            if (!v.isShown || v.tag == TAG_KEY) return
+            if (v.isClickable && v.width > 0) {
+                v.getLocationInWindow(at)
+                val right = at[0] - left0 + v.width
+                val top = at[1] - top0
+                val area = v.width * v.height
+                if (width - right <= corner && top <= corner && area < bestArea) { best = v; bestArea = area }
+            }
+            if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        walk(content)
+        return best
+    }
+
+    /** How near the top-right corner the X has to be: frame, inset and a little. */
+    private const val CORNER_DP = 40
 
     /** In an app: 36dp, inside the 48dp title bar. */
     const val SIZE = 36

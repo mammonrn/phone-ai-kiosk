@@ -39,6 +39,9 @@ object KioskScreens {
 
     @Volatile
     var homeInFront: Boolean = false
+
+    /** The screen in front now (debug layout report, tools/layout/check_layout.py). */
+    @Volatile var resumed: java.lang.ref.WeakReference<Activity>? = null
         private set
 
     /** The screens other than home that are open now, by class name (dumpsys, tests). */
@@ -93,6 +96,7 @@ object KioskScreens {
         }
 
         override fun onActivityResumed(activity: Activity) {
+            resumed = java.lang.ref.WeakReference(activity)
             if (activity is MainActivity) homeResumed(true)
         }
 
