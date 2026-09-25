@@ -33,6 +33,9 @@ object TaskbarButtons {
 
     @Volatile var style = A
 
+    /** "แผงควบคุม" at 9sp needs this much to stay on one line (measured on the A07: at wrap it was cut to "แผง"). */
+    private const val PANEL_A_WIDTH = 56
+
     fun apply(activity: Activity, which: Int = style) {
         style = which
         val jarvis = activity.findViewById<TextView>(R.id.jarvis_button) ?: return
@@ -81,11 +84,12 @@ object TaskbarButtons {
                 textSize = 9f
                 typeface = Typeface.create(thai, Typeface.BOLD)
                 setTextColor(ContextCompat.getColor(activity, R.color.retro_text))
-                maxLines = 1
-            })
+                isSingleLine = true
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(PANEL_A_WIDTH), LinearLayout.LayoutParams.WRAP_CONTENT))
             panel.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-            lp.width = FrameLayout.LayoutParams.WRAP_CONTENT
-            panel.setPadding(dp(6), 0, dp(6), 0)
+            lp.width = dp(PANEL_A_WIDTH + 8)
+            panel.setPadding(dp(4), 0, dp(4), 0)
         } else {
             panel.addView(ImageView(activity).apply {
                 setImageResource(R.drawable.ic_pixel_control_panel)

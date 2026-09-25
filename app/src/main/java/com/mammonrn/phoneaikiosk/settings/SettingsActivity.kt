@@ -273,7 +273,7 @@ class SettingsActivity : Activity() {
             val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             into.addView(line, LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(UiScale.SPACE_S) })
             for ((index, v) in row.withIndex()) {
-                line.addView(v, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
+                line.addView(v, LinearLayout.LayoutParams(0, MATCH, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
             }
             repeat(ICONS_PER_ROW - row.size) {
                 line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(UiScale.SPACE_S) })

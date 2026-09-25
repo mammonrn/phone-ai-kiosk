@@ -97,6 +97,7 @@ class MusicActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MusicPlayer.ensureLoaded(this)
         thai = ResourcesCompat.getFont(this, R.font.plex_thai) ?: Typeface.DEFAULT
         pixel = ResourcesCompat.getFont(this, R.font.press_start_2p) ?: Typeface.MONOSPACE
         retro = Retro(this, thai)

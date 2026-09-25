@@ -159,7 +159,19 @@ object MusicPlayer {
 
     fun cycleRepeat(context: Context) { queue.cycleRepeat(); saved(context); changed() }
 
+    /** Whether [loadVolume] has run in this process. */
+    @Volatile private var volumeLoaded = false
+
+    /**
+     * The saved volume, balance and EQ, once per process. 0.61.0: the music
+     * screen asks for it too — before, only the service did, so a screen opened
+     * with no music playing showed the default 0.8 while the saved 0.07 was what
+     * would play (seen on the A07 after an update).
+     */
+    fun ensureLoaded(context: Context) { if (!volumeLoaded) loadVolume(context) }
+
     internal fun loadVolume(context: Context) {
+        volumeLoaded = true
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         volume = prefs.getFloat("volume", 0.8f)
         fx.balance = prefs.getFloat("balance", 0f)
