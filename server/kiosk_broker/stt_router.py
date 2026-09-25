@@ -28,11 +28,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import google_stt, qwen_stt, stt, stt_hints, thai_numbers
+from . import google_stt, qwen31_stt, qwen_stt, stt, stt_hints, thai_numbers
 from .pricing import Pricing
 from .stt import Transcript
 
 PROVIDERS = ("groq", "groq-hints", "google", "qwen")
+
+#: 0.65.0: the newer Model Studio transcribers, for the comparison Poom asked for
+#: (qwen31_stt.py). ONLY by a request's header — never a configured default and
+#: never a fallback; "qwen31-plain" is the same model without the hint words.
+TEST_PROVIDERS = ("qwen31", "qwen31-plain", "funasr")
 
 #: Failures a second transcriber cannot do better on: the first one heard
 #: nobody ("empty"), or the file is not audio at all.
@@ -50,7 +55,7 @@ def fallback_for(requested: str | None, chosen: str, fallback: str) -> str | Non
     """The transcriber to try when `chosen` fails, or None: only for the
     configured default (never a provider the request named), only when the
     fallback is a real, different one."""
-    if (requested or "").strip().lower() in PROVIDERS:
+    if (requested or "").strip().lower() in (*PROVIDERS, *TEST_PROVIDERS):
         return None
     if fallback in PROVIDERS and fallback != chosen:
         return fallback
@@ -91,7 +96,7 @@ class Outcome:
 def choose(requested: str | None, default: str) -> str:
     """The provider to use: the request's if it names a real one, else the default."""
     wanted = (requested or "").strip().lower()
-    if wanted in PROVIDERS:
+    if wanted in PROVIDERS or wanted in TEST_PROVIDERS:
         return wanted
     return default if default in PROVIDERS else "qwen"
 
@@ -103,6 +108,13 @@ def cost_of(provider: str, pricing: Pricing, *, groq_model: str, google_model: s
     if provider == "qwen":
         billed = float(max(1, int(-(-seconds // 1))))
         return f"qwen-{qwen_model}", pricing.qwen_stt_cost(qwen_model, seconds), billed
+    if provider in TEST_PROVIDERS:
+        # Recorded at qwen3's per-second list price: fun-asr's is the same, and
+        # qwen-audio-3.1 bills tokens at a rate the docs do not turn into seconds
+        # (its tokens are logged per call). Each has its own free quota.
+        billed = float(max(1, int(-(-seconds // 1))))
+        name = qwen31_stt.FUNASR_MODEL if provider == "funasr" else qwen31_stt.QWEN31_MODEL
+        return f"qwen-{name}", pricing.qwen_stt_cost(qwen_model, seconds), billed
     if provider == "google":
         billed = float(max(1, int(-(-seconds // 1))))
         return f"google-{google_model}", pricing.google_stt_cost(google_model, seconds), billed
@@ -117,8 +129,15 @@ def transcribe(provider: str, *, groq_client, google_key: str, audio: bytes, fil
                qwen_transport=None, qwen_timeout: float = 20.0) -> Outcome:
     """One transcription by `provider`. SttError on failure, with `seconds` set
     whenever the vendor answered and therefore billed."""
-    hints = stt_hints.load(hints_path) if provider in ("groq-hints", "google", "qwen") else None
-    if provider == "qwen":
+    hints = stt_hints.load(hints_path) if provider in ("groq-hints", "google", "qwen", "qwen31", "funasr") else None
+    if provider in TEST_PROVIDERS:
+        transcript = qwen31_stt.recognize(
+            api_key=qwen_key, audio=audio, language=language.split("-")[0].lower(),
+            model=qwen31_stt.FUNASR_MODEL if provider == "funasr" else qwen31_stt.QWEN31_MODEL,
+            hints=hints, workspace=qwen_workspace, transport=qwen_transport, timeout=qwen_timeout)
+        transcript = Transcript(thai_numbers.to_digits(transcript.text), transcript.seconds,
+                                transcript.no_speech_prob, transcript.avg_logprob)
+    elif provider == "qwen":
         transcript = qwen_stt.recognize(
             api_key=qwen_key, audio=audio, language=language.split("-")[0].lower(), model=qwen_model,
             hints=hints, workspace=qwen_workspace, transport=qwen_transport, timeout=qwen_timeout)

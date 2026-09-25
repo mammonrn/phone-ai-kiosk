@@ -38,7 +38,9 @@ class Broker(private val baseUrl: String, private val token: String) {
         }
 
         /** The transcribers the broker knows. "device" is not one: it never reaches it. */
-        val BROKER_STT_PROVIDERS = setOf("groq", "groq-hints", "google", "qwen")
+        val BROKER_STT_PROVIDERS = setOf("groq", "groq-hints", "google", "qwen",
+            // 0.65.0: the newer Model Studio transcribers, for the comparison only (broker qwen31_stt.py).
+            "qwen31", "qwen31-plain", "funasr")
 
         /** The header value for an override, or null for "use the broker's default". */
         fun sttProviderHeader(override: String?): String? =

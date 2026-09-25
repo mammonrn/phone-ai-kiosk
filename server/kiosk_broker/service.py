@@ -1232,7 +1232,8 @@ def handle_stt(
     def run(which: str):
         # The Qwen key is read when it is needed, like eWeLink's: set-key
         # needs no restart, and a broker that never uses qwen never reads it.
-        secret = envfile.reader(cfg.env_path) if which == "qwen" else (lambda _n: None)
+        secret = (envfile.reader(cfg.env_path) if which == "qwen" or which in stt_router.TEST_PROVIDERS
+                  else (lambda _n: None))
         return stt_router.transcribe(
             which, groq_client=client, google_key=google_key, audio=body,
             filename=filename, language=cfg.stt_language, groq_model=cfg.stt_model,

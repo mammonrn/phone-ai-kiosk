@@ -270,7 +270,7 @@ class Config:
         pricing = Pricing.load(self.pricing_path)
         if provider == "google":
             return pricing.google_stt_cost(self.google_stt_model, self.max_audio_seconds)
-        if provider == "qwen":
+        if provider == "qwen" or provider in ("qwen31", "qwen31-plain", "funasr"):
             return pricing.qwen_stt_cost(self.qwen_stt_model, self.max_audio_seconds)
         return pricing.stt_cost(self.stt_model, self.max_audio_seconds)
 
