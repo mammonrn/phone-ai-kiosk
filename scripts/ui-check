@@ -53,7 +53,7 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_UI_CHECK -p "$PKG" ${ON
 end=$(( $(date +%s) + 600 ))
 result=""
 while [ "$(date +%s)" -lt "$end" ]; do
-  result=$(adb logcat -d -s KioskUiCheck | grep -o "KioskUiCheck: .*" | tail -1)
+  result=$(adb logcat -d -s KioskUiCheck | grep -o -E "KioskUiCheck: (done|failed.*)" | tail -1)
   [ -n "$result" ] && break
   sleep 5
 done
