@@ -32,9 +32,10 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
 /**
  * The engineering calculator (0.52.0, Poom), opened from the Control Panel.
  *
- * THREE TABS on one window: "คำนวณ" (the keypad), "ไฟฟ้า" (Ohm's law, series
- * and parallel, the resistor colour code, AC, wire size — [ElectricalPages])
- * and "ประวัติ" (the last [HISTORY_MAX] results, newest first). A screen of
+ * FOUR TABS on one window: "คำนวณ" (the keypad), "ไฟฟ้า" (Ohm's law, series
+ * and parallel, the resistor colour code, AC, wire size — [ElectricalPages]),
+ * "โซลาร์" (seven solar tools on slides — [SolarPages], 0.62.0) and "ประวัติ"
+ * (the last [HISTORY_MAX] results, newest first). A screen of
  * this app, so lock task allows it and KioskScreens closes it on Hey Jarvis;
  * it opens nothing else, asks for no permission and never touches the mic or
  * the speaker.
@@ -51,10 +52,14 @@ class CalculatorActivity : Activity() {
     private lateinit var content: FrameLayout
     private val tabs = ArrayList<TextView>()
 
-    internal enum class Tab { KEYPAD, ELECTRICAL, HISTORY }
+    internal enum class Tab { KEYPAD, ELECTRICAL, SOLAR, HISTORY }
     internal var tab = Tab.KEYPAD
 
     internal val electrical by lazy { ElectricalPages(this) }
+    internal val solar by lazy { SolarPages(this) }
+
+    /** The solar slides' squares (■ □), in the title bar beside the title: they cost no height (DESIGN.md 5จ). */
+    internal lateinit var pageDots: LinearLayout
 
     // ------------------------------------------------------------ state
 
@@ -159,12 +164,20 @@ class CalculatorActivity : Activity() {
                     FrameLayout.LayoutParams(dp(UiScale.ICON_M), dp(UiScale.ICON_M), Gravity.CENTER))
         }, LinearLayout.LayoutParams(dp(UiScale.TOUCH), dp(UiScale.TOUCH)))
         window.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
+        pageDots = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(UiScale.SPACE_S), 0, dp(UiScale.SPACE_S), 0)
+            visibility = View.GONE
+        }
+        bar.addView(pageDots, bar.childCount - 1, LinearLayout.LayoutParams(WRAP, dp(UiScale.TOUCH)))
 
         val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         for ((i, t) in Tab.entries.withIndex()) {
             val label = getString(when (t) {
                 Tab.KEYPAD -> R.string.calc_tab_keypad
                 Tab.ELECTRICAL -> R.string.calc_tab_electrical
+                Tab.SOLAR -> R.string.calc_tab_solar
                 Tab.HISTORY -> R.string.calc_tab_history
             })
             val view = TextView(this).apply {
@@ -189,6 +202,7 @@ class CalculatorActivity : Activity() {
     internal fun show(next: Tab) {
         if (next != Tab.HISTORY) confirmingClear = false
         tab = next
+        pageDots.visibility = View.GONE           // the solar tab shows its squares again
         for ((i, view) in tabs.withIndex()) {
             val on = Tab.entries[i] == next
             view.typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)
@@ -199,6 +213,7 @@ class CalculatorActivity : Activity() {
         when (next) {
             Tab.KEYPAD -> showKeypad()
             Tab.ELECTRICAL -> electrical.open()
+            Tab.SOLAR -> solar.open()
             Tab.HISTORY -> showHistory()
         }
     }
