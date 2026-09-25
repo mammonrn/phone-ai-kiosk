@@ -483,7 +483,8 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
      * whatever a screenshot would say. Poom's place in each film is put back.
      */
     private fun videoFrames() {
-        if (!wanted("video-frames")) return
+        // Either engine alone too (0.66: ONLY=video-frames-vlc for scripts/video-frames-repeat).
+        if (!wanted("video-frames-vlc") && !wanted("video-frames-media3")) return
         val player = com.mammonrn.phoneaikiosk.media.VideoPlayer
         val videos = com.mammonrn.phoneaikiosk.media.PlaylistStore.read(ctx) {
             it.searchable(com.mammonrn.phoneaikiosk.media.Playlist.Kind.VIDEO)
@@ -494,6 +495,7 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         for (want in listOf(com.mammonrn.phoneaikiosk.media.PlayerChoice.Engine.VLC,
                             com.mammonrn.phoneaikiosk.media.PlayerChoice.Engine.MEDIA3)) {
             val name = "video-frames-${want.name.lowercase()}"
+            if (!wanted(name)) continue
             val at = videos.indexOfFirst { engine(it) == want }
             if (at < 0) { note(name, listOf(), listOf("no ${want.name} video in the playlists to try")); continue }
             val issues = ArrayList<String>()

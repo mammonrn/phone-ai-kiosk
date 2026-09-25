@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# The wake word rests while a visited Meta app records (0.65.0, social/SocialVisit), measured
+# on the A07 without a call (0.66, Poom: "ถ้าจำลองได้ผ่าน adb ให้วัดเอง"). During a Facebook
+# visit, the keyboard's voice typing (Gboard, another app than the kiosk, recording over the
+# visited app — as a call or a voice message would) is started and stopped; the kiosk's log
+# must show the pause come and go. Runs on the PC (Git Bash); the kiosk LOCKED on its screen.
+#
+#   scripts/mic-pause-check
+#
+# The visit skips the face with the adb-only nonce (see scripts/social-check). Voice typing
+# may type what the room says into the field it opened on; the field is emptied afterwards
+# and nothing is sent. No password field is touched.
+export MSYS_NO_PATHCONV=1
+PKG=com.mammonrn.phoneaikiosk.debug
+fails=0
+nonce=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')
+adb shell setprop debug.kiosk.social_nonce "$nonce" || exit 2
+trap 'adb shell setprop debug.kiosk.social_nonce "\"\""' EXIT
+check() { if [ "$2" = 0 ]; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
+dump() { adb shell uiautomator dump /sdcard/mpc.xml >/dev/null 2>&1; adb shell cat /sdcard/mpc.xml | tr '>' '\n'; }
+centre() {  # centre of the first node matching $1 (a grep -E on the node) → "x y"
+  local b; b=$(dump | grep -E "$1" | head -1 | grep -o -E 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | grep -o -E '[0-9]+' | tr '\n' ' ')
+  set -- $b; [ -n "$4" ] && echo "$(( ($1+$3)/2 )) $(( ($2+$4)/2 ))"
+}
+paused_other() { adb shell dumpsys activity service $PKG/com.mammonrn.phoneaikiosk.voice.VoiceService | grep -a "wake-pause" | grep -c -i "other_app_mic"; }
+
+adb shell dumpsys activity activities | grep -q "mLockTaskModeState=LOCKED" || { echo "not LOCKED"; exit 2; }
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME -p $PKG >/dev/null; sleep 3
+adb logcat -c
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_SOCIAL_VISIT -p $PKG --es nonce "$nonce" --es app FACEBOOK --es do open >/dev/null
+sleep 8
+[ "$(paused_other)" = 0 ] && a=0 || a=1
+check "visit, nobody recording: the wake word is not resting for the microphone" $a
+
+# A text field of the visited app (not a password field), then the keyboard's microphone key.
+field=$(centre 'class="android.widget.EditText"[^>]*password="false"')
+[ -n "$field" ] || { echo "FAIL no text field on the visited app's screen"; fails=$((fails + 1)); }
+if [ -n "$field" ]; then
+  adb shell input tap $field; sleep 2
+  mic=$(centre 'package="com.google.android.inputmethod.latin"[^>]*content-desc="[^"]*(oice|ไมโครโฟน|เสียง)[^"]*"')
+  [ -n "$mic" ] || mic=$(centre 'content-desc="[^"]*(oice typing|Voice input|พิมพ์ด้วยเสียง)[^"]*"')
+  if [ -z "$mic" ]; then echo "FAIL no voice-typing key on the keyboard"; fails=$((fails + 1)); else
+    adb shell input tap $mic; sleep 6
+    rec=$(adb shell dumpsys audio | grep -a -c "rec state:started\|recording")
+    echo "     recordings the system reports: $rec"
+    [ "$(paused_other)" -ge 1 ] && a=0 || a=1
+    check "another app records: the wake word rests (other_app_mic)" $a
+    adb shell input keyevent KEYCODE_BACK; sleep 1
+    adb shell input keyevent KEYCODE_BACK; sleep 6
+    [ "$(paused_other)" = 0 ] && a=0 || a=1
+    check "it stopped: the wake word listens again" $a
+  fi
+  # Empty whatever voice typing put in the field.
+  adb shell input tap $field; sleep 1
+  adb shell input keyevent KEYCODE_MOVE_END
+  for i in $(seq 1 8); do adb shell input keyevent KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL; done
+fi
+
+adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_HOME -p $PKG >/dev/null; sleep 4
+adb shell dumpsys device_policy | grep -a -m1 "LockTaskPolicy {mPackages" | grep -q -E "facebook|instagram" && a=1 || a=0
+check "back in the kiosk: the app is off the allowlist" $a
+adb shell dumpsys activity activities | grep -q "mLockTaskModeState=LOCKED" && a=0 || a=1
+check "the kiosk is LOCKED" $a
+echo "--- log"
+adb logcat -d -s KioskVoice:I KioskSocial:I | grep -a -E "wake pause|visit" | sed 's/^.*: //'
+echo "fails=$fails"
+exit $((fails > 0))

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# The UI check's video picture test (video-frames-vlc / -media3), N times in a row, with
+# each run's video log kept — for a failure that shows once in a while (0.65.1, Poom:
+# "ห้ามถือว่าเป็นเรื่องบังเอิญ"). Runs on the PC (Git Bash), the app from CI installed,
+# the kiosk LOCKED. Nothing is installed; the screen is woken before each run.
+#
+#   scripts/video-frames-repeat [N=1] [OUT_DIR]   (Poom 2026-09-26: one run, its log read — not dozens)
+#
+# OUT_DIR/run-K.log   the video lines of run K (KioskVideo, KioskVlc, KioskUiCheck): numbers only
+# OUT_DIR/summary.tsv run, vlc pass, media3 pass, the issues
+export MSYS_NO_PATHCONV=1
+N=${1:-1}
+OUT=${2:-$(mktemp -d)}
+mkdir -p "$OUT"
+here=$(cd "$(dirname "$0")" && pwd)
+printf 'run\tvlc\tmedia3\tissues\n' > "$OUT/summary.tsv"
+for k in $(seq 1 "$N"); do
+  adb shell input keyevent KEYCODE_WAKEUP
+  adb logcat -c
+  SKIP_INSTALL=1 ONLY=video-frames bash "$here/ui-check" > "$OUT/walk-$k.txt" 2>&1
+  adb logcat -d -v time -s KioskVideo:* KioskVlc:* KioskUiCheck:* VLC:* > "$OUT/run-$k.log"
+  res=$(grep -o -E "C:[^ ]*results.md|/[^ ]*results.md" "$OUT/walk-$k.txt" | tail -1)
+  vlc=$(grep -a "video-frames-vlc" "$res" 2>/dev/null | awk -F'|' '{gsub(/ /,"",$3); print $3}')
+  m3=$(grep -a "video-frames-media3" "$res" 2>/dev/null | awk -F'|' '{gsub(/ /,"",$3); print $3}')
+  issues=$(grep -a "video-frames" "$res" 2>/dev/null | awk -F'|' '{print $4}' | tr '\n' ' ')
+  printf '%s\t%s\t%s\t%s\n' "$k" "${vlc:-?}" "${m3:-?}" "$issues" >> "$OUT/summary.tsv"
+  echo "run $k: vlc=${vlc:-?} media3=${m3:-?}"
+done
+echo "out: $OUT"
+adb shell dumpsys activity activities | grep -a -m1 -o "mLockTaskModeState=[A-Z]*"
