@@ -59,7 +59,6 @@ internal class SolarPages(private val a: CalculatorActivity) {
     }
 
     private var offGrid = false
-    private var current = Slide.PANELS
     private var chemistry = Solar.Chemistry.LITHIUM
     private var batteryV = 48
     private var controllerV = 48
@@ -69,59 +68,16 @@ internal class SolarPages(private val a: CalculatorActivity) {
     private val typed = HashMap<String, String>()
 
     private val slides = LinkedHashMap<Slide, View>()
-    private val frame = SlideFrame(a) { step -> turn(step) }
 
     private fun shown(): List<Slide> = Slide.entries.filter { offGrid || !it.offGridOnly }
+
+    /** The slides: the calculator's one slide component (SlideDeck), shared with the electrical tab. */
+    private val deck = SlideDeck(a, { shown() }, { a.getString(it.title) }, { slides.getValue(it) }, Slide.PANELS)
 
     /** The tab opens: the slide it was on, the squares in the title bar. */
     fun open() {
         if (slides.isEmpty()) for (s in Slide.entries) build(s)
-        a.setPage(frame)
-        render()
-    }
-
-    private fun turn(step: Int) {
-        val list = shown()
-        val next = (list.indexOf(current) + step).coerceIn(0, list.lastIndex)
-        if (list[next] == current) return
-        current = list[next]
-        a.currentFocus?.clearFocus()
-        render()
-    }
-
-    private fun render() {
-        if (current !in shown()) current = Slide.PANELS
-        frame.removeAllViews()
-        frame.addView(slides.getValue(current), FrameLayout.LayoutParams(MATCH, MATCH))
-        dots()
-    }
-
-    /** ■ □ □ in the title bar: which slide, of how many. A shape, not only a colour. */
-    private fun dots() {
-        val host = a.pageDots
-        host.removeAllViews()
-        val list = shown()
-        host.visibility = View.VISIBLE
-        val said = ArrayList<String>()
-        for ((n, s) in list.withIndex()) {
-            val on = s == current
-            host.addView(View(a).apply {
-                background = GradientDrawable().apply {
-                    if (on) setColor(a.color(R.color.retro_title_text))
-                    setStroke(a.dp(UiScale.HAIRLINE), a.color(R.color.retro_title_text))
-                }
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, LinearLayout.LayoutParams(a.dp(PagedPanel.SQUARE_DP), a.dp(PagedPanel.SQUARE_DP)).apply { if (n > 0) marginStart = a.dp(UiScale.SPACE_XS) })
-            val name = a.getString(s.title)
-            said.add(if (on) a.getString(R.string.solar_dot_showing, name) else name)
-        }
-        host.contentDescription = a.getString(R.string.solar_dots, list.indexOf(current) + 1, list.size, said.joinToString(", "))
-        host.isClickable = true
-        host.setOnClickListener {
-            val l = shown()
-            current = l[(l.indexOf(current) + 1) % l.size]
-            render()
-        }
+        deck.open()
     }
 
     /** Builds (or rebuilds, after a choice on it) one slide. */
@@ -148,7 +104,7 @@ internal class SolarPages(private val a: CalculatorActivity) {
 
     private fun rebuild(s: Slide) {
         build(s)
-        if (s == current) render()
+        if (s == deck.current) deck.render()
     }
 
     // ------------------------------------------------------------ 1. panels
@@ -180,7 +136,7 @@ internal class SolarPages(private val a: CalculatorActivity) {
         offGrid = off
         // Every slide says "หน้า n จาก m": all of them change.
         for (s in Slide.entries) build(s)
-        render()
+        deck.render()
     }
 
     // ------------------------------------------------------------ 2. battery
@@ -449,45 +405,6 @@ internal class SolarPages(private val a: CalculatorActivity) {
     private fun gap() = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = a.dp(UiScale.SPACE_S) }
 
     private fun column() = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
-
-    /**
-     * The slide's frame: a sideways swipe over it turns the slide, by
-     * PagedPanel's rule (more than twice the touch slop, 1.5 times more across
-     * than down). Anything less reaches what is under the finger.
-     */
-    private class SlideFrame(context: Context, private val onTurn: (Int) -> Unit) : FrameLayout(context) {
-        private val slop = ViewConfiguration.get(context).scaledTouchSlop
-        private var downX = 0f
-        private var downY = 0f
-        private var swiping = false
-
-        override fun onInterceptTouchEvent(event: MotionEvent): Boolean = track(event)
-
-        @SuppressLint("ClickableViewAccessibility")
-        override fun onTouchEvent(event: MotionEvent): Boolean =
-            track(event) || event.actionMasked == MotionEvent.ACTION_DOWN
-
-        private fun track(event: MotionEvent): Boolean {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y; swiping = false }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.x - downX
-                    val dy = event.y - downY
-                    if (!swiping && abs(dx) > slop * 2 && abs(dx) > abs(dy) * 1.5f) {
-                        swiping = true
-                        parent?.requestDisallowInterceptTouchEvent(true)
-                    }
-                }
-                MotionEvent.ACTION_UP -> if (swiping) {
-                    swiping = false
-                    onTurn(if (event.x - downX < 0) 1 else -1)
-                    return true
-                }
-                MotionEvent.ACTION_CANCEL -> swiping = false
-            }
-            return swiping
-        }
-    }
 
     companion object {
         /** The battery systems sold for homes. */

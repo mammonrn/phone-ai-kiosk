@@ -17,7 +17,7 @@ class CalculatorScreenTest {
         listOf(File(path), File("app/$path")).first { it.exists() }.readText()
 
     private val calc = listOf("CalculatorActivity.kt", "ElectricalPages.kt", "CalcEngine.kt", "Electrical.kt",
-                                  "Solar.kt", "SolarPages.kt")
+                                  "Solar.kt", "SolarPages.kt", "SlideDeck.kt")
         .associateWith { file("src/main/java/com/mammonrn/phoneaikiosk/calc/$it") }
 
     @Test
@@ -89,7 +89,8 @@ class CalculatorScreenTest {
         // that comes out is checked on the A07's screenshot, not here.
         val pages = calc.getValue("CalculatorActivity.kt") + calc.getValue("ElectricalPages.kt")
         // 0.54.0: the sizes are UiScale's names (UiScaleTest); the tool list was 60dp.
-        assertTrue("LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY))" in pages)   // the tool list
+        // 0.61.0: the tool list is gone (the tools are slides, Poom); [คำนวณ] [ล้างค่า] keep the 56dp height.
+        assertTrue("LinearLayout.LayoutParams(0, a.dp(UiScale.PRIMARY), 2f)" in pages)   // คำนวณ
         assertTrue("LinearLayout.LayoutParams(MATCH, dp(UiScale.PRIMARY))" in pages)     // "กลับหน้าหลัก"
     }
 }

@@ -202,7 +202,7 @@ class CalculatorActivity : Activity() {
     internal fun show(next: Tab) {
         if (next != Tab.HISTORY) confirmingClear = false
         tab = next
-        pageDots.visibility = View.GONE           // the solar tab shows its squares again
+        pageDots.visibility = View.GONE           // the solar and electrical tabs show their squares again
         for ((i, view) in tabs.withIndex()) {
             val on = Tab.entries[i] == next
             view.typeface = Typeface.create(thai, if (on) Typeface.BOLD else Typeface.NORMAL)

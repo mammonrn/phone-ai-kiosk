@@ -30,41 +30,47 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
     enum class Tool { OHM, COMBINE, COLOUR, AC, WIRE }
 
-    /** The tool on screen, or null for the list. */
-    private var tool: Tool? = null
+    /**
+     * The tools are slides (Poom 2026-09-25): swiped sideways, ■ □ in the title
+     * bar, by the calculator's one slide component (SlideDeck), the same as the
+     * solar tab. There is no list of tools any more. Each tool still builds its
+     * page as before — nothing of the formulas or results changed.
+     */
+    private val deck = SlideDeck(a, { Tool.entries }, { a.getString(titleOf(it)) }, { build(it) }, Tool.OHM)
 
-    fun open() = draw(tool)
+    fun open() = deck.open()
 
-    /** Back from a tool goes to the list. False when already on the list. */
-    fun back(): Boolean {
-        if (tool == null) return false
-        draw(null)
-        return true
+    /** Back closes the calculator, as on the solar tab: there is no list to go back to. */
+    fun back(): Boolean = false
+
+    /** The page a tool built last, and whether the deck is asking for it now. */
+    private var built: View? = null
+    private var building = false
+
+    /** The tool being built: the key its typed values are kept under ("OHM:…", as before). */
+    private var tool: Tool = Tool.OHM
+
+    private fun build(t: Tool): View {
+        tool = t
+        building = true
+        try {
+            when (t) {
+                Tool.OHM -> ohm()
+                Tool.COMBINE -> combine()
+                Tool.COLOUR -> colour()
+                Tool.AC -> ac()
+                Tool.WIRE -> wire()
+            }
+        } finally {
+            building = false
+        }
+        return built!!
     }
 
-    private fun draw(next: Tool?) {
-        tool = next
-        when (next) {
-            null -> list()
-            Tool.OHM -> ohm()
-            Tool.COMBINE -> combine()
-            Tool.COLOUR -> colour()
-            Tool.AC -> ac()
-            Tool.WIRE -> wire()
-        }
-    }
-
-    private fun list() {
-        val page = column()
-        val names = listOf(
-            Tool.OHM to R.string.el_ohm, Tool.COMBINE to R.string.el_combine, Tool.COLOUR to R.string.el_colour,
-            Tool.AC to R.string.el_ac, Tool.WIRE to R.string.el_wire)
-        for ((t, name) in names) {
-            page.addView(a.button(a.getString(name), big = true) { draw(t) },
-                         LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY)).apply { bottomMargin = a.dp(UiScale.SPACE_S) })
-        }
-        page.addView(a.text(a.getString(R.string.el_list_hint), UiScale.TEXT_NOTE, dim = true))
-        a.setPage(scroll(page))
+    /** A tool's page: given to the deck, or — when a tool redraws itself after a choice — shown again. */
+    private fun showPage(view: View) {
+        built = view
+        if (!building) deck.render()
     }
 
     // ------------------------------------------------------------ Ohm's law
@@ -100,7 +106,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
                 bold = values.withIndex().filter { it.value.second == null }.map { it.index }.toSet())
         }, onClear = { fields.forEach { it.second.clear() }; out.clear() }))
         page.addView(out.view)
-        a.setPage(scroll(page))
+        showPage(scroll(page))
     }
 
     // ------------------------------------------------------------ series / parallel
@@ -141,7 +147,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
                             "ต่อขนาน = " + Electrical.withUnit(parallel, part.unit)), emptyList(), bold = setOf(0, 1))
         }, onClear = { fields.forEach { it.clear() }; out.clear() }))
         page.addView(out.view)
-        a.setPage(scroll(page))
+        showPage(scroll(page))
     }
 
     // ------------------------------------------------------------ colour code
@@ -162,7 +168,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             a.toggle("4 แถบ", bandCount == 4) { bandCount = 4; picking = null; colour() },
             a.toggle("5 แถบ", bandCount == 5) { bandCount = 5; picking = null; colour() })), gap())
         if (decoding) decode(page) else encode(page)
-        a.setPage(scroll(page))
+        showPage(scroll(page))
     }
 
     private fun roleOf(index: Int): String {
@@ -334,7 +340,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
             out2.show(lines, if (ff != 50.0 && ff != 60.0) listOf("ไฟบ้านในไทยเป็น 50 Hz") else emptyList())
         }, onClear = { listOf(l, c).forEach { it.clear() }; out2.clear() }))
         page.addView(out2.view)
-        a.setPage(scroll(page))
+        showPage(scroll(page))
     }
 
     // ------------------------------------------------------------ wire size
@@ -381,7 +387,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         page.addView(a.text(a.getString(R.string.el_wire_ampacity), UiScale.TEXT_NOTE).apply {
             setTextColor(a.color(R.color.retro_bad)); setPadding(0, a.dp(UiScale.SPACE_S), 0, 0)
         })
-        a.setPage(scroll(page))
+        showPage(scroll(page))
     }
 
     // ------------------------------------------------------------ parts
@@ -509,8 +515,6 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
     }
 
     private fun toolPage(title: Int, hint: Int) = column().apply {
-        addView(a.button(a.getString(R.string.el_back)) { draw(null) },
-                LinearLayout.LayoutParams(MATCH, a.dp(UiScale.TOUCH)).apply { bottomMargin = a.dp(UiScale.SPACE_S) })
         addView(a.text(a.getString(title), UiScale.TEXT_HEADING).apply { typeface = Typeface.create(a.thai, Typeface.BOLD) })
         addView(a.text(a.getString(hint), UiScale.TEXT_NOTE, dim = true).apply { setPadding(0, a.dp(UiScale.SPACE_XS), 0, a.dp(UiScale.SPACE_XS)) })
     }
@@ -536,5 +540,13 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
 
     companion object {
         const val MAX_PARTS = 8
+
+        fun titleOf(t: Tool): Int = when (t) {
+            Tool.OHM -> R.string.el_ohm
+            Tool.COMBINE -> R.string.el_combine
+            Tool.COLOUR -> R.string.el_colour
+            Tool.AC -> R.string.el_ac
+            Tool.WIRE -> R.string.el_wire
+        }
     }
 }

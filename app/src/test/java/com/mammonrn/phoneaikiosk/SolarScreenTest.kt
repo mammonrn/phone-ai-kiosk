@@ -29,14 +29,26 @@ class SolarScreenTest {
     @Test
     fun `the tools are slides turned by a swipe, with squares in the title bar - no tab row`() {
         val body = pages.substringAfter("internal class SolarPages")
-        assertTrue("override fun onInterceptTouchEvent" in body)
-        assertTrue("slop * 2" in body && "abs(dy) * 1.5f" in body)          // PagedPanel's rule
-        assertTrue("PagedPanel.SQUARE_DP" in body)                          // the same squares
+        // The swipe and the squares are the calculator's one slide component, shared with the electrical tab.
+        val deck = file("src/main/java/com/mammonrn/phoneaikiosk/calc/SlideDeck.kt")
+        assertTrue("SlideDeck(" in body)
+        assertTrue("override fun onInterceptTouchEvent" in deck)
+        assertTrue("slop * 2" in deck && "abs(dy) * 1.5f" in deck)          // PagedPanel's rule
+        assertTrue("PagedPanel.SQUARE_DP" in deck)                          // the same squares
         assertFalse("a tab row is back", "private val tabs" in body || "fun list()" in body)
         // The squares live in the window's title bar, and only while on the solar tab.
         assertTrue("bar.addView(pageDots" in activity)
         assertTrue("pageDots.visibility = View.GONE" in activity)
         assertTrue("Tab.SOLAR -> solar.open()" in activity)
+    }
+
+    /** Poom 2026-09-25: the electrical tab's tools are slides too, by the same component, not a copy. */
+    @Test
+    fun `the electrical tools are slides of the same deck, with no list of buttons and no second swipe code`() {
+        val el = file("src/main/java/com/mammonrn/phoneaikiosk/calc/ElectricalPages.kt")
+        assertTrue("SlideDeck(" in el)
+        assertFalse("fun list()" in el || "R.string.el_back" in el)
+        for (other in listOf(el, pages)) assertFalse("a second swipe", "onInterceptTouchEvent" in other || "scaledTouchSlop" in other)
     }
 
     @Test
