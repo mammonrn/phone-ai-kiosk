@@ -73,14 +73,11 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
     private val results = JSONArray().also { File(out, "results.json").writeText("[]") }
     private val a11y = AccessibilityCheckPreset.getAccessibilityHierarchyChecksForPreset(AccessibilityCheckPreset.LATEST)
 
-    /** Rules waiting for Poom (report ก): shown as exceptions, not failures. */
-    private val waiting = mapOf(
-        "weather_titlebar" to "แถบหัวหน้าต่างหน้าแรกสูง 25dp (แตะเพื่อหุบ) รอ Poom",
-        "gold_titlebar" to "แถบหัวหน้าต่างหน้าแรกสูง 25dp (แตะเพื่อหุบ) รอ Poom",
-        "crypto_titlebar" to "แถบหัวหน้าต่างหน้าแรกสูง 25dp (แตะเพื่อหุบ) รอ Poom",
-        "home_titlebar" to "แถบหัวหน้าต่างหน้าแรกสูง 25dp (แตะเพื่อหุบ) รอ Poom",
-        "gold_pages" to "จุดเปลี่ยนหน้าทอง/น้ำมันอยู่ในแถบหัว 25dp รอ Poom",
-    )
+    /**
+     * Rules waiting for Poom: none since 0.64.0 (Poom decided every one). A future
+     * one goes here BY NAME with its reason — reported, never silently dropped.
+     */
+    private val waiting = emptyMap<String, String>()
 
     // ------------------------------------------------------------ moving about
 
@@ -181,7 +178,9 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
 
     // ------------------------------------------------------------ the checks
 
-    private class Seen(val view: View, val rect: Rect, val full: Rect, val label: String, val id: String)
+    private class Seen(val view: View, val rect: Rect, val full: Rect, val label: String, val id: String,
+                       /** What a finger can press: [full], or more when a TouchAreas gives it more. */
+                       val touch: Rect = full)
 
     private fun idOf(v: View): String =
         if (v.id > 0) runCatching { v.resources.getResourceEntryName(v.id) }.getOrDefault("") else ""
@@ -222,7 +221,8 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
                     if (v.getGlobalVisibleRect(r)) {
                         val at = IntArray(2); v.getLocationOnScreen(at)
                         seen.add(Seen(v, r, Rect(at[0], at[1], at[0] + v.width, at[1] + v.height),
-                            words(v).replace('\n', ' ').take(40), idOf(v)))
+                            words(v).replace('\n', ' ').take(40), idOf(v),
+                            com.mammonrn.phoneaikiosk.ui.TouchAreas.screenArea(v)))
                     }
                 }
                 if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
@@ -259,8 +259,9 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         for (s in seen) {
             if (!s.view.isClickable || !s.view.isEnabled) continue
             if (s.rect != s.full) continue                      // cut by a scrolling edge: partly shown
-            if (minOf(s.rect.width(), s.rect.height()) < min) {
-                val line = "touch: '${s.label}' ${(s.rect.width() / density).toInt()}×${(s.rect.height() / density).toInt()}dp"
+            // The area it really answers to: bigger than drawn when a TouchAreas gives it more.
+            if (minOf(s.touch.width(), s.touch.height()) < min) {
+                val line = "touch: '${s.label}' ${(s.touch.width() / density).toInt()}×${(s.touch.height() / density).toInt()}dp"
                 val why = waitingFor(s)
                 if (why != null) excepted.add("$line — $why") else issues.add(line)
             }
@@ -291,8 +292,7 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         File(out, "results.json").writeText(results.toString(1))
     }
 
-    private fun waitingFor(s: Seen): String? =
-        waiting[s.id] ?: if (s.label.startsWith("หน้า") && s.label.contains("ทอง")) waiting["gold_pages"] else null
+    private fun waitingFor(s: Seen): String? = waiting[s.id]
 
     /**
      * The screen as the app's window draws it (PixelCopy). A video's picture is a

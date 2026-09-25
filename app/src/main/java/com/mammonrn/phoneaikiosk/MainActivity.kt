@@ -472,16 +472,33 @@ class MainActivity : Activity() {
      *            start — its room goes to the windows with something to say
      * Registration order is the order of windows that have never had news.
      */
+    /** The windows' column's touch areas (ui/TouchAreas), made once. */
+    private var cardTouch: com.mammonrn.phoneaikiosk.ui.TouchAreas? = null
+
+    private fun cardAreas(card: android.view.View): com.mammonrn.phoneaikiosk.ui.TouchAreas {
+        cardTouch?.let { return it }
+        val column = card.parent as android.view.View
+        return com.mammonrn.phoneaikiosk.ui.TouchAreas(column).also { column.touchDelegate = it; cardTouch = it }
+    }
+
     private fun setUpCards() {
         fun card(id: String, root: Int, body: Int, badge: Int, titlebar: Int, weight: Float,
                  foldAfterMs: Long, alwaysOpen: Boolean = false, openOnFirst: Boolean = true) {
             cards[id] = Card(id, findViewById(root), findViewById(body), findViewById(badge), weight,
                              findViewById(titlebar))
             board.register(CardBoard.Spec(id, foldAfterMs, alwaysOpen, openOnFirst))
-            // Tapping a folded window's bar opens it for two minutes.
-            findViewById<android.view.View>(titlebar).setOnClickListener {
-                board.touch(id, SystemClock.elapsedRealtime())
-                renderCards(SystemClock.elapsedRealtime())
+            // 0.64.0 (Poom): the WHOLE window is tapped, not its bar — a folded window
+            // opens for two minutes, an open one stays open. A window that never folds
+            // has no tap (a button that does nothing is not a button). Folded, a window
+            // is only its bar (35dp): its touch area reaches 48dp into the gaps around
+            // it (cardAreas), drawn the same.
+            if (!alwaysOpen) {
+                val root = findViewById<android.view.View>(root)
+                root.setOnClickListener {
+                    board.touch(id, SystemClock.elapsedRealtime())
+                    renderCards(SystemClock.elapsedRealtime())
+                }
+                cardAreas(root).add(root)
             }
         }
         // Registered in the order the screen keeps (DESIGN.md, ก): the weather,
@@ -508,7 +525,7 @@ class MainActivity : Activity() {
         val openPlayer = android.view.View.OnClickListener {
             startActivity(Intent(this, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
         }
-        findViewById<android.view.View>(R.id.music_titlebar).setOnClickListener(openPlayer)
+        findViewById<android.view.View>(R.id.card_music).setOnClickListener(openPlayer)
         findViewById<android.view.View>(R.id.music_song).setOnClickListener(openPlayer)
         findViewById<android.view.View>(R.id.music_toggle).setOnClickListener {
             com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
@@ -1083,6 +1100,11 @@ class MainActivity : Activity() {
         commodityPages = findViewById(R.id.commodity_pages)
         // 0.53.2: swipe, and the page squares in the title bar — no tab row.
         commodityPages.attachIndicator(findViewById(R.id.gold_pages_dots))
+        // 0.64.0 (Poom): the squares stay their size (they sit in a 25dp bar); what a
+        // finger may press is 48dp, reaching into the gold window below them.
+        findViewById<android.view.View>(R.id.card_gold).let { gold ->
+            gold.touchDelegate = com.mammonrn.phoneaikiosk.ui.TouchAreas(gold).apply { add(findViewById(R.id.gold_pages_dots)) }
+        }
         // Turning a page is a touch on the card: it stays open two minutes and
         // CardBoard.fit will not fold it under the finger.
         commodityPages.onTurned = { board.touch("gold", SystemClock.elapsedRealtime()) }

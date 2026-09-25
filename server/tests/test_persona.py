@@ -101,7 +101,8 @@ def test_it_is_meaningfully_smaller_than_the_first_production_version():
     # 0.43.0: 1,143 — 11 over the first version, for "unsure, not a guess"
     # (persona.py). Still the ceiling that stops the rest creeping.
     # 0.63.0: 1,322 — the sentences that work by voice (Poom approved; persona.py).
-    assert len(SYSTEM_PROMPT) < 1330
+    # 0.64.0: 1,370 — the apps named, buying advice allowed (persona.py).
+    assert len(SYSTEM_PROMPT) < 1375
     assert len(SYSTEM_PROMPT) <= MAX_PROMPT_CHARS
 
 
