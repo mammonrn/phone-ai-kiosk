@@ -1579,6 +1579,8 @@ class MainActivity : Activity() {
         // worth having to edit it deliberately. Xiaomi Home is the third, for
         // "ขอดูกล้อง" — Poom's decision, one package, nothing Xiaomi else.
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(packageName))
+        // 0.65.0: Facebook's and Instagram's notifications refused by the device owner (social/SocialVisit).
+        com.mammonrn.phoneaikiosk.social.SocialVisit.refuseNotifications(this)
 
         // Re-checked before every action too: Maps can be installed while the
         // kiosk is already running, which is exactly what happened on the A07.

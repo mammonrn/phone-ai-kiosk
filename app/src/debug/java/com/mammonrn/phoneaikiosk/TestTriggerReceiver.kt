@@ -50,6 +50,33 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             }
 
+            ACTION_SOCIAL_VISIT -> {
+                // 0.65.0: a Facebook/Instagram visit WITHOUT the face, to test how it ends
+                // (Back, Hey Jarvis, screen off, the limit) on the A07. This receiver is
+                // exported, so any app could send this: it acts ONLY when --es nonce equals
+                // the system property debug.kiosk.social_nonce (16+ characters), which only
+                // adb's shell (or the system) can set — `adb shell setprop debug.kiosk.social_nonce <n>`,
+                // cleared after the test. --es app FACEBOOK|INSTAGRAM --es do open|play|end
+                val prop = runCatching {
+                    Class.forName("android.os.SystemProperties").getMethod("get", String::class.java)
+                        .invoke(null, "debug.kiosk.social_nonce") as String
+                }.getOrDefault("")
+                val nonce = intent.getStringExtra("nonce").orEmpty()
+                if (prop.length < 16 || nonce != prop) {
+                    android.util.Log.w("KioskSocial", "test visit refused: nonce")
+                    return
+                }
+                val app = runCatching { com.mammonrn.phoneaikiosk.social.SocialVisit.App.valueOf(intent.getStringExtra("app") ?: "") }
+                    .getOrDefault(com.mammonrn.phoneaikiosk.social.SocialVisit.App.FACEBOOK)
+                val front = com.mammonrn.phoneaikiosk.KioskScreens.resumed?.get()
+                val result = when (intent.getStringExtra("do")) {
+                    "end" -> { com.mammonrn.phoneaikiosk.social.SocialVisit.end(context, "test"); "ended" }
+                    "play" -> front?.let { com.mammonrn.phoneaikiosk.social.SocialVisit.openPlayStore(it, app).name } ?: "no-kiosk-screen"
+                    else -> front?.let { com.mammonrn.phoneaikiosk.social.SocialVisit.open(it, app).name } ?: "no-kiosk-screen"
+                }
+                android.util.Log.i("KioskSocial", "test visit ${intent.getStringExtra("do") ?: "open"} result=$result")
+            }
+
             ACTION_LIGHTS_PAGE -> {
                 // A sample "ไฟในบ้าน" page (0.47.0), to see it on the A07 before
                 // the VPS is deployed. --ez on true|false. Read the next time
@@ -580,6 +607,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_TASKBAR = "com.mammonrn.phoneaikiosk.TEST_TASKBAR"
         const val ACTION_LAYOUT_REPORT = "com.mammonrn.phoneaikiosk.TEST_LAYOUT_REPORT"
         const val ACTION_UI_CHECK = "com.mammonrn.phoneaikiosk.TEST_UI_CHECK"
+        const val ACTION_SOCIAL_VISIT = "com.mammonrn.phoneaikiosk.TEST_SOCIAL_VISIT"
         /** One UI walk at a time. */
         val uiCheckRunning = java.util.concurrent.atomic.AtomicBoolean(false)
         const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"

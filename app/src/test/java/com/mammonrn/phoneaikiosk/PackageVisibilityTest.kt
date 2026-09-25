@@ -81,7 +81,10 @@ class PackageVisibilityTest {
         assertEquals(
             listOf(MapsLauncher.MAPS_PACKAGE,
                    com.mammonrn.phoneaikiosk.voice.CameraAppLauncher.PACKAGE,
-                   com.mammonrn.phoneaikiosk.settings.WifiPanel.SETTINGS_PACKAGE),
+                   com.mammonrn.phoneaikiosk.settings.WifiPanel.SETTINGS_PACKAGE) +
+                // 0.65.0 (Poom): Facebook and Instagram behind the identity check, and the Play Store to install them.
+                com.mammonrn.phoneaikiosk.social.SocialVisit.META_PACKAGES +
+                com.mammonrn.phoneaikiosk.social.SocialVisit.PLAY_PACKAGE,
             declared,
         )
     }

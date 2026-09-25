@@ -54,7 +54,8 @@ class CameraActionTest {
         val queries = Regex("<queries>(.*?)</queries>", RegexOption.DOT_MATCHES_ALL)
             .find(manifest)!!.groupValues[1]
         // Maps, Xiaomi Home, and the settings app for the WiFi button (0.42.0).
-        assertEquals(3, Regex("<package ").findAll(queries).count())
+        // + Facebook Lite, Facebook, Instagram and the Play Store (0.65.0, social/SocialVisit).
+        assertEquals(7, Regex("<package ").findAll(queries).count())
         assertTrue(!queries.contains("<intent"))
     }
 

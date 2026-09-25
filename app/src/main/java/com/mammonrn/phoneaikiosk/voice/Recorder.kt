@@ -74,9 +74,11 @@ class Recorder(val helpers: AudioHelpers = AudioHelpers()) {
                 val record = open()
                 helpers.attach(record.audioSessionId)
                 record.startRecording()
+                liveSession = record.audioSessionId
                 object : Session {
                     override fun read(into: ShortArray) = record.read(into, 0, into.size)
                     override fun close() {
+                        liveSession = 0
                         helpers.release()
                         runCatching { record.stop() }
                         record.release()
@@ -167,6 +169,13 @@ class Recorder(val helpers: AudioHelpers = AudioHelpers()) {
 
     companion object {
         const val SAMPLE_RATE = 16_000
+
+        /**
+         * The audio session of the wake word's capture while it is open, else 0. Lets
+         * social/SocialVisit tell ANOTHER app's recording from ours (0.65.0).
+         */
+        @Volatile
+        var liveSession: Int = 0
 
         /**
          * Peak amplitude that counts as speech rather than room noise. 16-bit

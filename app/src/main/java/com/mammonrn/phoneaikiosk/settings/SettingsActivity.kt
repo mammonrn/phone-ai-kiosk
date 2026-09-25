@@ -1076,6 +1076,16 @@ class SettingsActivity : Activity() {
                             it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.compass.CompassActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                         },
             )),
+            // 0.65.0 (Poom): Facebook and Instagram, each behind the identity check and allowed
+            // for one visit only (social/SocialVisit); the folder stays the same with neither installed.
+            Tile.Folder(R.string.settings_folder_social, listOf(
+                    Category(R.drawable.ic_pixel_facebook, { it.getString(R.string.social_facebook) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(com.mammonrn.phoneaikiosk.social.SocialActivity.intent(it, com.mammonrn.phoneaikiosk.social.SocialVisit.App.FACEBOOK), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+                    Category(R.drawable.ic_pixel_instagram, { it.getString(R.string.social_instagram) }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(com.mammonrn.phoneaikiosk.social.SocialActivity.intent(it, com.mammonrn.phoneaikiosk.social.SocialVisit.App.INSTAGRAM), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
+            )),
             Tile.One(
                     // 0.44.0: the file manager, a screen of its own (files/FilesActivity).
                     Category(R.drawable.ic_pixel_folder, { it.getString(R.string.window_files) }) {

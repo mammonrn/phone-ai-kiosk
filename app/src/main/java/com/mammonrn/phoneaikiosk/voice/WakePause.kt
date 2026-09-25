@@ -44,6 +44,13 @@ object WakePause {
         /** The radio (0.61.0): lowered, not paused, while Jarvis is asked something. */
         RADIO("เล่นวิทยุ"),
 
+        /**
+         * 0.65.0: Facebook or Instagram is using the microphone (a call, a voice message)
+         * during a visit (social/SocialVisit). The system gives that app the sound and ours
+         * is silenced, so the wake word rests and says why, as for any other player.
+         */
+        OTHER_APP_MIC("แอปพลิเคชันอื่นใช้ไมโครโฟน"),
+
         /** The debug build's adb switch (TEST_MEDIA_HOLD); never used by a real player. */
         TEST("ทดสอบ"),
     }

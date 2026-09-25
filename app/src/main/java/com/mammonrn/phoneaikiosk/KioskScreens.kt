@@ -98,6 +98,8 @@ object KioskScreens {
         override fun onActivityResumed(activity: Activity) {
             resumed = java.lang.ref.WeakReference(activity)
             if (activity is MainActivity) homeResumed(true)
+            // 0.65.0: a kiosk screen in front ends a Facebook or Instagram visit.
+            com.mammonrn.phoneaikiosk.social.SocialVisit.kioskResumed(activity)
         }
 
         override fun onActivityPaused(activity: Activity) {

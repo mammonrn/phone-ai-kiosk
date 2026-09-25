@@ -134,6 +134,12 @@
         <!-- 0.42.0: the system settings app, for the Control Panel's WiFi
              button only (settings/WifiPanel, Poom's decision). -->
         <package android:name="com.android.settings" />
+        <!-- 0.65.0 (Poom): Facebook (Lite first) and Instagram behind the identity
+             check, and the Play Store to install them (social/SocialVisit). -->
+        <package android:name="com.facebook.lite" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.android.vending" />
     </queries>
 
     <!-- KioskApp registers KioskScreens: every screen of this app is tracked
@@ -318,6 +324,11 @@
             android:screenOrientation="portrait" />
         <!-- 0.63.0: the calendar app (Poom's Google Calendar through the broker,
              behind the identity check). Ours, so lock task allows it. -->
+        <!-- 0.65.0: opens Facebook or Instagram after the identity check (social/SocialVisit). -->
+        <activity
+            android:name=".social.SocialActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".calendar.CalendarActivity"
             android:exported="false"

@@ -403,6 +403,24 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
             check(name)
         }
         openApp("เครื่องมือ", "ระดับน้ำ", "CompassActivity"); check("level")
+        // โซเชียล (0.65): the folder, then each app's page as the panel opens it but WITHOUT
+        // starting the identity check (its camera is never photographed).
+        panel(); press("โฟลเดอร์โซเชียล"); check("folder-social")
+        for (app in com.mammonrn.phoneaikiosk.social.SocialVisit.App.values()) {
+            val name = "social-${app.name.lowercase()}"
+            if (!wanted(name)) continue
+            val from = top() ?: continue
+            main.post {
+                from.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(
+                    com.mammonrn.phoneaikiosk.social.SocialActivity.intent(from, app)
+                        .putExtra(com.mammonrn.phoneaikiosk.social.SocialActivity.EXTRA_NO_CHECK, true),
+                    com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+            }
+            waitFor("SocialActivity")
+            check(name)
+            main.post { top()?.finish() }
+            settle()
+        }
 
         openApp("เครื่องมือ", "เครื่องคิดเลข", "CalculatorActivity")
         for (tab in listOf("คำนวณ", "ไฟฟ้า", "โซลาร์", "หน่วย", "ราคา", "ประวัติ")) {

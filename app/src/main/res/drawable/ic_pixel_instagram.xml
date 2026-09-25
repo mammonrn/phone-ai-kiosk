@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.65.0): a printed photo — a white border round a navy sky,
+     a white sun and a grey hill — for Instagram in the "โซเชียล" folder. Not the
+     brand's logo (DESIGN.md 8); squares in the window palette, 16x16 grid. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M1,1h14v1h-14z M1,2h1v13h-1z M14,2h1v13h-1z M2,14h12v1h-12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M2,2h12v1h-12z M2,3h1v11h-1z M13,3h1v11h-1z M3,11h10v3h-10z" />
+    <path android:fillColor="#000080" android:pathData="M3,3h10v8h-10z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M9,4h2v2h-2z" />
+    <path android:fillColor="#808080" android:pathData="M6,7h2v1h-2z M5,8h4v1h-4z M4,9h7v1h-7z M3,10h10v1h-10z" />
+</vector>
