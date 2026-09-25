@@ -515,6 +515,8 @@ class VoiceService : Service() {
             return
         }
 
+        // Which app's Jarvis button asked (0.61.0) — the fixed word the broker gets, for adb to check.
+        Log.i(TAG, "turn screen=${VoiceState.turnScreen.takeIf { it in Broker.SCREENS } ?: "none"}")
         val broker = Broker(VoiceState.brokerBaseUrl, token)
         val pipeline = TurnPipeline(
             // A typed question (debug TEST_ASK) skips the microphone and the

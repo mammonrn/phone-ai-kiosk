@@ -30,6 +30,8 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 // A question as text, through the real /v1/chat, voice and
                 // action — how a spoken command is checked end to end without
                 // anybody speaking. --es text "ตั้งปลุก 11 โมงเช้าได้ไหมครับ"
+                // --es screen music: as if asked with the music page's own Jarvis button (0.61.0).
+                VoiceState.turnScreen = intent.getStringExtra("screen").orEmpty()
                 context.startForegroundService(android.content.Intent(context, VoiceService::class.java)
                     .setAction(VoiceService.ACTION_TEST_ASK)
                     .putExtra(VoiceService.EXTRA_TEXT, intent.getStringExtra("text")))

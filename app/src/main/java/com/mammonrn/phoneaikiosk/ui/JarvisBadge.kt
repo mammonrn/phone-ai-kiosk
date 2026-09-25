@@ -55,6 +55,7 @@ class JarvisBadge(context: Context, private val theme: Theme, private val screen
         isFocusable = pressable
         if (pressable) setOnClickListener {
             VoiceState.turnScreen = screen.orEmpty()
+            android.util.Log.i("KioskVoice", "jarvis button pressed screen=$screen")
             VoiceService.start(context, VoiceService.ACTION_BUTTON_LISTEN)
         }
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
