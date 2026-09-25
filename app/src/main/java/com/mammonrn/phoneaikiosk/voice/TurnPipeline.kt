@@ -237,10 +237,15 @@ class TurnPipeline(
  */
 /** Actions on the phone's own state: done before the reply is said (TurnPipeline). */
 val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE, KioskAction.MUSIC, KioskAction.VIDEO,
-                                 KioskAction.NOTE_ADD, KioskAction.NOTE_READ, KioskAction.TIMER, KioskAction.RADIO)
+                                 KioskAction.NOTE_ADD, KioskAction.NOTE_READ, KioskAction.TIMER, KioskAction.RADIO,
+                                 // 0.66 (Poom: never say "กำลังเปิด" of an app that has not come up):
+                                 // the map and the camera app are opened first too, and when they
+                                 // cannot be, the reason IS the reply; Facebook/Instagram always
+                                 // say their own words (social/SocialVoice).
+                                 KioskAction.OPEN_MAPS, KioskAction.OPEN_CAMERA_APP, KioskAction.OPEN_SOCIAL)
 
 /** 0.62.0: actions whose words, when there are any, are the answer itself — not a failure. */
-val ANSWERED_ON_PHONE = setOf(KioskAction.NOTE_READ)
+val ANSWERED_ON_PHONE = setOf(KioskAction.NOTE_READ, KioskAction.OPEN_SOCIAL)
 
 /**
  * Marks words an action returns when it WAS done but the phone's own words are
@@ -311,6 +316,12 @@ class KioskAction(
 
         /** 0.63.0: {command, query} — a station played, stopped or changed before speaking (radio/RadioVoice). */
         const val RADIO = "radio"
+
+        /**
+         * 0.66: {app} — "facebook" or "instagram", opened the way its icon opens it
+         * (the identity check, one visit) before speaking; the reply is the phone's own.
+         */
+        const val OPEN_SOCIAL = "open_social"
     }
 }
 

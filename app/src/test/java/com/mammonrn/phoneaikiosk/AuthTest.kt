@@ -218,14 +218,15 @@ class AuthTest {
     // --------------------------------------------------------- AccessGrant
 
     @Test
-    fun `a pass opens two minutes, then it closes itself`() {
+    fun `a pass opens an hour, then it closes itself`() {
         var now = 1_000L
         AccessGrant.clock = { now }
         try {
             AccessGrant.close()
             assertFalse(AccessGrant.isOpen())
             AccessGrant.open(AccessGrant.Method.FACE)
-            now += 119_999
+            // 0.66 (Poom): one pass, an hour, every function; using it does not extend it.
+            now += 3_599_999
             assertTrue(AccessGrant.isOpen())
             assertEquals(1L, AccessGrant.remainingMs())
             now += 1
@@ -233,7 +234,7 @@ class AuthTest {
             AccessGrant.open(AccessGrant.Method.PATTERN)
             AccessGrant.close()
             assertFalse("closing early works", AccessGrant.isOpen())
-            assertTrue(abs(AccessGrant.DURATION_MS - 120_000L) == 0L)
+            assertTrue(abs(AccessGrant.DURATION_MS - 3_600_000L) == 0L)
         } finally {
             AccessGrant.clock = { android.os.SystemClock.elapsedRealtime() }
         }

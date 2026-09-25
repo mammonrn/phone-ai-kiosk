@@ -143,7 +143,7 @@ class MapsActionTest {
     private fun wav() = ByteArray(TurnPipeline.WAV_HEADER_BYTES + 4000)
 
     @Test
-    fun `an approved action is carried out after the answer is spoken`() {
+    fun `an approved action is carried out before the answer is spoken`() {
         val sink = ActionSink()
         val order = mutableListOf<String>()
         val action = KioskAction(KioskAction.OPEN_MAPS, "เซ็นทรัลเชียงราย")
@@ -156,9 +156,9 @@ class MapsActionTest {
         ).run(wav(), null)
 
         assertEquals(TurnPipeline.Outcome.COMPLETED, outcome)
-        // SPOKEN FIRST. The person should hear "กำลังเปิดแผนที่" before the
-        // screen changes under them, not after.
-        assertEquals(listOf("speak", "maps"), order)
+        // OPENED FIRST (0.66, Poom): "กำลังเปิดแผนที่" is said only once the map
+        // opened; when it cannot, the reason is said instead.
+        assertEquals(listOf("maps", "speak"), order)
     }
 
     @Test
@@ -186,10 +186,11 @@ class MapsActionTest {
             sayLocally = { spoken.add(it); true },
         ).run(wav(), null)
 
-        // The answer WAS delivered; only the action failed. Turning that into a
-        // failed turn would lose the fact that the person was told something.
+        // The reason is the reply itself (0.66): "กำลังเปิดแผนที่" is never said
+        // for a map that did not open. The turn still completed.
         assertEquals(TurnPipeline.Outcome.COMPLETED, outcome)
-        assertEquals(listOf("เครื่องนี้ยังไม่มีแผนที่ครับ"), spoken)
+        assertEquals("เครื่องนี้ยังไม่มีแผนที่ครับ", sink.reply)
+        assertEquals(emptyList<String>(), spoken)
         assertEquals("action-failed", sink.lastError)
     }
 

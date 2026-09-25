@@ -3,7 +3,11 @@ package com.mammonrn.phoneaikiosk.auth
 import android.os.SystemClock
 
 /**
- * The two minutes of access a passed verification opens (Poom, 2026-09-23).
+ * The hour of access a passed verification opens (Poom 2026-09-26: "สแกนหน้าผ่าน
+ * ครั้งเดียว ใช้ได้ทุกฟังก์ชัน นาน 1 ชั่วโมงนับจากครั้งที่สแกน ไม่ต่ออายุเองเมื่อใช้งาน";
+ * two minutes from 2026-09-23 until then). While it is open, VerifyActivity passes
+ * at once without the camera — deleting, Drive, the calendar, Facebook, all of it —
+ * and using it never moves [until]: only a real pass opens it again.
  *
  * In memory only and on the monotonic clock: a restart closes it, and changing
  * the wall clock cannot stretch it. Nothing grants it but VerifyActivity after
@@ -15,7 +19,7 @@ import android.os.SystemClock
  */
 object AccessGrant {
 
-    const val DURATION_MS = 2 * 60_000L
+    const val DURATION_MS = 60 * 60_000L
 
     /** How the window was opened, for the log and the screen. Never who. */
     enum class Method { FACE, PATTERN }

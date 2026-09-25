@@ -1,5 +1,5 @@
 """Who may open private data: an identity Poom approved on the VPS, just
-verified on the phone, for two minutes — checked HERE, not taken on trust.
+verified on the phone, for an hour (two minutes until 2026-09-26) — checked HERE, not taken on trust.
 
 THE HOLE THIS CLOSES (reported in round 1): on the kiosk, anyone can delete
 Poom's face and pattern (Poom: "ลบได้ทันที") and enrol their own. The phone
@@ -15,10 +15,10 @@ cannot tell that apart from Poom re-enrolling. The broker can, because:
 So a stranger who wipes and re-enrols gets a new identity, which stays
 "pending" until Poom approves it — and Poom will not.
 
-THE TWO MINUTES ARE THE BROKER'S: after a pass the phone asks for a grant
+THE HOUR IS THE BROKER'S: after a pass the phone asks for a grant
 (POST /v1/auth/grant); the broker records its expiry and every private request
 checks that record. A phone that says "I passed" without a grant, or after the
-two minutes, is refused.
+hour, is refused.
 """
 
 from __future__ import annotations
@@ -27,7 +27,10 @@ import re
 import sqlite3
 import time
 
-GRANT_SECONDS = 120
+#: One pass is good for an hour, for everything private (Poom 2026-09-26; two
+#: minutes until then). Never extended by use: only a new pass grants again, and a
+#: check the phone passes inside its own hour asks for no more than what is left.
+GRANT_SECONDS = 3600
 _ID = re.compile(r"^[0-9a-f]{16}$")
 METHODS = ("face", "pattern")
 
@@ -56,8 +59,16 @@ def valid_id(identity_id) -> bool:
     return isinstance(identity_id, str) and bool(_ID.match(identity_id))
 
 
+def grant_seconds(asked) -> int:
+    """The grant's length: GRANT_SECONDS, or what the phone says is left of its
+    hour when that is less (a whole number of seconds, 1 at least)."""
+    if isinstance(asked, bool) or not isinstance(asked, (int, float)):
+        return GRANT_SECONDS
+    return max(1, min(GRANT_SECONDS, int(asked)))
+
+
 def request_grant(conn: sqlite3.Connection, *, device_id: int, identity_id: str, method: str,
-                  now: float | None = None) -> str:
+                  now: float | None = None, seconds=None) -> str:
     """'granted', 'pending' (seen, not approved) or 'retired'. Records a new
     identity as pending the first time it is seen."""
     now = time.time() if now is None else now
@@ -74,7 +85,7 @@ def request_grant(conn: sqlite3.Connection, *, device_id: int, identity_id: str,
     if approved_at is None:
         return "pending"
     conn.execute("INSERT OR REPLACE INTO grants (device_id, identity_id, method, expires_at) "
-                 "VALUES (?,?,?,?)", (device_id, identity_id, method, now + GRANT_SECONDS))
+                 "VALUES (?,?,?,?)", (device_id, identity_id, method, now + grant_seconds(seconds)))
     return "granted"
 
 

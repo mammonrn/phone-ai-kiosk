@@ -21,7 +21,7 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                limits, oil as oil_mod, speech_gate,
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
-               auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd,
+               auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd, social_cmd,
                calendar_app, holidays_q)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -249,8 +249,9 @@ def handle_auth_reset(conn: sqlite3.Connection, cfg: Config, *,
 
 def handle_grant(conn: sqlite3.Connection, cfg: Config, *, authorization: str | None,
                  body: bytes) -> tuple[int, dict]:
-    """POST /v1/auth/grant — the phone passed its identity check; open two
-    minutes of private access if, and only if, that identity is approved."""
+    """POST /v1/auth/grant — the phone passed its identity check; open an hour
+    of private access (or what is left of the phone's hour, "seconds") if, and
+    only if, that identity is approved."""
     day = limits.day_key(cfg.budget_timezone)
     device, refusal = _authorise(conn, authorization=authorization, day=day, endpoint="grant")
     if refusal:
@@ -273,13 +274,15 @@ def handle_grant(conn: sqlite3.Connection, cfg: Config, *, authorization: str | 
     if not identity.valid_id(identity_id) or method not in identity.METHODS:
         return 400, _error("bad_request", "รูปแบบคำขอไม่ถูกต้อง")
     result = identity.request_grant(conn, device_id=device_id, identity_id=identity_id,
-                                    method=method)
+                                    method=method,
+                                    seconds=payload.get("seconds") if isinstance(payload, dict) else None)
     # The first four characters are what Poom types to approve; the whole id
     # is not a secret, but four is enough to find it.
     log.info("grant device=%s identity=%s… method=%s result=%s", label, identity_id[:4],
              method, result)
     if result == "granted":
-        return 200, {"status": "granted", "seconds": identity.GRANT_SECONDS}
+        return 200, {"status": "granted", "seconds": identity.grant_seconds(
+            payload.get("seconds") if isinstance(payload, dict) else None)}
     return 403, {"status": result, "error": {
         "code": "not_approved",
         "message": "การลงทะเบียนนี้ยังไม่ได้รับอนุมัติครับ" if result == "pending"
@@ -910,6 +913,15 @@ def handle_chat(
         log_intent("skipped")
         action, reply = radio_cmd.action_and_reply(heard_radio)
         return answer_in_code(reply, action, f"radio:{heard_radio['command']}")
+
+    # ---- Facebook and Instagram (0.66): recognised in code; the PHONE opens the app the
+    # way its icon does (identity check, one visit) and says what really happened
+    # (social/SocialVoice). The model once said "กำลังเปิด…" here and nothing opened.
+    heard_social = social_cmd.match(text) if not is_camera and alarm is None and not calendar_yes else None
+    if heard_social is not None:
+        log_intent("skipped")
+        action, reply = social_cmd.action_and_reply(heard_social)
+        return answer_in_code(reply, action, f"social:{heard_social}")
 
     # ---- the lights (0.46.0): switched in code, answered from eWeLink ----
     # After the camera and the alarms, which own their sentences ("ปิดปลุก").

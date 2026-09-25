@@ -118,6 +118,12 @@ class Broker(private val baseUrl: String, private val token: String) {
                     if (command !in com.mammonrn.phoneaikiosk.radio.RadioVoice.COMMANDS || query.length > 60) null
                     else KioskAction(type, "", mapOf("command" to command, "query" to query))
                 }
+                // 0.66: one of the two apps, nothing else (social/SocialVoice).
+                KioskAction.OPEN_SOCIAL -> {
+                    val app = json.optString("app")
+                    if (app !in com.mammonrn.phoneaikiosk.social.SocialVoice.APPS) null
+                    else KioskAction(type, "", mapOf("app" to app))
+                }
                 else -> null
             }
         }
@@ -219,7 +225,7 @@ class Broker(private val baseUrl: String, private val token: String) {
         String(get(dashboardPath(latitude, longitude)).bytes, Charsets.UTF_8)
 
     /**
-     * After a passed identity check: ask the broker for its two minutes of
+     * After a passed identity check: ask the broker for its hour (0.66) of
      * private access. The broker decides — it grants only an identity Poom
      * approved on the VPS — and a refusal arrives as a Failure whose message
      * is Thai fit to say ("การลงทะเบียนนี้ยังไม่ได้รับอนุมัติครับ").
@@ -242,10 +248,12 @@ class Broker(private val baseUrl: String, private val token: String) {
              "application/json; charset=utf-8")
     }
 
-    fun grant(identityId: String, method: String) {
+    /** [seconds]: what is left of the phone's hour (a check passed inside it); null = a new pass, the broker's full hour. */
+    fun grant(identityId: String, method: String, seconds: Long? = null) {
+        val body = JSONObject().put("identity_id", identityId).put("method", method)
+        if (seconds != null) body.put("seconds", seconds)
         post("/v1/auth/grant",
-             JSONObject().put("identity_id", identityId).put("method", method)
-                 .toString().toByteArray(Charsets.UTF_8),
+             body.toString().toByteArray(Charsets.UTF_8),
              "application/json; charset=utf-8")
     }
 

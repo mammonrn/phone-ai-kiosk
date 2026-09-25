@@ -120,22 +120,26 @@ class CameraActionTest {
         )
 
     @Test
-    fun `jarvis says it first, then the app opens`() {
+    fun `the app opens first, then jarvis speaks`() {
+        // 0.66 (Poom): never "กำลังเปิด" of an app that has not come up.
         val order = mutableListOf<String>()
         pipeline(CameraSink(), perform = { order.add("open"); null },
                  play = { order.add("speak"); true }, sayLocally = { true }).run(wav(), null)
-        assertEquals(listOf("speak", "open"), order)
+        assertEquals(listOf("open", "speak"), order)
     }
 
     @Test
     fun `no xiaomi home is said out loud, briefly`() {
         val spoken = mutableListOf<String>()
         val failure = CameraAppLauncher.spokenFailure(CameraAppLauncher.Result.NOT_INSTALLED)
-        val (outcome, _) = pipeline(CameraSink(), perform = { failure },
+        val sink = CameraSink()
+        val (outcome, _) = pipeline(sink, perform = { failure },
                                     play = { true }, sayLocally = { spoken.add(it); true })
             .run(wav(), null)
         assertEquals(TurnPipeline.Outcome.COMPLETED, outcome)
-        assertEquals(listOf(failure), spoken)
+        // The reason IS the reply now; "กำลังเปิดกล้อง" is never said.
+        assertEquals(failure, sink.reply)
+        assertEquals(emptyList<String>(), spoken)
         assertTrue(failure.length < 60)
     }
 }

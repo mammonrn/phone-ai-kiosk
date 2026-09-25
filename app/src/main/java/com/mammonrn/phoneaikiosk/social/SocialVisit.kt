@@ -168,6 +168,9 @@ object SocialVisit {
         end(activity, "kiosk-front")
     }
 
+    /** A screen of the kiosk is in front right now (resumed, not yet paused). */
+    fun kioskInFront(): Boolean = kioskFront?.get() != null
+
     /** From KioskScreens on every pause. */
     fun kioskPaused(activity: Activity) {
         if (kioskFront?.get() === activity) kioskFront = null

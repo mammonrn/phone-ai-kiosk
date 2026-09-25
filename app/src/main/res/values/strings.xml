@@ -310,7 +310,7 @@
     <string name="auth_look">มองกล้องค้างไว้</string>
     <string name="auth_blink">กรุณากะพริบตา 1 ครั้ง</string>
     <string name="auth_reopen">ลืมตาแล้วมองกล้อง</string>
-    <string name="auth_passed">ยืนยันตัวตนแล้ว เปิดสิทธิ์ 2 นาที</string>
+    <string name="auth_passed">ยืนยันตัวตนแล้ว ใช้ได้ทุกฟังก์ชัน 1 ชั่วโมง</string>
     <string name="auth_not_recognised">จำใบหน้าไม่ได้</string>
     <string name="auth_not_recognised_pattern">จำใบหน้าไม่ได้ กรุณาลากรูปแบบแทน</string>
     <string name="auth_failed">ยืนยันตัวตนไม่สำเร็จ</string>

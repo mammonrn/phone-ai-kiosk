@@ -80,6 +80,27 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskSocial", "test visit ${intent.getStringExtra("do") ?: "open"} result=$result")
             }
 
+            ACTION_TEST_GRANT -> {
+                // 0.66: the phone's hour of access opened (or closed) as a passed scan opens it,
+                // to see a delete and Facebook go through without the camera on the A07.
+                // Exported receiver, so: ONLY with --es nonce equal to the system property
+                // debug.kiosk.grant_nonce (16+ characters), which only adb's shell can set;
+                // cleared after the test. The phone's grant only — the broker is not asked.
+                // --es do open|close
+                val prop = runCatching {
+                    Class.forName("android.os.SystemProperties").getMethod("get", String::class.java)
+                        .invoke(null, "debug.kiosk.grant_nonce") as String
+                }.getOrDefault("")
+                if (prop.length < 16 || intent.getStringExtra("nonce").orEmpty() != prop) {
+                    android.util.Log.w("KioskAuth", "test grant refused: nonce")
+                    return
+                }
+                if (intent.getStringExtra("do") == "close") com.mammonrn.phoneaikiosk.auth.AccessGrant.close()
+                else com.mammonrn.phoneaikiosk.auth.AccessGrant.open(com.mammonrn.phoneaikiosk.auth.AccessGrant.Method.FACE)
+                android.util.Log.i("KioskAuth", "test grant open=${com.mammonrn.phoneaikiosk.auth.AccessGrant.isOpen()} " +
+                    "left_s=${com.mammonrn.phoneaikiosk.auth.AccessGrant.remainingMs() / 1000}")
+            }
+
             ACTION_LIGHTS_PAGE -> {
                 // A sample "ไฟในบ้าน" page (0.47.0), to see it on the A07 before
                 // the VPS is deployed. --ez on true|false. Read the next time
@@ -611,6 +632,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_LAYOUT_REPORT = "com.mammonrn.phoneaikiosk.TEST_LAYOUT_REPORT"
         const val ACTION_UI_CHECK = "com.mammonrn.phoneaikiosk.TEST_UI_CHECK"
         const val ACTION_SOCIAL_VISIT = "com.mammonrn.phoneaikiosk.TEST_SOCIAL_VISIT"
+        const val ACTION_TEST_GRANT = "com.mammonrn.phoneaikiosk.TEST_GRANT"
         /** One UI walk at a time. */
         val uiCheckRunning = java.util.concurrent.atomic.AtomicBoolean(false)
         const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"

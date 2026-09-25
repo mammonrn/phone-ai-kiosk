@@ -278,6 +278,27 @@ _NOT_A_CLAIM = re.compile(r"ไหม|มั้ย|หรือเปล่า|�
 MAPS_FAILED_REPLY = "เปิดแผนที่ไม่สำเร็จครับ ลองพูดชื่อสถานที่อีกทีนะครับ"
 
 
+#: 0.66: a MODEL reply that says it is opening (or opened) an app or a page. The
+#: model opens nothing but the map (with its marker); every other app is opened in
+#: code or not at all, so such a reply is always untrue ("เปิดเฟสบุ๊ค" answered
+#: "กำลังเปิด…" and nothing opened, Poom 2026-09-26). Only "for you" wording: "ร้าน
+#: จะเปิด 9 โมง" is information, not a claim.
+_APP_CLAIM = re.compile(
+    r"^\s*(?:(?:ได้(?:เลย)?|โอเค|รับทราบ)\s*(?:ครับ|ค่ะ)?\s*)?กำลังเปิด"
+    r"|(?:กำลัง|จะ)\s*เปิด.{0,40}?ให้(?=\s*(?:ครับ|ค่ะ|นะ|เลย|แล้ว|ทันที|[.!]|$))"
+    r"|เปิด.{0,40}?ให้(?:แล้ว|เรียบร้อย)"
+    r"|เปิดให้แล้ว",
+    re.IGNORECASE)
+
+#: What Jarvis says instead: the truth, and where it can be done.
+APP_NOT_OPENED_REPLY = "อันนี้ผมเปิดให้เองไม่ได้ครับ เปิดได้ที่แผงควบคุม"
+
+
+def claims_opening(reply: str) -> bool:
+    """Whether a reply tells the person an app or page is being opened for them."""
+    return bool(_APP_CLAIM.search(reply)) and not _NOT_A_CLAIM.search(reply)
+
+
 def claims_maps(reply: str) -> bool:
     """Whether a reply tells the person a map is opening."""
     return bool(_MAPS_CLAIM.search(reply)) and not _NOT_A_CLAIM.search(reply)
@@ -298,4 +319,6 @@ def truthful(reply: str, action: dict | None) -> tuple[str, bool]:
         return MAPS_FAILED_REPLY, True
     if lights.claims_lights(reply):
         return lights.NOT_DONE_REPLY, True
+    if not opening and claims_opening(reply):
+        return APP_NOT_OPENED_REPLY, True
     return reply, False

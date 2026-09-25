@@ -49,7 +49,7 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
  *  * the camera is on only while this window is on screen — bound to this
  *    activity's lifecycle and unbound the moment the pattern is shown;
  *  * frames are analysed in memory and never written or sent (FaceScanner);
- *  * a pass opens AccessGrant for two minutes, and nothing else does;
+ *  * a pass opens AccessGrant for an hour (0.66; two minutes before), and nothing else does;
  *  * changing an enrolment needs a pass first: asked to enrol a face or set a
  *    pattern while either already exists, it verifies before it lets you.
  *    Deleting needs no pass (Poom: "ลบได้ทันที") — see DESIGN.md for why that
@@ -117,6 +117,14 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
         face = AuthStore.loadFace(this)
         hasPattern = AuthStore.hasPattern(this)
         val enrolled = face != null || hasPattern
+        // 0.66 (Poom): one pass is good for an hour, for every function. Inside it the
+        // check passes at once — no camera — and the hour is NOT extended: the broker is
+        // asked for a grant only as long as what is left of this one.
+        if (enrolled && AccessGrant.isOpen()) {
+            passedByGrant()
+            handler.postDelayed(idleTimeout, IDLE_MS)
+            return
+        }
         when {
             // Changing what recognises Poom needs Poom first.
             target != Mode.VERIFY && enrolled -> {
@@ -490,6 +498,25 @@ class VerifyActivity : Activity(), LifecycleOwner, com.mammonrn.phoneaikiosk.Kio
                     .putExtra(com.mammonrn.phoneaikiosk.voice.VoiceService.EXTRA_METHOD, how.name.lowercase())
                     .putExtra(EXTRA_FOR_PRIVATE, intent.getBooleanExtra(EXTRA_FOR_PRIVATE, false)))
                 finishWith(OUTCOME_PASSED, getString(R.string.auth_passed))
+            }
+        }
+    }
+
+    /** The hour is still open: the same endings as [passed], without opening it again. */
+    private fun passedByGrant() {
+        val left = AccessGrant.remainingMs()
+        log("verify skipped: grant open left_s=${left / 1000}")
+        when (target) {
+            Mode.ENROLL -> { hint.text = getString(R.string.auth_privacy); startEnroll() }
+            Mode.SET_PATTERN -> startSetPattern()
+            Mode.VERIFY -> {
+                startService(Intent(this, com.mammonrn.phoneaikiosk.voice.VoiceService::class.java)
+                    .setAction(com.mammonrn.phoneaikiosk.voice.VoiceService.ACTION_AUTH_PASSED)
+                    .putExtra(com.mammonrn.phoneaikiosk.voice.VoiceService.EXTRA_METHOD,
+                              (AccessGrant.method ?: AccessGrant.Method.FACE).name.lowercase())
+                    .putExtra(com.mammonrn.phoneaikiosk.voice.VoiceService.EXTRA_GRANT_SECONDS, left / 1000)
+                    .putExtra(EXTRA_FOR_PRIVATE, intent.getBooleanExtra(EXTRA_FOR_PRIVATE, false)))
+                finishWith(OUTCOME_PASSED, null)
             }
         }
     }

@@ -33,6 +33,7 @@
             <intent-filter>
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_LISTEN" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SOCIAL_VISIT" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_GRANT" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_SHOW_REPLY" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_ALARM_IN" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_ASK" />

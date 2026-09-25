@@ -207,12 +207,23 @@ class VoiceService : Service() {
                     if (asTurn) alarmHandler.postDelayed({ WakePause.turnEnded() }, 1_500)
                 }, 1_500)
             }
+            // 0.66: Facebook/Instagram as the broker sends it ("เปิดเฟสบุ๊ค"), on the worker
+            // thread as in a real turn (it waits for the app to come up). The identity check
+            // is NOT skipped: this goes through SocialActivity like the icon.
+            if (type == KioskAction.OPEN_SOCIAL) {
+                val app = intent.getStringExtra(EXTRA_QUERY).orEmpty()
+                if (app in com.mammonrn.phoneaikiosk.social.SocialVoice.APPS) network.execute {
+                    val said = performAction(KioskAction(type, "", mapOf("app" to app)))
+                    Log.i(TAG, "test perform type=$type opened=${isDoneWords(said)}")
+                }
+            }
         }
 
         if (intent?.action == ACTION_AUTH_PASSED) {
             resumePrivate(intent.getStringExtra(EXTRA_METHOD) ?: "face",
                           intent.getBooleanExtra(com.mammonrn.phoneaikiosk.auth.VerifyActivity.EXTRA_FOR_PRIVATE,
-                                                 false))
+                                                 false),
+                          intent.getLongExtra(EXTRA_GRANT_SECONDS, -1L).takeIf { it > 0 })
         }
 
         if (intent?.action == ACTION_ALARM_RING) {
@@ -865,6 +876,7 @@ class VoiceService : Service() {
         if (action.type == KioskAction.NOTE_ADD || action.type == KioskAction.NOTE_READ) return note(action)
         if (action.type == KioskAction.TIMER) return timer(action)
         if (action.type == KioskAction.RADIO) return radio(action)
+        if (action.type == KioskAction.OPEN_SOCIAL) return com.mammonrn.phoneaikiosk.social.SocialVoice.open(this, action.params["app"].orEmpty())
         if (action.type == KioskAction.HOME_UPDATED) {
             // The light is already switched (the broker did it) and the reply
             // says so. Here only the card is told to ask again.
@@ -936,7 +948,7 @@ class VoiceService : Service() {
      * a private question still waiting, ask that question again. The outcome
      * goes to VoiceState.grantStatus for the Control Panel to show.
      */
-    private fun resumePrivate(method: String, forPrivate: Boolean) {
+    private fun resumePrivate(method: String, forPrivate: Boolean, seconds: Long? = null) {
         val question = if (forPrivate) pendingPrivate else null
         if (forPrivate) pendingPrivate = null
         val stillWaiting = question != null &&
@@ -945,7 +957,7 @@ class VoiceService : Service() {
         val token = TokenStore(this).token() ?: return
         network.execute {
             try {
-                Broker(VoiceState.brokerBaseUrl, token).grant(identityId, method)
+                Broker(VoiceState.brokerBaseUrl, token).grant(identityId, method, seconds)
                 Log.i(TAG, "grant ok method=$method")
                 VoiceState.grantStatus = "approved"
             } catch (e: Broker.Failure) {
@@ -1412,6 +1424,8 @@ class VoiceService : Service() {
         /** From VerifyActivity, after a pass that was for a private question. */
         const val ACTION_AUTH_PASSED = "com.mammonrn.phoneaikiosk.AUTH_PASSED"
         const val EXTRA_METHOD = "method"
+        /** 0.66: a check passed inside the hour — the broker's grant lasts only what is left of it. */
+        const val EXTRA_GRANT_SECONDS = "grant_seconds"
         /** How long a private question waits for its identity check. */
         const val PENDING_PRIVATE_MS = 3 * 60_000L
         const val EXTRA_ALARM_ID = "alarm_id"

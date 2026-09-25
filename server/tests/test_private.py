@@ -196,6 +196,46 @@ def test_a_new_identity_is_pending_until_poom_approves_it(conn):
     assert not identity.granted(conn, device, now=10 + identity.GRANT_SECONDS)
 
 
+def test_one_pass_is_good_for_an_hour_and_using_it_does_not_extend_it(conn):
+    """Poom 2026-09-26: one scan, every function, an hour from the scan."""
+    identity.ensure(conn)
+    device = 7
+    identity.request_grant(conn, device_id=device, identity_id=ID, method="face", now=0)
+    identity.approve(conn, ID[:4], now=1)
+    assert identity.GRANT_SECONDS == 3600
+    assert identity.request_grant(conn, device_id=device, identity_id=ID, method="face", now=100) == "granted"
+    # Used again and again inside the hour: still ends an hour after the scan.
+    for t in (200, 1000, 3000, 3699):
+        assert identity.granted(conn, device, now=t)
+    assert not identity.granted(conn, device, now=3700)
+
+
+def test_a_check_passed_inside_the_phones_hour_asks_only_for_what_is_left(conn):
+    identity.ensure(conn)
+    device = 7
+    identity.request_grant(conn, device_id=device, identity_id=ID, method="face", now=0)
+    identity.approve(conn, ID[:4], now=1)
+    identity.request_grant(conn, device_id=device, identity_id=ID, method="face", now=100)       # the scan
+    # 40 minutes later the phone passes a check without the camera: 20 minutes left.
+    identity.request_grant(conn, device_id=device, identity_id=ID, method="face", now=2500, seconds=1200)
+    assert identity.granted(conn, device, now=3699) and not identity.granted(conn, device, now=3700)
+    # Never more than the hour, whatever a phone asks; nonsense is the plain hour.
+    assert identity.grant_seconds(99999) == 3600 and identity.grant_seconds(0) == 1
+    assert identity.grant_seconds("600") == 3600 and identity.grant_seconds(True) == 3600
+    assert identity.grant_seconds(None) == 3600 and identity.grant_seconds(59.9) == 59
+
+
+def test_the_grant_endpoint_takes_what_is_left(conn, cfg):
+    token = _token(conn)
+    identity.ensure(conn)
+    handle_grant(conn, cfg, authorization=f"Bearer {token}",
+                 body=json.dumps({"identity_id": ID, "method": "face"}).encode())
+    identity.approve(conn, ID[:4])
+    status, payload = handle_grant(conn, cfg, authorization=f"Bearer {token}",
+                                   body=json.dumps({"identity_id": ID, "method": "face", "seconds": 900}).encode())
+    assert status == 200 and payload == {"status": "granted", "seconds": 900}
+
+
 def test_a_stranger_who_wipes_and_re_enrols_gets_nothing(conn):
     """The hole from round 1: delete Poom's face and pattern, enrol your own.
     The phone makes a new identity; the broker has never approved it."""
@@ -240,7 +280,7 @@ def test_the_grant_endpoint(conn, cfg):
     assert status == 403 and payload["status"] == "pending"
     identity.approve(conn, ID[:4])
     status, payload = handle_grant(conn, cfg, authorization=f"Bearer {token}", body=body(ID))
-    assert status == 200 and payload == {"status": "granted", "seconds": 120}
+    assert status == 200 and payload == {"status": "granted", "seconds": 3600}
     assert handle_grant(conn, cfg, authorization=f"Bearer {token}", body=body("nothex"))[0] == 400
     assert handle_grant(conn, cfg, authorization=f"Bearer {token}", body=body(ID, "voice"))[0] == 400
     assert handle_grant(conn, cfg, authorization="Bearer wrong", body=body(ID))[0] == 401
