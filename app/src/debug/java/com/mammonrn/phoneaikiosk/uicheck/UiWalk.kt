@@ -405,16 +405,28 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         settle(2500)
         com.mammonrn.phoneaikiosk.media.VideoPlayer.pause(ctx)
         settle()
+        // The controls up first: hidden, the full-screen button is not there to press.
+        showControls()
         val fill = views().firstOrNull { (it as? TextView)?.text?.toString()?.startsWith("เต็มจอ") == true }
         if (fill != null && (fill as TextView).text.contains("ปิด")) { mainSync { fill.performClick() }; settle() }
         showControls()
-        check("video-full-portrait")
+        check("video-full-portrait", { act -> if (fullScreen()) emptyList() else listOf("video: not full screen") })
         com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(true) } }
         settle(2500)
         showControls()
-        check("video-full-landscape")
+        check("video-full-landscape", { act ->
+            val turned = act?.resources?.configuration?.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            listOfNotNull(if (turned) null else "video: did not turn to landscape",
+                          if (fullScreen()) null else "video: not full screen")
+        })
         com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(false) } }
         settle(1500)
+    }
+
+    /** Full screen on: the button reads "เต็มจอ เปิด" (its words, not a guess from the layout). */
+    private fun fullScreen(): Boolean = views().any {
+        val t = (it as? TextView)?.text?.toString().orEmpty()
+        t.startsWith("เต็มจอ") && t.contains("เปิด")
     }
 
     /** A tap in the middle of the picture brings the controls up (they hide after 4 s). */
