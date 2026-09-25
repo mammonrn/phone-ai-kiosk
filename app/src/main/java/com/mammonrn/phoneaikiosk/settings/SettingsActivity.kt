@@ -275,8 +275,10 @@ class SettingsActivity : Activity() {
             for ((index, v) in row.withIndex()) {
                 line.addView(v, LinearLayout.LayoutParams(0, MATCH, 1f).apply { if (index > 0) marginStart = dp(UiScale.SPACE_S) })
             }
+            // The filler too is MATCH: a row whose children are not ALL match_parent
+            // takes its height from the others only, and a short row came out 0 high.
             repeat(ICONS_PER_ROW - row.size) {
-                line.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
+                line.addView(View(this), LinearLayout.LayoutParams(0, MATCH, 1f).apply { marginStart = dp(UiScale.SPACE_S) })
             }
         }
     }
