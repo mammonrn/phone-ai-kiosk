@@ -36,11 +36,6 @@ android {
         minSdk = 29
         targetSdk = 36
 
-        // scripts/ui-check: the on-phone walk of every screen (app/src/androidTest).
-        // Our own runner: AndroidJUnitRunner finishes every activity as a test
-        // starts, which took the kiosk's locked home screen down (UiCheckInstrumentation).
-        testInstrumentationRunner = "com.mammonrn.phoneaikiosk.uicheck.UiCheckInstrumentation"
-
         versionCode = 78
         versionName = "0.61.0"
 
@@ -209,13 +204,10 @@ dependencies {
     compileOnly(libs.androidx.annotation)
 
     testImplementation(libs.junit)
-    // The on-phone UI walk (scripts/ui-check): its own test APK, never in the app's.
-    androidTestImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.test.core)
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.test.uiautomator)
-    androidTestImplementation(libs.atf)
+    // The on-phone UI walk (scripts/ui-check, src/debug/.../uicheck/UiWalk): Google's
+    // Accessibility Test Framework, in the DEBUG build only (the walk runs inside the
+    // kiosk; an instrumented test would force-stop it and drop lock task).
+    debugImplementation(libs.atf)
     // Test classpath only — see the note in libs.versions.toml.
     testImplementation(libs.json)
     // The JVM build of the SAME runtime version, so WakeWordParityTest exercises

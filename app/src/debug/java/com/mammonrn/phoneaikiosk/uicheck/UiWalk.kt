@@ -1,36 +1,44 @@
 package com.mammonrn.phoneaikiosk.uicheck
 
 import android.app.Activity
-import android.content.Intent
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
+import android.view.PixelCopy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.apps.common.testing.accessibility.framework.AccessibilityCheckPreset
 import com.google.android.apps.common.testing.accessibility.framework.AccessibilityCheckResult.AccessibilityCheckResultType
 import com.google.android.apps.common.testing.accessibility.framework.uielement.AccessibilityHierarchyAndroid
 import com.mammonrn.phoneaikiosk.KioskScreens
-import com.mammonrn.phoneaikiosk.MainActivity
 import com.mammonrn.phoneaikiosk.R
 import com.mammonrn.phoneaikiosk.voice.VoiceState
 import com.mammonrn.phoneaikiosk.voice.WakePause
 import org.json.JSONArray
 import org.json.JSONObject
-import org.junit.Test
-import org.junit.runner.RunWith
 import java.io.File
 import java.util.Locale
 
 /**
  * THE UI WALK (0.63.0, Poom 2026-09-25): every screen of the kiosk, in one run,
- * with no model in the loop — `scripts/ui-check` runs it and reads one summary.
+ * with no model in the loop — `scripts/ui-check` starts it (debug broadcast
+ * TEST_UI_CHECK) and reads one summary.
  *
- * Runs inside the app, so it opens screens and presses their buttons directly
- * (fast) and checks the REAL views, not a dump of them:
+ * INSIDE THE KIOSK'S OWN PROCESS, NOT AN INSTRUMENTED TEST. `am instrument`
+ * force-stops the app to start a test, and on the A07 that took the kiosk out
+ * of lock task for the whole walk (seen 2026-09-25, four runs). Here nothing is
+ * stopped: the walk is a thread in the running kiosk, like the other TEST_*
+ * hooks, and exists only in the debug build.
+ *
+ * It opens screens and presses their buttons directly (fast) and checks the
+ * REAL views, not a dump of them:
  *   overlap   no button or text on another (one inside the other is fine; the
  *             exit corner may lie over what cannot be pressed)
  *   touch     every button at least 48dp on its short side (a button the
@@ -48,11 +56,16 @@ import java.util.Locale
  *
  * A NEW SCREEN IS ADDED HERE (CLAUDE.md).
  */
-@RunWith(AndroidJUnit4::class)
-class UiCheckTest {
+class UiWalk(private val ctx: Context, private val only: List<String>?) {
 
-    private val inst = InstrumentationRegistry.getInstrumentation()
-    private val ctx = inst.targetContext
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Runs [block] on the main thread and waits for it (the walk itself is a background thread). */
+    private fun mainSync(block: () -> Unit) {
+        val done = CountDownLatch(1)
+        main.post { try { block() } finally { done.countDown() } }
+        done.await(10, TimeUnit.SECONDS)
+    }
     private val density = ctx.resources.displayMetrics.density
     private val screenW = ctx.resources.displayMetrics.widthPixels
     private val screenH = ctx.resources.displayMetrics.heightPixels
@@ -73,15 +86,14 @@ class UiCheckTest {
 
     /**
      * The screen in front, from the kiosk's own record (KioskScreens), never one
-     * on its way out. (The walk runs under [UiCheckInstrumentation], which does
-     * not finish the home screen as AndroidJUnitRunner did.)
+     * on its way out.
      */
     private fun top(): Activity? = KioskScreens.resumed?.get()?.takeUnless { it.isFinishing }
 
     private fun settle(ms: Long = 900) {
-        inst.waitForIdleSync()
+        mainSync {}
         SystemClock.sleep(ms)
-        inst.waitForIdleSync()
+        mainSync {}
     }
 
     /**
@@ -95,7 +107,7 @@ class UiCheckTest {
      * it: the kiosk's own home screen is what is left when the others close.
      */
     private fun home() {
-        inst.runOnMainSync { KioskScreens.leaveAllButHome("ui-check") }
+        mainSync { KioskScreens.leaveAllButHome("ui-check") }
         waitFor("MainActivity")
         settle(1500)
     }
@@ -117,7 +129,7 @@ class UiCheckTest {
             all.add(v)
             if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
         }
-        inst.runOnMainSync { walk(root) }
+        mainSync { walk(root) }
         return all
     }
 
@@ -140,14 +152,14 @@ class UiCheckTest {
         var target: View? = v
         while (target != null && !target.isClickable) target = target.parent as? View
         target ?: return false
-        inst.runOnMainSync { target.performClick() }
+        mainSync { target.performClick() }
         settle()
         return true
     }
 
     private fun pressId(id: Int): Boolean {
         val v = top()?.findViewById<View>(id) ?: return false
-        inst.runOnMainSync { v.performClick() }
+        mainSync { v.performClick() }
         settle()
         return true
     }
@@ -189,16 +201,10 @@ class UiCheckTest {
         return false
     }
 
-    /** `-e only home,calc` runs only the screens whose names start with one of those. */
-    private val only: List<String>? = InstrumentationRegistry.getArguments().getString("only")
-        ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
-
     private fun wanted(name: String) = only == null || only.any { name.startsWith(it) }
 
     private fun check(name: String, extra: ((Activity?) -> List<String>)? = null, picture: Boolean = true) {
         if (!wanted(name)) return
-        // The screen on for the picture (a dark screen photographs black and has no views).
-        androidx.test.uiautomator.UiDevice.getInstance(inst).wakeUp()
         settle(600)
         val screenOn = (ctx.getSystemService(android.os.PowerManager::class.java))?.isInteractive == true
         val act = top()
@@ -206,8 +212,8 @@ class UiCheckTest {
         val issues = ArrayList<String>()
         val excepted = ArrayList<String>()
         val seen = ArrayList<Seen>()
-        inst.runOnMainSync {
-            val root = act?.window?.decorView ?: return@runOnMainSync
+        mainSync {
+            val root = act?.window?.decorView ?: return@mainSync
             fun walk(v: View) {
                 if (!v.isShown || hiddenFromReader(v)) return
                 val speaks = v.isClickable || (v is TextView && v.text.isNotEmpty()) || !v.contentDescription.isNullOrEmpty()
@@ -273,7 +279,7 @@ class UiCheckTest {
 
         val noPicture = !picture || activity in CAMERA_SCREENS
         if (!noPicture) {
-            val shot: Bitmap? = inst.uiAutomation.takeScreenshot()
+            val shot: Bitmap? = act?.let { picture(it) }
             shot?.let { File(out, "$name.png").outputStream().use { o -> it.compress(Bitmap.CompressFormat.PNG, 90, o) } }
         }
         results.put(JSONObject().put("name", name).put("activity", activity).put("pass", issues.isEmpty())
@@ -288,12 +294,30 @@ class UiCheckTest {
     private fun waitingFor(s: Seen): String? =
         waiting[s.id] ?: if (s.label.startsWith("หน้า") && s.label.contains("ทอง")) waiting["gold_pages"] else null
 
+    /**
+     * The screen as the app's window draws it (PixelCopy). A video's picture is a
+     * surface of its own and is not in it; the controls and the layout are.
+     */
+    private fun picture(act: Activity): Bitmap? {
+        val window = act.window ?: return null
+        val decor = window.decorView
+        if (decor.width <= 0 || decor.height <= 0) return null
+        val bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+        val done = CountDownLatch(1)
+        var ok = false
+        runCatching {
+            PixelCopy.request(window, bitmap, { result -> ok = result == PixelCopy.SUCCESS; done.countDown() }, main)
+        }.onFailure { done.countDown() }
+        done.await(5, TimeUnit.SECONDS)
+        return if (ok) bitmap else null
+    }
+
     private fun homeRules(act: Activity?): List<String> {
         val out = ArrayList<String>()
         fun box(id: Int): Rect? {
             var r: Rect? = null
-            inst.runOnMainSync {
-                val v = act?.findViewById<View>(id) ?: return@runOnMainSync
+            mainSync {
+                val v = act?.findViewById<View>(id) ?: return@mainSync
                 val at = IntArray(2); v.getLocationOnScreen(at)
                 r = Rect(at[0], at[1], at[0] + v.width, at[1] + v.height)
             }
@@ -321,7 +345,6 @@ class UiCheckTest {
 
     // ------------------------------------------------------------ the walk
 
-    @Test
     fun everyScreen() {
         home()
         check("home", ::homeRules)
@@ -383,14 +406,14 @@ class UiCheckTest {
         com.mammonrn.phoneaikiosk.media.VideoPlayer.pause(ctx)
         settle()
         val fill = views().firstOrNull { (it as? TextView)?.text?.toString()?.startsWith("เต็มจอ") == true }
-        if (fill != null && (fill as TextView).text.contains("ปิด")) { inst.runOnMainSync { fill.performClick() }; settle() }
+        if (fill != null && (fill as TextView).text.contains("ปิด")) { mainSync { fill.performClick() }; settle() }
         showControls()
         check("video-full-portrait")
-        com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> inst.runOnMainSync { turn(true) } }
+        com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(true) } }
         settle(2500)
         showControls()
         check("video-full-landscape")
-        com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> inst.runOnMainSync { turn(false) } }
+        com.mammonrn.phoneaikiosk.media.VideoActivity.debugTurn?.let { turn -> mainSync { turn(false) } }
         settle(1500)
     }
 
@@ -398,7 +421,13 @@ class UiCheckTest {
     private fun showControls() {
         val shown = views().any { (it as? TextView)?.text?.toString()?.startsWith("เต็มจอ") == true }
         if (!shown) {
-            androidx.test.uiautomator.UiDevice.getInstance(inst).click(screenW / 2, screenH / 3)
+            val decor = top()?.window?.decorView
+            if (decor != null) mainSync {
+                val t = SystemClock.uptimeMillis()
+                val x = decor.width / 2f; val y = decor.height / 3f
+                decor.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0))
+                decor.dispatchTouchEvent(MotionEvent.obtain(t, t + 50, MotionEvent.ACTION_UP, x, y, 0))
+            }
             settle(700)
         }
     }

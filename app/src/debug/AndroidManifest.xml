@@ -65,6 +65,7 @@
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_HOME_CARD" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE" />
                 <action android:name="com.mammonrn.phoneaikiosk.TEST_LAYOUT_REPORT" />
+                <action android:name="com.mammonrn.phoneaikiosk.TEST_UI_CHECK" />
             </intent-filter>
         </receiver>
     </application>

@@ -144,6 +144,22 @@ class TestTriggerReceiver : BroadcastReceiver() {
                     .putExtra(VoiceService.EXTRA_AS_TURN, intent.getBooleanExtra("as_turn", false)))
             }
 
+            ACTION_UI_CHECK -> {
+                // 0.63.0 (scripts/ui-check): the walk of every screen, in this process —
+                // an instrumented test force-stops the app and took the kiosk out of
+                // lock task. --es only home,calc runs part of it. The end is a log line.
+                val only = intent.getStringExtra("only")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+                Thread({
+                    val words = try {
+                        com.mammonrn.phoneaikiosk.uicheck.UiWalk(context.applicationContext, only).everyScreen()
+                        "done"
+                    } catch (t: Throwable) {
+                        "failed ${t.javaClass.simpleName}"
+                    }
+                    android.util.Log.i("KioskUiCheck", words)
+                }, "ui-check").start()
+            }
+
             ACTION_LAYOUT_REPORT -> {
                 // 0.63.0 (tools/layout/check_layout.py): every TextView on the screen
                 // in front whose text the screen cuts — "…" (ellipsized) or lines
@@ -555,6 +571,7 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_RATES = "com.mammonrn.phoneaikiosk.TEST_RATES"
         const val ACTION_TASKBAR = "com.mammonrn.phoneaikiosk.TEST_TASKBAR"
         const val ACTION_LAYOUT_REPORT = "com.mammonrn.phoneaikiosk.TEST_LAYOUT_REPORT"
+        const val ACTION_UI_CHECK = "com.mammonrn.phoneaikiosk.TEST_UI_CHECK"
         const val ACTION_STT_FILE = "com.mammonrn.phoneaikiosk.TEST_STT_FILE"
         const val ACTION_FOCUS = "com.mammonrn.phoneaikiosk.TEST_FOCUS"
         const val ACTION_KEEP_CAPTURE = "com.mammonrn.phoneaikiosk.TEST_KEEP_CAPTURE"
