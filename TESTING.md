@@ -2214,3 +2214,24 @@ debug APK จาก CI · แพ็กเกจ `com.mammonrn.phoneaikiosk.debug
 | "เปิดวิดีโอ คู่โจร" | ✅ `video:play:ok` เปิด คู่โจร1 (มีอยู่ใน playlist ของ Poom แล้ว จึงไม่เพิ่ม/ไม่เอาออก) ต่อจากตำแหน่งที่ดูค้าง · สัญลักษณ์สถานะอยู่ข้าง X ไม่ทับปุ่ม แต่ตอนซ่อนปุ่มยังลอยทับภาพ |
 | บรรทัดสัญญาณ WiFi หน้าไฟในบ้าน | ✅ "สัญญาณ WiFi: พอใช้ (-70 dBm) · ค่าที่อ่านได้ครั้งล่าสุด" (ปลั๊กออฟไลน์) / "ดี (-52 dBm)" |
 | คืนสภาพ | ✅ ระดับเสียงเพลง 0.07 เท่าเดิม · ไม่มีปลุก "ทดสอบ" · ไม่มีคลิปค้างบนเครื่อง · LOCKED |
+
+## v0.63.0 — ตรวจ UI ทุกหน้า (`scripts/ui-check`), บั๊กวิดีโอ .DAT จอดำ, ตัวถอดเสียงสำรอง, คำสั่งเสียงจับเวลา/วิทยุ
+
+### `scripts/ui-check` — คำสั่งเดียว ตรวจทุกหน้า (กฎ CLAUDE.md: งาน UI ทุกงานรันก่อนรายงาน)
+- บน PC (Git Bash) ต่อ A07 ทาง adb: `scripts/ui-check [OUT_DIR]` · `SKIP_INSTALL=1` ใช้ APK ที่ติดตั้งอยู่ · `ONLY=home,calc,video` เดินบางส่วน
+- **เดินในโปรเซสของ kiosk เอง** (debug broadcast `TEST_UI_CHECK`, `app/src/debug/.../uicheck/UiWalk.kt`) ไม่ใช่ instrumented test — `am instrument` force-stop แอป และบน A07 ทำให้หลุด lock task ตลอดการเดิน (เห็นใน log 4 รอบ 2026-09-25) สคริปต์ไม่เริ่มถ้าไม่ LOCKED และถือว่าไม่ผ่านถ้า lock task หลุดแม้ชั่วขณะ (`updateLockTaskModeEnabled: false`)
+- 52 หน้า: หน้าแรก + สถานะจาร์วิส 6 แบบ, แผงควบคุม + ป๊อปอัป 2 โฟลเดอร์, ไฟในบ้าน, จัดการไฟล์, ยืนยันตัวตน (ไม่ถ่ายภาพ), ที่มาข้อมูล, เพลง, วิดีโอ (รายการ, เต็มจอแนวตั้ง/แนวนอน, นับภาพ VLC/Media3), วิทยุ, กล้อง (ไม่ถ่ายภาพ), บันทึกเสียง, นาฬิกาปลุก, จับเวลา 2 หน้า, โน้ต, ระดับน้ำ, เครื่องคิดเลขทุกแท็บทุกสไลด์
+- ตรวจจาก view จริง: ทับกัน · ปุ่ม <48dp (ส่วนที่ถูกตัดที่ขอบเลื่อนข้าม) · ข้อความถูกตัด (… หรือสูงเกิน view) · การ์ดจาร์วิส ≥156dp · มุมทางออก 72dp มุมขวาล่าง · Accessibility Test Framework (error เท่านั้น) · ข้อยกเว้นที่รอ Poom แสดงแยกพร้อมเหตุผล ไม่ซ่อน
+- ผล: `results.md` (ตารางต่อหน้า) · `sheet.png` (ทุกหน้าแผ่นเดียว ชื่อใต้ภาพ) · `failed/*.png` · ใช้เวลา ~4 นาทีรวมติดตั้ง
+- ภาพ = PixelCopy ของหน้าต่างแอป (ภาพของวิดีโอเป็น surface แยก จึงไม่อยู่ในภาพ — ใช้การนับภาพแทน)
+- **Paparazzi** (CI ทุก push, `verifyPaparazziDebug`): หน้าแรกจาก layout เทียบกับ `app/src/test/snapshots/images` · หน้าอื่นสร้างด้วยโค้ดใน Activity ซึ่ง Paparazzi รันไม่ได้ จึงตรวจบนเครื่องด้วย ui-check · ตั้งใจเปลี่ยน: `./gradlew recordPaparazziDebug` แล้ว commit ภาพ
+
+### วิดีโอ: ภาพขึ้นจริงไหม (test ประจำหน้าวิดีโอ, อยู่ใน ui-check: `video-frames-vlc`, `video-frames-media3`)
+- นับ "ภาพที่แสดงแล้ว" จากตัวเล่นเอง (VLC `displayedPictures` ต้องเปิด `--stats`; Media3 `renderedOutputBufferCount`) ตอนเล่น → หลังจาร์วิสพูดทับ (หยุด-เล่นต่อ) → เต็มจอหมุนแนวนอน → เปลี่ยนเรื่อง ต้องเพิ่มขึ้นทุกช่วง 3 วินาที
+- log `KioskVideo: frames <เหตุ> engine=vlc decoded= displayed= lost= vout= surface=valid|invalid WxH` ทุก 5 วินาที และตอน attach / resize / surface-created
+- **บั๊ก .DAT จอดำ (Poom):** หน้าจอส่ง SurfaceView ให้ VLC ก่อน surface เกิด (log `surface=invalid 0x0 shown=false`) แล้ว VLC เปิดภาพใหม่ทันทีบนสิ่งที่ยังไม่มี → เสียงมา ภาพดำ · แก้รอบแรก (สลับ track ภาพตอน surface เกิด): ภาพขึ้น 1 เฟรมแล้วค้าง (decoded=16 displayed=1 เวลาเดินต่อ) · แก้จริง: โหลดไฟล์ใหม่ที่เวลาปัจจุบันเมื่อ surface เกิด · ผลบน A07 เปิดด้วยคำสั่งเสียง "เปิดวิดีโอ คู่โจร1": displayed 105 → 605 ใน 20 วินาที (~25 ภาพ/วินาที) เห็นภาพจริง · Media3 (.mp4) 30 ภาพ/วินาทีเหมือนเดิม
+- `--no-stats` เดิมทำให้ตัวนับของ VLC เป็น 0 เสมอ เปลี่ยนเป็น `--stats`
+
+### ตัวถอดเสียง Qwen + Groq สำรอง (broker, รอ deploy)
+- `tests/test_stt_fallback.py` 16 ข้อ: Qwen ตอบ → Groq ไม่ถูกเรียก / Qwen 500, 429, 401, หมดเวลา, ไม่มี key → Groq+คำใบ้ และ log `stt fallback … reason=` / 403 `AllocationQuota.FreeTierOnly` → log "qwen free quota used up (Stop on Exhaust)" และข้าม Qwen 1 ชั่วโมง แล้วลองใหม่ / 403 อื่นเป็น auth / ไม่มีเสียง (empty) ไม่สลับ / provider ที่ขอเจาะจงไม่สลับ / สองตัวล้ม = error เดียว / คิดเงินเฉพาะตัวที่ทำงาน / เตือนวันละครั้งเมื่อโควตาฟรีเหลือ <20%
+- บนเครื่องจริงรอ Poom deploy — แล้วจำลอง Qwen ล้มบน VPS ไม่ได้โดยไม่แตะ VPS จึงยืนยันด้วย test ข้างบน
