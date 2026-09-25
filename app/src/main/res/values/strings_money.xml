@@ -32,6 +32,7 @@
     <string name="money_purity_thai">96.5%</string>
     <string name="money_show_in">แสดงราคาเป็นสกุล</string>
     <string name="money_bad_quantity">น้ำหนักต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป</string>
+    <string name="money_source_has_no_metals">แหล่งที่ใช้อยู่ไม่มีราคานี้</string>
     <string name="money_no_free_source">ยังไม่มีแหล่งราคาฟรี</string>
     <string name="money_metal_note">ราคานี้เป็นราคาตลาดโลกอ้างอิง ไม่ใช่ราคาซื้อขายหน้าร้าน ต่อน้ำหนักที่กรอก (%1$s) · บาททอง = 15.244 กรัม · ลำดับ 1–5 ตามมูลค่าตลาด 6–10 ตามมูลค่าการผลิตต่อปี</string>
     <string name="money_fetching">กำลังดึงราคาล่าสุด…</string>

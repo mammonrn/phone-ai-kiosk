@@ -236,6 +236,7 @@ internal class RatesPages(private val a: CalculatorActivity) {
                 val words = when {
                     m.code == null -> a.getString(R.string.money_no_free_source)
                     t == null -> a.getString(R.string.money_no_numbers_short)
+                    !t.has(m.code) -> a.getString(R.string.money_source_has_no_metals)
                     price == null -> "—"
                     else -> "${Money.format(price)} $metalCurrency"
                 }
