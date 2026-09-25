@@ -2153,3 +2153,15 @@ adb shell am broadcast -a com.mammonrn.phoneaikiosk.TEST_ASK --es text "'เพ�
 adb logcat -s KioskVoice:I KioskNotes:I     # action note_add list=shopping added=true / action note_read list=shopping pending=3
 sudo journalctl -u kiosk-broker -n 50 | grep "intent device"   # บน VPS: ท้ายบรรทัด notes=add:shopping:named | read:shopping | question | no-note-word …
 ```
+
+### v0.61.0 (ต่อ) — ราคา, หน่วย, http วิทยุ, หน้าขออนุญาต Google, Drive จริง, จับเวลา, เข็มทิศ, โน้ต, วัดเสียงบี๊บ
+
+- **ราคา:** เปิดแท็บ → log `KioskRates: rates fetch jsdelivr=ok` ใต้ตัวเลขมีที่มา วันที่ของข้อมูล และเวลาที่ดึง · `TEST_RATES --es fail jsdelivr` → `pages=ok` · `--es fail jsdelivr,pages` → `frankfurter=ok` (โลหะขึ้น "แหล่งที่ใช้อยู่ไม่มีราคานี้") · `--es fail none` คืนค่า · ปิดเน็ต (`svc wifi disable`, `svc data disable`) แล้ว force-stop เปิดใหม่ → ตัวเลขเดิมพร้อมอายุ กดอัปเดต → "อัปเดตไม่สำเร็จ ยังใช้ข้อมูลเดิม" ไม่ค้าง **อย่าลืมเปิดเน็ตคืน**
+- **หน่วย:** 6 แท็บต้องพอดีแถวเดียว ตัวอย่าง 2.5 ไร่ = 4,000 ตร.ม. = 1,000 ตารางวา = 10 งาน
+- **วิทยุ http:** ลูกทุ่งเน็ตเวิร์คถูกเพิ่มให้รายการเดิมครั้งเดียว (`new stations from the app's list: 1`) และเล่นได้ สถานี http อื่นยังขึ้น "http: ยังเล่นไม่ได้"
+- **หน้าขออนุญาต Google:** อ่านรายการด้วย `adb shell dumpsys device_policy | grep -A6 "DefaultPolicyKey lockTask"` ระหว่างหน้า Google เปิดต้องมี `com.google.android.gms` หลังกดกลับ (`withdrawn reason=cancelled`) หรือเชื่อมเสร็จ (`reason=answered`) ต้องเหลือ 3 แพ็กเกจ กรณีครบ 5 นาที (`reason=timeout`) ทดสอบได้เฉพาะตอนยังไม่เคยอนุญาต
+- **Drive จริง:** ทดสอบในโฟลเดอร์ทดสอบของตัวเองเท่านั้น ห้ามแคปหน้ารายการไฟล์ของ Poom · สร้าง/เปลี่ยนชื่อ/อัปโหลด/ดาวน์โหลด/ย้ายไปถังขยะ (ต้องผ่านยืนยันตัวตน)/เปิดเพลงแบบไฟล์เดียว X กลับหน้า Drive
+- **จับเวลา:** นับถอยหลัง 1 นาที ปิดหน้า กลับหน้าหลัก → ครบ 60 วินาที `countdown ended source=alarm` หน้าจับเวลาขึ้นเอง LOCKED
+- **เข็มทิศ:** A07 **ไม่มีเซนเซอร์แม่เหล็ก** (`sensors rotation=false magnet=false accel=true`) หน้าเข็มทิศบอกว่าใช้ไม่ได้ ระดับน้ำใช้ได้
+- **โน้ต:** พิมพ์เพิ่ม ติ๊ก เอาออก ได้ · สั่งด้วยเสียงต้องรอ deploy broker ก่อน
+- **วัดเสียงบี๊บ (ทำเองทั้งหมด):** edge-tts "Hey Jarvis" เสียงอังกฤษ + ประโยคไทยเสียง th-TH Neural เว้น 200 ms → ด่านตรวจ `TEST_STT_FILE --es path /sdcard/Download/x.wav` (ผลอยู่ใน `files/stt_probe.txt` ไม่ลง log) ใช้เฉพาะคลิปที่ถอดถูกทั้งประโยค → เล่นผ่านลำโพงคอม `TEST_KEEP_CAPTURE on` ดึง `files/last_capture.wav` ทุกรอบ เทียบ `TEST_BEEP on/off` จบแล้วปิดสวิตช์และลบไฟล์ · ถ้าส่งไฟล์ที่มีช่วงศูนย์ล้วน (digital silence) broker ตอบ Failure ให้ใช้การลดเสียงแทน
