@@ -549,6 +549,21 @@ class CalculatorActivity : Activity() {
         addView(button(b) { onB() }, LinearLayout.LayoutParams(0, dp(UiScale.TOUCH), 1f).apply { marginStart = dp(UiScale.SPACE_S) })
     }
 
+    /**
+     * A number field's name for the screen reader (0.63.0, the UI check's
+     * accessibility test): as its HINT, not its description — a description on
+     * an editable box is read INSTEAD of what was typed in it.
+     */
+    internal fun nameField(field: EditText, name: String) {
+        androidx.core.view.ViewCompat.setAccessibilityDelegate(field, object : androidx.core.view.AccessibilityDelegateCompat() {
+            override fun onInitializeAccessibilityNodeInfo(host: View,
+                                                           info: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.hintText = name
+            }
+        })
+    }
+
     /** A number field: the decimal keyboard, a sign allowed, the white 1995 box. */
     internal fun numberField(hint: String = "") = EditText(this).apply {
         typeface = thai

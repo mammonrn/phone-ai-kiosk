@@ -181,7 +181,14 @@ class UiCheckTest {
         return false
     }
 
+    /** `-e only home,calc` runs only the screens whose names start with one of those. */
+    private val only: List<String>? = InstrumentationRegistry.getArguments().getString("only")
+        ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+
+    private fun wanted(name: String) = only == null || only.any { name.startsWith(it) }
+
     private fun check(name: String, extra: ((Activity?) -> List<String>)? = null, picture: Boolean = true) {
+        if (!wanted(name)) return
         // The screen on for the picture (a dark screen photographs black and has no views).
         androidx.test.uiautomator.UiDevice.getInstance(inst).wakeUp()
         settle(600)
@@ -222,7 +229,9 @@ class UiCheckTest {
                 for (c in a11y) for (r in c.runCheckOnHierarchy(hierarchy)) {
                     if (r.type != AccessibilityCheckResultType.ERROR) continue
                     val b = r.element?.boundsInScreen
-                    val line = "a11y ${c.javaClass.simpleName}: ${b ?: ""} ${
+                    val what = listOfNotNull(r.element?.className?.toString()?.substringAfterLast('.'),
+                        r.element?.resourceName?.toString()?.substringAfterLast('/')).joinToString(" ")
+                    val line = "a11y ${c.javaClass.simpleName}: $what ${b ?: ""} ${
                         runCatching { r.getMessage(Locale.ENGLISH) }.getOrDefault("").toString().take(80)}"
                     // The same view as a rule that waits for Poom: an exception, said, not a failure.
                     val waits = seen.firstOrNull { s -> b != null && s.full.left == b.left && s.full.top == b.top &&
@@ -261,7 +270,10 @@ class UiCheckTest {
         }
         results.put(JSONObject().put("name", name).put("activity", activity).put("pass", issues.isEmpty())
             .put("issues", JSONArray(issues.distinct())).put("exceptions", JSONArray(excepted.distinct()))
-            .put("picture", !noPicture).put("screenOn", screenOn))
+            .put("picture", !noPicture).put("screenOn", screenOn)
+            .put("focus", act?.hasWindowFocus() == true).put("finishing", act?.isFinishing == true)
+            .put("attached", act?.window?.decorView?.isAttachedToWindow == true)
+            .put("instance", System.identityHashCode(act)))
         File(out, "results.json").writeText(results.toString(1))
     }
 

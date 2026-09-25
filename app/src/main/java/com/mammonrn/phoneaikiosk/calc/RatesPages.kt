@@ -104,7 +104,7 @@ internal class RatesPages(private val a: CalculatorActivity) {
     private fun currency(page: LinearLayout) {
         val t = RateStore.table
         page.addView(a.label(a.getString(R.string.money_amount)), gap())
-        val amount = a.numberField("1").apply { setText(amountText); contentDescription = a.getString(R.string.money_amount) }
+        val amount = a.numberField("1").apply { setText(amountText); a.nameField(this, a.getString(R.string.money_amount)) }
         page.addView(amount, LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY)))
         page.addView(a.label(a.getString(R.string.money_from)), gap())
         page.addView(chooser(from, "from"), LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY)))
@@ -215,7 +215,7 @@ internal class RatesPages(private val a: CalculatorActivity) {
     private fun metals(page: LinearLayout) {
         val t = RateStore.table
         page.addView(a.label(a.getString(R.string.money_quantity)), gap())
-        val qty = a.numberField("1").apply { setText(qtyText); contentDescription = a.getString(R.string.money_quantity) }
+        val qty = a.numberField("1").apply { setText(qtyText); a.nameField(this, a.getString(R.string.money_quantity)) }
         page.addView(qty, LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY)))
         page.addView(row(WeightUnit.entries.map { u -> a.toggle(a.getString(unitWord(u)), u == unit) { unit = u; deck.render() } }), gap())
         page.addView(a.label(a.getString(R.string.money_gold_purity)), gap())

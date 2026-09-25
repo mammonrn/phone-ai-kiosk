@@ -33,7 +33,7 @@ internal class UnitsPages(private val a: CalculatorActivity) {
         val page = column()
         page.addView(a.text(a.getString(kindWord(k)), UiScale.TEXT_HEADING).apply { typeface = Typeface.create(a.thai, Typeface.BOLD) })
         page.addView(a.label(a.getString(R.string.units_value)), gap())
-        val field = a.numberField("1").apply { setText(text(k)); contentDescription = a.getString(R.string.units_value) }
+        val field = a.numberField("1").apply { setText(text(k)); a.nameField(this, a.getString(R.string.units_value)) }
         page.addView(field, LinearLayout.LayoutParams(MATCH, a.dp(UiScale.PRIMARY)))
         page.addView(a.label(a.getString(R.string.units_from)), gap())
         // The units as toggles, three to a row: the chosen one stays down (navy, bold) — shape and words, not colour only.

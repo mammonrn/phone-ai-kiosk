@@ -407,6 +407,7 @@ internal class ElectricalPages(private val a: CalculatorActivity) {
         private var unit = picked[key] ?: start
         val field: EditText = a.numberField().apply {
             setText(typed[key] ?: initial)
+            a.nameField(this, label)            // read by the screen reader (0.63.0 UI check)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, af: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) = Unit

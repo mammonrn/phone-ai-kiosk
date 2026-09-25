@@ -42,7 +42,8 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
 fi
 
 echo "walking every screen…"
-adb shell am instrument -w -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
+# ONLY=home,calc   only the screens whose names start with those
+adb shell am instrument -w ${ONLY:+-e only "$ONLY"} -e class com.mammonrn.phoneaikiosk.uicheck.UiCheckTest \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" | tail -4
 
 # The walk ends on the home screen; the instrumentation's end stops the app's

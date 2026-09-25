@@ -308,7 +308,7 @@ internal class SolarPages(private val a: CalculatorActivity) {
         var changed: (() -> Unit)? = null
         val box: EditText = a.numberField().apply {
             setText(typed[k] ?: initial)
-            contentDescription = a.getString(label)
+            a.nameField(this, a.getString(label))
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, af: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) = Unit
