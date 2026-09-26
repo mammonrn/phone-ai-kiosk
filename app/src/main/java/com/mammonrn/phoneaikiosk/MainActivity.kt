@@ -994,11 +994,17 @@ class MainActivity : Activity() {
         // The radio has no pause of its own (a live stream has nothing to
         // resume from): connecting counts as playing (it is on its way),
         // stopped and failed both count as stopped.
-        val radioPlayback = when (radio.state) {
-            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.PLAYING,
-            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.CONNECTING -> NowPlayingCard.Playback.PLAYING
-            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.STOPPED,
-            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.FAILED -> NowPlayingCard.Playback.STOPPED
+        // Stopped by THIS card's middle button, the radio counts as paused
+        // (seen on the A07: otherwise the card vanished on "พัก" and the
+        // station could not be resumed from it); stopped anywhere else — the
+        // app, a voice command — it is stopped, and the card goes (Poom).
+        val radioOn = radio.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.PLAYING ||
+            radio.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.CONNECTING
+        if (radioOn || music.state == com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING) radioPausedByCard = false
+        val radioPlayback = when {
+            radioOn -> NowPlayingCard.Playback.PLAYING
+            radioPausedByCard -> NowPlayingCard.Playback.PAUSED
+            else -> NowPlayingCard.Playback.STOPPED
         }
         musicPausedAtMs = NowPlayingCard.pausedAt(musicPlayback, musicPausedAtMs, nowMs)
         radioPausedAtMs = NowPlayingCard.pausedAt(radioPlayback, radioPausedAtMs, nowMs)
@@ -1056,7 +1062,7 @@ class MainActivity : Activity() {
                 if (title.text.toString() != titleText) title.text = titleText
                 val station = radio.stationName.orEmpty()
                 if (songView.text.toString() != station) songView.text = station
-                val toggleWord = getString(R.string.radio_stop)
+                val toggleWord = getString(if (radioOn) R.string.music_pause else R.string.music_resume)
                 if (toggleView.contentDescription != toggleWord) {
                     toggleView.text = toggleWord
                     toggleView.contentDescription = toggleWord
@@ -1073,18 +1079,34 @@ class MainActivity : Activity() {
                     nextView.text = nextWord
                     nextView.contentDescription = nextSpoken
                 }
-                summaries["music"] = getString(R.string.radio_state_playing)
+                summaries["music"] = getString(if (radioOn) R.string.radio_state_playing else R.string.music_paused)
                 board.report("music", "r:" + radio.stationId.orEmpty(), nowMs)
             }
             null -> Unit
         }
     }
 
-    /** The shared card's middle button: music's play/pause, or the radio's
-     *  only control, stop — a live stream has nothing to resume from. */
+    /** Set when this card's own button stopped the radio: shown as paused
+     *  (≤10 min, NowPlayingCard) and resumed by the same button. */
+    private var radioPausedByCard = false
+
+    /** The shared card's middle button: music's play/pause; for the radio,
+     *  which has no pause of its own, stop — held as "paused" — and play the
+     *  same station again. */
     private fun nowPlayingToggle() {
         if (nowPlayingSource == NowPlayingCard.Source.RADIO) {
-            com.mammonrn.phoneaikiosk.radio.RadioPlayer.stop(this)
+            val player = com.mammonrn.phoneaikiosk.radio.RadioPlayer
+            val on = player.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.PLAYING ||
+                player.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.CONNECTING
+            if (on) {
+                player.stop(this)
+                radioPausedByCard = true
+            } else {
+                val station = com.mammonrn.phoneaikiosk.radio.RadioStore.book(this).ordered()
+                    .firstOrNull { it.id == player.stationId }
+                radioPausedByCard = false
+                if (station != null) player.play(this, station)
+            }
         } else {
             com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
         }
