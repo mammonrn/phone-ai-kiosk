@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 3,
+  "numberReturned": 1,
+  "links": [],
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [100.4, 13.85]},
+      "properties": {"pv_tn": "นนทบุรี", "date": "2026-09-24", "area_km2": 0.3}
+    }
+  ]
+}

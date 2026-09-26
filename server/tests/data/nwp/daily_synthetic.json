@@ -1,0 +1,26 @@
+{
+  "weather_forecast": {
+    "locations": [
+      {
+        "location": {"lat": 13.7563, "lon": 100.5018},
+        "forecasts": [
+          {
+            "time": "2026-09-26T00:00:00+07:00",
+            "data": {"tc_max": 34.0, "tc_min": 26.0, "rh": 70.0, "rain": 2.0,
+                     "ws10m": 5.0, "cloudlow": 40.0, "cloudmed": 20.0, "cloudhigh": 10.0, "cond": 5}
+          },
+          {
+            "time": "2026-09-27T00:00:00+07:00",
+            "data": {"tc_max": 33.0, "tc_min": 25.5, "rh": 72.0, "rain": 5.0,
+                     "ws10m": 6.0, "cloudlow": 50.0, "cloudmed": 60.0, "cloudhigh": 10.0, "cond": 6}
+          },
+          {
+            "time": "2026-09-28T00:00:00+07:00",
+            "data": {"tc_max": null, "tc_min": null, "rh": null, "rain": null,
+                     "ws10m": null, "cloudlow": null, "cloudmed": null, "cloudhigh": null, "cond": null}
+          }
+        ]
+      }
+    ]
+  }
+}
