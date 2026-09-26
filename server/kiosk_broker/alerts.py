@@ -66,6 +66,19 @@ moment it expires, `ok` is false and `updated` stays at the time they were
 fetched. Items without an expiry of their own (GDACS) are not shown more than
 STALE_UNDATED_SECONDS after the fetch that saw them.
 
+EACH ITEM'S OWN FRESHNESS (2026-09-26, Poom): the payload's top-level
+`ok`/`updated` follow TMD's CAP fetch ONLY, kept for compatibility — a
+สสน. line was once shown as possibly stale just because TMD had never
+answered, even though ThaiWater itself was fresh. Every item now also
+carries `fetched`: the epoch second of the last successful fetch of THAT
+item's own source (TMD CAP, TMD RSS, GDACS and ThaiWater tracked
+separately); an item kept from an older fetch while its source now fails
+keeps its older `fetched`. The payload also carries `sources`: {name:
+{"ok", "updated"}} for "tmd_cap"/"tmd_rss"/"gdacs"/"thaiwater" so a single
+failing source is visible on its own. THE PHONE SHOULD PREFER AN ITEM'S OWN
+`fetched` for its "data as of" wording, and fall back to the object's
+`updated` only against a broker old enough to not send `fetched`.
+
 NOTHING PRIVATE GOES OUT OR INTO THE LOG: the requests carry no position and
 no key; the log carries counts and error TYPES, never a title or a URL.
 """
@@ -567,8 +580,13 @@ def current(items: list[dict], now: float) -> list[dict]:
 
 
 def payload_items(items: list[dict], now: float) -> list[dict]:
+    """`fetched`: epoch seconds this ITEM's own source was last fetched
+    successfully — an item kept from an older fetch while its source now
+    fails keeps its older time. The phone should prefer this over the
+    object's overall `updated`/`ok`, which follow TMD's CAP alone."""
     return [{"kind": "warning", "title": i["title"], "areas": i.get("areas") or "",
-             "until": _until_iso(i.get("expires")), "source": i["source"], "line": line(i, now)}
+             "until": _until_iso(i.get("expires")), "source": i["source"], "line": line(i, now),
+             "fetched": int(i["fetched"]) if i.get("fetched") is not None else None}
             for i in current(items, now)]
 
 
@@ -599,6 +617,10 @@ class Alerts:
         self._last_ok: bool | None = None
         #: source name → (fetched_at, [items]); the last GOOD answer of each.
         self._good: dict[str, tuple[float, list[dict]]] = {}
+        #: source name → whether the MOST RECENT attempt of that source
+        #: succeeded (independent of `_good`, which only moves on success) —
+        #: this is what makes a failing source visible in `sources` below.
+        self._source_ok: dict[str, bool] = {}
         #: CAP documents never change once published; parsed once, by link.
         self._docs: dict[str, dict | None] = {}
 
@@ -610,6 +632,9 @@ class Alerts:
         return now - self._attempted >= wait
 
     def items(self, now: float) -> list[dict]:
+        """The current warnings, each carrying the epoch second its OWN source
+        was last fetched successfully ("fetched") — not the object's overall
+        `updated`, which only ever follows TMD's CAP (see `payload`)."""
         with self._lock:
             good = dict(self._good)
         pool = []
@@ -617,7 +642,7 @@ class Alerts:
             for item in items:
                 if item.get("expires") is None and now - fetched_at > STALE_UNDATED_SECONDS:
                     continue
-                pool.append(item)
+                pool.append({**item, "fetched": fetched_at})
         return current(pool, now)
 
     def payload(self, now: float | None = None) -> dict:
@@ -626,9 +651,22 @@ class Alerts:
         with self._lock:
             primary = self._good.get("tmd_cap")
             ok = bool(self._last_ok)
+            # Per-source visibility: `ok` is the MOST RECENT attempt of that
+            # source; `updated` is when it last actually succeeded — kept from
+            # before while a source currently fails (see the module docstring:
+            # "the last good items are kept"). Compatibility fields above
+            # ("updated"/"ok") keep following TMD's CAP alone as they always
+            # have; the phone should prefer each item's own "fetched" instead
+            # of these two for its "data as of" wording.
+            sources = {
+                name: {"ok": bool(self._source_ok.get(name, False)),
+                       "updated": int(self._good[name][0]) if name in self._good else None}
+                for name in ("tmd_cap", "tmd_rss", "gdacs", "thaiwater")
+            }
         return {"items": payload_items(self.items(now), now),
                 "updated": int(primary[0]) if primary else None,
-                "ok": ok}
+                "ok": ok,
+                "sources": sources}
 
     def ensure_fresh(self, now: float | None = None) -> None:
         self._maybe_refresh(time.time() if now is None else now, wait=True)
@@ -636,6 +674,7 @@ class Alerts:
     def forget(self) -> None:
         with self._lock:
             self._good.clear()
+            self._source_ok.clear()
             self._docs.clear()
             self._attempted = 0.0
             self._last_ok = None
@@ -665,19 +704,25 @@ class Alerts:
                 self._refreshing = False
 
     def refresh(self, now: float) -> None:
-        """Every source once; each failure on its own. `ok` follows TMD's CAP."""
+        """Every source once; each failure on its own. The object's `ok`
+        follows TMD's CAP as before; each source's own success/failure this
+        attempt is kept in `_source_ok` (see `payload`)."""
         results = {}
+        ok_this_attempt = {}
         for name, fetch in (("tmd_cap", self._tmd_cap), ("tmd_rss", self._tmd_rss),
                             ("gdacs", self._gdacs), ("thaiwater", self._thaiwater)):
             try:
                 results[name] = fetch(now)
+                ok_this_attempt[name] = True
             except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as exc:
                 # The TYPE only: a message can quote a URL, and a log is not
                 # the place for a feed's contents either.
                 log.warning("alerts source=%s failed: %s", name, type(exc).__name__)
+                ok_this_attempt[name] = False
         with self._lock:
             for name, items in results.items():
                 self._good[name] = (now, items)
+            self._source_ok.update(ok_this_attempt)
             self._last_ok = "tmd_cap" in results
         log.info("alerts refreshed ok=%s tmd_cap=%s tmd_rss=%s gdacs=%s thaiwater=%s",
                  "tmd_cap" in results, *(len(results[n]) if n in results else "failed"

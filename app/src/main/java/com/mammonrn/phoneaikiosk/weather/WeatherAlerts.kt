@@ -13,8 +13,10 @@ import java.time.ZonedDateTime
  *
  *   "alerts": {"items": [{"kind": "warning", "title": …, "areas": …,
  *              "until": ISO-8601 or null, "source": "กรมอุตุฯ",
- *              "line": "⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ)"}],
- *              "updated": epoch seconds or null, "ok": bool}
+ *              "line": "⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ)",
+ *              "fetched": epoch seconds or null}],
+ *              "updated": epoch seconds or null, "ok": bool,
+ *              "sources": {name: {"ok": bool, "updated": epoch|null}}}
  *
  * PURE, no Android in it. A broker older than the block sends no "alerts": that
  * is no warnings, and the weather window's last line is the forecast exactly as
@@ -23,6 +25,13 @@ import java.time.ZonedDateTime
  * A WARNING IS A TRIANGLE: every line built here starts with "⚠", whatever the
  * broker wrote, so a warning and the forecast (which starts with [FORECAST_MARK]
  * while the two take turns) differ in shape, not only in colour.
+ *
+ * FRESHNESS IS PER ITEM (2026-09-26, Poom): the top-level "updated"/"ok" only
+ * ever follow TMD's CAP fetch, kept for a broker that predates this — an item
+ * from สสน. (ThaiWater) that is perfectly fresh was once shown as possibly
+ * stale purely because TMD had not answered. Each item's own "fetched" is
+ * used for its "(source time)" wording; the object's "updated" is the
+ * fallback only when an item carries no "fetched" of its own (older broker).
  */
 object WeatherAlerts {
 
@@ -42,6 +51,12 @@ object WeatherAlerts {
         val untilMs: Long?,
         val source: String,
         val line: String,
+        /**
+         * When THIS item's own source was last fetched successfully, epoch
+         * seconds; null on a broker old enough not to send it, in which case
+         * [line] falls back to the block's overall [Block.updatedS].
+         */
+        val fetchedS: Long? = null,
     )
 
     data class Block(val items: List<Item>, val updatedS: Long?, val ok: Boolean)
@@ -63,6 +78,8 @@ object WeatherAlerts {
             val items = ArrayList<Item>()
             for (i in 0 until (list?.length() ?: 0)) {
                 val o = list!!.optJSONObject(i) ?: continue
+                val fetchedS = if (o.isNull("fetched") || !o.has("fetched")) null
+                               else o.optLong("fetched", -1L).takeIf { it > 0 }
                 val item = Item(
                     kind = text(o, "kind"),
                     title = text(o, "title"),
@@ -70,6 +87,7 @@ object WeatherAlerts {
                     untilMs = until(text(o, "until"), zone),
                     source = text(o, "source"),
                     line = text(o, "line"),
+                    fetchedS = fetchedS,
                 )
                 if (item.line.isNotEmpty() || item.title.isNotEmpty()) items.add(item)
             }
@@ -109,9 +127,14 @@ object WeatherAlerts {
     /**
      * One warning as the screen shows it: the broker's line, starting with the
      * triangle, its source followed by the time it was read ("(กรมอุตุฯ 2:30 PM)",
-     * the clock the rest of the screen uses) — or by how old it is when the
-     * broker could not read the source this time ([Block.ok] false) or it is
-     * over [OLD_AFTER_S] old ("(กรมอุตุฯ · ข้อมูลเมื่อ 3 ชม.ที่แล้ว)").
+     * the clock the rest of the screen uses) — or by how old it is when its OWN
+     * source could not be read ([Item.fetchedS] absent, falling back to
+     * [Block.ok]/[Block.updatedS] only on a broker old enough not to send it)
+     * or it is over [OLD_AFTER_S] old ("(กรมอุตุฯ · ข้อมูลเมื่อ 3 ชม.ที่แล้ว)").
+     *
+     * Each item's own freshness, not the block's: a fresh สสน. item must not
+     * be marked stale merely because TMD's CAP (the block's own "updated")
+     * failed on this refresh — that was the bug seen on the phone.
      */
     fun line(item: Item, block: Block, nowMs: Long, zone: ZoneId = BANGKOK): String {
         var body = item.line.ifEmpty { listOf(item.title, item.areas).filter { it.isNotEmpty() }.joinToString(" ") }
@@ -121,12 +144,15 @@ object WeatherAlerts {
         val tail = if (source.isNotEmpty()) "($source)" else ""
         if (tail.isNotEmpty() && body.endsWith(tail)) body = body.removeSuffix(tail).trimEnd()
 
-        val ageS = block.updatedS?.let { (nowMs / 1000 - it).coerceAtLeast(0) }
-        val old = !block.ok || (ageS != null && ageS > OLD_AFTER_S)
+        val fetchedS = item.fetchedS ?: block.updatedS
+        val ageS = fetchedS?.let { (nowMs / 1000 - it).coerceAtLeast(0) }
+        // No per-item freshness at all (older broker): fall back to the
+        // block's own ok, same as before this item ever had a "fetched".
+        val old = (item.fetchedS == null && !block.ok) || (ageS != null && ageS > OLD_AFTER_S)
         val note = when {
             old && ageS != null -> "ข้อมูลเมื่อ ${ago(ageS)}"
             old -> "ข้อมูลอาจไม่เป็นปัจจุบัน"
-            block.updatedS != null -> clock(block.updatedS, zone)
+            fetchedS != null -> clock(fetchedS, zone)
             else -> ""
         }
         val inside = when {

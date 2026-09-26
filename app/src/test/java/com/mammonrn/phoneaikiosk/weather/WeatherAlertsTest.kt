@@ -18,13 +18,14 @@ class WeatherAlertsTest {
     private val updatedS = ZonedDateTime.of(2026, 9, 26, 14, 30, 0, 0, zone).toEpochSecond()
     private val nowMs = (updatedS + 10 * 60) * 1000
 
-    private fun block(ok: Boolean = true, updated: String = "$updatedS", until: String = "\"2026-09-27T18:00:00+07:00\"") =
+    private fun block(ok: Boolean = true, updated: String = "$updatedS", until: String = "\"2026-09-27T18:00:00+07:00\"",
+                       fetched1: String = "null", fetched2: String = "null") =
         JSONObject("""
             {"items": [
                {"kind": "warning", "title": "ฝนตกหนักมาก", "areas": "22 จังหวัด", "until": $until,
-                "source": "กรมอุตุฯ", "line": "⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ)"},
+                "source": "กรมอุตุฯ", "line": "⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ)", "fetched": $fetched1},
                {"kind": "warning", "title": "คลื่นลมแรง", "areas": "อ่าวไทยตอนบน", "until": null,
-                "source": "กรมอุตุฯ", "line": "คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ)"}],
+                "source": "กรมอุตุฯ", "line": "คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ)", "fetched": $fetched2}],
              "updated": $updated, "ok": $ok}
         """.trimIndent())
 
@@ -41,6 +42,17 @@ class WeatherAlertsTest {
         assertEquals("กรมอุตุฯ", b.items[0].source)
         assertEquals(ZonedDateTime.of(2026, 9, 27, 18, 0, 0, 0, zone).toInstant().toEpochMilli(), b.items[0].untilMs)
         assertNull(b.items[1].untilMs)
+        // No "fetched" sent (an older broker's shape by default here): null,
+        // and `line` must fall back to the block's own `updated`.
+        assertNull(b.items[0].fetchedS)
+    }
+
+    @Test
+    fun `each item's own fetched time is read`() {
+        val itemFetchedS = updatedS - 3600
+        val b = WeatherAlerts.parse(block(fetched1 = "$itemFetchedS", fetched2 = "null"), zone)
+        assertEquals(itemFetchedS, b.items[0].fetchedS)
+        assertNull(b.items[1].fetchedS)
     }
 
     @Test
@@ -102,6 +114,22 @@ class WeatherAlertsTest {
         assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ 2:30 PM)", WeatherAlerts.line(b.items[1], b, nowMs, zone))
         val bare = b.items[1].copy(line = "")
         assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ 2:30 PM)", WeatherAlerts.line(bare, b, nowMs, zone))
+    }
+
+    @Test
+    fun `a fresh item is not marked stale just because the block's own source failed`() {
+        // The bug seen on the phone: TMD's CAP had never answered (block ok
+        // = false, block updated = never set), but this item is สสน.'s own
+        // and was fetched moments ago — it must say the time it was read,
+        // never "ข้อมูลอาจไม่เป็นปัจจุบัน".
+        val b = WeatherAlerts.parse(block(ok = false, updated = "null", fetched1 = "$updatedS"), zone)
+        val line = WeatherAlerts.line(b.items[0], b, nowMs, zone)
+        assertTrue(line.endsWith("(กรมอุตุฯ 2:30 PM)"))
+        assertTrue("ข้อมูลอาจไม่เป็นปัจจุบัน" !in line)
+        // The OTHER item on the same block, with no "fetched" of its own,
+        // still falls back to the block's failed state.
+        val other = WeatherAlerts.line(b.items[1], b, nowMs, zone)
+        assertTrue(other.endsWith("(กรมอุตุฯ · ข้อมูลอาจไม่เป็นปัจจุบัน)"))
     }
 
     @Test

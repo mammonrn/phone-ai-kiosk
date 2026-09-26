@@ -243,9 +243,15 @@ def test_expired_items_leave_the_card_on_time():
 
 def test_no_announcement_means_no_items_and_still_ok():
     empty = CAP_RSS.split(b"<item>")[0] + b"</channel></rss>"
-    b = board(Web({alerts.TMD_CAP_RSS_URL: empty}))
+    web = Web({alerts.TMD_CAP_RSS_URL: empty})
+    b = board(web)
     b.refresh(NOW)
-    assert b.payload(NOW) == {"items": [], "updated": int(NOW), "ok": True}
+    payload = b.payload(NOW)
+    assert payload["items"] == [] and payload["updated"] == int(NOW) and payload["ok"] is True
+    # tmd_rss/gdacs/thaiwater were not asked at all in this Web (default PAGES
+    # swapped out): a source never attempted is not "ok".
+    assert payload["sources"]["tmd_cap"] == {"ok": True, "updated": int(NOW)}
+    assert payload["sources"]["tmd_rss"] == {"ok": False, "updated": None}
 
 
 def test_offline_keeps_the_last_good_items_marked_not_ok():
@@ -263,7 +269,9 @@ def test_offline_keeps_the_last_good_items_marked_not_ok():
 
 def test_before_any_fetch_nothing_is_claimed():
     b = board(Web({}))
-    assert b.payload(NOW) == {"items": [], "updated": None, "ok": False}
+    payload = b.payload(NOW)
+    assert payload["items"] == [] and payload["updated"] is None and payload["ok"] is False
+    assert all(v == {"ok": False, "updated": None} for v in payload["sources"].values())
 
 
 def test_thaiwater_joins_the_cache_like_any_other_source():
@@ -276,6 +284,51 @@ def test_thaiwater_joins_the_cache_like_any_other_source():
     assert any(i["source"] == alerts.SOURCE_THAIWATER for i in payload["items"])
     # ThaiWater failing does not touch `ok`: that still follows TMD's CAP.
     assert payload["ok"] is True
+
+
+def test_each_source_carries_its_own_fetched_time():
+    # tmd_cap succeeds now; ThaiWater is added and succeeds too — both items
+    # should carry the SAME "fetched" here since both sources answered on
+    # this refresh.
+    web = Web({**PAGES, alerts.THAIWATER_URL: THAIWATER_FULL})
+    b = board(web)
+    b.refresh(NOW)
+    payload = b.payload(NOW)
+    by_source = {i["source"]: i for i in payload["items"]}
+    assert by_source[alerts.SOURCE_TMD]["fetched"] == int(NOW)
+    assert by_source[alerts.SOURCE_THAIWATER]["fetched"] == int(NOW)
+    assert payload["sources"]["tmd_cap"] == {"ok": True, "updated": int(NOW)}
+    assert payload["sources"]["thaiwater"] == {"ok": True, "updated": int(NOW)}
+
+
+def test_a_failing_tmd_does_not_stale_a_fresh_thaiwater_item():
+    # This is the bug seen on the real phone: the card's TMD warning goes
+    # stale (TMD has never answered) while สสน.'s own item is fresh — the two
+    # must not share one freshness. `ok`/`updated` still follow TMD alone
+    # (compatibility); each item's own `fetched` is what tells them apart.
+    web = Web({alerts.THAIWATER_URL: THAIWATER_FULL})  # TMD/GDACS: offline
+    b = board(web)
+    b.refresh(NOW)
+    payload = b.payload(NOW)  # same instant: no second refresh due yet
+    assert payload["ok"] is False and payload["updated"] is None  # TMD never answered
+    assert payload["sources"]["tmd_cap"] == {"ok": False, "updated": None}
+    assert payload["sources"]["thaiwater"] == {"ok": True, "updated": int(NOW)}
+    thaiwater_items = [i for i in payload["items"] if i["source"] == alerts.SOURCE_THAIWATER]
+    assert thaiwater_items and all(i["fetched"] == int(NOW) for i in thaiwater_items)
+
+
+def test_an_item_kept_from_an_older_fetch_keeps_its_older_fetched_time():
+    # TMD answers at NOW, then goes down; the CAP item from that first fetch
+    # is still shown later (unexpired) and must still say it was fetched then
+    # — not claim the fetch that just failed.
+    web = Web()
+    b = board(web)
+    b.refresh(NOW)
+    web.down = True
+    later = NOW + 1300  # due for another attempt, which fails
+    payload = b.payload(later)
+    assert payload["sources"]["tmd_cap"] == {"ok": False, "updated": int(NOW)}
+    assert all(i["fetched"] == int(NOW) for i in payload["items"])
 
 
 def test_an_undated_item_is_not_shown_for_ever_from_a_dead_cache():
@@ -296,20 +349,26 @@ def test_the_dashboard_carries_the_alerts_object_in_the_agreed_shape(cfg, monkey
     monkeypatch.setattr(alerts, "_fetch", Web())
     snap = dashboard_mod.Dashboard(cfg).snapshot(now=NOW, symbols=["BTC"])
     got = snap["alerts"]
-    assert set(got) == {"items", "updated", "ok"}
+    assert set(got) == {"items", "updated", "ok", "sources"}
     assert got["ok"] is True and isinstance(got["updated"], int)
+    assert set(got["sources"]) == {"tmd_cap", "tmd_rss", "gdacs", "thaiwater"}
+    for entry in got["sources"].values():
+        assert set(entry) == {"ok", "updated"}
     for item in got["items"]:
-        assert set(item) == {"kind", "title", "areas", "until", "source", "line"}
+        assert set(item) == {"kind", "title", "areas", "until", "source", "line", "fetched"}
         assert item["kind"] == "warning"
         assert all(isinstance(item[k], str) for k in ("title", "areas", "source", "line"))
         assert item["until"] is None or datetime.fromisoformat(item["until"]).tzinfo
+        assert isinstance(item["fetched"], int)
     # Every other panel still there: the warnings are one more box, not a gate.
     assert {"weather", "gold", "crypto", "air", "oil"} <= set(snap)
 
 
 def test_the_dashboard_without_a_network_still_answers(cfg):
     snap = dashboard_mod.Dashboard(cfg).snapshot(now=NOW, symbols=["BTC"])
-    assert snap["alerts"] == {"items": [], "updated": None, "ok": False}
+    got = snap["alerts"]
+    assert got["items"] == [] and got["updated"] is None and got["ok"] is False
+    assert all(v == {"ok": False, "updated": None} for v in got["sources"].values())
 
 
 # ----------------------------------------------------------------- Jarvis
