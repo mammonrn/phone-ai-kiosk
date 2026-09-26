@@ -1111,3 +1111,21 @@ def test_tmd_stations_is_empty_and_makes_no_request_without_a_key(cfg):
 def test_dashboard_forget_clears_the_dams_and_radar_caches_too(cfg):
     board = dashboard_mod.Dashboard(cfg)
     board.forget()  # must not raise even though nothing was ever fetched
+
+
+def test_card_lines_use_forecast_text_when_blended(cfg, fake_sources, monkeypatch):
+    """0.71: with a blended forecast the ▸ lines come from forecast_text, given
+    what the card already shows so it is not repeated."""
+    from kiosk_broker import forecast_text
+    board = dashboard_mod.Dashboard(cfg)
+    _rig_forecast(board, monkeypatch, alerts_items=[], flood_line=None, local_line="▸ d")
+    monkeypatch.setattr(board, "blended", lambda lat, lon, now=None: {"hourly": [1]})
+    seen = {}
+
+    def fake(official, risk, blended, shown, now):
+        seen.update(shown=shown, blended=blended)
+        return ["▸ ฝน 15–18 น. โอกาส 70% ควรพกร่ม"]
+    monkeypatch.setattr(forecast_text, "card_lines", fake)
+    out = board.snapshot(19.9, 99.8, now=1000.0)
+    assert out["card_lines"] == ["▸ ฝน 15–18 น. โอกาส 70% ควรพกร่ม"]
+    assert set(seen["shown"]) == {"tmin", "tmax", "rain_prob_today", "wind_kmh"}

@@ -826,8 +826,24 @@ class Dashboard:
         # flood_forecast.py/local_rain.py. Both refresh in the background,
         # same shape as `self.alerts` above, so the phone's own request never
         # waits on Open-Meteo either.
-        self.flood = flood_forecast.FloodForecast()
+        self._secret = envfile.reader(cfg.env_path)
+        # GISTDA satellite flood (gistda_flood.py) feeds the flood risk as a
+        # SHADOW calculation until Poom switches it on — see flood_forecast.
+        self.flood = flood_forecast.FloodForecast(gistda=self._optional("gistda_flood", "GistdaFlood"))
         self._local_rain = local_rain.LocalRainCache()
+        # blend.py (Poom 2026-09-26): Open-Meteo + TMD NWP per value, ensemble
+        # probabilities; all background, never blocking the card. The weights
+        # are verify.py's, refreshed by record_verification (it has the
+        # database); equal until then.
+        from . import blend, thaiwater_rain
+        self._blend_om = blend.open_meteo_cache()
+        self._nwp = self._optional("nwp", "NwpCache")
+        self._blend_weights: dict = {}
+        self._blend_cache: dict[tuple[float, float], tuple[float, dict | None]] = {}
+        # Measured hourly rain near the kiosk (thaiwater_rain.py) — the rain
+        # ground truth; collected by its own timer so a night with the screen
+        # off still has its hours.
+        self.thaiwater_rain = thaiwater_rain.ThaiWaterRain()
         # Jarvis-only, no card line (Poom's own rule for both — see dams.py
         # and radar.py's own docstrings): the dams answer "เขื่อน...เป็นยังไง"
         # and the radar answer "ฝนตกแถวนี้ไหม/เรดาร์เห็นฝนไหม" respectively.
@@ -844,8 +860,8 @@ class Dashboard:
         # call (same as home_control's use of envfile.reader) — TMD_UID/
         # TMD_UKEY are looked up when fetch_weather actually needs them, never
         # kept here, so a `keys set tmd` while the broker is running takes
-        # effect on the next fetch with no restart.
-        self._secret = envfile.reader(cfg.env_path)
+        # effect on the next fetch with no restart. (Set above, before the
+        # flood forecast, which hands it to GISTDA.)
         # verify.py wiring (forecast verification): the full TMD station list
         # from the last successful fetch (see fetch_weather's station_sink
         # and _store_tmd_stations) — needed for rain-window settling, which
@@ -859,6 +875,44 @@ class Dashboard:
         self._tmd_stations_refreshing: bool = False
         self._verify_recorded: set[tuple] = set()
         self._last_verify_settle: float = 0.0
+
+    def _optional(self, module: str, cls: str):
+        """nwp.NwpCache / gistda_flood.GistdaFlood built with the env-file
+        reader, or None when the module is not there — both are optional
+        sources, and without their keys they never make a request."""
+        import importlib
+        try:
+            return getattr(importlib.import_module(f"{__package__}.{module}"), cls)(self._secret)
+        except (ImportError, AttributeError, TypeError) as exc:
+            log.warning("optional source %s unavailable: %s", module, type(exc).__name__)
+            return None
+
+    def blended(self, latitude: float, longitude: float, now: float | None = None) -> dict | None:
+        """blend.blend()'s combined forecast for this position, or None when
+        no source has answered yet. Never waits on the network: each source
+        refreshes in the background and this reads what is cached; the
+        result itself is reused for blend.BLEND_TTL_SECONDS. Never raises."""
+        from . import blend
+        now = time.time() if now is None else now
+        key = (round_coord(latitude), round_coord(longitude))
+        with self._lock:
+            cached = self._blend_cache.get(key)
+            if cached and now - cached[0] < blend.BLEND_TTL_SECONDS:
+                return cached[1]
+            weights = dict(self._blend_weights)
+        try:
+            om = self._blend_om.get(key[0], key[1], now)
+            nwp = self._nwp.get(key[0], key[1], now) if self._nwp is not None else None
+            ens = self._local_rain.raw(key[0], key[1], now)
+            out = blend.blend(om, nwp, ens, weights, now)
+        except Exception as exc:  # noqa: BLE001 — never the card's problem
+            log.warning("blend failed: %s", type(exc).__name__)
+            out = None
+        with self._lock:
+            self._blend_cache = {k: v for k, v in self._blend_cache.items()
+                                 if now - v[0] < blend.BLEND_TTL_SECONDS}
+            self._blend_cache[key] = (now, out)
+        return out
 
     def position(self) -> tuple[float, float]:
         """The kiosk's own last-seen position — Jarvis's forecast answers use
@@ -956,16 +1010,112 @@ class Dashboard:
         # Feeds verify's rain-window ground truth table with whatever TMD
         # currently carries — a no-op list when TMD is off (see
         # _store_tmd_stations/tmd_stations).
-        verify.record_tmd_rain_3h(conn, self.tmd_stations(now), now=now)
+        stations = self.tmd_stations(now)
+        verify.record_tmd_rain_3h(conn, stations, now=now)
+        verify.record_tmd_temp_3h(conn, stations, now=now)
+        # ThaiWater's hourly gauges near THIS position (thaiwater_rain.py):
+        # its timer collects them, this writes what it has into SQLite.
+        self.thaiwater_rain.set_points([(latitude, longitude)])
+        self.thaiwater_rain.ensure_running()
+        verify.record_thaiwater_rain_1h(conn, self.thaiwater_rain.readings(), now=now)
+
+        # blend.py's forecasts per source + the blend itself, and the GISTDA
+        # shadow flood levels (see _record_blend_forecasts).
+        self._record_blend_forecasts(conn, latitude, longitude, now)
+        self._record_gistda_shadow(conn, now)
 
         # Settling and the daily weight update are cheap, local-database-only
         # reads/writes — safe to try on every dashboard request; TTL-gated so
         # a kiosk polling every few seconds does not re-run them needlessly.
         if now - self._last_verify_settle >= VERIFY_SETTLE_INTERVAL_SECONDS:
             self._last_verify_settle = now
-            verify.settle_point_forecasts(conn, kind="rain_chance", now=now, tmd_stations=self.tmd_stations(now))
-            verify.settle_point_forecasts(conn, kind="temp", now=now, tmd_stations=self.tmd_stations(now))
+            verify.settle_point_forecasts(conn, kind="rain_chance", now=now, tmd_stations=stations)
+            verify.settle_point_forecasts(conn, kind="temp", now=now, tmd_stations=stations)
             verify.settle_flood(conn, now=now)
+            verify.settle_blend_forecasts(conn, now=now)
+            # Once per Bangkok day at most (verify.update_value_weights).
+            shares = verify.update_value_weights(conn, now=now)
+            with self._lock:
+                self._blend_weights = dict(shares)
+
+    def _record_blend_forecasts(self, conn, latitude: float, longitude: float, now: float) -> None:
+        """What verify.py's per-value section lists, each recorded once
+        (verify.record_once): every 6-h window's rain probability before it
+        starts (blend = ensemble), today's rain yes/no inputs before noon,
+        tomorrow's max/min and its eight TMD-hour temperatures — per
+        deterministic source and for the blend. Values only, rounded
+        position, no personal data."""
+        from . import blend, verify
+
+        out = self.blended(latitude, longitude, now)
+        if out is None:
+            return
+        area = (latitude, longitude)
+        key = (round_coord(latitude), round_coord(longitude))
+        start = blend.day_start(now)
+        local_hour = dt.datetime.fromtimestamp(now, blend.BANGKOK).hour
+
+        def rec(kind, source, valid_from, valid_to, value):
+            if value is not None:
+                verify.record_once(conn, kind=kind, area=area, source=source, valid_from=valid_from,
+                                   valid_to=valid_to, value=value, now=now)
+
+        # Rain probability per window: only windows not yet started, among
+        # the next four (the card's own horizon).
+        upcoming = [w for w in out["windows"] if w["start"] > now][:4]
+        for w in upcoming:
+            rec("rain_prob", "blend", w["start"], w["end"], w["rain_prob"])
+
+        per_source = {
+            "open_meteo": self._blend_om.get(key[0], key[1], now),
+            "tmd_nwp": self._nwp.get(key[0], key[1], now) if self._nwp is not None else None,
+        }
+        blended_days = {d["date"]: d for d in out["daily"]}
+        blended_hours = {h["t"]: h for h in out["hourly"]}
+        today = dt.datetime.fromtimestamp(start, blend.BANGKOK).strftime("%Y-%m-%d")
+        tomorrow_start = start + 86400
+        tomorrow = dt.datetime.fromtimestamp(tomorrow_start, blend.BANGKOK).strftime("%Y-%m-%d")
+        slots = verify._expected_tmd_slots(tomorrow_start, tomorrow_start + 86400)
+
+        def source_day(data, date):
+            return next((d for d in (data or {}).get("daily") or () if d.get("date") == date), {})
+
+        def source_hour(data, t):
+            return next((h for h in (data or {}).get("hourly") or () if h.get("t") == t), {})
+
+        rows = [(name, source_day(data, today), source_day(data, tomorrow), data)
+                for name, data in per_source.items() if data]
+        rows.append(("blend", blended_days.get(today, {}), blended_days.get(tomorrow, {}), None))
+        for name, day0, day1, data in rows:
+            if local_hour < 12:
+                rec("rain_day", name, start, start + 86400, day0.get("rain_mm"))
+            rec("temp_max", name, tomorrow_start, tomorrow_start + 86400, day1.get("tmax"))
+            rec("temp_min", name, tomorrow_start, tomorrow_start + 86400, day1.get("tmin"))
+            for slot in slots:
+                hour = blended_hours.get(int(slot), {}) if data is None else source_hour(data, slot)
+                rec("temp_hour", name, slot, slot, blend._checked("temp_c", hour.get("temp_c")))
+        if local_hour < 12:
+            ens = self._local_rain.raw(key[0], key[1], now)
+            rec("rain_prob_day", "ensemble", start, start + 86400, blend.day_rain_share(ens, start))
+
+    def _record_gistda_shadow(self, conn, now: float) -> None:
+        """The GISTDA comparison (flood_forecast.FloodForecast.last_shadow):
+        each province where either way reaches เฝ้าระวัง, recorded once a
+        day under BOTH "with_gistda" and "without_gistda" over the forecast's
+        own three days, so verify.settle_flood scores the two rules against
+        the same ThaiWater truth. Nothing when GISTDA has no data."""
+        from . import blend, flood_forecast, verify
+
+        shadow = self.flood.last_shadow
+        if not shadow:
+            return
+        start = blend.day_start(now)
+        for row in shadow.get("provinces") or ():
+            if max(row["with"], row["without"]) < flood_forecast.LEVEL_WATCH:
+                continue
+            for source, level in (("with_gistda", row["with"]), ("without_gistda", row["without"])):
+                verify.record_once(conn, kind="flood_level", area=str(row["code"]), source=source,
+                                   valid_from=start, valid_to=start + 3 * 86400, value=level, now=now)
 
     def _record_window_forecasts(self, conn, snapshot: dict, latitude: float, longitude: float,
                                  now: float) -> None:
@@ -1044,7 +1194,13 @@ class Dashboard:
         self._local_rain.forget()
         self.dams.forget()
         self.radar.forget()
+        self._blend_om.forget()
+        if self._nwp is not None:
+            self._nwp.forget()
+        self.thaiwater_rain.forget()
         with self._lock:
+            self._blend_cache = {}
+            self._blend_weights = {}
             self._tmd_stations = []
             self._tmd_stations_at = 0.0
             self._verify_recorded = set()
@@ -1116,9 +1272,25 @@ class Dashboard:
             if local_raw is not None else None
 
         official_lines = [item["line"] for item in alerts_payload["items"]]
-        card_lines = flood_forecast.order_lines(
-            official_lines, flood_payload.get("line"),
-            local_out["line"] if local_out else None)
+        # 0.71 (Poom): the ▸ lines come from the blended forecast in Thai
+        # templates (forecast_text.py): the next 6 hours, then today/tomorrow.
+        # No blended forecast yet -> the older single ▸ local-rain line.
+        blended = self.blended(lat, lon, now)
+        if blended:
+            from . import forecast_text
+            wd = weather.data if weather.ok else {}
+            shown = {"tmin": wd.get("low_c"), "tmax": wd.get("high_c"),
+                     "rain_prob_today": wd.get("rain_chance"), "wind_kmh": wd.get("wind_kmh")}
+            risk = [flood_payload["line"]] if flood_payload.get("line") else []
+            card_lines = forecast_text.card_lines(official_lines, risk, blended, shown, now)
+            # The templates found nothing new to say: the local-rain line, as before.
+            if (len(card_lines) < 2 and local_out and local_out.get("line")
+                    and not any(line.startswith("▸") for line in card_lines)):
+                card_lines = card_lines + [local_out["line"]]
+        else:
+            card_lines = flood_forecast.order_lines(
+                official_lines, flood_payload.get("line"),
+                local_out["line"] if local_out else None)
 
         return {
             "weather": weather.as_json(),

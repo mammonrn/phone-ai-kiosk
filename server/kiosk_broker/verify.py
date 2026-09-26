@@ -80,7 +80,9 @@ from statistics import mean
 
 from . import flood_forecast, store, tmd_obs
 
-KINDS = ("rain_chance", "temp", "uv", "flood_level")
+KINDS = ("rain_chance", "temp", "uv", "flood_level",
+         # Added with blend.py (see "PER-SOURCE, PER-VALUE" below):
+         "rain_prob", "rain_prob_day", "rain_day", "temp_hour", "temp_max", "temp_min")
 
 #: Rows older than this are dead weight — the same idea as
 #: store.REQUEST_LOG_KEEP_DAYS, just a longer window because a source's
@@ -663,4 +665,533 @@ def cli_forecast_score(conn, days: int) -> int:
     computed_scores = score(conn, days=days)
     for line in report_lines(computed_scores, computed_weights):
         print(line)
+    # Poom's targets per source + blend (see target_scores), read-only: the
+    # blend's own shares are only ever moved by the dashboard's daily update.
+    print("")
+    for line in report_target_lines(target_scores(conn), value_weights(conn)):
+        print(line)
     return 0
+
+
+# =====================================================================
+# PER-SOURCE, PER-VALUE VERIFICATION (blend.py, Poom 2026-09-26)
+# =====================================================================
+#
+# WHAT IS RECORDED, once each (record_once — a restart or a second phone
+# never records the same forecast twice), by Dashboard._record_blend_forecasts:
+#
+#   kind           value            sources                         when recorded
+#   rain_prob      % (0-100)        blend (= the ensemble share)    each 6-h window, first time it is one
+#                                                                    of the next four and has not started
+#   rain_prob_day  % (0-100)        ensemble (members with >= 1 mm  today, first time seen before 12:00
+#                                   over the whole day)
+#   rain_day       mm               open_meteo, tmd_nwp, blend      today, first time seen before 12:00
+#   temp_max/min   deg C            open_meteo, tmd_nwp, blend      tomorrow, first time seen today
+#   temp_hour      deg C            open_meteo, tmd_nwp, blend      tomorrow's eight TMD hours
+#                                                                    (01, 04, ... 22), first time seen today
+#
+# "Before 12:00" for today's rain: a forecast first seen in the evening
+# already knows the afternoon's storm, so it is not a forecast any more.
+#
+# GROUND TRUTH (see the module docstring for the older kinds):
+#
+# * Rain (rain_prob, rain_prob_day, rain_day): ThaiWater's hourly gauges
+#   (thaiwater_rain.py) first — the nearest gauge within THAIWATER_MAX_KM that
+#   has EVERY hour of the window stored — then TMD's 3-hour slots (the
+#   existing tmd_rain_3h table, nearest station within tmd_obs.MAX_KM, every
+#   slot present). Never a partial sum. "Rained" = at least RAIN_HIT_MM.
+# * Temperature (temp_hour, temp_max, temp_min): TMD's 3-hourly
+#   AirTemperature only (tmd_temp_3h) — ThaiWater publishes no temperature
+#   and no other free measured source was found. temp_hour compares the
+#   exact hour. temp_max/min compare the day's forecast extreme with the
+#   highest/lowest of the eight 3-hourly readings (all eight required): the
+#   true peak usually falls between 13:00 and 16:00, so the measured max is
+#   a little LOW and the measured min a little HIGH — this makes the
+#   forecasts look slightly worse, never better. Without Poom's TMD
+#   uid/ukey nothing here ever settles, and forecast-score says so.
+
+THAIWATER_MAX_KM = 20.0
+TMD_SLOTS_PER_DAY = len(TMD_SLOT_HOURS)
+#: Sources that are blended (blend.py) — "blend" and "ensemble" are
+#: recorded too but never weighted against themselves.
+BLEND_SOURCES = ("open_meteo", "tmd_nwp")
+#: Each blended value, and the verified kind whose error sets its weight.
+#: None = no ground truth reachable today: those values stay equal-weighted.
+VALUE_WEIGHT_KINDS = {
+    "temp_c": "temp_hour", "tmax": "temp_max", "tmin": "temp_min", "rain_mm": "rain_day",
+    "rh": None, "wind_kmh": None, "cloud_pct": None,
+}
+VALUE_WEIGHTS_STATE_KEY = "blend_value_weights"
+#: DESIGN 5ป: "1 ÷ (MAE 14 วัน + 0.5)".
+WEIGHT_DAYS = 14
+#: rain_day's MAE is in millimetres; the same +0.5 keeps a freak near-zero
+#: error from taking over, just in mm instead of degrees.
+MAE_OFFSET = MAE_OFFSET_C
+
+# ---- targets (forecast-score "เป้า") ----
+#: How far back the targets look — everything still kept (KEEP_DAYS), so a
+#: verdict does not depend on `--days`.
+TARGET_DAYS = KEEP_DAYS
+TEMP_TOLERANCE_C = 2.0
+TEMP_TARGET_SHARE = 0.90
+RAIN_TODAY_TARGET_SHARE = 0.80
+#: Fewer settled days than this and a share is too noisy to call pass/fail
+#: (at 30 days a true 90% still reads anywhere from ~80% to 100%).
+MIN_TARGET_CASES = 30
+#: rain_prob_day "yes" threshold — a probability forecast says "rain" when
+#: at least half the members do.
+RAIN_PROB_YES_PCT = 50.0
+CALIBRATION_BIN_PCT = 10
+CALIBRATION_MIN_BIN_CASES = 20
+CALIBRATION_MIN_BINS = 3
+CALIBRATION_TOLERANCE_PTS = 10.0
+
+
+def record_once(conn, *, kind: str, area, source: str, valid_from: float, valid_to: float,
+                value: float, now: "float | None" = None) -> "int | None":
+    """`record`, unless this exact forecast (kind, area, source, window) is
+    already stored — the database, not process memory, decides, so a restart
+    cannot record a window a second time with a later (better) forecast."""
+    area_key = round_point(*area) if isinstance(area, (tuple, list)) else str(area)
+    row = conn.execute(
+        "SELECT 1 FROM forecast_records WHERE kind = ? AND area = ? AND source = ?"
+        " AND valid_from = ? AND valid_to = ? LIMIT 1",
+        (kind, area_key, source, float(valid_from), float(valid_to))).fetchone()
+    if row is not None:
+        return None
+    return record(conn, kind=kind, area=area, source=source, valid_from=valid_from,
+                  valid_to=valid_to, value=value, now=now)
+
+
+# ------------------------------------------------------- truth: storing ---
+
+def record_thaiwater_rain_1h(conn, readings, now: "float | None" = None) -> int:
+    """thaiwater_rain.ThaiWaterRain.readings() into SQLite (INSERT OR IGNORE:
+    the same hour seen twice is one row). Pruned like everything else."""
+    now = time.time() if now is None else now
+    inserted = 0
+    for r in readings or ():
+        try:
+            slat, slon = _station_key(r["lat"], r["lon"])
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO thaiwater_rain_1h (station_lat, station_lon, observed_at, rain_1h_mm)"
+                " VALUES (?,?,?,?)", (slat, slon, float(r["observed_at"]), float(r["rain_1h_mm"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+        inserted += cur.rowcount
+    conn.execute("DELETE FROM thaiwater_rain_1h WHERE observed_at < ?", (now - KEEP_DAYS * 86400,))
+    return inserted
+
+
+def record_tmd_temp_3h(conn, stations, now: "float | None" = None) -> int:
+    """Every TMD station's 3-hourly AirTemperature (tmd_obs.parse_stations'
+    "temp_c"/"observed_at"), the same way record_tmd_rain_3h keeps rain."""
+    now = time.time() if now is None else now
+    inserted = 0
+    for station in stations or ():
+        observed_at, temp = station.get("observed_at"), station.get("temp_c")
+        lat, lon = station.get("lat"), station.get("lon")
+        if observed_at is None or temp is None or lat is None or lon is None:
+            continue
+        if not (tmd_obs.TEMP_RANGE[0] <= float(temp) <= tmd_obs.TEMP_RANGE[1]):
+            continue
+        slat, slon = _station_key(lat, lon)
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO tmd_temp_3h (station_lat, station_lon, observed_at, temp_c)"
+            " VALUES (?,?,?,?)", (slat, slon, observed_at.timestamp(), float(temp)))
+        inserted += cur.rowcount
+    conn.execute("DELETE FROM tmd_temp_3h WHERE observed_at < ?", (now - KEEP_DAYS * 86400,))
+    return inserted
+
+
+# ------------------------------------------------------ truth: settling ---
+
+_TRUTH_TABLES = ("thaiwater_rain_1h", "tmd_rain_3h", "tmd_temp_3h")
+
+
+def _stations_by_distance(conn, table: str, lat: float, lon: float, max_km: float):
+    if table not in _TRUTH_TABLES:
+        raise ValueError(table)
+    rows = conn.execute(f"SELECT DISTINCT station_lat, station_lon FROM {table}").fetchall()  # noqa: S608
+    near = []
+    for row in rows:
+        km = tmd_obs._haversine_km(lat, lon, row["station_lat"], row["station_lon"])
+        if km <= max_km:
+            near.append((km, row["station_lat"], row["station_lon"]))
+    near.sort()
+    return near
+
+
+def _expected_hour_ends(valid_from: float, valid_to: float) -> list[float]:
+    """Every whole hour end in (valid_from, valid_to] — the hourly gauge
+    readings a window needs (a 6-h window: 6; a day: 24)."""
+    first = (int(valid_from) // 3600 + 1) * 3600
+    return [float(t) for t in range(first, int(valid_to) + 1, 3600)]
+
+
+def observed_rain_mm(conn, lat: float, lon: float, valid_from: float,
+                     valid_to: float) -> "tuple[float, str] | None":
+    """(measured rain over the window in mm, "thaiwater"|"tmd"), or None
+    while no gauge near enough has every hour/slot of it — see the section
+    comment above for the order and the rules."""
+    hours = _expected_hour_ends(valid_from, valid_to)
+    if hours:
+        for _km, slat, slon in _stations_by_distance(conn, "thaiwater_rain_1h", lat, lon, THAIWATER_MAX_KM):
+            row = conn.execute(
+                "SELECT COUNT(*) AS n, SUM(rain_1h_mm) AS total FROM thaiwater_rain_1h"
+                " WHERE station_lat = ? AND station_lon = ? AND observed_at > ? AND observed_at <= ?",
+                (slat, slon, valid_from, valid_to)).fetchone()
+            if row["n"] == len(hours):
+                return float(row["total"]), "thaiwater"
+    for _km, slat, slon in _stations_by_distance(conn, "tmd_rain_3h", lat, lon, tmd_obs.MAX_KM):
+        total = _summed_3h_rain(conn, slat, slon, valid_from, valid_to)
+        if total is not None:
+            return total, "tmd"
+    return None
+
+
+def _tmd_temps(conn, lat: float, lon: float, slots: list[float]) -> "list[float] | None":
+    """The nearest TMD station (<= tmd_obs.MAX_KM) that has a temperature at
+    EVERY one of `slots`, its readings in order; None when none has."""
+    if not slots:
+        return None
+    for _km, slat, slon in _stations_by_distance(conn, "tmd_temp_3h", lat, lon, tmd_obs.MAX_KM):
+        values = []
+        for slot in slots:
+            row = conn.execute(
+                "SELECT temp_c FROM tmd_temp_3h WHERE station_lat = ? AND station_lon = ? AND observed_at = ?",
+                (slat, slon, slot)).fetchone()
+            if row is None:
+                break
+            values.append(row["temp_c"])
+        else:
+            return values
+    return None
+
+
+def settle_blend_forecasts(conn, now: "float | None" = None) -> int:
+    """Settles every due rain_prob / rain_prob_day / rain_day / temp_hour /
+    temp_max / temp_min row whose truth is complete; the rest wait (and age
+    out after KEEP_DAYS). Returns how many were settled."""
+    now = time.time() if now is None else now
+    rows = conn.execute(
+        "SELECT id, kind, area, valid_from, valid_to FROM forecast_records"
+        " WHERE settled_at IS NULL AND valid_to <= ? AND kind IN"
+        " ('rain_prob','rain_prob_day','rain_day','temp_hour','temp_max','temp_min')",
+        (now,)).fetchall()
+    settled = 0
+    for row in rows:
+        point = _parse_point(row["area"])
+        if point is None:
+            continue
+        kind = row["kind"]
+        if kind in ("rain_prob", "rain_prob_day", "rain_day"):
+            found = observed_rain_mm(conn, point[0], point[1], row["valid_from"], row["valid_to"])
+            if found is None:
+                continue
+            observed = found[0]
+            outcome = "yes" if observed >= RAIN_HIT_MM else "no"
+        elif kind == "temp_hour":
+            temps = _tmd_temps(conn, point[0], point[1], [row["valid_from"]])
+            if temps is None:
+                continue
+            observed, outcome = temps[0], None
+        else:
+            temps = _tmd_temps(conn, point[0], point[1],
+                               _expected_tmd_slots(row["valid_from"], row["valid_to"]))
+            if temps is None or len(temps) != TMD_SLOTS_PER_DAY:
+                continue
+            observed, outcome = (max(temps) if kind == "temp_max" else min(temps)), None
+        conn.execute("UPDATE forecast_records SET observed_value = ?, outcome = ?, settled_at = ? WHERE id = ?",
+                     (float(observed), outcome, now, row["id"]))
+        settled += 1
+    return settled
+
+
+# --------------------------------------------------------- value weights ---
+
+def _settled(conn, kind: str, since: float) -> list:
+    return conn.execute(
+        "SELECT source, value, observed_value, outcome FROM forecast_records"
+        " WHERE kind = ? AND settled_at IS NOT NULL AND settled_at >= ? AND observed_value IS NOT NULL",
+        (kind, since)).fetchall()
+
+
+def _mae_by_source(rows) -> dict:
+    by: dict[str, list[float]] = {}
+    for r in rows:
+        by.setdefault(r["source"], []).append(abs(r["value"] - r["observed_value"]))
+    return {s: {"n": len(e), "mae": mean(e)} for s, e in by.items()}
+
+
+def compute_value_weights(conn, now: "float | None" = None, sources=BLEND_SOURCES) -> dict:
+    """{value: {source: share}}, shares summing to 1 — DESIGN 5ป's rule:
+    equal until EVERY blended source has MIN_CASES_FOR_WEIGHT settled cases
+    for that value in the last WEIGHT_DAYS, then 1 / (MAE + 0.5) normalised.
+    (Equal until all have enough: one measured source against an unmeasured
+    one says nothing about which is better.) Values with no ground truth
+    (VALUE_WEIGHT_KINDS None) stay equal. Not capped — see apply_share_cap."""
+    now = time.time() if now is None else now
+    since = now - WEIGHT_DAYS * 86400
+    equal = {s: 1.0 / len(sources) for s in sources}
+    out = {}
+    for value, kind in VALUE_WEIGHT_KINDS.items():
+        if kind is None:
+            out[value] = dict(equal)
+            continue
+        stats = _mae_by_source(r for r in _settled(conn, kind, since) if r["source"] in sources)
+        if all(stats.get(s, {}).get("n", 0) >= MIN_CASES_FOR_WEIGHT for s in sources):
+            raw = {s: 1.0 / (stats[s]["mae"] + MAE_OFFSET) for s in sources}
+            total = sum(raw.values())
+            out[value] = {s: w / total for s, w in raw.items()}
+        else:
+            out[value] = dict(equal)
+    return out
+
+
+def apply_share_cap(target: dict, previous: "dict | None") -> dict:
+    """Moves each value's shares from `previous` toward `target` by the
+    largest fraction t (0..1) that keeps EVERY source within
+    max(MAX_DAILY_MOVE_FRACTION x its previous share, MIN_DAILY_MOVE_STEP) —
+    moving all sources by the same fraction keeps the shares summing to 1
+    exactly, so the 10%-a-day limit is never broken by renormalising."""
+    if not previous:
+        return target
+    out = {}
+    for value, shares in target.items():
+        prev = previous.get(value)
+        if not prev or set(prev) != set(shares):
+            out[value] = dict(shares)
+            continue
+        t = 1.0
+        for s, goal in shares.items():
+            diff = abs(goal - prev[s])
+            if diff > 0:
+                t = min(t, max(prev[s] * MAX_DAILY_MOVE_FRACTION, MIN_DAILY_MOVE_STEP) / diff)
+        out[value] = {s: prev[s] + t * (shares[s] - prev[s]) for s in shares}
+    return out
+
+
+def _local_day(now: float) -> str:
+    return dt.datetime.fromtimestamp(now, tmd_obs.BANGKOK).strftime("%Y-%m-%d")
+
+
+def update_value_weights(conn, now: "float | None" = None) -> dict:
+    """At most once per Bangkok calendar day (so the 10%-a-day cap means a
+    day however often the dashboard asks): compute, cap against the last
+    saved shares, save. Returns the shares in effect."""
+    now = time.time() if now is None else now
+    state, _ = store.read_state(conn, VALUE_WEIGHTS_STATE_KEY)
+    today = _local_day(now)
+    if isinstance(state, dict) and state.get("day") == today and state.get("weights"):
+        return state["weights"]
+    previous = state.get("weights") if isinstance(state, dict) else None
+    capped = apply_share_cap(compute_value_weights(conn, now), previous)
+    store.write_state(conn, VALUE_WEIGHTS_STATE_KEY, {"day": today, "weights": capped}, now)
+    return capped
+
+
+def value_weights(conn) -> dict:
+    """The shares in effect, read-only ({} before the first update)."""
+    state, _ = store.read_state(conn, VALUE_WEIGHTS_STATE_KEY)
+    if not isinstance(state, dict):
+        return {}
+    return state.get("weights") or {}
+
+
+# --------------------------------------------------------------- targets ---
+
+def _temp_target(rows) -> dict:
+    by: dict[str, list[float]] = {}
+    for r in rows:
+        by.setdefault(r["source"], []).append(r["value"] - r["observed_value"])
+    out = {}
+    for s, errors in by.items():
+        within = sum(1 for e in errors if abs(e) <= TEMP_TOLERANCE_C)
+        out[s] = {"n": len(errors), "within": within, "share": within / len(errors),
+                  "mae": mean(abs(e) for e in errors), "bias": mean(errors)}
+    return out
+
+
+def _rain_today_target(day_rows, prob_rows) -> dict:
+    calls: dict[str, list[tuple[bool, bool]]] = {}
+    for r in day_rows:
+        calls.setdefault(r["source"], []).append((r["value"] >= RAIN_HIT_MM, r["outcome"] == "yes"))
+    for r in prob_rows:
+        calls.setdefault(r["source"], []).append((r["value"] >= RAIN_PROB_YES_PCT, r["outcome"] == "yes"))
+    out = {}
+    for s, pairs in calls.items():
+        n = len(pairs)
+        correct = sum(1 for f, o in pairs if f == o)
+        out[s] = {"n": n, "correct": correct, "share": correct / n,
+                  "hit": sum(1 for f, o in pairs if f and o),
+                  "false_alarm": sum(1 for f, o in pairs if f and not o),
+                  "miss": sum(1 for f, o in pairs if o and not f),
+                  "observed_rain_days": sum(1 for _f, o in pairs if o)}
+    return out
+
+
+def calibration_tolerance(forecast_mean_pct: float, n: int) -> float:
+    """Allowed |observed - forecast| for one bin, in percentage points:
+    CALIBRATION_TOLERANCE_PTS, or two standard errors of a perfectly honest
+    forecast's own sampling noise when that is wider (at 20 cases and 50% the
+    noise alone is +/-22 points; failing an honest forecast for luck would be
+    as wrong as passing a bad one)."""
+    p = min(max(forecast_mean_pct / 100.0, 0.0), 1.0)
+    return max(CALIBRATION_TOLERANCE_PTS, 200.0 * (p * (1 - p) / n) ** 0.5)
+
+
+def _calibration(rows) -> dict:
+    by: dict[str, list] = {}
+    for r in rows:
+        by.setdefault(r["source"], []).append(r)
+    out = {}
+    for s, rs in by.items():
+        bins = []
+        for low in range(0, 100, CALIBRATION_BIN_PCT):
+            high = low + CALIBRATION_BIN_PCT
+            last = high >= 100
+            inside = [r for r in rs if low <= r["value"] < high or (last and r["value"] == 100)]
+            if not inside:
+                continue
+            n = len(inside)
+            f_mean = mean(r["value"] for r in inside)
+            observed = 100.0 * sum(1 for r in inside if r["outcome"] == "yes") / n
+            counted = n >= CALIBRATION_MIN_BIN_CASES
+            tol = calibration_tolerance(f_mean, n)
+            bins.append({"bin": f"{low}-{100 if last else high - 1}", "n": n,
+                         "forecast_mean": f_mean, "observed": observed, "counted": counted,
+                         "tolerance": tol, "ok": (abs(observed - f_mean) <= tol) if counted else None})
+        counted_bins = [b for b in bins if b["counted"]]
+        if len(counted_bins) < CALIBRATION_MIN_BINS:
+            verdict = "insufficient"
+        else:
+            verdict = "pass" if all(b["ok"] for b in counted_bins) else "fail"
+        brier = mean(((r["value"] / 100.0) - (1.0 if r["outcome"] == "yes" else 0.0)) ** 2 for r in rs)
+        out[s] = {"n": len(rs), "brier": brier, "bins": bins, "verdict": verdict}
+    return out
+
+
+def _best(per_source: dict, key: str, lower_is_better: bool) -> "list[str] | None":
+    ready = {s: v[key] for s, v in per_source.items() if v["n"] >= MIN_TARGET_CASES}
+    if not ready:
+        return None
+    best = min(ready.values()) if lower_is_better else max(ready.values())
+    return sorted(s for s, v in ready.items() if abs(v - best) < 1e-9)
+
+
+def target_scores(conn, now: "float | None" = None, days: int = TARGET_DAYS) -> dict:
+    """Poom's three targets, per source (see report_target_lines for the
+    words): temperature tomorrow within +/-2 C >= 90% (tmax and tmin both),
+    rain today yes/no right >= 80%, rain probability calibrated. Plus the
+    best source per value. Pure reading — no weight moves, nothing tuned."""
+    now = time.time() if now is None else now
+    since = now - days * 86400
+    tmax = _temp_target(_settled(conn, "temp_max", since))
+    tmin = _temp_target(_settled(conn, "temp_min", since))
+    temp_verdict = {}
+    for s in sorted(set(tmax) | set(tmin)):
+        a, b = tmax.get(s), tmin.get(s)
+        if not a or not b or min(a["n"], b["n"]) < MIN_TARGET_CASES:
+            temp_verdict[s] = "insufficient"
+        else:
+            temp_verdict[s] = "pass" if min(a["share"], b["share"]) >= TEMP_TARGET_SHARE else "fail"
+    rain_today = _rain_today_target(_settled(conn, "rain_day", since), _settled(conn, "rain_prob_day", since))
+    rain_verdict = {s: ("insufficient" if v["n"] < MIN_TARGET_CASES
+                        else "pass" if v["share"] >= RAIN_TODAY_TARGET_SHARE else "fail")
+                    for s, v in rain_today.items()}
+    calibration = _calibration(_settled(conn, "rain_prob", since))
+    temp_hour = _mae_by_source(_settled(conn, "temp_hour", since))
+    rain_amount = _mae_by_source(_settled(conn, "rain_day", since))
+    return {
+        "days": days,
+        "temp_tomorrow": {"tmax": tmax, "tmin": tmin, "verdict": temp_verdict},
+        "rain_today": {"sources": rain_today, "verdict": rain_verdict},
+        "calibration": calibration,
+        "temp_hour": temp_hour,
+        "rain_amount": rain_amount,
+        "best": {
+            "tmax": _best(tmax, "mae", True), "tmin": _best(tmin, "mae", True),
+            "temp_hour": _best(temp_hour, "mae", True),
+            "rain_today": _best(rain_today, "share", False),
+            "rain_mm": _best(rain_amount, "mae", True),
+        },
+    }
+
+
+_VERDICT_TH = {"pass": "ผ่าน", "fail": "ไม่ผ่าน", "insufficient": "ยังไม่พอ"}
+
+
+def _verdict_text(verdict: str) -> str:
+    if verdict == "insufficient":
+        return f"ยังไม่พอ (n<{MIN_TARGET_CASES})"
+    return _VERDICT_TH[verdict]
+
+
+def report_target_lines(targets: dict, value_shares: "dict | None" = None) -> list[str]:
+    """forecast-score's "เป้า" section — numbers as measured, never adjusted.
+    A verdict needs MIN_TARGET_CASES settled days (calibration: bins of
+    CALIBRATION_MIN_BIN_CASES, at least CALIBRATION_MIN_BINS of them)."""
+    n_min = MIN_TARGET_CASES
+    lines = [f"เป้า (ผลที่ยืนยันแล้ว {targets['days']} วันล่าสุด · ตัดสินเมื่อมีอย่างน้อย {n_min} ครั้ง):", ""]
+
+    lines.append(f"1) อุณหภูมิพรุ่งนี้ คลาดไม่เกิน ±{TEMP_TOLERANCE_C:.0f}°C ≥ {TEMP_TARGET_SHARE:.0%} "
+                 "(สูงสุดและต่ำสุด ต้องผ่านทั้งคู่):")
+    tt = targets["temp_tomorrow"]
+    if not tt["verdict"]:
+        lines.append("  ยังไม่มีผลเทียบ — ต้องมี TMD uid/ukey (สถานีวัดอุณหภูมิ) จึงเริ่มวัดได้")
+    for s, verdict in tt["verdict"].items():
+        parts = []
+        for label, table in (("สูงสุด", tt["tmax"]), ("ต่ำสุด", tt["tmin"])):
+            v = table.get(s)
+            parts.append(f"{label} —" if not v else
+                         f"{label} n={v['n']} ในเกณฑ์ {v['share']:.0%} MAE={v['mae']:.1f} bias={v['bias']:+.1f}")
+        lines.append(f"  {s:<11} {' · '.join(parts)} → {_verdict_text(verdict)}")
+    lines.append("")
+
+    lines.append(f"2) ฝนวันนี้ตกหรือไม่ ทายถูก ≥ {RAIN_TODAY_TARGET_SHARE:.0%} "
+                 f"(ตก = ≥{RAIN_HIT_MM:g} มม.; ensemble ทายว่าตกเมื่อ ≥{RAIN_PROB_YES_PCT:.0f}%):")
+    rt = targets["rain_today"]
+    if not rt["sources"]:
+        lines.append("  ยังไม่มีผลเทียบ")
+    for s, v in rt["sources"].items():
+        lines.append(f"  {s:<11} n={v['n']:<3} ถูก {v['share']:.0%} (ตกจริง {v['observed_rain_days']} วัน · "
+                     f"ถูก={v['hit']} เกิน={v['false_alarm']} พลาด={v['miss']}) → "
+                     f"{_verdict_text(rt['verdict'][s])}")
+    lines.append("")
+
+    lines.append("3) โอกาสฝนซื่อตรง (บอก 60% ต้องตกจริงราว 60%) — ช่วง 6 ชม.:")
+    lines.append(f"   ผ่าน = ทุกช่วงที่มี ≥{CALIBRATION_MIN_BIN_CASES} ครั้ง คลาดไม่เกิน "
+                 f"±{CALIBRATION_TOLERANCE_PTS:.0f} จุด (หรือ 2 เท่าของความคลาดจากการสุ่ม ถ้ากว้างกว่า) "
+                 f"และมีช่วงแบบนั้น ≥{CALIBRATION_MIN_BINS} ช่วง")
+    cal = targets["calibration"]
+    if not cal:
+        lines.append("  ยังไม่มีผลเทียบ")
+    for s, v in cal.items():
+        verdict = v["verdict"]
+        tail = (f"ยังไม่พอ (ช่วงที่มี ≥{CALIBRATION_MIN_BIN_CASES} ครั้ง < {CALIBRATION_MIN_BINS})"
+                if verdict == "insufficient" else _VERDICT_TH[verdict])
+        lines.append(f"  {s:<11} n={v['n']} Brier={v['brier']:.3f} → {tail}")
+        for b in v["bins"]:
+            mark = "ยังไม่พอ" if b["ok"] is None else ("ผ่าน" if b["ok"] else "ไม่ผ่าน")
+            lines.append(f"    {b['bin']:>6}%  n={b['n']:<4} บอกเฉลี่ย {b['forecast_mean']:5.1f}%  "
+                         f"ตกจริง {b['observed']:5.1f}%  เกณฑ์ ±{b['tolerance']:.0f}  {mark}")
+    lines.append("")
+
+    lines.append(f"แหล่งที่แม่นสุดต่อค่า (ต้องมี ≥{n_min} ครั้ง):")
+    names = {"tmax": "อุณหภูมิสูงสุดพรุ่งนี้ (MAE)", "tmin": "อุณหภูมิต่ำสุดพรุ่งนี้ (MAE)",
+             "temp_hour": "อุณหภูมิรายชั่วโมงพรุ่งนี้ (MAE)", "rain_today": "ฝนวันนี้ตก/ไม่ตก (ทายถูก)",
+             "rain_mm": "ปริมาณฝนวันนี้ (MAE มม.)"}
+    for key, label in names.items():
+        best = targets["best"].get(key)
+        lines.append(f"  {label}: {'ยังไม่พอ' if not best else ', '.join(best)}")
+    lines.append("  โอกาสฝน: มีแหล่งเดียว (ensemble 82 ชุด) ไม่มีแหล่งอื่นให้เทียบ")
+    lines.append("")
+
+    lines.append("น้ำหนักการรวมแหล่ง (blend) ที่ใช้อยู่:")
+    if not value_shares:
+        lines.append("  ยังไม่เคยคำนวณ — ใช้เท่ากันทุกแหล่ง")
+    for value, shares in (value_shares or {}).items():
+        parts = ", ".join(f"{s} {w:.2f}" for s, w in sorted(shares.items()))
+        lines.append(f"  {value:<10}: {parts}")
+    return lines

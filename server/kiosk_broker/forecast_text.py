@@ -280,8 +280,9 @@ def _overview_line(blended: dict, day_word: str, date_str: str,
 
     if tmin is not None and tmax is not None:
         degrees = _fmt_degrees(tmin, tmax)
-        skip = dedupe and shown and shown.get("tmin") is not None and shown.get("tmax") is not None \
-            and round(tmin) == round(shown["tmin"]) and round(tmax) == round(shown["tmax"])
+        # The card already shows today's high/low (its own source): any today
+        # range here repeats it, or contradicts it by a degree, so it goes.
+        skip = dedupe and shown and shown.get("tmin") is not None and shown.get("tmax") is not None
         if not skip:
             parts.append(degrees)
             have_content = True
@@ -297,8 +298,8 @@ def _overview_line(blended: dict, day_word: str, date_str: str,
             have_content = True
 
     wind_phrase = _wind_phrase(day.get("wind_kmh"))
-    skip_wind = dedupe and shown and shown.get("wind_kmh") is not None \
-        and day.get("wind_kmh") is not None and round(day["wind_kmh"]) == round(shown["wind_kmh"])
+    # Same for today's wind: the card shows it already.
+    skip_wind = dedupe and shown and shown.get("wind_kmh") is not None
     if wind_phrase and not skip_wind:
         parts.append(wind_phrase)
         have_content = True

@@ -56,6 +56,19 @@ stale is a smaller failure: the rain half of the picture still holds, only
 the river reasons (n45/n5/rise) stop counting, which can only ever lower a
 level, never wrongly raise one.
 
+GISTDA SATELLITE FLOOD (Poom 2026-09-26), SHADOW ONLY until Poom confirms
+GISTDA's terms: a province where GISTDA's satellite map shows flooding
+right now (satellite_confirmed below) counts as GROUND evidence exactly like
+a river at level 5: it becomes a river/ground reason only together with
+more heavy rain forecast (F3 >= 35 mm), so เสี่ยงสูง still needs a rain
+reason AND ground evidence, and satellite water alone never raises a level
+(rice paddies stand in water for months every rainy season). While
+gistda_flood.flood_enabled() is off, compute_areas works out every
+province's level BOTH ways; the displayed level, reasons and card are the
+old ones, and the "with GISTDA" level (its own LevelHysteresis, so the
+shadow never disturbs the real one) is kept on FloodForecast.last_shadow for
+verify.py (sources "with_gistda"/"without_gistda") and a count-only log line.
+
 NO PERCENTAGES ON A FLOOD LEVEL. A level is เฝ้าระวัง, เสี่ยง or เสี่ยงสูง,
 and its reasons are said in the numbers behind the rule (millimetres,
 station counts) — never as a made-up confidence percentage, which nothing
@@ -131,6 +144,63 @@ RIVER_RISE_F3_MM = 35.0
 #: Rain rounds to the nearest 10 mm in every reason string on the card.
 REASON_ROUND_MM = 10
 
+#: GISTDA "satellite-confirmed flood" per province — see satellite_confirmed.
+#: 5 km2 is about 0.05-0.1% of a typical province: more than a few radar
+#: pixels of speckle or one pond, small enough that a flooded village counts.
+GISTDA_MIN_AREA_KM2 = 5.0
+#: Used only while GISTDA's area field/unit is unconfirmed (gistda_flood.py
+#: leaves area_km2 None then): several separate flooded patches, not one
+#: polygon that could be a misread reservoir edge.
+GISTDA_MIN_FEATURES = 3
+#: Images older than this are not "flooded now" (radar satellites revisit
+#: Thailand every 1-3 days; the feed's own window is 3 days).
+GISTDA_MAX_AGE_DAYS = 3
+#: The rain that must still be coming for satellite water to count — the
+#: same 35 mm (TMD "ฝนหนัก") as a level-5 river (RIVER_L5_F3_MM).
+GISTDA_F3_MM = RIVER_L5_F3_MM
+
+
+def gistda_code(key) -> str:
+    """"TH-57" (gistda_flood's key) -> "57" (provinces.json's own code)."""
+    text = str(key or "")
+    return text[3:] if text.upper().startswith("TH-") else text
+
+
+def satellite_confirmed(entry: dict | None, now: float) -> bool:
+    """True when one province's GISTDA summary ({"area_km2", "features",
+    "latest"}) shows flooding now: an image dated within GISTDA_MAX_AGE_DAYS
+    AND (area_km2 >= GISTDA_MIN_AREA_KM2 when the area is known, else at
+    least GISTDA_MIN_FEATURES flood polygons). Anything missing or
+    unreadable is False — never a guess."""
+    if not isinstance(entry, dict):
+        return False
+    latest = entry.get("latest")
+    try:
+        if isinstance(latest, (int, float)) and not isinstance(latest, bool):
+            latest_day = datetime.fromtimestamp(float(latest), BANGKOK).date()
+        else:
+            latest_day = datetime.strptime(str(latest)[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return False
+    today = datetime.fromtimestamp(now, BANGKOK).date()
+    if (today - latest_day).days > GISTDA_MAX_AGE_DAYS:
+        return False
+    area = entry.get("area_km2")
+    if isinstance(area, (int, float)) and not isinstance(area, bool):
+        return float(area) >= GISTDA_MIN_AREA_KM2
+    features = entry.get("features")
+    return isinstance(features, int) and not isinstance(features, bool) and features >= GISTDA_MIN_FEATURES
+
+
+def satellite_provinces(gistda: dict | None, now: float) -> dict[str, dict]:
+    """{provinces.json code: GISTDA entry} for every province
+    satellite_confirmed() accepts."""
+    out = {}
+    for key, entry in ((gistda or {}).get("provinces") or {}).items():
+        if satellite_confirmed(entry, now):
+            out[gistda_code(key)] = entry
+    return out
+
 
 def _round10(value: float) -> int:
     return int(round(value / REASON_ROUND_MM) * REASON_ROUND_MM)
@@ -138,7 +208,8 @@ def _round10(value: float) -> int:
 
 def level_for_province(*, f3: float, f3max: float = 0.0, n45: int = 0, n5: int = 0,
                         rise: float = 0.0, station_count: int = 0,
-                        tmd_warned: bool = False, storm: bool = False) -> dict:
+                        tmd_warned: bool = False, storm: bool = False,
+                        satellite_flood: bool = False) -> dict:
     """The pure rule, no fetching, no state — see the module docstring for
     the reasoning. Returns {"level", "rain_watch", "rain_reason",
     "river_reason"}; reasons() below turns this into Thai sentences.
@@ -148,7 +219,10 @@ def level_for_province(*, f3: float, f3max: float = 0.0, n45: int = 0, n5: int =
     quarter_met = station_count > 0 and n45 >= (station_count / 4.0)
     river_reason = ((n5 >= 1 and f3 >= RIVER_L5_F3_MM)
                      or (n45 >= RIVER_L45_MIN_STATIONS and quarter_met and f3 >= RIVER_L45_F3_MM)
-                     or (rise >= RIVER_RISE_PP and f3 >= RIVER_RISE_F3_MM))
+                     or (rise >= RIVER_RISE_PP and f3 >= RIVER_RISE_F3_MM)
+                     # GISTDA (see the module docstring): ground evidence
+                     # like a level-5 river, only with heavy rain still coming.
+                     or (satellite_flood and f3 >= GISTDA_F3_MM))
 
     level = LEVEL_WATCH if (tmd_warned or rain_watch) else LEVEL_NONE
     if rain_reason or river_reason:
@@ -167,7 +241,8 @@ def level_for_province(*, f3: float, f3max: float = 0.0, n45: int = 0, n5: int =
 
 
 def reasons(computed: dict, *, f3: float, f3max: float = 0.0, n45: int = 0, n5: int = 0,
-            rise: float = 0.0, tmd_warned: bool = False, storm: bool = False) -> list[str]:
+            rise: float = 0.0, tmd_warned: bool = False, storm: bool = False,
+            satellite_flood: bool = False) -> list[str]:
     """Short Thai sentences for why a province is at its level — never a
     percentage, always the number behind the rule (rain rounded to 10 mm)."""
     out = []
@@ -186,6 +261,8 @@ def reasons(computed: dict, *, f3: float, f3max: float = 0.0, n45: int = 0, n5: 
         out.append(f"น้ำมาก {n45} สถานี และฝนยังตกต่อ")
     if rise >= RIVER_RISE_PP and f3 >= RIVER_RISE_F3_MM:
         out.append(f"ระดับน้ำขึ้นเร็ว {round(rise)} จุดใน 24 ชม. และฝนยังตกต่อ")
+    if satellite_flood and f3 >= GISTDA_F3_MM:
+        out.append("ภาพดาวเทียมพบน้ำท่วมอยู่แล้ว และฝนยังตกต่อ")
     if tmd_warned and not out:
         out.append("มีประกาศเตือนภัยจากกรมอุตุฯ")
     if storm and computed["level"] >= LEVEL_RISK and computed["rain_watch"] and not computed["rain_reason"]:
@@ -563,13 +640,22 @@ def order_lines(official: list[str], forecast: str | None, local: str | None,
 def compute_areas(provinces: list[dict], rain_by_cell: dict, thaiwater_stations: list[dict],
                   tmd_provinces: set, storm: bool, now: float,
                   rain_fetched_at: float | None, thaiwater_fetched_at: float | None,
-                  hysteresis: LevelHysteresis, river_memory: "RiverMemory | None" = None) -> list[dict]:
+                  hysteresis: LevelHysteresis, river_memory: "RiverMemory | None" = None,
+                  gistda: dict | None = None, gistda_enabled: bool = False,
+                  shadow_hysteresis: "LevelHysteresis | None" = None) -> list[dict]:
     """Every province's own {code, name, region, level, rank, reasons,
     rain3_mm, rain3_max_mm, stations_l4, stations_l5, day_means}. Empty when
-    the rain grid is too old to call a forecast at all (STALE_RAIN_HOURS)."""
+    the rain grid is too old to call a forecast at all (STALE_RAIN_HOURS).
+
+    GISTDA (see the module docstring): with `gistda` data, every province
+    also carries "_level_with_gistda"/"_level_without_gistda" (both after
+    hysteresis — the displayed one uses `hysteresis`, the other
+    `shadow_hysteresis`). `gistda_enabled` decides which one is displayed;
+    off (the default) keeps level, reasons and card exactly as before."""
     if rain_fetched_at is None or now - rain_fetched_at > STALE_RAIN_HOURS * 3600:
         return []
 
+    satellite_codes = set(satellite_provinces(gistda, now)) if gistda is not None else set()
     river_fresh = (thaiwater_fetched_at is not None
                    and now - thaiwater_fetched_at <= STALE_THAIWATER_HOURS * 3600)
     by_province: dict[str, list[dict]] = {}
@@ -593,12 +679,20 @@ def compute_areas(provinces: list[dict], rain_by_cell: dict, thaiwater_stations:
                 rises = [r for r in rises if r is not None]
                 rise = max(rises) if rises else 0.0
         tmd_warned = code in (tmd_provinces or ())
-        computed = level_for_province(f3=f3, f3max=f3max, n45=n45, n5=n5, rise=rise,
-                                      station_count=len(stations), tmd_warned=tmd_warned,
-                                      storm=storm)
+        common = dict(f3=f3, f3max=f3max, n45=n45, n5=n5, rise=rise, tmd_warned=tmd_warned, storm=storm)
+        satellite = code in satellite_codes
+        computed = level_for_province(station_count=len(stations),
+                                      satellite_flood=satellite and gistda_enabled, **common)
         level = hysteresis.update(code, computed["level"])
-        why = reasons(computed, f3=f3, f3max=f3max, n45=n45, n5=n5, rise=rise,
-                     tmd_warned=tmd_warned, storm=storm)
+        why = reasons(computed, satellite_flood=satellite and gistda_enabled, **common)
+        shadow = {}
+        if gistda is not None:
+            other = level_for_province(station_count=len(stations),
+                                       satellite_flood=satellite and not gistda_enabled, **common)
+            other_level = (shadow_hysteresis or LevelHysteresis()).update(code, other["level"])
+            with_g, without_g = (level, other_level) if gistda_enabled else (other_level, level)
+            shadow = {"_level_with_gistda": with_g, "_level_without_gistda": without_g,
+                      "_satellite": satellite}
         out.append({
             "code": code, "name": province["name"], "region": province["region"],
             "level": level, "rank": level, "reasons": why,
@@ -607,6 +701,7 @@ def compute_areas(provinces: list[dict], rain_by_cell: dict, thaiwater_stations:
             "stations_l5": n5,
             "rain_reason": computed["rain_reason"], "day_means": day_means,
             "_shown": level >= LEVEL_WATCH,
+            **shadow,
         })
     return out
 
@@ -627,7 +722,8 @@ def _group_areas(provinces_out: list[dict]) -> list[dict]:
         groups.append({
             "area": REGION_DISPLAY.get(region, region), "level": LEVEL_NAMES[worst],
             "rank": worst, "days": [start, end], "since": None,
-            "provinces": [{k: v for k, v in p.items() if k not in ("day_means", "_shown", "rain_reason")}
+            "provinces": [{k: v for k, v in p.items()
+                           if k not in ("day_means", "rain_reason") and not k.startswith("_")}
                          for p in plist],
         })
     groups.sort(key=lambda g: -g["rank"])
@@ -637,12 +733,18 @@ def _group_areas(provinces_out: list[dict]) -> list[dict]:
 def payload(provinces: list[dict], rain_by_cell: dict, thaiwater_stations: list[dict],
            tmd_provinces: set, storm: bool, now: float, rain_fetched_at: float | None,
            thaiwater_fetched_at: float | None, hysteresis: LevelHysteresis,
-           kiosk_province_code: str | None = None, river_memory: RiverMemory | None = None) -> dict:
+           kiosk_province_code: str | None = None, river_memory: RiverMemory | None = None,
+           gistda: dict | None = None, gistda_enabled: bool = False,
+           shadow_hysteresis: "LevelHysteresis | None" = None, sink: list | None = None) -> dict:
     """The dashboard's shape for the flood forecast — see the module
-    docstring's "Output shape" in the task this module was written for."""
+    docstring's "Output shape" in the task this module was written for.
+    `sink`, when given, receives compute_areas' flat per-province list (the
+    GISTDA shadow levels live there, never in the returned JSON)."""
     provinces_out = compute_areas(provinces, rain_by_cell, thaiwater_stations, tmd_provinces,
                                   storm, now, rain_fetched_at, thaiwater_fetched_at,
-                                  hysteresis, river_memory)
+                                  hysteresis, river_memory, gistda, gistda_enabled, shadow_hysteresis)
+    if sink is not None:
+        sink.extend(provinces_out)
     ok = bool(provinces_out) or rain_fetched_at is not None
     line = card_line(provinces_out, kiosk_province_code, now) if provinces_out else None
     items = []
@@ -682,10 +784,22 @@ class FloodForecast:
     fed the same parsed stations alerts.Alerts already produced.
     """
 
-    def __init__(self, ttl: int = RAIN_TTL_SECONDS, timeout: float = FETCH_TIMEOUT, fetch=None):
+    def __init__(self, ttl: int = RAIN_TTL_SECONDS, timeout: float = FETCH_TIMEOUT, fetch=None,
+                 gistda=None):
         self.ttl = ttl
         self.timeout = timeout
         self._fetch_with = fetch
+        # GISTDA (see the module docstring): anything with get(now) ->
+        # gistda_flood's payload | None (gistda_flood.GistdaFlood). None =
+        # no GISTDA at all, exactly the old behaviour.
+        self._gistda = gistda
+        self.shadow_hysteresis = LevelHysteresis()
+        #: The newest GISTDA comparison — {"at", "enabled", "provinces":
+        #: [{"code", "with", "without", "satellite"}]} — or None without
+        #: GISTDA data. Read by dashboard.py for verify.py.
+        self.last_shadow: dict | None = None
+        self._shadow_logged: tuple | None = None
+        self._shadow_logged_at = 0.0
         self._lock = threading.Lock()
         self._rain: dict[tuple[float, float], list[float]] = {}
         self._rain_fetched_at: float | None = None
@@ -737,9 +851,47 @@ class FloodForecast:
         with self._lock:
             rain, rain_at = dict(self._rain), self._rain_fetched_at
             stations, stations_at = list(self._thaiwater_stations), self._thaiwater_fetched_at
-        return payload(load_provinces(), rain, stations, tmd_provinces or set(), storm, now,
-                       rain_at, stations_at, self.hysteresis, kiosk_province_code,
-                       self.river_memory)
+        gistda, enabled = self._gistda_now(now)
+        flat: list = []
+        out = payload(load_provinces(), rain, stations, tmd_provinces or set(), storm, now,
+                      rain_at, stations_at, self.hysteresis, kiosk_province_code,
+                      self.river_memory, gistda, enabled, self.shadow_hysteresis, sink=flat)
+        self._keep_shadow(flat, gistda, enabled, now)
+        return out
+
+    def _gistda_now(self, now: float) -> tuple[dict | None, bool]:
+        """(GISTDA's cached summary or None, whether it may change the
+        displayed level). Never raises and never blocks: GistdaFlood.get
+        refreshes in the background."""
+        if self._gistda is None:
+            return None, False
+        try:
+            from . import gistda_flood  # lazy: gistda_flood imports this module
+            data = self._gistda.get(now)
+            enabled = bool(gistda_flood.flood_enabled())
+        except Exception as exc:  # noqa: BLE001 — the flood card must not fail with it
+            log.warning("gistda read failed: %s", type(exc).__name__)
+            return None, False
+        return (data if isinstance(data, dict) else None), enabled
+
+    def _keep_shadow(self, flat: list, gistda: dict | None, enabled: bool, now: float) -> None:
+        if gistda is None or not flat:
+            self.last_shadow = None
+            return
+        rows = [{"code": p["code"], "with": p["_level_with_gistda"],
+                 "without": p["_level_without_gistda"], "satellite": p["_satellite"]}
+                for p in flat if "_level_with_gistda" in p]
+        self.last_shadow = {"at": now, "enabled": enabled, "provinces": rows}
+        up = sum(1 for r in rows if r["with"] > r["without"])
+        down = sum(1 for r in rows if r["with"] < r["without"])
+        confirmed = sum(1 for r in rows if r["satellite"])
+        counts = (confirmed, up, down)
+        # Counts only (no province, no position); once when they change, else
+        # at most hourly — the dashboard computes this on every request.
+        if counts != self._shadow_logged or now - self._shadow_logged_at >= 3600:
+            self._shadow_logged, self._shadow_logged_at = counts, now
+            log.info("flood gistda %s: satellite_provinces=%d would_rise=%d would_drop=%d",
+                     "on" if enabled else "shadow", confirmed, up, down)
 
     def areas(self, now: float | None = None, tmd_provinces: set | None = None,
              storm: bool = False) -> tuple[list[dict], bool]:
@@ -752,8 +904,12 @@ class FloodForecast:
         with self._lock:
             rain, rain_at = dict(self._rain), self._rain_fetched_at
             stations, stations_at = list(self._thaiwater_stations), self._thaiwater_fetched_at
+        # Jarvis says what the card says: GISTDA only once it is switched on
+        # (the shadow is the dashboard's business, see payload()).
+        gistda, enabled = self._gistda_now(now)
         out = compute_areas(load_provinces(), rain, stations, tmd_provinces or set(), storm, now,
-                            rain_at, stations_at, self.hysteresis, self.river_memory)
+                            rain_at, stations_at, self.hysteresis, self.river_memory,
+                            gistda if enabled else None, enabled, self.shadow_hysteresis)
         return out, rain_at is not None
 
     def _refresh_background(self, now: float) -> None:
@@ -784,4 +940,9 @@ class FloodForecast:
             self._thaiwater_stations = []
             self._thaiwater_fetched_at = None
         self.hysteresis.forget()
+        self.shadow_hysteresis.forget()
         self.river_memory.forget()
+        self.last_shadow = None
+        self._shadow_logged = None
+        if self._gistda is not None and hasattr(self._gistda, "forget"):
+            self._gistda.forget()

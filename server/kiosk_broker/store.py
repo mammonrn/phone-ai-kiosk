@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS training_usage (
 -- confirmed) stay NULL forever and are pruned like everything else here.
 CREATE TABLE IF NOT EXISTS forecast_records (
     id              INTEGER PRIMARY KEY,
-    kind            TEXT    NOT NULL, -- rain_chance | temp | uv | flood_level
+    kind            TEXT    NOT NULL, -- see verify.KINDS
     area            TEXT    NOT NULL,
     source          TEXT    NOT NULL,
     valid_from      REAL    NOT NULL,
@@ -155,6 +155,29 @@ CREATE TABLE IF NOT EXISTS tmd_rain_3h (
     PRIMARY KEY (station_lat, station_lon, observed_at)
 );
 CREATE INDEX IF NOT EXISTS tmd_rain_3h_prune ON tmd_rain_3h(observed_at);
+
+-- ThaiWater (สสน.) gauges' own HOURLY rain, one row per gauge per hour end,
+-- only gauges near the kiosk (thaiwater_rain.MAX_KM) — the rain ground truth
+-- while TMD's station key is absent. See verify.py's per-value section.
+CREATE TABLE IF NOT EXISTS thaiwater_rain_1h (
+    station_lat REAL NOT NULL,
+    station_lon REAL NOT NULL,
+    observed_at REAL NOT NULL,
+    rain_1h_mm  REAL NOT NULL,
+    PRIMARY KEY (station_lat, station_lon, observed_at)
+);
+CREATE INDEX IF NOT EXISTS thaiwater_rain_1h_prune ON thaiwater_rain_1h(observed_at);
+
+-- TMD stations' 3-hourly AirTemperature, same shape and reason as
+-- tmd_rain_3h — the temperature ground truth (empty without TMD_UID/UKEY).
+CREATE TABLE IF NOT EXISTS tmd_temp_3h (
+    station_lat REAL NOT NULL,
+    station_lon REAL NOT NULL,
+    observed_at REAL NOT NULL,
+    temp_c      REAL NOT NULL,
+    PRIMARY KEY (station_lat, station_lon, observed_at)
+);
+CREATE INDEX IF NOT EXISTS tmd_temp_3h_prune ON tmd_temp_3h(observed_at);
 """
 
 

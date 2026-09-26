@@ -224,3 +224,21 @@ def _no_real_network_for_the_dashboard(monkeypatch):
     monkeypatch.setattr(dams_mod, "BACKGROUND", False)
     monkeypatch.setattr(radar_mod, "_fetch", refuse_dams)
     monkeypatch.setattr(radar_mod, "BACKGROUND", False)
+
+    # blend.py's Open-Meteo fetch, the TMD NWP / GISTDA readers it wires in,
+    # and thaiwater_rain.py's gauge timer — same rule: no network, no thread.
+    from kiosk_broker import blend as blend_mod
+    from kiosk_broker import gistda_flood as gistda_mod
+    from kiosk_broker import nwp as nwp_mod
+    from kiosk_broker import thaiwater_rain as thaiwater_rain_mod
+
+    monkeypatch.setattr(blend_mod, "_fetch", refuse_dams)
+    monkeypatch.setattr(blend_mod, "BACKGROUND", False)
+    monkeypatch.setattr(nwp_mod, "BACKGROUND", False)
+    monkeypatch.setattr(gistda_mod, "BACKGROUND", False)
+
+    def refuse_thaiwater(url, timeout):
+        raise urllib.error.URLError("network is disabled in the tests")
+
+    monkeypatch.setattr(thaiwater_rain_mod, "_fetch", refuse_thaiwater)
+    monkeypatch.setattr(thaiwater_rain_mod, "BACKGROUND", False)
