@@ -27,7 +27,11 @@ import com.mammonrn.phoneaikiosk.voice.WakePause
  * from Maps or Xiaomi Home, a share, a notification — can bring either on screen.
  * [start] is called only after a PASSED identity check (SocialActivity) and adds
  * that ONE package for ONE visit; every way back ends it and the list is exactly
- * [LockTaskAllowlist] again, which also closes the app's task:
+ * [LockTaskAllowlist] again. Leaving the list does NOT close the app's task (it stayed
+ * alive behind the kiosk); TemporaryAppCloser, run by WifiPanel.restore for whatever
+ * leaves the list, closes it for real (suspend, then unsuspend at once; Poom 2026-09-26).
+ * The Play Store is a system app and is not suspended: its task stays behind the kiosk,
+ * off the list. The visit ends when:
  *  - a kiosk screen comes to the front (Back out of the app, or "Hey Jarvis", which
  *    brings home forward) — [kioskResumed], from KioskScreens on every resume;
  *  - the screen turns off;
@@ -105,9 +109,13 @@ object SocialVisit {
 
     /**
      * The package the kiosk's own allowlist keeps (WifiPanel.restore): YouTube while it plays
-     * in the background or the floating window; nothing otherwise.
+     * in the background; and any visit's app in its first [START_GRACE_MS] — SocialActivity
+     * finishes as the app starts, so a kiosk screen can resume for a moment, and whatever
+     * restore takes off the list is now closed for real (TemporaryAppCloser). When the grace
+     * is over, kioskResumed decides (a kiosk screen still in front ends the visit). Nothing otherwise.
      */
-    fun keptPackage(): String? = if (background) active else null
+    fun keptPackage(): String? =
+        if (background || (active != null && SystemClock.elapsedRealtime() - startedAt < START_GRACE_MS)) active else null
 
     /** The package a visit allows right now (dumpsys, tests); null when there is none. */
     fun activePackage(): String? = active
@@ -147,9 +155,9 @@ object SocialVisit {
         // A visit already on (only the debug test can start one from outside a kiosk screen):
         // its watchers go, and the list below replaces its package in one step.
         end(activity, "replaced", restore = false)
-        val admin = KioskDeviceAdminReceiver.componentName(activity)
         refuseNotifications(activity)
-        dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + pkg)
+        // A replaced visit's app leaves the list here and is closed like any other.
+        com.mammonrn.phoneaikiosk.TemporaryAppCloser.setAllowlist(activity, LockTaskAllowlist.packages(activity.packageName) + pkg)
         return try {
             activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             active = pkg

@@ -18,11 +18,13 @@ import com.mammonrn.phoneaikiosk.LockTaskAllowlist
  * So the button allows it FOR ONE VISIT: the settings package joins the list,
  * the system's WiFi panel opens over the kiosk, and the moment a kiosk screen
  * is back in front ([restore], from SettingsActivity.onResume and
- * MainActivity.onResume) the list is exactly [LockTaskAllowlist] again.
+ * MainActivity.onResume) the list is exactly [LockTaskAllowlist] again. The Settings
+ * app is a system app, so TemporaryAppCloser does not suspend it: its task stays
+ * behind the kiosk, off the list, where lock task keeps it off the screen.
  *
  * THE RISK POOM ACCEPTED: while the panel is open, its own "settings" link can
  * reach the rest of the settings app. That is still inside the locked task —
- * Home and Recents stay off — and Back returns to the kiosk, which closes it.
+ * Home and Recents stay off — and Back returns to the kiosk, which takes it off the list.
  *
  * THE IDENTITY CHECK FIRST (Poom 2026-09-26, "สแกนหน้าก่อนเข้าตั้งค่าระบบรวม WiFi:
  * ใช่"): because that link reaches the whole settings app, every way into a system
@@ -73,8 +75,12 @@ object WifiPanel {
         // 0.67: YouTube playing on in the background or its floating window stays (SocialVisit).
         val wanted = LockTaskAllowlist.packages(context.packageName) +
             listOfNotNull(com.mammonrn.phoneaikiosk.social.SocialVisit.keptPackage())
+        // A closing interrupted by the process dying left an app suspended: undone first.
+        com.mammonrn.phoneaikiosk.TemporaryAppCloser.clearLeftovers(context)
         if (!dpm.getLockTaskPackages(admin).toSet().equals(wanted.toSet())) {
-            dpm.setLockTaskPackages(admin, wanted)
+            // Every package that leaves the list here is closed for real (TemporaryAppCloser):
+            // leaving the list alone does not end its task.
+            com.mammonrn.phoneaikiosk.TemporaryAppCloser.setAllowlist(context, wanted)
             Log.i(TAG, "allowlist restored")
         }
     }
