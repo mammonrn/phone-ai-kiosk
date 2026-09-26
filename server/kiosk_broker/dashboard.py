@@ -49,6 +49,8 @@ THE SOURCES, checked before they were chosen:
   application. It answered three of three probes in under 0.1 s with the
   association's own update number. It could also disappear tomorrow without
   telling anyone, which is exactly why the stale-value handling above exists.
+* Nationwide warnings (กรมอุตุฯ CAP, GDACS) — see alerts.py; one cache for
+  every phone, refreshed in the background, the same items Jarvis reads out.
 
 WHAT THE GOLD PERCENTAGE IS MEASURED AGAINST, because a percentage with no
 stated base is a number pretending to be information. `/latest` is the only
@@ -662,6 +664,10 @@ class Dashboard:
         self.cfg = cfg
         self._lock = threading.Lock()
         self._cache: dict[str, tuple[float, Panel]] = {}
+        # Nationwide warnings: one cache for every phone and every position,
+        # refreshed in the background (alerts.py) — also what Jarvis reads.
+        from . import alerts
+        self.alerts = alerts.Alerts(ttl=cfg.dashboard_alerts_ttl)
 
     def latest(self, kind: str, now: float | None = None) -> tuple[int, dict] | None:
         """The newest GOOD cached panel of this kind — (age in seconds, data) —
@@ -683,6 +689,7 @@ class Dashboard:
         """Drops every cached panel. For tests, and for a config reload."""
         with self._lock:
             self._cache.clear()
+        self.alerts.forget()
 
     def snapshot(self, latitude=None, longitude=None, now: float | None = None,
                  marks=None, symbols=None) -> dict:
@@ -728,6 +735,10 @@ class Dashboard:
             "gold": gold.as_json(),
             "oil": oil.as_json(),
             "crypto": crypto.as_json(),
+            # {"items": [...], "updated": epoch|None, "ok": bool} — warnings
+            # for the whole country, not this position (alerts.py). Never
+            # waits on the network: a due refresh runs in the background.
+            "alerts": self.alerts.payload(now),
             # Empty string when the lookup failed or the name could not be read.
             # The phone shows "ตำแหน่งปัจจุบัน" for that, never a coordinate.
             "place": place.data.get("place", "") if place.ok else "",

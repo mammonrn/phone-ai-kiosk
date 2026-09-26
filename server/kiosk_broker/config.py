@@ -165,6 +165,11 @@ class Config:
     #:   this buys nothing: the price itself moves once a day.
     dashboard_oil_ttl: int = 90 * 60
     dashboard_crypto_ttl: int = 30
+    #:   Warnings (alerts.py): TMD re-issues its CAP warnings about twice a
+    #:   day, so every 20 minutes is a new warning on the card within 20
+    #:   minutes, at 72 small requests a day per source. Refreshed in the
+    #:   background; the phone's request never waits for it.
+    dashboard_alerts_ttl: int = 20 * 60
 
     #: A province does not move. A day is short enough that carrying the kiosk
     #: somewhere else renames the title bar the same day, and long enough that

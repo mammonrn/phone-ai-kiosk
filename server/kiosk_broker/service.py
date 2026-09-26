@@ -22,7 +22,7 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
                auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd, social_cmd,
-               calendar_app, holidays_q)
+               calendar_app, holidays_q, alerts)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -974,6 +974,19 @@ def handle_chat(
                 log.warning("holidays device=%s failed: %s", label, type(exc).__name__)
                 reply = holidays_q.FAILED
         return answer_in_code(reply, None, "holidays")
+
+    # ---- nationwide warnings (alerts.py): TMD's CAP warnings and GDACS, the
+    # same items as the home card, answered in code; never guessed. ---------
+    if not is_camera and alarm is None and not calendar_yes and alerts.match(text):
+        log_intent("skipped")
+        board = _dashboard(cfg).alerts
+        try:
+            board.ensure_fresh()
+            reply = alerts.reply(board, text, time.time())
+        except Exception as exc:  # noqa: BLE001 — a feed problem must not end the conversation
+            log.warning("alerts device=%s failed: %s", label, type(exc).__name__)
+            reply = alerts.FAILED
+        return answer_in_code(reply, None, "alerts")
 
     private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:

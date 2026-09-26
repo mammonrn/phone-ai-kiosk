@@ -186,3 +186,13 @@ def _no_real_network_for_the_dashboard(monkeypatch):
         raise urllib.error.URLError("network is disabled in the tests")
 
     monkeypatch.setattr(dashboard_mod, "_get", refuse)
+
+    # The warnings (alerts.py) fetch XML through their own function, and
+    # refresh in the caller's thread here so nothing outlives the test.
+    from kiosk_broker import alerts as alerts_mod
+
+    def refuse_alerts(url, timeout, limit):
+        raise urllib.error.URLError("network is disabled in the tests")
+
+    monkeypatch.setattr(alerts_mod, "_fetch", refuse_alerts)
+    monkeypatch.setattr(alerts_mod, "BACKGROUND", False)
