@@ -22,6 +22,8 @@ import re
 
 _FACEBOOK = r"(?:เฟ[สซ]บุ[๊]?[คก]|เฟ[สซ]|facebook|fb|เฟ[สซ]บุ[๊]?[คก]ไลท์|facebooklite)"
 _INSTAGRAM = r"(?:อินส[ตท]าแก?รม|อินสตา|ไอจี|instagram|insta|ig)"
+#: 0.67: YouTube patched with ReVanced, opened the same way (social/SocialVoice on the phone).
+_YOUTUBE = r"(?:ยูทู[บป]|ยูทิวบ์?|youtube|yt)"
 _PARTICLES = re.compile(r"(?:ให้หน่อย|หน่อย|ให้ที|ด้วย|นะ|ครับ|ค่ะ|คะ|จ้ะ|ได้ไหม|ได้มั้ย|ให้)+$")
 _WAKE = re.compile(r"^(?:เฮ[ย์]?|hey)?(?:จา[ร]?[์]?วิส|jarvis)")
 _QUESTION = re.compile(r"อะไร|ยังไง|อย่างไร|ทำไม|ไหม|มั้ย|หรือเปล่า|รึเปล่า|ได้หรือ|คือ")
@@ -30,13 +32,14 @@ _OPEN = r"(?:เปิด|เข้า|ขอดู|ดู|เล่น|ขอ�
 _PATTERNS = (
     ("facebook", re.compile(rf"^{_OPEN}(?:แอป|แอพ|แอปพลิเคชัน)?{_FACEBOOK}$")),
     ("instagram", re.compile(rf"^{_OPEN}(?:แอป|แอพ|แอปพลิเคชัน)?{_INSTAGRAM}$")),
+    ("youtube", re.compile(rf"^{_OPEN}(?:แอป|แอพ|แอปพลิเคชัน)?{_YOUTUBE}$")),
 )
 
-NAMES = {"facebook": "Facebook", "instagram": "Instagram"}
+NAMES = {"facebook": "Facebook", "instagram": "Instagram", "youtube": "YouTube"}
 
 #: Said only by a phone that does not know open_social (it drops the action).
 #: True in every case: nothing claims the app opened.
-FALLBACK_REPLY = "ต้องสแกนใบหน้าก่อนเปิด {name} ครับ เปิดได้ที่แผงควบคุม หมวดโซเชียล"
+FALLBACK_REPLY = "ต้องสแกนใบหน้าก่อนเปิด {name} ครับ เปิดได้ที่แผงควบคุม"
 
 
 def _squash(text: str) -> str:
@@ -47,7 +50,7 @@ def _squash(text: str) -> str:
 
 
 def match(text: str) -> str | None:
-    """"facebook" or "instagram" for a command to open one, else None."""
+    """"facebook", "instagram" or "youtube" for a command to open one, else None."""
     t = _squash(text)
     if not t:
         return None

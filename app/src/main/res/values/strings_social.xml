@@ -5,6 +5,9 @@
     <string name="social_facebook">Facebook</string>
     <string name="social_facebook_lite">Facebook Lite</string>
     <string name="social_instagram">Instagram</string>
+    <string name="social_youtube">YouTube</string>
+    <string name="social_how_back_playing">กลับเข้าตู้ได้โดยกดย้อนกลับ พูด “Hey Jarvis” หรือปิดหน้าจอ เสียงของ %1$s เล่นต่อได้เมื่อปิดหน้าจอหรือย่อเป็นจอลอย และหยุดเมื่อหยุดเล่น ใช้งานได้ครั้งละไม่เกิน %2$d นาที ลิงก์ที่พาไปแอปพลิเคชันอื่นหรือเบราว์เซอร์จะไม่เปิด</string>
+    <string name="social_install_by_owner">%1$s ไม่ได้ติดตั้งจาก Play Store ผู้ดูแลเครื่องต้องติดตั้งให้</string>
     <string name="social_why_check">ต้องสแกนใบหน้าก่อนเปิด %1$s เพื่อให้เฉพาะเจ้าของเครื่องเข้าบัญชีได้</string>
     <string name="social_open">สแกนใบหน้าแล้วเปิด %1$s</string>
     <string name="social_how_back">กลับเข้าตู้ได้โดยกดย้อนกลับจนออกจาก %1$s พูด “Hey Jarvis” หรือปิดหน้าจอ ใช้งานได้ครั้งละไม่เกิน %2$d นาที ลิงก์ที่พาไปแอปพลิเคชันอื่นหรือเบราว์เซอร์จะไม่เปิด</string>

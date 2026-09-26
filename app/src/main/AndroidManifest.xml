@@ -140,6 +140,8 @@
         <package android:name="com.facebook.katana" />
         <package android:name="com.instagram.android" />
         <package android:name="com.android.vending" />
+        <!-- 0.67: YouTube patched with ReVanced, behind the identity check (social/SocialVisit). -->
+        <package android:name="app.revanced.android.youtube" />
     </queries>
 
     <!-- KioskApp registers KioskScreens: every screen of this app is tracked

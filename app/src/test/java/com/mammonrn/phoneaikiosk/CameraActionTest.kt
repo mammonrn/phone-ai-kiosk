@@ -55,7 +55,8 @@ class CameraActionTest {
             .find(manifest)!!.groupValues[1]
         // Maps, Xiaomi Home, and the settings app for the WiFi button (0.42.0).
         // + Facebook Lite, Facebook, Instagram and the Play Store (0.65.0, social/SocialVisit).
-        assertEquals(7, Regex("<package ").findAll(queries).count())
+        // + YouTube patched with ReVanced (0.67).
+        assertEquals(8, Regex("<package ").findAll(queries).count())
         assertTrue(!queries.contains("<intent"))
     }
 

@@ -27,22 +27,27 @@ import com.mammonrn.phoneaikiosk.voice.doneWords
  */
 object SocialVoice {
 
-    val APPS = setOf("facebook", "instagram")
+    val APPS = setOf("facebook", "instagram", "youtube")
     private const val TAG = "KioskSocial"
     /** How long the app gets to come to the front with the hour open. */
     private const val WAIT_MS = 6_000L
 
-    fun name(app: String) = if (app == "instagram") "Instagram" else "Facebook"
+    fun name(app: String) = when (app) { "instagram" -> "Instagram"; "youtube" -> "YouTube"; else -> "Facebook" }
 
     /** Called on the voice service's worker thread. Returns the words to say, always. */
     fun open(context: Context, appName: String): String {
-        val app = if (appName == "instagram") SocialVisit.App.INSTAGRAM else SocialVisit.App.FACEBOOK
+        val app = when (appName) {
+            "instagram" -> SocialVisit.App.INSTAGRAM
+            "youtube" -> SocialVisit.App.YOUTUBE
+            else -> SocialVisit.App.FACEBOOK
+        }
         val name = name(appName)
         val outcome: String
         val words = when {
             SocialVisit.installed(context, app) == null -> {
                 outcome = "not-installed"
-                "ยังไม่ได้ติดตั้ง $name ในเครื่องนี้ครับ ติดตั้งได้ที่แผงควบคุม หมวดโซเชียล"
+                if (app.fromPlayStore) "ยังไม่ได้ติดตั้ง $name ในเครื่องนี้ครับ ติดตั้งได้ที่แผงควบคุม หมวดโซเชียล"
+                else "ยังไม่ได้ติดตั้ง $name ในเครื่องนี้ครับ"
             }
             AuthStore.loadFace(context) == null && !AuthStore.hasPattern(context) -> {
                 outcome = "nothing-enrolled"

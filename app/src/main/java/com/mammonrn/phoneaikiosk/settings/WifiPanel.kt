@@ -55,7 +55,9 @@ object WifiPanel {
         val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
         if (!dpm.isDeviceOwnerApp(context.packageName)) return
         val admin = KioskDeviceAdminReceiver.componentName(context)
-        val wanted = LockTaskAllowlist.packages(context.packageName)
+        // 0.67: YouTube playing on in the background or its floating window stays (SocialVisit).
+        val wanted = LockTaskAllowlist.packages(context.packageName) +
+            listOfNotNull(com.mammonrn.phoneaikiosk.social.SocialVisit.keptPackage())
         if (!dpm.getLockTaskPackages(admin).toSet().equals(wanted.toSet())) {
             dpm.setLockTaskPackages(admin, wanted)
             Log.i(TAG, "allowlist restored")

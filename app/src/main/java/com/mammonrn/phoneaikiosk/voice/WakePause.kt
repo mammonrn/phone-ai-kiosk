@@ -94,6 +94,13 @@ object WakePause {
     @Volatile
     var post: (() -> Unit) -> Unit = { it() }
 
+    /**
+     * 0.67: told when a question starts (true) and ends (false) - social/SocialVisit pauses
+     * YouTube for Jarvis's words. Not a player: it holds no pause.
+     */
+    @Volatile
+    var onTurn: ((Boolean) -> Unit)? = null
+
     /** Log lines: the source and what happened, never anything about the media itself. */
     @Volatile
     var log: (String) -> Unit = {}
@@ -166,6 +173,7 @@ object WakePause {
         }
         if (quiet.isNotEmpty()) log("wake pause: quieted ${quiet.size} player(s) for a question")
         for (media in quiet) post { media.quietForJarvis() }
+        onTurn?.invoke(true)
     }
 
     /**
@@ -188,6 +196,7 @@ object WakePause {
         }
         if (resume.isNotEmpty()) log("wake pause: resumed ${resume.size} player(s)")
         for (media in resume) post { media.resumeAfterJarvis() }
+        onTurn?.invoke(false)
     }
 
     /** Nothing held, no turn: what a new process starts from. VoiceService.onCreate. */

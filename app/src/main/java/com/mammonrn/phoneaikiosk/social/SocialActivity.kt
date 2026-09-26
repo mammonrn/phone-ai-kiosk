@@ -77,9 +77,17 @@ class SocialActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() = Origin.close(this, "social-back")
 
-    private fun name() = getString(if (app == SocialVisit.App.FACEBOOK) R.string.social_facebook else R.string.social_instagram)
+    private fun name() = getString(when (app) {
+        SocialVisit.App.FACEBOOK -> R.string.social_facebook
+        SocialVisit.App.INSTAGRAM -> R.string.social_instagram
+        SocialVisit.App.YOUTUBE -> R.string.social_youtube
+    })
 
-    private fun installName() = getString(if (app == SocialVisit.App.FACEBOOK) R.string.social_facebook_lite else R.string.social_instagram)
+    private fun installName() = getString(when (app) {
+        SocialVisit.App.FACEBOOK -> R.string.social_facebook_lite
+        SocialVisit.App.INSTAGRAM -> R.string.social_instagram
+        SocialVisit.App.YOUTUBE -> R.string.social_youtube
+    })
 
     private fun draw() {
         val body = r.column().apply { setPadding(r.dp(UiScale.SPACE_M), r.dp(UiScale.SPACE_M), r.dp(UiScale.SPACE_M), r.dp(UiScale.SPACE_M)) }
@@ -90,13 +98,20 @@ class SocialActivity : Activity() {
             if (problem.isNotEmpty()) body.addView(r.text(problem, UiScale.TEXT_BASE).apply { setTextColor(r.color(R.color.retro_bad)) }, lp(UiScale.SPACE_S))
             body.addView(r.button(getString(R.string.social_open, name()), big = true) { check(Want.OPEN) },
                 LinearLayout.LayoutParams(MATCH, r.dp(UiScale.PRIMARY)).apply { topMargin = r.dp(UiScale.SPACE_M) })
-            body.addView(r.text(getString(R.string.social_how_back, name(), (SocialVisit.LIMIT_MS / 60_000).toInt()), UiScale.TEXT_NOTE, dim = true), lp(UiScale.SPACE_M))
+            // YouTube plays on with the screen off or in the floating window (Poom), and says so.
+            val howBack = if (app.keepsPlaying) R.string.social_how_back_playing else R.string.social_how_back
+            body.addView(r.text(getString(howBack, name(), (app.limitMs / 60_000).toInt()), UiScale.TEXT_NOTE, dim = true), lp(UiScale.SPACE_M))
         } else {
             body.addView(r.bold(getString(R.string.social_not_installed, installName()), UiScale.TEXT_BASE), lp(0))
             if (problem.isNotEmpty()) body.addView(r.text(problem, UiScale.TEXT_BASE).apply { setTextColor(r.color(R.color.retro_bad)) }, lp(UiScale.SPACE_S))
-            body.addView(r.button(getString(R.string.social_install), big = true) { check(Want.INSTALL) },
-                LinearLayout.LayoutParams(MATCH, r.dp(UiScale.PRIMARY)).apply { topMargin = r.dp(UiScale.SPACE_M) })
-            body.addView(r.text(getString(R.string.social_install_note, installName()), UiScale.TEXT_NOTE, dim = true), lp(UiScale.SPACE_M))
+            if (app.fromPlayStore) {
+                body.addView(r.button(getString(R.string.social_install), big = true) { check(Want.INSTALL) },
+                    LinearLayout.LayoutParams(MATCH, r.dp(UiScale.PRIMARY)).apply { topMargin = r.dp(UiScale.SPACE_M) })
+                body.addView(r.text(getString(R.string.social_install_note, installName()), UiScale.TEXT_NOTE, dim = true), lp(UiScale.SPACE_M))
+            } else {
+                // Not from the Play Store: no button that could not do what it says.
+                body.addView(r.text(getString(R.string.social_install_by_owner, installName()), UiScale.TEXT_NOTE, dim = true), lp(UiScale.SPACE_M))
+            }
         }
         frame.setPage(ScrollView(this).apply { addView(body) })
     }
@@ -130,6 +145,9 @@ class SocialActivity : Activity() {
         draw()
     }
 
-    private fun icon(app: SocialVisit.App) =
-        if (app == SocialVisit.App.FACEBOOK) R.drawable.ic_pixel_facebook else R.drawable.ic_pixel_instagram
+    private fun icon(app: SocialVisit.App) = when (app) {
+        SocialVisit.App.FACEBOOK -> R.drawable.ic_pixel_facebook
+        SocialVisit.App.INSTAGRAM -> R.drawable.ic_pixel_instagram
+        SocialVisit.App.YOUTUBE -> R.drawable.ic_pixel_tv
+    }
 }

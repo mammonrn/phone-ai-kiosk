@@ -1051,6 +1051,11 @@ class SettingsActivity : Activity() {
                     Category(R.drawable.ic_pixel_camera, { it.getString(R.string.window_camera) }) {
                         it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.camera.CameraActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
                     },
+                        // 0.67: YouTube (patched with ReVanced), behind the identity check like Facebook
+                        // (social/SocialVisit); with the videos, where watching belongs.
+                        Category(R.drawable.ic_pixel_tv, { it.getString(R.string.social_youtube) }) {
+                            it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(com.mammonrn.phoneaikiosk.social.SocialActivity.intent(it, com.mammonrn.phoneaikiosk.social.SocialVisit.App.YOUTUBE), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                        },
                         // 0.61.0: the voice recorder (recorder/RecorderActivity); the wake word rests while it records.
                         Category(R.drawable.ic_pixel_mic, { it.getString(R.string.window_recorder) }) {
                             it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(Intent(it, com.mammonrn.phoneaikiosk.recorder.RecorderActivity::class.java), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))

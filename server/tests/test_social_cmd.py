@@ -20,12 +20,14 @@ from conftest import FakeClient
     ("Hey Jarvis เปิดเฟซบุ๊ก", "facebook"), ("เข้าเฟส", "facebook"), ("เปิดแอป Facebook", "facebook"),
     ("เปิดเฟสบุ๊คได้ไหม", "facebook"), ("ขอดูเฟสบุ๊คหน่อย", "facebook"),
     ("เปิดไอจี", "instagram"), ("เปิดอินสตาแกรมได้ไหม", "instagram"), ("เปิด Instagram", "instagram"),
+    ("เปิดยูทูบ", "youtube"), ("เปิดยูทูปหน่อย", "youtube"), ("เปิด YouTube", "youtube"), ("ขอดูยูทูบ", "youtube"),
 ])
 def test_the_commands(said, app):
     assert social_cmd.match(said) == app
 
 
-@pytest.mark.parametrize("said", ["เฟสบุ๊คคืออะไร", "เปิดเฟสบุ๊คยังไง", "เปิดไฟ", "เปิดเพลงเฟสบุ๊ค",
+@pytest.mark.parametrize("said", ["เฟสบุ๊คคืออะไร", "เปิดเฟสบุ๊คยังไง", "เปิดไฟ", "เปิดเพลงเฟสบุ๊ค", "ยูทูบคืออะไร",
+                                  "เปิดเพลงในยูทูบ",
                                   "เฟสบุ๊คของใครดีกว่า", "ปิดเฟสบุ๊ค", ""])
 def test_not_commands(said):
     assert social_cmd.match(said) is None

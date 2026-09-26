@@ -52,11 +52,26 @@ import com.mammonrn.phoneaikiosk.voice.WakePause
  */
 object SocialVisit {
 
-    enum class App(val packages: List<String>) {
+    /**
+     * [keepsPlaying] (YouTube only, Poom 2026-09-26): with its sound playing, the visit is
+     * NOT ended by the screen turning off or a kiosk screen coming forward (the floating
+     * window, the sound in the background) - it ends when the playing stops or at its limit.
+     * [fromPlayStore]: false for an app the owner installs by adb, never from the Play Store.
+     */
+    enum class App(val packages: List<String>, val keepsPlaying: Boolean = false,
+                   val fromPlayStore: Boolean = true, val limitMs: Long = LIMIT_MS) {
         /** Facebook Lite first (Poom: "ใช้ Facebook Lite ถ้ามีในไทย"); the full app only without it. */
         FACEBOOK(listOf("com.facebook.lite", "com.facebook.katana")),
         INSTAGRAM(listOf("com.instagram.android")),
+        /** 0.67: YouTube patched with ReVanced (its GmsCore support renames the package). */
+        YOUTUBE(listOf(YOUTUBE_PACKAGE), keepsPlaying = true, fromPlayStore = false, limitMs = YOUTUBE_LIMIT_MS),
     }
+
+    const val YOUTUBE_PACKAGE = "app.revanced.android.youtube"
+    /** ReVanced's GmsCore, which the patched YouTube talks to (installed with it). */
+    const val GMSCORE_PACKAGE = "app.revanced.android.gms"
+    /** A YouTube visit's limit (decided here: a film is longer than half an hour). */
+    const val YOUTUBE_LIMIT_MS = 60 * 60_000L
 
     const val PLAY_PACKAGE = "com.android.vending"
 
@@ -71,6 +86,7 @@ object SocialVisit {
     const val CALL_GRACE_MS = 5 * 60_000L
     private const val MIC_POLL_MS = 3_000L
     private const val START_GRACE_MS = 2_000L
+    private const val PLAY_POLL_MS = 5_000L
     private const val TAG = "KioskSocial"
 
     private val main by lazy { Handler(Looper.getMainLooper()) }
@@ -79,6 +95,19 @@ object SocialVisit {
     private var startedAt = 0L
     private var screenOff: BroadcastReceiver? = null
     private var micHold: WakePause.Hold? = null
+    /** This visit may go on while its sound plays (App.keepsPlaying). */
+    private var keeps = false
+    /** Going on in the background or the floating window, the kiosk in front or the screen off. */
+    @Volatile private var background = false
+    private var quietPolls = 0
+    private var appContext: Context? = null
+    private var focus: android.media.AudioFocusRequest? = null
+
+    /**
+     * The package the kiosk's own allowlist keeps (WifiPanel.restore): YouTube while it plays
+     * in the background or the floating window; nothing otherwise.
+     */
+    fun keptPackage(): String? = if (background) active else null
 
     /** The package a visit allows right now (dumpsys, tests); null when there is none. */
     fun activePackage(): String? = active
@@ -103,7 +132,7 @@ object SocialVisit {
     fun open(activity: Activity, app: App): Result {
         val pkg = installed(activity, app) ?: return Result.NOT_INSTALLED
         val intent = activity.packageManager.getLaunchIntentForPackage(pkg) ?: return Result.NOT_INSTALLED
-        return begin(activity, pkg, app.name.lowercase(), intent)
+        return begin(activity, pkg, app.name.lowercase(), intent, app)
     }
 
     /** Opens the Play Store at [app]'s page for one visit. ONLY after a passed identity check. */
@@ -112,7 +141,7 @@ object SocialVisit {
         return begin(activity, PLAY_PACKAGE, "play-" + app.name.lowercase(), intent)
     }
 
-    private fun begin(activity: Activity, pkg: String, what: String, intent: Intent): Result {
+    private fun begin(activity: Activity, pkg: String, what: String, intent: Intent, app: App? = null): Result {
         val dpm = activity.getSystemService(DevicePolicyManager::class.java)
         if (dpm == null || !dpm.isDeviceOwnerApp(activity.packageName)) return Result.NOT_OWNER
         // A visit already on (only the debug test can start one from outside a kiosk screen):
@@ -125,8 +154,11 @@ object SocialVisit {
             activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             active = pkg
             label = what
+            keeps = app?.keepsPlaying == true
+            background = false
+            appContext = activity.applicationContext
             startedAt = SystemClock.elapsedRealtime()
-            watch(activity.applicationContext)
+            watch(activity.applicationContext, if (limitMs != LIMIT_MS) limitMs else app?.limitMs ?: LIMIT_MS)
             Log.i(TAG, "visit start app=$what")
             Result.OPENED
         } catch (e: Exception) {
@@ -145,6 +177,9 @@ object SocialVisit {
         screenOff = null
         micHold?.let { WakePause.release(it) }
         micHold = null
+        keeps = false
+        background = false
+        jarvisTurn(false)
         if (restore) WifiPanel.restore(context)
         val minutes = (SystemClock.elapsedRealtime() - startedAt) / 60_000
         Log.i(TAG, "visit end app=$label reason=$reason minutes=$minutes still_allowed=${allowed(context, pkg)}")
@@ -162,10 +197,59 @@ object SocialVisit {
         // over — still in front then, the visit ends.
         val left = START_GRACE_MS - (SystemClock.elapsedRealtime() - startedAt)
         if (left > 0) {
-            main.postDelayed({ kioskFront?.get()?.let { if (it === activity) end(it, "kiosk-front") } }, left)
+            main.postDelayed({ kioskFront?.get()?.let { if (it === activity) leave(it, "kiosk-front") } }, left)
             return
         }
-        end(activity, "kiosk-front")
+        leave(activity, "kiosk-front")
+    }
+
+    /** The kiosk came forward or the screen went off: the visit ends, unless YouTube plays on. */
+    private fun leave(context: Context, why: String) {
+        if (active == null) return
+        if (keeps && playing(context)) {
+            if (!background) {
+                background = true
+                quietPolls = 0
+                Log.i(TAG, "visit plays on app=$label why=$why")
+                main.postDelayed(object : Runnable {
+                    override fun run() {
+                        if (active == null || !background) return
+                        quietPolls = if (playing(context)) 0 else quietPolls + 1
+                        // Two quiet looks in a row: stopped, not a moment between two videos.
+                        if (quietPolls >= 2) { end(context, "stopped-playing"); return }
+                        main.postDelayed(this, PLAY_POLL_MS)
+                    }
+                }, PLAY_POLL_MS)
+            }
+            return
+        }
+        end(context, why)
+    }
+
+    /** Some app's music-stream sound is playing (YouTube's, while it is the visit). */
+    private fun playing(context: Context): Boolean =
+        context.getSystemService(AudioManager::class.java)?.isMusicActive == true
+
+    /**
+     * Jarvis speaks: YouTube pauses for him and goes on after (Poom: "เสียง YouTube ต้องลด
+     * หรือพักเมื่อจาร์วิสพูด"). Only while a YouTube visit is on: the kiosk's own players
+     * are quieted another way (WakePause.Media), and a focus request would stop them.
+     */
+    fun jarvisTurn(on: Boolean) {
+        val am = appContext?.getSystemService(AudioManager::class.java) ?: return
+        if (on && keeps && active != null && focus == null) {
+            val request = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .build()
+            val granted = am.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            focus = request
+            Log.i(TAG, "jarvis focus app=$label granted=$granted")
+        } else if (!on) {
+            focus?.let { am.abandonAudioFocusRequest(it) }
+            focus = null
+        }
     }
 
     /** A screen of the kiosk is in front right now (resumed, not yet paused). */
@@ -200,12 +284,13 @@ object SocialVisit {
             .getOrDefault(false)
     }
 
-    private fun watch(context: Context) {
+    private fun watch(context: Context, limit: Long) {
         screenOff = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) = end(c, "screen-off")
+            override fun onReceive(c: Context, i: Intent) = leave(c, "screen-off")
         }
         context.registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))
-        main.postDelayed({ limitReached(context) }, limitMs)
+        WakePause.onTurn = { on -> main.post { jarvisTurn(on) } }
+        main.postDelayed({ limitReached(context) }, limit)
         main.postDelayed(object : Runnable {
             override fun run() {
                 if (active == null) return
@@ -244,6 +329,6 @@ object SocialVisit {
 
     /** For the debug dump: the visit's app and minutes, or none. */
     fun describe(): String = active?.let {
-        "app=$label minutes=${(SystemClock.elapsedRealtime() - startedAt) / 60_000}"
+        "app=$label minutes=${(SystemClock.elapsedRealtime() - startedAt) / 60_000} background=$background"
     } ?: "none"
 }

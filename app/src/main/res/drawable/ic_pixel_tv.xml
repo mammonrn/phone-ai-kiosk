@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.67): an old television set - a grey cabinet, a navy screen
+     with a white shine, two knobs and a pair of antennae - for YouTube in the Control
+     Panel's "สื่อ" folder. Deliberately NOT the brand's mark: no red, no rounded
+     rectangle, no play triangle (DESIGN.md 8). 16x16 grid, window palette only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000" android:pathData="M5,1h1v1h-1z M6,2h1v1h-1z M10,1h1v1h-1z M9,2h1v1h-1z
+        M7,3h2v1h-2z M1,4h14v1h-14z M1,5h1v9h-1z M14,5h1v9h-1z M1,13h14v1h-14z M3,14h2v1h-2z M11,14h2v1h-2z" />
+    <path android:fillColor="#808080" android:pathData="M2,5h12v8h-12z" />
+    <path android:fillColor="#000080" android:pathData="M3,6h7v6h-7z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M4,7h2v1h-2z M4,8h1v1h-1z M12,6h1v1h-1z M12,8h1v1h-1z" />
+    <path android:fillColor="#000000" android:pathData="M11,11h2v1h-2z" />
+</vector>
