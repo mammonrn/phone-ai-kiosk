@@ -2,8 +2,11 @@
 
 Every sample under tests/data/alerts/ is a real answer saved on 2026-09-26 from
 the sources the module reads — TMD's CAP list and three of its CAP documents,
-TMD's plain "เตือนภัย" RSS, and GDACS's event list for Thailand. Public
-government and UN data; nothing here reaches the network.
+TMD's plain "เตือนภัย" RSS, GDACS's event list for Thailand, and สสน.'s
+nationwide telemetry water levels (trimmed to the fields parse_thaiwater()
+reads — situation_level and geocode — the real values unchanged; the two
+smaller ThaiWater files are real subsets of the same fetch, not invented).
+Public government/UN/สสน. data; nothing here reaches the network.
 """
 
 from __future__ import annotations
@@ -27,6 +30,9 @@ HEAVY = (DATA / "CAPTMD20260926062033_2.xml").read_bytes()
 HEAVY_OLDER = (DATA / "CAPTMD20260925163420_2.xml").read_bytes()
 WARNING_RSS = (DATA / "tmd_warning_news_20260926.xml").read_bytes()
 GDACS = (DATA / "gdacs_tha_20260926.json").read_bytes()
+THAIWATER_FULL = (DATA / "thaiwater_waterlevel_load_20260926.json").read_bytes()
+THAIWATER_ONE_REGION = (DATA / "thaiwater_single_region_20260926.json").read_bytes()
+THAIWATER_NORMAL = (DATA / "thaiwater_no_abnormal_20260926.json").read_bytes()
 
 DOC = alerts.TMD_CAP_DOC_PREFIX
 PAGES = {
@@ -36,6 +42,9 @@ PAGES = {
     DOC + "CAPTMD20260925163420_2.xml": HEAVY_OLDER,
     alerts.TMD_WARNING_RSS_URL: WARNING_RSS,
     alerts.GDACS_URL: GDACS,
+    # Not in the default PAGES on purpose: adding a nationwide ThaiWater item
+    # here would change every other test's item count and ordering. Tests
+    # that want it build their own Web({alerts.THAIWATER_URL: ...}).
 }
 
 
@@ -139,6 +148,49 @@ def test_gdacs_only_current_orange_or_red_events_in_thailand():
     assert all(i["expires"] is None and i["source"] == "GDACS" for i in items)
 
 
+def test_thaiwater_counts_only_the_levels_thaiwater_itself_calls_abnormal():
+    # Today's real nationwide fetch: 55 stations at level 5 (น้ำล้นตลิ่ง), 188
+    # at level 4 (น้ำมาก) — levels 1-3 (critically low, low, normal) never
+    # produce an item, and nothing here is a threshold this module invented.
+    items = alerts.parse_thaiwater(THAIWATER_FULL)
+    assert [i["title"] for i in items] == ["น้ำล้นตลิ่ง 55 จุด", "น้ำมาก 188 จุด"]
+    assert [i["severity"] for i in items] == ["Extreme", "Severe"]  # worst first
+    assert all(i["source"] == alerts.SOURCE_THAIWATER and i["expires"] is None for i in items)
+    # Stations at this level span most of Thailand's regions today: summarised
+    # as nationwide, not a 40-region list.
+    assert [i["areas"] for i in items] == ["ทั่วประเทศ", "ทั่วประเทศ"]
+
+
+def test_thaiwater_one_region_names_its_provinces():
+    # A real subset of today's fetch: only ภาคกลาง stations at level 4/5,
+    # three provinces among them — few enough to name instead of "ทั่วประเทศ".
+    items = alerts.parse_thaiwater(THAIWATER_ONE_REGION)
+    assert [(i["title"], i["areas"]) for i in items] == [
+        ("น้ำล้นตลิ่ง 20 จุด", "จันทบุรี ปราจีนบุรี สระแก้ว"),
+        ("น้ำมาก 9 จุด", "จันทบุรี ปราจีนบุรี สระแก้ว"),
+    ]
+
+
+def test_thaiwater_no_abnormal_station_is_no_item():
+    # A real subset at levels 1-3 only: nothing to show, and no failure.
+    assert alerts.parse_thaiwater(THAIWATER_NORMAL) == []
+
+
+def test_thaiwater_lines_fit_the_card():
+    for body in (THAIWATER_FULL, THAIWATER_ONE_REGION):
+        for item in alerts.parse_thaiwater(body):
+            line = alerts.line(item, NOW)
+            assert alerts.width(line) <= alerts.LINE_WIDTH
+            assert line.endswith("(สสน.)")
+
+
+def test_thaiwater_bad_shape_is_a_source_error():
+    with pytest.raises(alerts.AlertSourceError):
+        alerts.parse_thaiwater(b'{"not_waterlevel_data": true}')
+    with pytest.raises(alerts.AlertSourceError):
+        alerts.parse_thaiwater(b"not json")
+
+
 # ------------------------------------------------------------------ the line
 
 def test_one_short_formal_line_per_item():
@@ -212,6 +264,18 @@ def test_offline_keeps_the_last_good_items_marked_not_ok():
 def test_before_any_fetch_nothing_is_claimed():
     b = board(Web({}))
     assert b.payload(NOW) == {"items": [], "updated": None, "ok": False}
+
+
+def test_thaiwater_joins_the_cache_like_any_other_source():
+    web = Web({**PAGES, alerts.THAIWATER_URL: THAIWATER_FULL})
+    b = board(web)
+    b.refresh(NOW)
+    payload = b.payload(NOW)
+    titles = [i["title"] for i in payload["items"]]
+    assert "น้ำล้นตลิ่ง 55 จุด" in titles and "น้ำมาก 188 จุด" in titles
+    assert any(i["source"] == alerts.SOURCE_THAIWATER for i in payload["items"])
+    # ThaiWater failing does not touch `ok`: that still follows TMD's CAP.
+    assert payload["ok"] is True
 
 
 def test_an_undated_item_is_not_shown_for_ever_from_a_dead_cache():
@@ -289,6 +353,14 @@ def test_no_storm_and_no_warning_are_said_with_source_and_time():
     assert len(said) <= alerts.ANSWER_CHARS
 
 
+def test_flood_question_also_answers_from_thaiwater():
+    b = board(Web({alerts.THAIWATER_URL: THAIWATER_FULL}))
+    b.refresh(NOW)
+    said = alerts.reply(b, "น้ำท่วมที่ไหน", NOW)
+    assert said == "มีประกาศเตือน 2 เรื่องครับ น้ำล้นตลิ่ง 55 จุด ทั่วประเทศ จาก สสน."
+    assert len(said) <= alerts.ANSWER_CHARS
+
+
 def test_nothing_fetched_is_said_never_guessed():
     assert alerts.reply(board(Web({})), "มีเตือนภัยไหม", NOW) == alerts.FAILED
     assert len(alerts.FAILED) <= alerts.ANSWER_CHARS
@@ -310,5 +382,5 @@ def test_the_log_has_counts_and_error_types_only(caplog):
     with caplog.at_level("INFO", logger="kiosk_broker"):
         board(web).refresh(NOW)
     logged = caplog.text
-    assert "alerts refreshed ok=True tmd_cap=2 tmd_rss=0 gdacs=failed" in logged
+    assert "alerts refreshed ok=True tmd_cap=2 tmd_rss=0 gdacs=failed thaiwater=failed" in logged
     assert "http" not in logged and "ฝน" not in logged

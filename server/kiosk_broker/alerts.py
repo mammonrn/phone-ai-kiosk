@@ -29,14 +29,25 @@ THE SOURCES, checked on 2026-09-26 (all free, none asks for a sign-up or a key):
   https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?country=THA.
   JSON, no key. International, so only ORANGE and RED alerts that GDACS itself
   marks current; green is its "minor" level.
+* สสน. (Hydro-Informatics Institute), ThaiWater — telemetry water levels,
+  https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_load. Open
+  JSON, no key, ~1.4 MB a call (bounded read, see MAX_THAIWATER_BYTES). Added
+  2026-09-26 on Poom's decision, on ONE condition: never invent a threshold
+  from a raw water level here — only read the status สสน. already assigned.
+  Each `waterlevel_data.data[]` telemetry station (`waterlevel_manual_data`
+  carries no such field and is not read) carries its own `situation_level`,
+  1-5, which the SAME response documents at `scale.data.scale[]` — each entry
+  names its own `situation` in Thai and the % of bank/storage it starts at.
+  Read on 2026-09-26: level 5 = "น้ำล้นตลิ่ง" (over the bank, >100%), level 4 =
+  "น้ำมาก" (high water, >70%), level 3 = "น้ำปกติ" (normal, >30%), level 2 =
+  "น้ำน้อย" (low, >10%), level 1 = "น้ำน้อยวิกฤติ" (critically low, <=10%).
+  Only 4 and 5 are สสน.'s own "above normal" levels and are shown; 1-3 (low,
+  critically low, normal) never are — a station running low is not a flood
+  warning and this module does not turn it into one.
 
-LEFT OUT, and why (the report to Poom lists them): ThaiWater (สสน./HII) has an
-open JSON endpoint, but it is the website's own back end with no stated terms
-for reuse, 1.4 MB a call, and gives water levels, not announcements — turning
-"station at level 5" into a warning would be this code's judgement, not an
-official one. ปภ. (DDPM) publishes its warnings as web pages, Facebook posts and
-Cell Broadcast; its open-data catalogue (catalog.disaster.go.th) has no live
-warning feed.
+LEFT OUT, and why (the report to Poom lists them): ปภ. (DDPM) publishes its
+warnings as web pages, Facebook posts and Cell Broadcast; its open-data
+catalogue (catalog.disaster.go.th) has no live warning feed.
 
 WHAT COUNTS AS "ระดับเตือน" (decided here, the rule is one constant):
 CAP severity Severe or Extreme. TMD files heavy rain as Severe and very heavy
@@ -80,6 +91,7 @@ USER_AGENT = "phone-ai-kiosk/1.0 (+https://github.com/mammonrn/phone-ai-kiosk)"
 TMD_CAP_RSS_URL = "https://www.tmd.go.th/api/xml/CAP"
 TMD_WARNING_RSS_URL = "https://www.tmd.go.th/api/xml/warning-news"
 GDACS_URL = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?country=THA"
+THAIWATER_URL = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_load"
 
 #: Only CAP documents under this prefix are followed. The feed names the link;
 #: the broker does not fetch whatever URL a feed happens to contain.
@@ -87,6 +99,7 @@ TMD_CAP_DOC_PREFIX = "https://www.tmd.go.th/uploads/CAP/"
 
 SOURCE_TMD = "กรมอุตุฯ"
 SOURCE_GDACS = "GDACS"
+SOURCE_THAIWATER = "สสน."
 
 #: Thailand does not change its clocks; TMD writes +07:00 on everything.
 BANGKOK = timezone(timedelta(hours=7))
@@ -103,6 +116,8 @@ FETCH_TIMEOUT = 10.0
 #: 99-145 KB. Bounded reads, so a source cannot take the broker's memory.
 MAX_FEED_BYTES = 512 * 1024
 MAX_CAP_DOC_BYTES = 1024 * 1024
+#: ThaiWater's whole-country telemetry list was ~1.4 MB on 2026-09-26.
+MAX_THAIWATER_BYTES = 2 * 1024 * 1024
 #: Distinct hazards whose newest document is downloaded per refresh.
 MAX_CAP_DOCS = 6
 #: A retry after a failed refresh comes sooner than the normal interval.
@@ -116,6 +131,22 @@ STALE_UNDATED_SECONDS = 24 * 3600
 UNDATED_ANNOUNCEMENT_SECONDS = 24 * 3600
 #: The card has room for this many lines.
 MAX_ITEMS = 5
+
+#: สสน.'s own two "above normal" levels — see the module docstring for where
+#: each label and threshold comes from (สสน.'s own `scale`, read 2026-09-26).
+#: Worst first: {situation_level: (label, severity for sorting with TMD/GDACS)}.
+WATER_ABNORMAL_LEVELS = {5: ("น้ำล้นตลิ่ง", "Extreme"), 4: ("น้ำมาก", "Severe")}
+
+#: The Thai regions สสน.'s own geocode names on a telemetry station; anything
+#: else in the feed (a neighbouring country's own gauges) is not Thailand and
+#: is dropped, never counted or shown.
+WATER_REGIONS = ("ภาคเหนือ", "ภาคตะวันออกเฉียงเหนือ", "ภาคกลาง", "ภาคใต้", "กรุงเทพมหานคร")
+#: Stations spread across this many of the five regions above read as
+#: "ทั่วประเทศ" rather than naming each one.
+WATER_ALL_REGIONS = 4
+#: A single affected region names its provinces only up to this many; more
+#: than that is a region-wide count, not a place list.
+WATER_MAX_NAMED_PROVINCES = 3
 
 #: One line on the phone: "aim ≤ 45", counted as the eye sees it — Thai vowel
 #: and tone marks above or below a letter take no width of their own.
@@ -405,6 +436,57 @@ def parse_gdacs(body: bytes) -> list[dict]:
     return out
 
 
+def water_areas_text(stations: list[tuple[str, str]]) -> str:
+    """[(region, province), ...] of one level's stations -> "ทั่วประเทศ" once
+    they cover most of the country, a province list for one region with few
+    of them, else the region names — never a station name or a coordinate."""
+    regions = {region for region, _ in stations}
+    if len(regions) >= WATER_ALL_REGIONS:
+        return "ทั่วประเทศ"
+    if len(regions) == 1:
+        provinces = sorted({p for _, p in stations if p})
+        if 0 < len(provinces) <= WATER_MAX_NAMED_PROVINCES:
+            return " ".join(provinces)
+    return " ".join(sorted(regions))
+
+
+def parse_thaiwater(body: bytes) -> list[dict]:
+    """สสน.'s telemetry stations -> at most one item per WATER_ABNORMAL_LEVELS
+    level actually seen, worst first, each counted straight from the station's
+    own `situation_level` — this module assigns no level of its own."""
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AlertSourceError("bad json") from exc
+    try:
+        stations = data["waterlevel_data"]["data"]
+    except (KeyError, TypeError) as exc:
+        raise AlertSourceError("unexpected shape") from exc
+    by_level: dict[int, list[tuple[str, str]]] = {level: [] for level in WATER_ABNORMAL_LEVELS}
+    for station in stations:
+        if not isinstance(station, dict):
+            continue
+        level = station.get("situation_level")
+        if level not in WATER_ABNORMAL_LEVELS:
+            continue
+        geo = station.get("geocode") or {}
+        region = _text((geo.get("area_name") or {}).get("th"))
+        if region not in WATER_REGIONS:
+            continue
+        province = _text((geo.get("province_name") or {}).get("th"))
+        by_level[level].append((region, province))
+    out = []
+    for level in sorted(by_level, reverse=True):  # 5 (worst) before 4
+        here = by_level[level]
+        if not here:
+            continue
+        label, severity = WATER_ABNORMAL_LEVELS[level]
+        out.append({"title": f"{label} {len(here)} จุด", "areas": water_areas_text(here),
+                    "severity": severity, "sent": None, "expires": None,
+                    "source": SOURCE_THAIWATER})
+    return out
+
+
 # ----------------------------------------------------------------- the lines ---
 
 def width(text: str) -> int:
@@ -586,7 +668,7 @@ class Alerts:
         """Every source once; each failure on its own. `ok` follows TMD's CAP."""
         results = {}
         for name, fetch in (("tmd_cap", self._tmd_cap), ("tmd_rss", self._tmd_rss),
-                            ("gdacs", self._gdacs)):
+                            ("gdacs", self._gdacs), ("thaiwater", self._thaiwater)):
             try:
                 results[name] = fetch(now)
             except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as exc:
@@ -597,9 +679,9 @@ class Alerts:
             for name, items in results.items():
                 self._good[name] = (now, items)
             self._last_ok = "tmd_cap" in results
-        log.info("alerts refreshed ok=%s tmd_cap=%s tmd_rss=%s gdacs=%s",
+        log.info("alerts refreshed ok=%s tmd_cap=%s tmd_rss=%s gdacs=%s thaiwater=%s",
                  "tmd_cap" in results, *(len(results[n]) if n in results else "failed"
-                                          for n in ("tmd_cap", "tmd_rss", "gdacs")))
+                                          for n in ("tmd_cap", "tmd_rss", "gdacs", "thaiwater")))
 
     def _tmd_cap(self, now: float) -> list[dict]:
         entries = newest_per_title(parse_cap_rss(self._get(TMD_CAP_RSS_URL, MAX_FEED_BYTES)))
@@ -629,6 +711,9 @@ class Alerts:
     def _gdacs(self, now: float) -> list[dict]:
         return parse_gdacs(self._get(GDACS_URL, MAX_FEED_BYTES))
 
+    def _thaiwater(self, now: float) -> list[dict]:
+        return parse_thaiwater(self._get(THAIWATER_URL, MAX_THAIWATER_BYTES))
+
     def _get(self, url: str, limit: int) -> bytes:
         return (self._fetch_with or _fetch)(url, self.timeout, limit)
 
@@ -644,7 +729,11 @@ _ASKS_STORM = re.compile(r"พายุ")
 #: a song or a video called "พายุ" — those are matched before this anyway).
 _NOT_A_QUESTION = re.compile(r"^(?:เปิด|เล่น|ปิด|ตั้ง|หยุด)")
 
-_FLOOD_TITLES = ("น้ำท่วม", "น้ำป่า", "ดินถล่ม", "ฝนตกหนัก")
+#: "น้ำล้นตลิ่ง" is สสน.'s own word for a river over its bank — a flood by any
+#: reading; "น้ำมาก" (high but not yet over the bank) is on-topic for the
+#: question but is not itself called a flood below, the same way "ฝนตกหนัก" is.
+_FLOOD_TITLES = ("น้ำท่วม", "น้ำป่า", "ดินถล่ม", "ฝนตกหนัก", "น้ำล้นตลิ่ง", "น้ำมาก")
+_ACTUAL_FLOOD_TITLES = ("น้ำท่วม", "น้ำป่า", "ดินถล่ม", "น้ำล้นตลิ่ง")
 _STORM_TITLES = ("พายุ", "ดีเปรสชัน")
 
 FAILED = "ตอนนี้ยังดึงประกาศเตือนภัยไม่ได้ครับ ลองถามใหม่อีกครั้งนะครับ"
@@ -686,7 +775,7 @@ def reply(board: Alerts, text: str, now: float) -> str:
         return fit(said, ANSWER_CHARS, len)
     first = wanted[0]
     source = "จากกรมอุตุฯ" if first["source"] == SOURCE_TMD else f"จาก {first['source']}"
-    if kind == "น้ำท่วม" and not any(w in first["title"] for w in ("น้ำท่วม", "น้ำป่า", "ดินถล่ม")):
+    if kind == "น้ำท่วม" and not any(w in first["title"] for w in _ACTUAL_FLOOD_TITLES):
         # Heavy rain is not a flood; say what was announced.
         shape = "ไม่มีประกาศน้ำท่วมครับ มีเตือน{what} " + source
     elif len(wanted) == 1:
