@@ -18,15 +18,18 @@ SETTLING NEEDS A GROUND TRUTH, and not every kind has one here:
   it (its reading is fresh for "now", not for that old window) instead of
   quietly describing a later reading as if it were the window's own.
 
-  KNOWN LIMITATION, written here rather than hidden: tmd_obs.parse_stations
-  only extracts TMD's ROLLING 24-HOUR rainfall (Rainfall24Hr), not the
-  3-hour figure the same XML also carries (Rainfall). Until that field is
-  added to tmd_obs.py (a small, separate change — not made here, see this
-  module's report to Poom/the main agent), "rain in the window" is settled
-  against that rolling 24h total: honest for "did rain fall nearby", coarser
-  than the record's own 6-hour window. The Brier score below is real, and
-  should be read with that in mind — it is not silently pretended to be more
-  precise than the data underneath it.
+  FIXED, WAS A KNOWN LIMITATION: an earlier version of this module settled
+  "rain in the window" against tmd_obs.reading()'s ROLLING 24-HOUR rainfall
+  (Rainfall24Hr) — honest for "did rain fall nearby", but coarser than the
+  record's own 6-hour window (any rain up to 24h before the window's end
+  would count as a hit). tmd_obs.parse_stations now also carries THIS
+  interval's own 3-hour rain (Rainfall, "rain_3h_mm"); a 6-hour rain_chance
+  window is exactly two of TMD's 3-hour reporting slots, and
+  `record_tmd_rain_3h`/`_summed_3h_rain` (below) settle it by summing the
+  slots that actually fall inside the window, settling ONLY once every one
+  of them has been stored — never a partial sum. A window whose slots never
+  all arrive (TMD off, or a gap) is simply never settled by this path; it
+  ages out with everything else.
 
 * uv has no ground truth source wired here at all (no station in Thailand
   publishes a measured UV index this broker can reach for free). `record`
@@ -147,6 +150,107 @@ def _parse_point(area: str) -> "tuple[float, float] | None":
         return None
 
 
+# --------------------------------------------- TMD 3-hour rain (the fix) ---
+#
+# tmd_obs.reading()'s own "rain_mm" is TMD's ROLLING 24-HOUR total
+# (Rainfall24Hr) — settling a 6-hour rain_chance window against it overstates
+# "it rained" (any rain up to 24h before the window's own end would count).
+# TMD's Weather3Hours also carries <Rainfall>, THIS interval's own 3-hour
+# total (tmd_obs.parse_stations's own "rain_3h_mm"); a 6-hour window is
+# exactly two of TMD's 3-hour reporting slots (01:00, 04:00, ..., 22:00
+# Bangkok — see tmd_obs.py's own docstring), so this settles a window by
+# summing the slots that fall inside it — but ONLY once every one of them has
+# been seen and stored (see `record_tmd_rain_3h`): TMD's own answer carries
+# only the LATEST reading per station, never history, so a slot missed when
+# it was current is gone unless something stored it as it went by.
+
+#: TMD's own reporting hours, Bangkok local — see tmd_obs.py's docstring.
+TMD_SLOT_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
+
+
+def _station_key(latitude: float, longitude: float) -> "tuple[float, float]":
+    """A station's own rounded position — same rounding as `round_point`,
+    restated as a (lat, lon) pair (rather than round_point's string) because
+    the tmd_rain_3h table's columns are numeric, for a plain index."""
+    return round(float(latitude), COORD_DECIMALS) + 0.0, round(float(longitude), COORD_DECIMALS) + 0.0
+
+
+def record_tmd_rain_3h(conn, stations: "list[dict] | None", now: "float | None" = None) -> int:
+    """Stores every station's OWN 3-hour rain reading it currently carries
+    (tmd_obs.parse_stations()'s "rain_3h_mm"/"observed_at"), so a later
+    `settle_point_forecasts` call can still find it after TMD has moved on to
+    the next 3-hour slot. Call this every time a fresh TMD station list is on
+    hand (see dashboard.Dashboard — the same "watching" idea as
+    `observe_flood` below, just for a value instead of a level).
+
+    Skips a station missing either field (rain_3h_mm or observed_at — e.g.
+    TMD is off, so `stations` is None/empty) rather than guessing. Rows
+    already stored for this station+time are left alone (INSERT OR IGNORE):
+    the same 3-hour reading fetched twice must not be double-counted, and it
+    never changes after TMD reports it. Prunes rows older than KEEP_DAYS on
+    every call, the same rule as `record`.
+    """
+    now = time.time() if now is None else now
+    inserted = 0
+    for station in stations or ():
+        observed_at = station.get("observed_at")
+        rain = station.get("rain_3h_mm")
+        lat, lon = station.get("lat"), station.get("lon")
+        if observed_at is None or rain is None or lat is None or lon is None:
+            continue
+        slat, slon = _station_key(lat, lon)
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO tmd_rain_3h (station_lat, station_lon, observed_at, rain_3h_mm)"
+            " VALUES (?,?,?,?)",
+            (slat, slon, observed_at.timestamp(), float(rain)),
+        )
+        inserted += cur.rowcount
+    conn.execute("DELETE FROM tmd_rain_3h WHERE observed_at < ?", (now - KEEP_DAYS * 86400,))
+    return inserted
+
+
+def _expected_tmd_slots(valid_from: float, valid_to: float) -> "list[float]":
+    """Every TMD 3-hour reporting time inside (valid_from, valid_to], as
+    epoch seconds — e.g. a 6-hour window is exactly two of these. Empty when
+    the window does not line up with TMD's own schedule at all (that window
+    is simply never settled by this path — it ages out like anything else,
+    see the module docstring)."""
+    start = dt.datetime.fromtimestamp(valid_from, tmd_obs.BANGKOK)
+    end = dt.datetime.fromtimestamp(valid_to, tmd_obs.BANGKOK)
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    slots = []
+    while day <= end:
+        for hour in TMD_SLOT_HOURS:
+            slot = day.replace(hour=hour)
+            slot_ts = slot.timestamp()
+            if valid_from < slot_ts <= valid_to:
+                slots.append(slot_ts)
+        day += dt.timedelta(days=1)
+    return slots
+
+
+def _summed_3h_rain(conn, station_lat: float, station_lon: float,
+                    valid_from: float, valid_to: float) -> "float | None":
+    """The sum of every TMD 3-hour slot inside (valid_from, valid_to] for
+    this station, or None when even one expected slot has not been stored
+    yet (see `record_tmd_rain_3h`) — never a partial sum, which would
+    understate the window's real total."""
+    slots = _expected_tmd_slots(valid_from, valid_to)
+    if not slots:
+        return None
+    slat, slon = _station_key(station_lat, station_lon)
+    total = 0.0
+    for slot_ts in slots:
+        row = conn.execute(
+            "SELECT rain_3h_mm FROM tmd_rain_3h WHERE station_lat = ? AND station_lon = ? AND observed_at = ?",
+            (slat, slon, slot_ts),
+        ).fetchone()
+        if row is None:
+            return None
+        total += row["rain_3h_mm"]
+    return total
+
+
 def record(conn, *, kind: str, area, source: str, valid_from: float, valid_to: float,
           value: float, now: "float | None" = None) -> int:
     """One forecast, exactly as shown. `area` is a (latitude, longitude) pair
@@ -199,7 +303,7 @@ def settle_point_forecasts(conn, *, kind: str, now: "float | None" = None,
     now = time.time() if now is None else now
     tmd_stations = tmd_stations or []
     rows = conn.execute(
-        "SELECT id, area, value, valid_to FROM forecast_records"
+        "SELECT id, area, value, valid_from, valid_to FROM forecast_records"
         " WHERE kind = ? AND settled_at IS NULL AND valid_to <= ?",
         (kind, now),
     ).fetchall()
@@ -208,16 +312,25 @@ def settle_point_forecasts(conn, *, kind: str, now: "float | None" = None,
         point = _parse_point(row["area"])
         if point is None:
             continue
-        window_end = dt.datetime.fromtimestamp(row["valid_to"], tmd_obs.BANGKOK)
-        station_reading = tmd_obs.reading(tmd_stations, point[0], point[1], now=window_end)
-        if station_reading is None:
-            continue
         if kind == "rain_chance":
-            observed = station_reading.get("rain_mm")
+            # The rolling-24h reading is the wrong ground truth for a 6-hour
+            # window (see this module's own docstring and _summed_3h_rain) —
+            # find the nearest station EXACTLY as tmd_obs.reading() would
+            # (same distance rule), then sum ITS stored 3-hour slots instead
+            # of reading a single "now" value off it.
+            station, km = tmd_obs.nearest_station(tmd_stations, point[0], point[1])
+            if station is None or km is None or km > tmd_obs.MAX_KM:
+                continue
+            observed = _summed_3h_rain(conn, station["lat"], station["lon"],
+                                       row["valid_from"], row["valid_to"])
             if observed is None:
                 continue
             outcome = "yes" if observed >= RAIN_HIT_MM else "no"
         else:  # temp
+            window_end = dt.datetime.fromtimestamp(row["valid_to"], tmd_obs.BANGKOK)
+            station_reading = tmd_obs.reading(tmd_stations, point[0], point[1], now=window_end)
+            if station_reading is None:
+                continue
             observed = station_reading.get("temp_c")
             if observed is None:
                 continue

@@ -39,7 +39,20 @@ def test_the_real_fixture_parses_into_three_stations_with_readable_fields():
     assert chiang_rai["humidity"] == pytest.approx(90)
     assert chiang_rai["wind_kmh"] == pytest.approx(0.0)
     assert chiang_rai["rain_24h_mm"] == pytest.approx(2.4)
+    # This station's <Rainfall> (3h) happens to equal its <Rainfall24Hr> in
+    # this fixture — checked against Udon Thani below, where they differ.
+    assert chiang_rai["rain_3h_mm"] == pytest.approx(2.4)
     assert chiang_rai["observed_at"] == dt.datetime(2026, 9, 26, 7, 0, 0, tzinfo=tmd_obs.BANGKOK)
+
+
+def test_rain_3h_mm_is_the_interval_total_not_the_rolling_24h_one():
+    """Udon Thani's fixture row: <Rainfall>0.00</Rainfall> but
+    <Rainfall24Hr>4.00</Rainfall24Hr> — the two fields must not be confused
+    (this is the bug verify.py's settling fix depends on)."""
+    stations = _stations()
+    udon = next(s for s in stations if s["name"] == "UDON THANI")
+    assert udon["rain_3h_mm"] == pytest.approx(0.0)
+    assert udon["rain_24h_mm"] == pytest.approx(4.0)
 
 
 def test_datetime_format_is_mm_dd_yyyy_bangkok_local_not_iso():
@@ -79,6 +92,7 @@ def test_reading_uses_the_nearest_close_and_fresh_station():
     assert got["temp_c"] == pytest.approx(25.4)
     assert got["humidity"] == pytest.approx(90)
     assert got["station_km"] < 15
+    assert got["rain_3h_mm"] == pytest.approx(2.4)
 
 
 def test_reading_is_none_when_the_only_nearby_station_is_stale():
@@ -160,3 +174,39 @@ def test_the_key_never_appears_in_a_logged_message(monkeypatch, caplog):
         tmd_obs.fetch_reading(*CHIANG_RAI, timeout=5.0, secret=secret)
     assert "super-secret-uid" not in caplog.text
     assert "super-secret-ukey" not in caplog.text
+
+
+# --------------------------------------------------------- fetch_stations
+
+def test_fetch_stations_makes_no_request_without_both_keys(monkeypatch):
+    called = []
+    monkeypatch.setattr(tmd_obs, "_get", lambda *a, **k: called.append(1) or _load_bytes(FIXTURE))
+    secret = {"TMD_UID": "u"}.get  # missing TMD_UKEY
+    assert tmd_obs.fetch_stations(timeout=5.0, secret=secret) is None
+    assert called == []
+
+
+def test_fetch_stations_returns_every_station(monkeypatch):
+    monkeypatch.setattr(tmd_obs, "_get", lambda url, timeout: _load_bytes(FIXTURE))
+    secret = {"TMD_UID": "u", "TMD_UKEY": "k"}.get
+    stations = tmd_obs.fetch_stations(timeout=5.0, secret=secret)
+    assert len(stations) == 3
+
+
+def test_fetch_reading_feeds_the_full_station_list_to_its_sink(monkeypatch):
+    monkeypatch.setattr(tmd_obs, "_get", lambda url, timeout: _load_bytes(FIXTURE))
+    secret = {"TMD_UID": "u", "TMD_UKEY": "k"}.get
+    seen = []
+    got = tmd_obs.fetch_reading(*CHIANG_RAI, timeout=5.0, secret=secret,
+                                now=dt.datetime(2026, 9, 26, 7, 30, tzinfo=tmd_obs.BANGKOK),
+                                station_sink=seen.append)
+    assert got is not None
+    assert len(seen) == 1 and len(seen[0]) == 3  # the whole country, not just the nearest one
+
+
+def test_fetch_reading_sink_is_never_called_without_a_key(monkeypatch):
+    monkeypatch.setattr(tmd_obs, "_get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not fetch")))
+    seen = []
+    secret = {}.get
+    assert tmd_obs.fetch_reading(*CHIANG_RAI, timeout=5.0, secret=secret, station_sink=seen.append) is None
+    assert seen == []

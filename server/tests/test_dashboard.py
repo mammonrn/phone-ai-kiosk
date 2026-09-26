@@ -1007,3 +1007,107 @@ def test_the_forecast_object_has_the_designed_shape(cfg, fake_sources):
     assert forecast["items"] == [] and forecast["areas"] == []
     assert set(forecast["sources"]) == {"rain", "river", "local"}
     assert out["card_lines"] == []
+
+
+# --------------------------------------------- verify.py wiring (0.70ish)
+
+def test_record_verification_records_temp_and_uv_only_on_a_fresh_fetch(conn, cfg):
+    from kiosk_broker import verify
+
+    board = dashboard_mod.Dashboard(cfg)
+    snapshot = {
+        "weather": {"ok": True, "age_seconds": 0, "temp_c": 30.0, "temp_source": "Open-Meteo", "uv": 5.0},
+        "forecast": {"local": None, "areas": []},
+    }
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=1_800_000_000.0)
+    rows = conn.execute("SELECT kind, source, value FROM forecast_records ORDER BY kind").fetchall()
+    kinds = {r["kind"]: (r["source"], r["value"]) for r in rows}
+    assert kinds["temp"] == ("Open-Meteo", 30.0)
+    assert kinds["uv"] == ("Open-Meteo", 5.0)
+
+
+def test_record_verification_skips_temp_and_uv_when_the_panel_is_only_cached(conn, cfg):
+    """age_seconds > 0 means this reading was already recorded on the request
+    that actually fetched it — recording again here would be the same
+    forecast counted many times over its whole TTL."""
+    board = dashboard_mod.Dashboard(cfg)
+    snapshot = {
+        "weather": {"ok": True, "age_seconds": 30, "temp_c": 30.0, "temp_source": "Open-Meteo", "uv": 5.0},
+        "forecast": {"local": None, "areas": []},
+    }
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=1_800_000_030.0)
+    rows = conn.execute("SELECT kind FROM forecast_records").fetchall()
+    assert rows == []
+
+
+def test_record_verification_records_the_local_rain_window_once(conn, cfg):
+    board = dashboard_mod.Dashboard(cfg)
+    local = {"rain_chance_pct": 60, "from": "2027-01-15T09:00", "to": "2027-01-15T15:00"}
+    snapshot = {"weather": {"ok": False}, "forecast": {"local": local, "areas": []}}
+    now = 1_800_000_000.0
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=now)
+    # Polled again a moment later with the SAME window: must not double-record.
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=now + 5)
+    rows = conn.execute("SELECT kind, area, source, value FROM forecast_records").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "rain_chance"
+    assert rows[0]["area"] == "13.75,100.50"
+    assert rows[0]["value"] == 60
+
+
+def test_record_verification_skips_the_local_rain_line_when_nothing_is_shown(conn, cfg):
+    board = dashboard_mod.Dashboard(cfg)
+    snapshot = {"weather": {"ok": False}, "forecast": {"local": {"rain_chance_pct": None}, "areas": []}}
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=1_800_000_000.0)
+    rows = conn.execute("SELECT kind FROM forecast_records WHERE kind = 'rain_chance'").fetchall()
+    assert rows == []
+
+
+def test_record_verification_records_one_flood_level_row_per_named_province(conn, cfg):
+    board = dashboard_mod.Dashboard(cfg)
+    now = 1_800_000_000.0  # 2027-01-15 15:00 Bangkok
+    areas = [{"days": [0, 2], "provinces": [{"code": "10", "level": 2}, {"code": "50", "level": 1}]}]
+    snapshot = {"weather": {"ok": False}, "forecast": {"local": None, "areas": areas}}
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=now)
+    rows = conn.execute("SELECT area, value, valid_from, valid_to FROM forecast_records"
+                        " WHERE kind = 'flood_level' ORDER BY area").fetchall()
+    assert [r["area"] for r in rows] == ["10", "50"]
+    assert rows[0]["value"] == 2
+    # The window is days 0..2 from today's own Bangkok midnight through the
+    # END of day 2 (exclusive next midnight).
+    base = dt.datetime(2027, 1, 15, tzinfo=tmd_obs_mod.BANGKOK)
+    assert rows[0]["valid_from"] == pytest.approx(base.timestamp())
+    assert rows[0]["valid_to"] == pytest.approx((base + dt.timedelta(days=3)).timestamp())
+
+
+def test_record_verification_feeds_thaiwater_stations_to_observe_flood(conn, cfg, monkeypatch):
+    from kiosk_broker import flood_forecast, verify
+
+    board = dashboard_mod.Dashboard(cfg)
+    now = 1_800_000_000.0
+    verify.record(conn, kind="flood_level", area="10", source="ตู้คำนวณ",
+                 valid_from=now - 100, valid_to=now + 100, value=2, now=now - 100)
+    monkeypatch.setattr(board.alerts, "thaiwater_stations", lambda: (["raw-station"], now))
+    monkeypatch.setattr(flood_forecast, "stations_with_province_code",
+                        lambda stations: [{"code": "s1", "province_code": "10", "level": 5}])
+    snapshot = {"weather": {"ok": False}, "forecast": {"local": None, "areas": []}}
+    board.record_verification(conn, snapshot, 13.75, 100.5, now=now)
+    row = conn.execute("SELECT observed_value FROM forecast_records WHERE area = '10'").fetchone()
+    assert row["observed_value"] == 1
+
+
+def test_record_verification_never_raises_when_the_snapshot_is_missing_pieces(conn, cfg):
+    """service.py wraps this in try/except too, but the function itself
+    should not need that: a partial/old-shaped snapshot must not crash it."""
+    board = dashboard_mod.Dashboard(cfg)
+    board.record_verification(conn, {}, 13.75, 100.5, now=1_800_000_000.0)
+
+
+def test_tmd_stations_is_empty_and_makes_no_request_without_a_key(cfg):
+    board = dashboard_mod.Dashboard(cfg)
+    assert board.tmd_stations(now=1_800_000_000.0) == []
+
+
+def test_dashboard_forget_clears_the_dams_and_radar_caches_too(cfg):
+    board = dashboard_mod.Dashboard(cfg)
+    board.forget()  # must not raise even though nothing was ever fetched

@@ -76,6 +76,7 @@ reports no percentage at all rather than a made-up zero.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 import re
@@ -170,6 +171,33 @@ CREDITS = {
 #: actually answered (see Dashboard.snapshot) — attribution for a source that
 #: was used, not a source that merely could have been.
 TMD_CREDIT_SUFFIX = " · กรมอุตุนิยมวิทยา (TMD, Weather3Hours)"
+
+#: verify.py source labels — short and stable, since compute_weights groups
+#: by this string exactly (see verify.py's own docstring). "ensemble" and
+#: "ตู้คำนวณ" match the names test_verify.py and flood_forecast.payload's own
+#: "source" field already use for the same things.
+RAIN_CHANCE_SOURCE = "ensemble"
+FLOOD_LEVEL_SOURCE = "ตู้คำนวณ"
+
+#: How often record_verification's settle/observe/weight-adjusting calls
+#: actually run — they are cheap, local-SQLite work, but a kiosk can poll the
+#: dashboard every few seconds and none of this needs to run that often.
+VERIFY_SETTLE_INTERVAL_SECONDS = 600
+
+#: How often Dashboard.tmd_stations refetches the WHOLE station list — TMD's
+#: own data changes every 3h (tmd_obs.py's own docstring); half of that is
+#: plenty to have every station on hand for verify.py's rain-window
+#: settling without adding a real-time load on TMD's API.
+TMD_STATIONS_TTL_SECONDS = 3600  # TMD publishes every 3 h at an uneven lag; hourly catches each slot once
+
+
+def _local_time_to_epoch(value: str) -> float:
+    """"2027-01-15T09:00" (Open-Meteo's own Asia/Bangkok wall-clock string,
+    no offset — see local_rain.ENSEMBLE_URL's `timezone=Asia%2FBangkok`) as
+    an epoch second. Raises ValueError/TypeError for anything else, caught by
+    the caller (record_verification skips that window rather than guessing)."""
+    naive = dt.datetime.fromisoformat(value)
+    return naive.replace(tzinfo=dt.timezone(dt.timedelta(hours=7))).timestamp()
 
 
 @dataclass
@@ -790,7 +818,7 @@ class Dashboard:
         self._cache: dict[str, tuple[float, Panel]] = {}
         # Nationwide warnings: one cache for every phone and every position,
         # refreshed in the background (alerts.py) — also what Jarvis reads.
-        from . import alerts, envfile, flood_forecast, local_rain
+        from . import alerts, dams, envfile, flood_forecast, local_rain, radar
         self.alerts = alerts.Alerts(ttl=cfg.dashboard_alerts_ttl)
         # The kiosk's own flood forecast (◇) and local rain chance (▸) — see
         # flood_forecast.py/local_rain.py. Both refresh in the background,
@@ -798,6 +826,13 @@ class Dashboard:
         # waits on Open-Meteo either.
         self.flood = flood_forecast.FloodForecast()
         self._local_rain = local_rain.LocalRainCache()
+        # Jarvis-only, no card line (Poom's own rule for both — see dams.py
+        # and radar.py's own docstrings): the dams answer "เขื่อน...เป็นยังไง"
+        # and the radar answer "ฝนตกแถวนี้ไหม/เรดาร์เห็นฝนไหม" respectively.
+        # Same shape as `self.alerts`/`self._local_rain` — one shared cache,
+        # never blocking the dashboard request itself.
+        self.dams = dams.Dams()
+        self.radar = radar.RadarCache()
         # The last position a snapshot was asked for — Jarvis (service.py)
         # has no position of its own to send (see handle_chat), so its
         # forecast answers read the kiosk's own last-seen position here,
@@ -809,6 +844,19 @@ class Dashboard:
         # kept here, so a `keys set tmd` while the broker is running takes
         # effect on the next fetch with no restart.
         self._secret = envfile.reader(cfg.env_path)
+        # verify.py wiring (forecast verification): the full TMD station list
+        # from the last successful fetch (see fetch_weather's station_sink
+        # and _store_tmd_stations) — needed for rain-window settling, which
+        # has no single position to ask about; and an in-process dedup set so
+        # a kiosk polling the dashboard every few seconds does not insert the
+        # SAME still-open forecast window into forecast_records on every
+        # request (see record_verification). Both are process memory only,
+        # never written anywhere themselves.
+        self._tmd_stations: list[dict] = []
+        self._tmd_stations_at: float = 0.0
+        self._tmd_stations_refreshing: bool = False
+        self._verify_recorded: set[tuple] = set()
+        self._last_verify_settle: float = 0.0
 
     def position(self) -> tuple[float, float]:
         """The kiosk's own last-seen position — Jarvis's forecast answers use
@@ -820,6 +868,154 @@ class Dashboard:
         """The cached ensemble response local_rain.py needs — see
         LocalRainCache.raw. `wait=True` for Jarvis, asked on purpose."""
         return self._local_rain.raw(latitude, longitude, now, wait=wait)
+
+    def tmd_stations(self, now: float) -> list[dict]:
+        """The full TMD station list, refreshed in the background at most
+        every TMD_STATIONS_TTL_SECONDS — a SEPARATE, occasional fetch from
+        the per-position weather panel above (that one only ever asks about
+        the kiosk's own nearest station); [] when TMD is off or nothing has
+        answered yet, and NEVER blocks the caller (same non-blocking shape as
+        alerts.Alerts.payload). verify.py's rain-window settling needs every
+        station, which no single position's weather fetch would carry (see
+        record_verification)."""
+        with self._lock:
+            due = now - self._tmd_stations_at >= TMD_STATIONS_TTL_SECONDS
+            already = self._tmd_stations_refreshing
+            if due and not already:
+                self._tmd_stations_at = now
+                self._tmd_stations_refreshing = True
+                start = True
+            else:
+                start = False
+            snapshot = list(self._tmd_stations)
+        if start:
+            threading.Thread(target=self._refresh_tmd_stations, name="tmd-stations-refresh",
+                             daemon=True).start()
+        return snapshot
+
+    def _refresh_tmd_stations(self) -> None:
+        from . import tmd_obs
+
+        try:
+            stations = tmd_obs.fetch_stations(self.cfg.dashboard_timeout, self._secret)
+        finally:
+            with self._lock:
+                self._tmd_stations_refreshing = False
+        if stations is not None:
+            with self._lock:
+                self._tmd_stations = stations
+
+    def record_verification(self, conn, snapshot: dict, latitude: float, longitude: float,
+                            now: float) -> None:
+        """Records every forecast THIS snapshot actually shows (verify.py),
+        settles what has come due, and keeps the TMD 3-hour rain table fed —
+        all from data already fetched for the screen; no extra outbound call.
+        Cheap, local SQLite only; the caller (service.py) wraps this so a bug
+        here cannot take the dashboard itself down, the same rule as the
+        "home" panel.
+
+        DEDUP (see the module docstring's own instruction: never record the
+        SAME shown forecast twice per request): "temp"/"uv" are point values
+        that are only ever new when Open-Meteo/TMD were actually just
+        fetched (`age_seconds == 0` on the weather panel — recording on every
+        polled request, which shares the SAME weather reading, would record
+        the same forecast many times over its whole TTL for no reason).
+        "rain_chance"/"flood_level" are shown for a whole WINDOW that many
+        requests share while it is still open; `self._verify_recorded` (a
+        per-process, size-bounded set — see the pruning below) records each
+        window once, the moment it is first seen.
+        """
+        from . import verify
+
+        weather = snapshot.get("weather") or {}
+        if weather.get("ok") and weather.get("age_seconds") == 0:
+            temp_c = weather.get("temp_c")
+            if temp_c is not None:
+                verify.record(conn, kind="temp", area=(latitude, longitude),
+                              source=weather.get("temp_source") or "Open-Meteo",
+                              valid_from=now, valid_to=now, value=temp_c, now=now)
+            uv = weather.get("uv")
+            if uv is not None:
+                verify.record(conn, kind="uv", area=(latitude, longitude),
+                              source="Open-Meteo", valid_from=now, valid_to=now,
+                              value=uv, now=now)
+
+        self._record_window_forecasts(conn, snapshot, latitude, longitude, now)
+
+        # The watching half of flood settling (see verify.observe_flood's own
+        # docstring): fed the SAME ThaiWater fetch alerts.py already made for
+        # the card, never a second outbound call.
+        raw_stations, _ = self.alerts.thaiwater_stations()
+        if raw_stations:
+            from . import flood_forecast
+            verify.observe_flood(
+                conn, thaiwater_stations=flood_forecast.stations_with_province_code(raw_stations), now=now)
+
+        # Feeds verify's rain-window ground truth table with whatever TMD
+        # currently carries — a no-op list when TMD is off (see
+        # _store_tmd_stations/tmd_stations).
+        verify.record_tmd_rain_3h(conn, self.tmd_stations(now), now=now)
+
+        # Settling and the daily weight update are cheap, local-database-only
+        # reads/writes — safe to try on every dashboard request; TTL-gated so
+        # a kiosk polling every few seconds does not re-run them needlessly.
+        if now - self._last_verify_settle >= VERIFY_SETTLE_INTERVAL_SECONDS:
+            self._last_verify_settle = now
+            verify.settle_point_forecasts(conn, kind="rain_chance", now=now, tmd_stations=self.tmd_stations(now))
+            verify.settle_point_forecasts(conn, kind="temp", now=now, tmd_stations=self.tmd_stations(now))
+            verify.settle_flood(conn, now=now)
+
+    def _record_window_forecasts(self, conn, snapshot: dict, latitude: float, longitude: float,
+                                 now: float) -> None:
+        from . import alerts as alerts_mod
+        from . import verify
+
+        forecast = snapshot.get("forecast") or {}
+        local = forecast.get("local")
+        if local and local.get("rain_chance_pct") is not None and local.get("from") and local.get("to"):
+            try:
+                valid_from = _local_time_to_epoch(local["from"])
+                valid_to = _local_time_to_epoch(local["to"])
+            except (ValueError, TypeError):
+                valid_from = valid_to = None
+            if valid_from is not None and valid_to is not None:
+                self._record_once(conn, kind="rain_chance", area=(latitude, longitude),
+                                  source=RAIN_CHANCE_SOURCE, valid_from=valid_from, valid_to=valid_to,
+                                  value=local["rain_chance_pct"], now=now)
+
+        base = dt.datetime.fromtimestamp(now, alerts_mod.BANGKOK).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        for group in forecast.get("areas") or ():
+            days = group.get("days") or [None, None]
+            if days[0] is None or days[1] is None:
+                continue
+            valid_from = (base + dt.timedelta(days=int(days[0]))).timestamp()
+            valid_to = (base + dt.timedelta(days=int(days[1]) + 1)).timestamp()
+            for province in group.get("provinces") or ():
+                code = province.get("code")
+                level = province.get("level")
+                if not code or level is None:
+                    continue
+                self._record_once(conn, kind="flood_level", area=str(code), source=FLOOD_LEVEL_SOURCE,
+                                  valid_from=valid_from, valid_to=valid_to, value=level, now=now)
+
+    def _record_once(self, conn, *, kind: str, area, source: str, valid_from: float,
+                     valid_to: float, value: float, now: float) -> None:
+        from . import verify
+
+        area_key = verify.round_point(*area) if isinstance(area, (tuple, list)) else str(area)
+        key = (kind, area_key, source, valid_from, valid_to)
+        with self._lock:
+            # Prune entries whose window has aged out of verify's own
+            # KEEP_DAYS — this set must not grow forever across a long
+            # uptime. Cheap: at most a few live windows per kind at once.
+            cutoff = now - verify.KEEP_DAYS * 86400
+            self._verify_recorded = {k for k in self._verify_recorded if k[4] >= cutoff}
+            if key in self._verify_recorded:
+                return
+            self._verify_recorded.add(key)
+        verify.record(conn, kind=kind, area=area, source=source, valid_from=valid_from,
+                     valid_to=valid_to, value=value, now=now)
 
     def latest(self, kind: str, now: float | None = None) -> tuple[int, dict] | None:
         """The newest GOOD cached panel of this kind — (age in seconds, data) —
@@ -844,6 +1040,13 @@ class Dashboard:
         self.alerts.forget()
         self.flood.forget()
         self._local_rain.forget()
+        self.dams.forget()
+        self.radar.forget()
+        with self._lock:
+            self._tmd_stations = []
+            self._tmd_stations_at = 0.0
+            self._verify_recorded = set()
+            self._last_verify_settle = 0.0
 
     def snapshot(self, latitude=None, longitude=None, now: float | None = None,
                  marks=None, symbols=None) -> dict:

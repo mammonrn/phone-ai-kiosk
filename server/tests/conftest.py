@@ -210,3 +210,17 @@ def _no_real_network_for_the_dashboard(monkeypatch):
     monkeypatch.setattr(flood_forecast_mod, "BACKGROUND", False)
     monkeypatch.setattr(local_rain_mod, "_fetch", refuse_forecast)
     monkeypatch.setattr(local_rain_mod, "BACKGROUND", False)
+
+    # The dams (dams.py, ThaiWater) and radar (radar.py, RainViewer) Jarvis
+    # answers — same reasoning as alerts/flood_forecast/local_rain above:
+    # never a real outbound call from the test suite.
+    from kiosk_broker import dams as dams_mod
+    from kiosk_broker import radar as radar_mod
+
+    def refuse_dams(url, timeout, limit):
+        raise urllib.error.URLError("network is disabled in the tests")
+
+    monkeypatch.setattr(dams_mod, "_fetch", refuse_dams)
+    monkeypatch.setattr(dams_mod, "BACKGROUND", False)
+    monkeypatch.setattr(radar_mod, "_fetch", refuse_dams)
+    monkeypatch.setattr(radar_mod, "BACKGROUND", False)

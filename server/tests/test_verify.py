@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from kiosk_broker import flood_forecast, store, verify
+from kiosk_broker import flood_forecast, store, tmd_obs, verify
 
 BANGKOK_NOW = 1_800_000_000.0  # an arbitrary, fixed instant
 
@@ -112,28 +112,78 @@ def test_temp_not_settled_when_station_too_far(conn):
 
 # --------------------------------------------------- settling: rain_chance ---
 
-def test_rain_settles_yes_from_a_tmd_rain_value(conn):
+def _tmd_slot_station(lat=13.75, lon=100.50, hour=10, rain_3h_mm=0.0, day=15):
+    """A tmd_obs.parse_stations()-shaped station reporting exactly one of
+    TMD's own 3-hour slots — the shape record_tmd_rain_3h reads."""
+    import datetime as dt
+
+    observed_at = dt.datetime(2027, 1, day, hour, 0, 0, tzinfo=tmd_obs.BANGKOK)
+    return {"name": "Bangkok", "lat": lat, "lon": lon, "observed_at": observed_at,
+            "temp_c": 32.0, "humidity": 70.0, "wind_kmh": 5.0,
+            "rain_24h_mm": rain_3h_mm, "rain_3h_mm": rain_3h_mm}
+
+
+def test_rain_settles_yes_by_summing_both_3h_slots_in_the_window(conn):
+    # BANGKOK_NOW is 2027-01-15 15:00 Bangkok; a 6-hour window ending there
+    # covers exactly TMD's own 10:00 and 13:00 slots (see TMD_SLOT_HOURS).
     verify.record(conn, kind="rain_chance", area=(13.75, 100.50), source="ensemble",
                  valid_from=BANGKOK_NOW - 6 * 3600, valid_to=BANGKOK_NOW, value=70.0,
                  now=BANGKOK_NOW - 6 * 3600)
-    stations = [tmd_station(lat=13.75, lon=100.50, rain_24h_mm=5.0)]
+    verify.record_tmd_rain_3h(conn, [
+        _tmd_slot_station(hour=10, rain_3h_mm=3.0),
+        _tmd_slot_station(hour=13, rain_3h_mm=2.5),
+    ], now=BANGKOK_NOW)
+    stations = [tmd_station(lat=13.75, lon=100.50)]  # for nearest-station lookup only
     settled = verify.settle_point_forecasts(conn, kind="rain_chance", now=BANGKOK_NOW + 60,
                                             tmd_stations=stations)
     assert settled == 1
     row = conn.execute("SELECT outcome, observed_value FROM forecast_records").fetchone()
     assert row["outcome"] == "yes"
-    assert row["observed_value"] == 5.0
+    assert row["observed_value"] == pytest.approx(5.5)
 
 
 def test_rain_settles_no_below_the_hit_threshold(conn):
     verify.record(conn, kind="rain_chance", area=(13.75, 100.50), source="ensemble",
                  valid_from=BANGKOK_NOW - 6 * 3600, valid_to=BANGKOK_NOW, value=40.0,
                  now=BANGKOK_NOW - 6 * 3600)
-    stations = [tmd_station(lat=13.75, lon=100.50, rain_24h_mm=0.0)]
+    verify.record_tmd_rain_3h(conn, [
+        _tmd_slot_station(hour=10, rain_3h_mm=0.0),
+        _tmd_slot_station(hour=13, rain_3h_mm=0.0),
+    ], now=BANGKOK_NOW)
+    stations = [tmd_station(lat=13.75, lon=100.50)]
     verify.settle_point_forecasts(conn, kind="rain_chance", now=BANGKOK_NOW + 60,
                                   tmd_stations=stations)
     row = conn.execute("SELECT outcome FROM forecast_records").fetchone()
     assert row["outcome"] == "no"
+
+
+def test_rain_not_settled_until_every_3h_slot_in_the_window_has_arrived(conn):
+    """The bug this replaced: settling early against a rolling 24h total.
+    With only ONE of the window's two 3-hour slots stored, the window must
+    stay unsettled rather than being scored off a partial sum."""
+    verify.record(conn, kind="rain_chance", area=(13.75, 100.50), source="ensemble",
+                 valid_from=BANGKOK_NOW - 6 * 3600, valid_to=BANGKOK_NOW, value=70.0,
+                 now=BANGKOK_NOW - 6 * 3600)
+    verify.record_tmd_rain_3h(conn, [_tmd_slot_station(hour=13, rain_3h_mm=9.0)], now=BANGKOK_NOW)
+    stations = [tmd_station(lat=13.75, lon=100.50)]
+    settled = verify.settle_point_forecasts(conn, kind="rain_chance", now=BANGKOK_NOW + 60,
+                                            tmd_stations=stations)
+    assert settled == 0
+    row = conn.execute("SELECT settled_at FROM forecast_records").fetchone()
+    assert row["settled_at"] is None
+
+
+def test_record_tmd_rain_3h_ignores_a_station_with_no_reading(conn):
+    assert verify.record_tmd_rain_3h(conn, None) == 0
+    assert verify.record_tmd_rain_3h(conn, [{"name": "x"}]) == 0
+
+
+def test_record_tmd_rain_3h_deduplicates_the_same_station_and_slot(conn):
+    station = _tmd_slot_station(hour=10, rain_3h_mm=1.0)
+    assert verify.record_tmd_rain_3h(conn, [station], now=BANGKOK_NOW) == 1
+    assert verify.record_tmd_rain_3h(conn, [station], now=BANGKOK_NOW) == 0
+    row = conn.execute("SELECT COUNT(*) AS n FROM tmd_rain_3h").fetchone()
+    assert row["n"] == 1
 
 
 # ----------------------------------------------------- settling: flood_level ---
@@ -234,8 +284,12 @@ def test_score_rain_brier_and_buckets(conn):
         verify.record(conn, kind="rain_chance", area=(13.75, 100.50), source="ensemble",
                      valid_from=BANGKOK_NOW - 6 * 3600, valid_to=BANGKOK_NOW, value=value,
                      now=BANGKOK_NOW - 6 * 3600)
+    verify.record_tmd_rain_3h(conn, [
+        _tmd_slot_station(hour=10, rain_3h_mm=3.0),
+        _tmd_slot_station(hour=13, rain_3h_mm=2.0),
+    ], now=BANGKOK_NOW)
     verify.settle_point_forecasts(conn, kind="rain_chance", now=BANGKOK_NOW + 1,
-                                  tmd_stations=[tmd_station(rain_24h_mm=5.0)])
+                                  tmd_stations=[tmd_station(lat=13.75, lon=100.50)])
     scores = verify.score(conn, days=1, now=BANGKOK_NOW + 100)
     s = scores["rain_chance"]["ensemble"]
     assert s["n"] == 3

@@ -182,6 +182,12 @@ def parse_stations(xml_bytes: bytes) -> list[dict]:
             "humidity": _number(observation, "RelativeHumidity"),
             "wind_kmh": _number(observation, "WindSpeed"),
             "rain_24h_mm": _number(observation, "Rainfall24Hr"),
+            # THIS interval's own rain (the last 3 hours, TMD's own reporting
+            # cadence), separate from the rolling 24h total above — see the
+            # module docstring and verify.py's settling fix: a 6-hour
+            # rain_chance window must be checked against 3-hour totals, not
+            # a 24-hour one that overstates "it rained".
+            "rain_3h_mm": _number(observation, "Rainfall"),
         })
     return stations
 
@@ -244,6 +250,9 @@ def reading(stations, latitude: float, longitude: float,
         "humidity": _checked(station.get("humidity"), *HUMIDITY_RANGE),
         "wind_kmh": _checked(station.get("wind_kmh"), *WIND_RANGE),
         "rain_mm": _checked(station.get("rain_24h_mm"), *RAIN_RANGE),
+        # This interval's own rain (3h), kept apart from the rolling 24h
+        # total above — see parse_stations's own comment.
+        "rain_3h_mm": _checked(station.get("rain_3h_mm"), *RAIN_RANGE),
         "station_name": station.get("name", ""),
         "station_km": round(km, 1),
     }
@@ -255,24 +264,45 @@ def reading(stations, latitude: float, longitude: float,
 FETCH_ERRORS = (urllib.error.URLError, OSError, ValueError, ET.ParseError)
 
 
-def fetch_reading(latitude: float, longitude: float, timeout: float, secret,
-                  now: "dt.datetime | None" = None) -> "dict | None":
-    """The TMD reading for this position, or None — no key, nothing close and
-    fresh enough, or the request/parse failed. `secret` is a `name -> value`
-    callable (envfile.reader(cfg.env_path)), read fresh every call like every
-    other optional key in this codebase; nothing here keeps the key or the
-    reading beyond this one call.
-    """
+def fetch_stations(timeout: float, secret) -> "list[dict] | None":
+    """The whole country's station list, freshly fetched and parsed, or None
+    — no key, or the request/parse failed. Split out of `fetch_reading` so a
+    caller that needs every station (verify.py's rain-window settling, which
+    has no single position to ask about) does not have to duplicate the
+    fetch — same `secret` contract as `fetch_reading`."""
     uid = secret("TMD_UID")
     ukey = secret("TMD_UKEY")
     if not uid or not ukey:
         return None
     try:
         body = _get(WEATHER3HOURS_URL.format(uid=uid, ukey=ukey), timeout)
-        stations = parse_stations(body)
+        return parse_stations(body)
     except FETCH_ERRORS as exc:
         # The TYPE only — never the message, which for a URLError can quote
         # the URL, and this URL carries the key in its query string.
         log.info("tmd observation unavailable: %s", type(exc).__name__)
         return None
+
+
+def fetch_reading(latitude: float, longitude: float, timeout: float, secret,
+                  now: "dt.datetime | None" = None,
+                  station_sink=None) -> "dict | None":
+    """The TMD reading for this position, or None — no key, nothing close and
+    fresh enough, or the request/parse failed. `secret` is a `name -> value`
+    callable (envfile.reader(cfg.env_path)), read fresh every call like every
+    other optional key in this codebase; nothing here keeps the key or the
+    reading beyond this one call.
+
+    `station_sink`, when given, is called with the FULL parsed station list
+    (before it is filtered down to the nearest one) whenever a fetch
+    succeeds — for a caller that wants every station without a second
+    outbound fetch of its own (dashboard.Dashboard.tmd_stations fetches
+    separately instead, since it has no per-position weather fetch of its
+    own to piggyback on; this hook is kept for a future caller that does).
+    """
+    stations = fetch_stations(timeout, secret)
+    if stations is None:
+        return None
+    if station_sink is not None:
+        station_sink(stations)
     return reading(stations, latitude, longitude, now=now)

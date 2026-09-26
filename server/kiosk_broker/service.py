@@ -23,13 +23,22 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
                auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd, social_cmd,
                bluetooth_cmd,
-               calendar_app, holidays_q, alerts, flood_forecast, local_rain, emergency)
+               calendar_app, holidays_q, alerts, flood_forecast, local_rain, emergency, dams, radar)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
 from .pricing import Pricing
 
 log = logging.getLogger("kiosk_broker")
+
+#: Resolving the overlap between radar.py's and local_rain.py's own
+#: `match()` (both fire on the bare phrase "ฝนตกไหม" — see the routing
+#: comment above the radar block): radar answers only when the question
+#: itself names "now"/"here"/the radar, and never when it names a day —
+#: "วันนี้/พรุ่งนี้ฝนตกไหม" keeps going to local_rain's ensemble forecast,
+#: unchanged (Poom's own instruction).
+_RADAR_HERE_NOW = re.compile(r"ตอนนี้|แถวนี้|ตรงนี้|เรดาร์")
+_RADAR_DAY_WORDS = re.compile(r"วันนี้|พรุ่งนี้")
 
 #: Loaded once per process. A missing file is an empty dictionary rather than a
 #: refusal to start: respellings are an improvement to the voice, not a
@@ -996,6 +1005,20 @@ def handle_chat(
         reply = emergency.reply(text)
         return answer_in_code(reply, None, "emergency")
 
+    # ---- dams (dams.py): "เขื่อนภูมิพลเป็นยังไง", "เขื่อนไหนน้ำเยอะ" — Jarvis-only,
+    # no card line (dams.py's own rule). "เขื่อนไหนน้ำเยอะ/เก็บน้ำเยอะ/ใกล้เต็ม" is
+    # checked FIRST: it also contains the bare word "เขื่อน" dams.match() alone
+    # would otherwise treat as a named-dam question with no name found. -----
+    if not is_camera and alarm is None and not calendar_yes and dams.match(text):
+        log_intent("skipped")
+        board = _dashboard(cfg).dams
+        try:
+            reply = dams.reply(board, text, time.time())
+        except Exception as exc:  # noqa: BLE001 — a feed problem must not end the conversation
+            log.warning("dams device=%s failed: %s", label, type(exc).__name__)
+            reply = dams.FAILED
+        return answer_in_code(reply, None, "dams")
+
     # ---- the kiosk's own flood forecast (flood_forecast.py, the ◇ line):
     # "ที่ไหน/จังหวัดไหนเสี่ยงน้ำท่วม" — checked BEFORE the generic warnings
     # route below, whose own match() also fires on the word "น้ำท่วม"; the
@@ -1015,6 +1038,30 @@ def handle_chat(
             log.warning("flood_forecast device=%s failed: %s", label, type(exc).__name__)
             reply = flood_forecast.NO_DATA
         return answer_in_code(reply, None, "flood_forecast")
+
+    # ---- radar (radar.py): "ฝนตกแถวนี้ไหม/ตอนนี้ฝนตกไหม/เรดาร์เห็นฝนไหม" — RIGHT
+    # NOW, NEARBY, from RainViewer's own past radar. radar._ASKS and
+    # local_rain._ASKS both fire on the bare phrase "ฝนตกไหม", so this is
+    # checked FIRST but ONLY when the question itself names "now"/"here"/the
+    # radar (ตอนนี้/แถวนี้/ตรงนี้/เรดาร์) and NOT a day ("วันนี้/พรุ่งนี้" —
+    # Poom's own instruction: those stay with local_rain's ensemble forecast
+    # below, unchanged). A bare "ฝนตกไหม" with neither marker falls straight
+    # through to local_rain, exactly as before this route existed. ----------
+    if (not is_camera and alarm is None and not calendar_yes and radar.match(text)
+            and _RADAR_HERE_NOW.search(text) and not _RADAR_DAY_WORDS.search(text)):
+        log_intent("skipped")
+        board = _dashboard(cfg)
+        try:
+            lat, lon = board.position()
+            now_ts = time.time()
+            snap = board.radar.get(lat, lon, now_ts, wait=True)
+            if snap is not None and radar.is_stale(snap, now_ts):
+                snap = None
+            reply = radar.answer(snap)
+        except Exception as exc:  # noqa: BLE001 — a feed problem must not end the conversation
+            log.warning("radar device=%s failed: %s", label, type(exc).__name__)
+            reply = radar.NO_DATA_ANSWER
+        return answer_in_code(reply, None, "radar")
 
     # ---- the kiosk's own local rain chance (local_rain.py, the ▸ line):
     # "วันนี้/พรุ่งนี้/จะฝนตกไหม" — answered from a real ensemble forecast
@@ -1765,7 +1812,8 @@ def handle_dashboard(
     marks = dict(stored_marks) if isinstance(stored_marks, dict) else {}
     marks_before = json.dumps(marks, sort_keys=True)
 
-    snapshot = _dashboard(cfg).snapshot(
+    board = _dashboard(cfg)
+    snapshot = board.snapshot(
         latitude=latitude,
         longitude=longitude,
         now=now,
@@ -1775,6 +1823,17 @@ def handle_dashboard(
 
     if json.dumps(marks, sort_keys=True) != marks_before:
         store.write_state(conn, GOLD_MARK_KEY, marks, now)
+
+    # Forecast verification (verify.py): records what this exact snapshot
+    # showed, settles what has come due, and keeps its own ground-truth
+    # tables fed — all local SQLite, no extra outbound call. A bug here must
+    # not take the dashboard down with it, same rule as the "home" panel
+    # below.
+    try:
+        lat, lon, _ = dashboard_mod.clean_coords(latitude, longitude)
+        board.record_verification(conn, snapshot, lat, lon, now)
+    except Exception as exc:  # noqa: BLE001 — the rest of the screen must not fail with it
+        log.warning("dashboard forecast verification failed: %s", type(exc).__name__)
 
     # The "อุปกรณ์ในบ้าน" card: eWeLink, cached ten minutes. Names, rooms,
     # on/off and — for an allowlisted light while switching is not stopped —

@@ -138,6 +138,23 @@ CREATE TABLE IF NOT EXISTS forecast_records (
 );
 CREATE INDEX IF NOT EXISTS forecast_records_due ON forecast_records(kind, settled_at, valid_to);
 CREATE INDEX IF NOT EXISTS forecast_records_score ON forecast_records(kind, source, settled_at);
+
+-- Every TMD station's own 3-HOUR rain reading (not the rolling 24h total),
+-- one row per station per reporting time — see verify.py's own docstring
+-- for why: a 6-hour rain_chance window must be settled by summing the
+-- 3-hour slots that fall inside it, and TMD's Weather3Hours answer only
+-- ever carries the LATEST reading per station, not history, so this table
+-- is what lets a later settle find an earlier slot again. Keyed on the
+-- STATION's own rounded position (verify.round_point's rounding), never the
+-- kiosk's. Pruned the same KEEP_DAYS as forecast_records.
+CREATE TABLE IF NOT EXISTS tmd_rain_3h (
+    station_lat REAL NOT NULL,
+    station_lon REAL NOT NULL,
+    observed_at REAL NOT NULL,
+    rain_3h_mm  REAL NOT NULL,
+    PRIMARY KEY (station_lat, station_lon, observed_at)
+);
+CREATE INDEX IF NOT EXISTS tmd_rain_3h_prune ON tmd_rain_3h(observed_at);
 """
 
 

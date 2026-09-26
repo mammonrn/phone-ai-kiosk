@@ -358,6 +358,21 @@ def snapshot(width: int, height: int, rgba: bytes, latitude: float, frame_time: 
     }
 
 
+#: A frame older than this is not "now" any more — DESIGN.md's own staleness
+#: rule for the radar answer. Half an hour is generous for RainViewer's own
+#: ~10-minute frame cadence; it exists to catch RainViewer itself having
+#: stopped publishing new frames, not normal lag.
+STALE_SECONDS = 30 * 60
+
+
+def is_stale(snap: dict, now: float) -> bool:
+    """True when `snap`'s own radar frame is older than STALE_SECONDS — the
+    caller (service.py) then answers as if there were no data at all rather
+    than naming a "current" reading that is not."""
+    frame_dt = datetime.fromisoformat(snap["frame_time"])
+    return (now - frame_dt.timestamp()) > STALE_SECONDS
+
+
 NO_DATA_ANSWER = "ยังไม่มีข้อมูลเรดาร์ฝนตอนนี้ครับ"
 
 

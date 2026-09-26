@@ -575,3 +575,98 @@ def test_a_generic_rain_question_still_reaches_the_llm_when_unmatched(conn, cfg,
     status, body = _post(conn, cfg, client, token, {"text": "ฝนเยอะไหม"})
     assert status == 200
     assert client.calls  # reached the model, as it did before this feature
+
+
+# ------------------------------------------------------------- dams / radar
+
+def test_dams_question_answered_in_code_no_model(conn, cfg, client):
+    """No network in the tests (conftest's autouse fixture) -> the dams feed
+    never answers, so this must reach dams.FAILED, not the model."""
+    from kiosk_broker import dams
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "เขื่อนภูมิพลเป็นยังไง"})
+    assert status == 200
+    assert body["reply"] == dams.FAILED
+    assert body["action"] is None
+    assert not client.calls
+
+
+def test_dams_which_full_question_also_answered_in_code(conn, cfg, client):
+    from kiosk_broker import dams
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "เขื่อนไหนน้ำเยอะ"})
+    assert status == 200
+    assert body["reply"] == dams.FAILED
+    assert not client.calls
+
+
+def test_radar_now_question_reaches_radar_not_local_rain(conn, cfg, client):
+    """"ตอนนี้ฝนตกไหม" matches both radar._ASKS and local_rain._ASKS's bare
+    "ฝนตกไหม" — it must reach radar's own route (radar.NO_DATA_ANSWER, no
+    network in the tests), not local_rain.NO_DATA_ANSWER."""
+    from kiosk_broker import local_rain, radar
+
+    assert radar.match("ตอนนี้ฝนตกไหม") is True
+    assert local_rain.match("ตอนนี้ฝนตกไหม") is True  # confirms the overlap this test guards
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "ตอนนี้ฝนตกไหม"})
+    assert status == 200
+    assert body["reply"] == radar.NO_DATA_ANSWER
+    assert not client.calls
+
+
+def test_radar_here_question_reaches_radar(conn, cfg, client):
+    from kiosk_broker import radar
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "ฝนตกแถวนี้ไหม"})
+    assert status == 200
+    assert body["reply"] == radar.NO_DATA_ANSWER
+    assert not client.calls
+
+
+def test_radar_named_question_reaches_radar(conn, cfg, client):
+    from kiosk_broker import radar
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "เรดาร์เห็นฝนไหม"})
+    assert status == 200
+    assert body["reply"] == radar.NO_DATA_ANSWER
+    assert not client.calls
+
+
+def test_today_rain_question_still_reaches_local_rain_not_radar(conn, cfg, client):
+    """"วันนี้ฝนตกไหม" also matches radar._ASKS's bare "ฝนตกไหม" — Poom's own
+    instruction: a day word keeps it on local_rain's ensemble forecast."""
+    from kiosk_broker import local_rain, radar
+
+    assert radar.match("วันนี้ฝนตกไหม") is True  # confirms the overlap this test guards
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "วันนี้ฝนตกไหม"})
+    assert status == 200
+    assert body["reply"] == local_rain.NO_DATA_ANSWER
+    assert not client.calls
+
+
+def test_tomorrow_rain_question_still_reaches_local_rain(conn, cfg, client):
+    from kiosk_broker import local_rain
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "พรุ่งนี้ฝนตกไหม"})
+    assert status == 200
+    assert body["reply"] == local_rain.NO_DATA_ANSWER
+    assert not client.calls
+
+
+def test_bare_rain_question_with_no_marker_still_reaches_local_rain(conn, cfg, client):
+    """No "ตอนนี้/แถวนี้/ตรงนี้/เรดาร์" and no "วันนี้/พรุ่งนี้" either — the
+    plain historical case, unchanged by adding the radar route."""
+    from kiosk_broker import local_rain
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "ฝนตกไหม"})
+    assert status == 200
+    assert body["reply"] == local_rain.NO_DATA_ANSWER
+    assert not client.calls
