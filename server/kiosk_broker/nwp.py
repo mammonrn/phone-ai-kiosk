@@ -1,22 +1,28 @@
 """TMD NWP (Numerical Weather Prediction) forecast — data.tmd.go.th/nwpapi,
-a DIFFERENT product from tmd_obs.py's Weather3Hours (station observations):
+a MODEL forecast, not station observations (those come from obs.py):
 this one is a MODEL forecast for a point, hours to months ahead, with its
 own sign-up and its own credential (a single Bearer token, TMD_NWP_TOKEN —
-see envfile.SETTABLE), never the TMD_UID/TMD_UKEY pair tmd_obs.py uses.
+see envfile.SETTABLE).
 
-THE TWO ENDPOINTS USED, confirmed against TMD's own public docs
-(data.tmd.go.th/nwpapi/doc/apidoc/location/forecast_hourly.html and
-.../forecast_daily.html, read 2026-09-26 — these are documentation pages
-only; nobody local holds a TMD_NWP_TOKEN to call them for real, so the
-exact shape below is NOT yet checked against a live response — 🔶, see
-Poom's own `$B probe tmd` once a token is set):
+THE TWO ENDPOINTS USED — CONFIRMED against Poom's own live probe
+(2026-09-26, `$B probe tmd` with a real TMD_NWP_TOKEN — the shape below
+replaces the earlier docs-only 🔶 guess):
 
   GET /nwpapi/v1/forecast/location/hourly/at?lat=..&lon=..&fields=..&duration=..
       Header: authorization: Bearer <TMD_NWP_TOKEN>
       duration: hours ahead, DOCUMENTED MAXIMUM 48.
-      Response: {"WeatherForcasts": [{"location": {"lat", "lon"},
+      Response: {"WeatherForecasts": [{"location": {"lat", "lon"},
                  "forecasts": [{"time": "2026-09-26T13:00:00+07:00",
                                 "data": {<one key per requested field>}}, ...]}]}
+      Poom's probe (48 records starting 13:00+07:00, 2026-09-26) confirmed
+      the top-level key is spelled "WeatherForecasts" — this module used to
+      read the misspelled "WeatherForcasts" (missing an "e"), matching only
+      the docs page's own typo, and would have parsed to an EMPTY list
+      against the real API. Fixed below (parse_hourly tries the correct
+      spelling first, the old typo'd one second, in case some deployment
+      still answers with it). Poom's probe also confirmed the real field
+      set: cloudhigh, cloudlow, cloudmed, cond, rain, rh, slp, tc, time,
+      wd10m, ws10m.
 
   GET /nwpapi/v1/forecast/location/daily/at?lat=..&lon=..&fields=..&duration=..
       Same header. duration: days ahead, DOCUMENTED MAXIMUM 126 — this module
@@ -26,21 +32,58 @@ Poom's own `$B probe tmd` once a token is set):
       Response: {"weather_forecast": {"locations": [{"location": {...},
                  "forecasts": [{"time": "2026-09-26T00:00:00+07:00",
                                 "data": {...}}, ...]}]}}
+      Poom's probe additionally confirmed psfc, swdown, tc_max, tc_min in
+      the daily field set (7 days, sample Bangkok 26 Sep daily rain 62.3).
 
-`time` is ISO-8601 with a "+07:00" offset (TMD's own Bangkok wall clock,
-same as tmd_obs.py's DateTime) — `datetime.fromisoformat` parses it directly
-on the Python this broker runs (3.11+), no manual offset handling needed.
+`time` is ISO-8601 with a "+07:00" offset (TMD's own Bangkok wall clock) —
+`datetime.fromisoformat` parses it directly on the Python this broker runs
+(3.11+), no manual offset handling needed.
+
+HOURLY RAIN — WHICH HOUR DOES IT COVER (🔶, evidence below): TMD's own doc
+page (data.tmd.go.th/nwpapi/doc/apidoc/location/forecast_hourly.html, read
+2026-09-26) documents the `rain` field only as:
+    "rain | Rain volume | ปริมาณฝนรายชั่วโมง | mm"
+("hourly rain volume", mm) — it does NOT say whether that volume is the
+accumulation BEFORE `time` (covering time-1h..time) or AFTER it (covering
+time..time+1h); the daily page's own `rain` entry ("ปริมาณฝนรวม 24 ชม." —
+"total 24h rainfall") is silent the same way. Since the docs do not settle
+it, this module takes the WRF-standard reading (the convention TMD's own
+model is built on): an hourly post-processed field at time T is the
+accumulation ENDING at T, i.e. it covers (T-1h, T]. To keep this module's
+own output contract — "t = the START of the hour the value covers", the
+same contract Open-Meteo's series already use in blend.py, so blend.py
+itself needs no change — `parse_hourly` below SHIFTS every hourly
+timestamp back by one hour: `t = T - 1h`. 🔶 unconfirmed; settling it for
+real would need two consecutive hourly pulls a genuine hour apart, matched
+against ThaiWater's own rain-gauge truth (verify.py) — flagged rather than
+guessed silently, and easy to flip (one line) if Poom's own comparison
+later shows the other direction fits better.
+DAILY rain needs no such shift: Poom's probe's own sample ties the row
+dated "2026-09-26T00:00:00+07:00" to "26 Sep"'s rain (62.3mm), i.e. the
+day's own calendar date already names the 24h window it covers, starting
+at that midnight — the same "date = start of day" contract parse_daily
+already returns (`item["time"][:10]`), unchanged here.
+SWDOWN'S UNIT (daily only, added below) is confirmed "W m-2" (not MJ/m²)
+by the same doc site's own daily field table
+(data.tmd.go.th/nwpapi/doc/apidoc/location/forecast_daily.html, read
+2026-09-26) — kept in W/m² here, no conversion, hence the `swdown_wm2` key
+name. `slp` (sea-level pressure, hPa — the standard unit for this quantity,
+not separately re-confirmed since adding it is free once the endpoint is
+already being called) is added the same way, additively, on both hourly and
+daily.
 
 FIELDS REQUESTED (documented codes and units, same doc pages above):
-  hourly: tc (°C), rh (%), rain (mm, this hour's own accumulation),
-          ws10m (m/s), cloudlow/cloudmed/cloudhigh (%, cloud fraction by
-          altitude band — there is no single "cloud cover" field)
+  hourly: tc (°C), rh (%), rain (mm), ws10m (m/s), slp (hPa),
+          cloudlow/cloudmed/cloudhigh (%, cloud fraction by altitude band —
+          there is no single "cloud cover" field)
   daily:  tc_max, tc_min (°C), rh (%, the day's average), rain (mm, 24h
-          total), ws10m (m/s, the day's maximum), cloudlow/cloudmed/cloudhigh
-  wd10m (wind direction) and pressure/swdown fields are NOT requested: this
-  module only needs what the weather/flood cards can show (temperature,
-  humidity, rain, wind speed, cloud), the same trim probe.py's own
-  NWP_ENDPOINTS comment already reasoned through.
+          total), ws10m (m/s, the day's maximum), slp (hPa),
+          swdown (W/m², see above), cloudlow/cloudmed/cloudhigh
+  wd10m and psfc are NOT requested: this module only needs what the
+  weather/flood cards can show (temperature, humidity, rain, wind speed,
+  pressure, cloud, daily sunshine), the same trim probe.py's own
+  NWP_ENDPOINTS comment already reasoned through; `cond` is an unexplained
+  condition code (see below) and stays out of both field lists.
 
 CONVERSIONS, done here so nothing downstream has to know TMD's own units:
   * wind: ws10m (m/s) × 3.6 → wind_kmh, the same unit local_rain.py's own
@@ -54,19 +97,18 @@ CONVERSIONS, done here so nothing downstream has to know TMD's own units:
     HERE, 🔶 flagged: TMD's own docs do not say which combination, if any,
     the official "cond"/condition-code field derives from — `cond` itself is
     an unexplained numeric code and is not surfaced by this module).
-  * temperature/rh/rain pass through unconverted (already °C/%/mm).
+  * temperature/rh/rain/slp/swdown pass through unconverted (already
+    °C/%/mm/hPa/(W/m²)).
 
-WHAT IS **NOT** CONFIRMED (🔶 — Poom's probe output, once it prints a live
-response, would settle these; nothing here guesses beyond what is written
+WHAT IS **NOT** CONFIRMED (🔶 — nothing here guesses beyond what is written
 above):
   * the model's own ISSUE cadence (how often a new run replaces the last
     one) — neither doc page states it, so `issued` in this module's own
     output is always None; TTL_SECONDS below is chosen independently of it
     (see its own comment) rather than guessed from a cadence nobody
     published.
-  * whether `rain` in the HOURLY endpoint is "this hour" or a running total
-    — the doc page's own wording ("Hourly accumulation") is taken at face
-    value here.
+  * which side of `time` the hourly `rain` accumulation falls on — see
+    above; the WRF-standard reading is assumed and the shift applied.
 
 CACHING: one hourly + one daily call per refresh (never more), a due
 refresh runs in the BACKGROUND exactly like local_rain.LocalRainCache and
@@ -74,11 +116,11 @@ dams.Dams, and TTL_SECONDS (1 hour) keeps refreshes an order of magnitude
 under TMD's documented 60 requests/minute and 100,000 datapoints/hour caps
 even with several cached positions at once. `secret` is read FRESH on every
 refresh (envfile.reader(cfg.env_path), the same `name -> value | None`
-contract tmd_obs.fetch_reading takes) rather than kept — a token entered or
+contract gistda_flood.py takes) rather than kept — a token entered or
 removed while the broker is running takes effect on the very next refresh,
 and NO KEY MEANS NO REQUEST: a refresh with no token clears nothing already
 cached but makes no outbound call at all, the same "off means off, quietly"
-rule tmd_obs.py and dams.py already follow.
+rule dams.py and gistda_flood.py already follow.
 """
 
 from __future__ import annotations
@@ -104,9 +146,9 @@ DAILY_URL = ("https://data.tmd.go.th/nwpapi/v1/forecast/location/daily/at"
              "?lat={lat}&lon={lon}&fields={fields}&duration={duration}")
 
 #: Only the fields the weather/flood cards can use — see the module
-#: docstring for why wd10m/pressure/swdown/cond are left out.
-HOURLY_FIELDS = "tc,rh,rain,ws10m,cloudlow,cloudmed,cloudhigh"
-DAILY_FIELDS = "tc_max,tc_min,rh,rain,ws10m,cloudlow,cloudmed,cloudhigh"
+#: docstring for why wd10m/psfc/cond are left out.
+HOURLY_FIELDS = "tc,rh,rain,ws10m,slp,cloudlow,cloudmed,cloudhigh"
+DAILY_FIELDS = "tc_max,tc_min,rh,rain,ws10m,slp,swdown,cloudlow,cloudmed,cloudhigh"
 
 #: The documented maximum for the hourly endpoint — the card never needs
 #: more than "the next couple of days" and this is that endpoint's own ceiling.
@@ -114,6 +156,11 @@ HOURLY_DURATION = 48
 #: Poom's instruction: capped at 7 even though the endpoint documents up to
 #: 126 days, since nothing in the kiosk looks a month ahead.
 DAILY_DURATION = 7
+
+#: One hour, seconds — the WRF-standard shift applied to every hourly
+#: timestamp so this module's own "t" is the START of the hour `rain`
+#: covers (see the module docstring's own 🔶 evidence).
+HOURLY_TIME_SHIFT_SECONDS = 3600
 
 FETCH_TIMEOUT = 10.0
 #: A handful of KB per real response observed in the probe; bounded well
@@ -201,7 +248,7 @@ def _cloud_pct(data: dict) -> "float | None":
 def _to_epoch(value: "str | None") -> "float | None":
     """TMD's own "YYYY-MM-DDTHH:MM:SS+07:00" → epoch seconds, or None for
     anything this module cannot date — a forecast row it cannot place in
-    time is one it cannot use, the same rule tmd_obs._parse_datetime follows."""
+    time is one it cannot use, never guessed."""
     if not value:
         return None
     try:
@@ -212,12 +259,18 @@ def _to_epoch(value: "str | None") -> "float | None":
 
 def parse_hourly(raw: dict) -> list[dict]:
     """The hourly response → [{"t", "temp_c", "rh", "rain_mm", "wind_kmh",
-    "cloud_pct"}, ...], oldest first, exactly as TMD returned them. An empty
-    or unrecognised payload (no token's own location block, say) yields []
-    rather than raising — a caller sees "no hourly data" the same way it
-    would see a fetch failure."""
+    "slp_hpa", "cloud_pct"}, ...], oldest first. `t` is shifted back one
+    hour from TMD's own `time` — see the module docstring's own 🔶 evidence
+    on the hourly rain accumulation window — so it names the START of the
+    hour the row's values cover, the same contract Open-Meteo's own series
+    use in blend.py. An empty or unrecognised payload (no token's own
+    location block, say) yields [] rather than raising — a caller sees "no
+    hourly data" the same way it would see a fetch failure."""
     out: list[dict] = []
-    forecasts_by_location = raw.get("WeatherForcasts") or []
+    # "WeatherForecasts" is the confirmed live spelling (Poom's probe,
+    # 2026-09-26); the misspelled "WeatherForcasts" (docs-page typo, no "e")
+    # is tried second in case some deployment still answers with it.
+    forecasts_by_location = raw.get("WeatherForecasts") or raw.get("WeatherForcasts") or []
     if not forecasts_by_location:
         return out
     for item in forecasts_by_location[0].get("forecasts") or []:
@@ -226,11 +279,12 @@ def parse_hourly(raw: dict) -> list[dict]:
             continue
         data = item.get("data") or {}
         out.append({
-            "t": t,
+            "t": t - HOURLY_TIME_SHIFT_SECONDS,
             "temp_c": _num(data, "tc"),
             "rh": _num(data, "rh"),
             "rain_mm": _num(data, "rain"),
             "wind_kmh": _wind_kmh(data),
+            "slp_hpa": _num(data, "slp"),
             "cloud_pct": _cloud_pct(data),
         })
     return out
@@ -238,8 +292,10 @@ def parse_hourly(raw: dict) -> list[dict]:
 
 def parse_daily(raw: dict) -> list[dict]:
     """The daily response → [{"date": "YYYY-MM-DD", "tmin", "tmax",
-    "rain_mm", "rh", "wind_kmh", "cloud_pct"}, ...], oldest first. Same
-    empty-on-unrecognised rule as parse_hourly."""
+    "rain_mm", "rh", "wind_kmh", "slp_hpa", "swdown_wm2", "cloud_pct"}, ...],
+    oldest first. Same empty-on-unrecognised rule as parse_hourly. No time
+    shift here — see the module docstring: the daily row's own date already
+    names the start of the 24h window it covers."""
     out: list[dict] = []
     locations = ((raw.get("weather_forecast") or {}).get("locations")) or []
     if not locations:
@@ -257,6 +313,8 @@ def parse_daily(raw: dict) -> list[dict]:
             "rain_mm": _num(data, "rain"),
             "rh": _num(data, "rh"),
             "wind_kmh": _wind_kmh(data),
+            "slp_hpa": _num(data, "slp"),
+            "swdown_wm2": _num(data, "swdown"),
             "cloud_pct": _cloud_pct(data),
         })
     return out

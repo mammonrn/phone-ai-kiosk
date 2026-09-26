@@ -133,25 +133,22 @@ def test_probe_tmd_with_no_keys_at_all_makes_no_request_and_fails():
     assert "ยังไม่มี key" in out.getvalue()
 
 
-def test_probe_tmd_runs_tmdapi_only_when_only_uid_ukey_are_set():
+def test_probe_tmd_with_only_the_retired_uid_ukey_reports_no_key_and_makes_no_request():
+    # TMDAPI (uid/ukey) was dropped for good (Poom 2026-09-26: no way to sign
+    # up) — even if old values are still sitting in the env file, `probe tmd`
+    # must not use them, and it must not make any request.
     calls = []
     out = io.StringIO()
 
     def fetch(url, timeout, limit, headers=None):
-        calls.append((url, headers))
-        xml = b"<root><Station><StationNameThai>test</StationNameThai>" \
-              b"<Observation><DateTime>09/26/2026 13:00:00</DateTime></Observation>" \
-              b"</Station></root>"
-        return 200, xml
+        calls.append(url)
+        raise AssertionError("must not be called")
 
     rc = probe.run_tmd(_secret({"TMD_UID": "u", "TMD_UKEY": "k"}), out=out, fetch=fetch,
                         sleep=lambda s: None)
-    assert rc == 0
-    assert len(calls) == len(probe.TMD_ENDPOINTS)
-    for url, headers in calls:
-        assert not headers
-    text = out.getvalue()
-    assert "ukey=k" not in text and "uid=u" not in text
+    assert rc == 1
+    assert calls == []
+    assert "ยังไม่มี key" in out.getvalue()
 
 
 def test_probe_tmd_runs_nwp_only_when_only_the_token_is_set():
@@ -171,35 +168,21 @@ def test_probe_tmd_runs_nwp_only_when_only_the_token_is_set():
     assert SAMPLE_JWT not in out.getvalue()
 
 
-def test_probe_tmd_runs_both_when_both_are_set():
+def test_probe_tmd_runs_nwp_even_when_the_retired_uid_ukey_are_also_set():
+    # Both may be present at once (an old env file plus the current NWP
+    # token) — `probe tmd` still only ever probes NWP.
     calls = []
 
     def fetch(url, timeout, limit, headers=None):
         calls.append(url)
-        if "nwpapi" in url:
-            return 200, b"{}"
-        return 200, b"<root><Station></Station></root>"
+        return 200, b"{}"
 
     rc = probe.run_tmd(
         _secret({"TMD_UID": "u", "TMD_UKEY": "k", "TMD_NWP_TOKEN": SAMPLE_JWT}),
         out=io.StringIO(), fetch=fetch, sleep=lambda s: None,
     )
     assert rc == 0
-    assert len(calls) == len(probe.NWP_ENDPOINTS) + len(probe.TMD_ENDPOINTS)
-
-
-def test_probe_tmd_never_prints_the_uid_or_ukey_even_on_a_transport_error():
-    out = io.StringIO()
-
-    def fetch(url, timeout, limit, headers=None):
-        raise OSError(f"connection refused for {url}")
-
-    rc = probe.run_tmd(_secret({"TMD_UID": "very-secret-uid", "TMD_UKEY": "very-secret-ukey"}),
-                        out=out, fetch=fetch, sleep=lambda s: None)
-    assert rc == 0  # a probe reports errors; it does not itself fail the command
-    text = out.getvalue()
-    assert "very-secret-uid" not in text
-    assert "very-secret-ukey" not in text
+    assert len(calls) == len(probe.NWP_ENDPOINTS)
 
 
 def test_probe_tmd_never_prints_the_nwp_token_on_a_transport_error():

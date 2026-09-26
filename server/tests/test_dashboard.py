@@ -27,7 +27,6 @@ import logging
 import pytest
 
 from kiosk_broker import auth, dashboard as dashboard_mod, store
-from kiosk_broker import tmd_obs as tmd_obs_mod
 from kiosk_broker.service import handle_dashboard
 
 
@@ -52,7 +51,7 @@ def fake_sources(monkeypatch):
     """Every source replaced, and a counter so caching can be proved."""
     calls = {"weather": 0, "gold": 0, "crypto": 0, "place": 0, "rank": 0}
 
-    def weather(latitude, longitude, timeout, secret=None):
+    def weather(latitude, longitude, timeout, measured=None):
         calls["weather"] += 1
         return {"temp_c": 28.2, "humidity": 83, "code": 1, "is_day": 1,
                 "word": "แดดรำไร", "high_c": 30.7, "low_c": 22.9}
@@ -351,75 +350,72 @@ def _open_meteo(monkeypatch, **current):
     return dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
 
 
-# ------------------------------------------------------------------ TMD ---
+# ------------------------------------------------------ measured (obs.py) ---
 
-def test_without_a_secret_reader_tmd_is_never_called(monkeypatch):
-    """`secret=None`, the default and what every other test above already
-    exercises implicitly — tmd_obs.fetch_reading must not even be reached."""
-    called = []
-    monkeypatch.setattr(tmd_obs_mod, "fetch_reading",
-                        lambda *a, **k: called.append(1))
-    got = _open_meteo(monkeypatch, is_day=1)
-    assert called == []
-    assert got["temp_source"] == "Open-Meteo"
-    assert got["humidity_source"] == "Open-Meteo"
-
-
-def test_with_a_secret_but_no_tmd_keys_the_source_stays_open_meteo(monkeypatch):
-    """secret present but answering None for TMD_UID/TMD_UKEY — the shape
-    envfile.reader takes for a broker that has never set the key."""
-    got = _open_meteo(monkeypatch, is_day=1)
-    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
+_OM_BODY = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
                         "weather_code": 0, "is_day": 1},
+            "elevation": 390.0,
             "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4],
                       "sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
-    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
-    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, secret=lambda name: None)
-    assert got["temp_source"] == "Open-Meteo"
-    assert got["temp_c"] == pytest.approx(22.8)
 
 
-def test_a_fresh_nearby_tmd_reading_becomes_the_primary_temperature_and_humidity(monkeypatch):
-    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
-                        "weather_code": 0, "is_day": 1},
-            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4],
-                      "sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
-    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
-    monkeypatch.setattr(tmd_obs_mod, "fetch_reading",
-                        lambda lat, lon, timeout, secret: {
-                            "temp_c": 25.0, "humidity": 70.0, "wind_kmh": 5.6,
-                            "rain_mm": 2.4, "station_name": "CHIANG RAI", "station_km": 5.2})
-    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1,
-                                      secret=lambda name: "x")
-    assert got["temp_c"] == 25.0 and got["temp_source"] == "TMD"
-    assert got["humidity"] == 70 and got["humidity_source"] == "TMD"
-    # wind_kmh/rain_mm (today's forecast peak/total) are untouched by TMD —
-    # its own current wind and 24h rainfall travel separately.
-    assert got["tmd_wind_now_kmh"] == 5.6
-    assert got["tmd_rain_24h_mm"] == 2.4
-    assert got["tmd_station_km"] == 5.2
+def _station(kind, value, source="synop", km=5.2, name="CHIANG RAI"):
+    return {"value": value, "source": source, "id": "48303", "name": name,
+            "distance_km": km, "observed_at": 1_800_000_000.0}
 
 
-def test_tmd_and_open_meteo_disagreeing_by_a_lot_is_logged_and_tmd_wins(monkeypatch, caplog):
-    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
-                        "weather_code": 0, "is_day": 1},
-            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4]}}
-    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
-    monkeypatch.setattr(tmd_obs_mod, "fetch_reading",
-                        lambda lat, lon, timeout, secret: {
-                            "temp_c": 31.0, "humidity": None, "wind_kmh": None,
-                            "rain_mm": None, "station_name": "CHIANG RAI", "station_km": 5.2})
+def test_without_a_measured_source_the_card_is_modelled(monkeypatch):
+    got = _open_meteo(monkeypatch, is_day=1)
+    assert got["temp_source"] == "Open-Meteo" and got["humidity_source"] == "Open-Meteo"
+    assert got["measured"] == {} and got["model_temp_c"] == pytest.approx(22.8)
+
+
+def test_no_station_close_enough_keeps_the_modelled_values(monkeypatch):
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _OM_BODY)
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, measured=lambda kind, elev: None)
+    assert got["temp_source"] == "Open-Meteo" and got["temp_c"] == pytest.approx(22.8)
+    assert got["measured"] == {}
+
+
+def test_a_close_fresh_station_becomes_the_primary_temperature_and_humidity(monkeypatch):
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _OM_BODY)
+    asked = []
+
+    def measured(kind, elev):
+        asked.append((kind, elev))
+        return {"temp": _station("temp", 25.0), "rh": _station("rh", 70.0, source="metar", km=8.0),
+                "wind": _station("wind", 5.6)}[kind]
+
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, measured=measured)
+    assert got["temp_c"] == 25.0 and got["temp_source"] == "SYNOP"
+    assert got["humidity"] == 70 and got["humidity_source"] == "METAR"
+    # the modelled value is kept for verify.py, and the station's distance is shown
+    assert got["model_temp_c"] == pytest.approx(22.8)
+    assert got["measured"]["temp"]["distance_km"] == 5.2
+    assert got["measured"]["rh"]["source"] == "metar"
+    # today's forecast wind peak is untouched; the station's current wind travels apart
+    assert got["measured"]["wind"]["value"] == 5.6
+    # Open-Meteo's own elevation for the point is handed to the station choice
+    assert ("temp", 390.0) in asked
+
+
+def test_station_and_open_meteo_disagreeing_by_a_lot_is_logged_and_the_station_wins(monkeypatch, caplog):
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _OM_BODY)
     with caplog.at_level("INFO", logger="kiosk_broker"):
-        got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, secret=lambda name: "x")
-    assert got["temp_c"] == 31.0 and got["temp_source"] == "TMD"
+        got = dashboard_mod.fetch_weather(
+            20.05, 99.89, timeout=1,
+            measured=lambda kind, elev: _station(kind, 31.0) if kind == "temp" else None)
+    assert got["temp_c"] == 31.0 and got["temp_source"] == "SYNOP"
+    assert got["humidity_source"] == "Open-Meteo"
     assert "disagree" in caplog.text
 
 
-def test_a_tmd_credit_line_only_appears_on_a_fetch_where_tmd_actually_answered(cfg, fake_sources):
+def test_a_station_credit_only_appears_on_a_fetch_where_a_station_answered(cfg, fake_sources):
     """See dashboard.Dashboard.snapshot: attribution for a source used this
     fetch, not one merely wired in."""
-    snapshot = _snapshot(cfg)  # fake_sources' fake weather() never uses TMD
-    assert "TMD" not in snapshot["weather"]["credit"]
+    snapshot = _snapshot(cfg)  # fake_sources' fake weather() never uses a station
+    assert "SYNOP" not in snapshot["weather"]["credit"]
+    assert "METAR" not in snapshot["weather"]["credit"]
 
 
 def test_sunrise_and_sunset_come_from_the_same_request(monkeypatch):
@@ -1075,7 +1071,7 @@ def test_record_verification_records_one_flood_level_row_per_named_province(conn
     assert rows[0]["value"] == 2
     # The window is days 0..2 from today's own Bangkok midnight through the
     # END of day 2 (exclusive next midnight).
-    base = dt.datetime(2027, 1, 15, tzinfo=tmd_obs_mod.BANGKOK)
+    base = dt.datetime(2027, 1, 15, tzinfo=dt.timezone(dt.timedelta(hours=7)))
     assert rows[0]["valid_from"] == pytest.approx(base.timestamp())
     assert rows[0]["valid_to"] == pytest.approx((base + dt.timedelta(days=3)).timestamp())
 
@@ -1101,11 +1097,6 @@ def test_record_verification_never_raises_when_the_snapshot_is_missing_pieces(co
     should not need that: a partial/old-shaped snapshot must not crash it."""
     board = dashboard_mod.Dashboard(cfg)
     board.record_verification(conn, {}, 13.75, 100.5, now=1_800_000_000.0)
-
-
-def test_tmd_stations_is_empty_and_makes_no_request_without_a_key(cfg):
-    board = dashboard_mod.Dashboard(cfg)
-    assert board.tmd_stations(now=1_800_000_000.0) == []
 
 
 def test_dashboard_forget_clears_the_dams_and_radar_caches_too(cfg):

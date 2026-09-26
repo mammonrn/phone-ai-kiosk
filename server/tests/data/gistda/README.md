@@ -27,8 +27,12 @@ an unrecognised name to exercise the "unmapped province" path.
 
 🔶 **Not confirmed and should be checked against a real key**
 (`$B probe gistda` once `GISTDA_API_KEY` is set): the exact pagination
-style, whether `links`/`next` exists at all, and any area field's name or
-unit — `gistda_flood.py` deliberately reports `area_km2: None` unless a
-field is unambiguously named in km², rather than guess a unit. Replace
-these fixtures with a real trimmed sample once a probe confirms the shape,
-and delete this note.
+style, whether `links`/`next` exists at all, any area field's name or
+unit, and (added later) the DISTRICT (amphoe) property name —
+`gistda_flood._DISTRICT_NAME_KEYS` guesses `ap_tn`/`district` by symmetry
+with `pv_tn`/`province`, purely from the documented `pv_idn`/`ap_idn`/
+`tb_idn` query-parameter triple, never confirmed against a live response.
+`gistda_flood.py` deliberately reports `area_km2: None` unless a field is
+unambiguously named in km², rather than guess a unit. Replace these
+fixtures with a real trimmed sample once a probe confirms the shape, and
+delete this note.

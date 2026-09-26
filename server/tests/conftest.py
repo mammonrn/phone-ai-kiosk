@@ -242,3 +242,10 @@ def _no_real_network_for_the_dashboard(monkeypatch):
 
     monkeypatch.setattr(thaiwater_rain_mod, "_fetch", refuse_thaiwater)
     monkeypatch.setattr(thaiwater_rain_mod, "BACKGROUND", False)
+
+    # obs.py's measured-station timer: no thread, and no real reader behind
+    # a Dashboard — tests that need readings hand Observations their own.
+    from kiosk_broker import obs as obs_mod
+
+    monkeypatch.setattr(obs_mod, "BACKGROUND", False)
+    monkeypatch.setattr(obs_mod, "load_sources", lambda: [])

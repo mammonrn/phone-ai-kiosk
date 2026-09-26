@@ -21,9 +21,8 @@ NEVER PRINTED, BY CONSTRUCTION:
     (`redact()` scrubs every configured secret value out of everything this
     module prints, including exception text, before it reaches `out`).
 
-NO KEY, NO REQUEST: exactly like tmd_obs.py and dams.py, a probe with a
-missing key prints which key is missing and exits non-zero without making
-any request at all.
+NO KEY, NO REQUEST: exactly like dams.py, a probe with a missing key prints
+which key is missing and exits non-zero without making any request at all.
 
 ONE CALL PER ENDPOINT, WITH A PAUSE: this is a diagnostic tool run by hand
 occasionally, not a background refresh — hammering a free government API
@@ -89,7 +88,7 @@ FETCH_TIMEOUT = 10.0
 #: A probe reads XML/JSON documentation payloads, some of them (GISTDA
 #: GeoJSON in particular) potentially large — bounded the same way every
 #: other fetcher in this codebase bounds a response (dashboard._get,
-#: dams._fetch, tmd_obs._get).
+#: dams._fetch, nwp._fetch).
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 #: Between one endpoint and the next — never zero, so a probe run is never
 #: mistaken for a burst of automated traffic.
@@ -200,8 +199,8 @@ def _fetch(url: str, timeout: float, limit: int, headers: "dict[str, str] | None
     status — the caller decides what a 4xx/5xx means for a probe, which is
     itself useful information ("this endpoint needs a different key").
     `headers` (the NWP Bearer token, for the only endpoint family that needs
-    one — GISTDA and the older TMD API both pass their key in the URL
-    instead) is never logged or echoed anywhere by this function."""
+    one — GISTDA passes its key in the URL instead) is never logged or
+    echoed anywhere by this function."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -271,140 +270,6 @@ class ProbeResult:
     pagination_note: str = ""
 
 
-# ------------------------------------------------------------------ TMD ---
-
-#: Every data.tmd.go.th `/api/` endpoint (as opposed to the SEPARATE
-#: `/nwpapi/` product, which takes a Bearer token, not uid/ukey, and is
-#: deliberately excluded here — a different credential is out of scope for
-#: this probe) documented on TMD's own index, https://data.tmd.go.th/api/
-#: index1.php, read there 2026-09-26. All of them take just uid and ukey —
-#: no dataset in this list needs a province/date/station parameter to
-#: return something — and all of them answer XML, never JSON (checked: this
-#: index lists no `format=json` option anywhere). Casing (V1 vs v1, V2 vs
-#: v2) is copied exactly as the index page shows it per endpoint, since TMD's
-#: paths are case-sensitive.
-TMD_ENDPOINTS: tuple[EndpointSpec, ...] = (
-    EndpointSpec(
-        name="Weather3Hours V2 (สภาพอากาศจากสถานีตรวจอากาศ ทุก 3 ชม. — ที่การ์ดอากาศใช้อยู่แล้ว)",
-        url="https://data.tmd.go.th/api/Weather3Hours/V2/?uid={uid}&ukey={ukey}",
-        kind="xml", record_tag="Station",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="WeatherToday V2 (สภาพอากาศปัจจุบันรายสถานี)",
-        url="https://data.tmd.go.th/api/WeatherToday/V2/?uid={uid}&ukey={ukey}",
-        kind="xml", record_tag="Station",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="WeatherForecast7Days v2 (พยากรณ์อากาศ 7 วันล่วงหน้า)",
-        url="https://data.tmd.go.th/api/WeatherForecast7Days/v2/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Date", "date"),
-        place_fields=("Province", "province"),
-    ),
-    EndpointSpec(
-        name="DailyForecast v2 (พยากรณ์อากาศรายวัน)",
-        url="https://data.tmd.go.th/api/DailyForecast/v2/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Date", "date"),
-        place_fields=("Province", "province"),
-    ),
-    EndpointSpec(
-        name="WeatherForecast7DaysByRegion v2 (พยากรณ์ 7 วันแยกภาค)",
-        url="https://data.tmd.go.th/api/WeatherForecast7DaysByRegion/v2/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Date", "date"),
-        place_fields=("Region", "Province", "region", "province"),
-    ),
-    EndpointSpec(
-        name="WeatherWarningNews v2 (ประกาศเตือนภัยกรมอุตุฯ)",
-        url="https://data.tmd.go.th/api/WeatherWarningNews/v2/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("IssueTime", "IssueDate", "DateIssued"),
-    ),
-    EndpointSpec(
-        name="Station v1 (รายชื่อและพิกัดสถานีตรวจอากาศทั้งหมด)",
-        url="https://data.tmd.go.th/api/Station/v1/?uid={uid}&ukey={ukey}",
-        kind="xml", record_tag="Station",
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="DailySeismicEvent v1 (เหตุการณ์แผ่นดินไหวรายวัน)",
-        url="https://data.tmd.go.th/api/DailySeismicEvent/v1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("OriginThai/DateTimeUTC", "DateTimeUTC"),
-        place_fields=("OriginThai/Province",),
-    ),
-    EndpointSpec(
-        name="ThailandClimateNormal v1 (ค่าปกติภูมิอากาศ)",
-        url="https://data.tmd.go.th/api/ThailandClimateNormal/v1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="ThailandMonthlyRainfall v1 (ปริมาณฝนรายเดือน)",
-        url="https://data.tmd.go.th/api/ThailandMonthlyRainfall/v1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Month", "month"),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="RainRegions v1 (ฝนแยกภาค)",
-        url="https://data.tmd.go.th/api/RainRegions/v1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        place_fields=("Region", "region"),
-    ),
-    EndpointSpec(
-        name="Weather3HoursByHydro v1 (สถานีอุทกวิทยา ทุก 3 ชม.)",
-        url="https://data.tmd.go.th/api/Weather3HoursByHydro/V1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="Weather3HoursByAgro v1 (สถานีเกษตรอุตุ ทุก 3 ชม.)",
-        url="https://data.tmd.go.th/api/Weather3HoursByAgro/V1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="Weather3HoursBySynop v1 (สถานีตรวจอากาศผิวพื้น ทุก 3 ชม.)",
-        url="https://data.tmd.go.th/api/Weather3HoursBySynop/V1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="WeatherTodayByHydro v1 (สภาพอากาศปัจจุบัน สถานีอุทกวิทยา)",
-        url="https://data.tmd.go.th/api/WeatherTodayByHydro/V1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="WeatherTodayByAgro v1 (สภาพอากาศปัจจุบัน สถานีเกษตรอุตุ)",
-        url="https://data.tmd.go.th/api/WeatherTodayByAgro/V1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-    EndpointSpec(
-        name="WeatherTodayBySynop v1 (สภาพอากาศปัจจุบัน สถานีตรวจอากาศผิวพื้น)",
-        url="https://data.tmd.go.th/api/weathertodayBySynop/V1/?uid={uid}&ukey={ukey}",
-        kind="xml",
-        freshness_fields=("Observation/DateTime",),
-        place_fields=("StationNameThai", "Province"),
-    ),
-)
-
-def _tmd_url(spec: EndpointSpec, uid: str, ukey: str) -> str:
-    return spec.url.format(uid=urllib.parse.quote(uid, safe=""), ukey=urllib.parse.quote(ukey, safe=""))
-
-
 #: A public, well-known coordinate (central Bangkok) used everywhere a probe
 #: needs "a place" to ask about — never Poom's own address. Shared by the
 #: NWP and GISTDA endpoint tables below.
@@ -419,8 +284,9 @@ _BANGKOK_LAT_LON = {"lat": "13.7563", "lon": "100.5018"}
 #: forecast_location.html and .../main/getting_start.html: no observation
 #: endpoint exists anywhere in this product's own nav), a completely
 #: separate credential (a single Bearer token, "Authorization: Bearer
-#: <token>", from data.tmd.go.th/nwpapi/register) from the uid/ukey pair
-#: TMD_ENDPOINTS above uses. Confirmed documented field names:
+#: <token>", from data.tmd.go.th/nwpapi/register) from the retired TMDAPI
+#: uid/ukey pair (dropped 2026-09-26 — see run_tmd's own docstring).
+#: Confirmed documented field names:
 #:   hourly (max 48h ahead): tc, rh, slp, rain, ws10m, wd10m, ws/wd at
 #:     925/850/700/500/200 hPa, cloudlow, cloudmed, cloudhigh, cond
 #:   daily (max 126 days ahead): tc_max, tc_min, rh, slp, psfc, rain, the
@@ -473,37 +339,43 @@ NWP_ENDPOINTS: tuple[EndpointSpec, ...] = (
 #: this tool exists to print, and a wrong guess at `token` would just be
 #: noise. Every endpoint below needs a location/scope parameter to answer at
 #: all (there is no "give me all of Thailand" call) — this probe uses a
-#: bounding box covering the whole country, or Bangkok's well-known public
-#: coordinate for the two datasets documented as needing a single point,
-#: never anything from Poom's own household.
-_THAILAND_BBOX = "97.3,5.6,105.7,20.5"
+#: SMALL bbox around Bangkok's own well-known public coordinate (never
+#: anything from Poom's own household), not the whole country: GISTDA's own
+#: pagination ignores each endpoint's `limit=5` here anyway (confirmed by
+#: Poom's own live run, 2026-09-26: flood/1day alone paged 21 times, 4200+
+#: features, before hitting the byte cap, because `_paginate_features`
+#: always asks GISTDA_PAGE_LIMIT per page regardless of an endpoint's own
+#: `limit`) — so the only real lever this probe has for staying small is
+#: asking about a SMALL AREA, matching `gistda_flood.py`'s own LOCAL scope
+#: (`_bbox_around`, ~100 km wide) rather than a whole-country box.
+_BANGKOK_BBOX = "99.7018,13.0563,101.3018,14.4563"  # ~±0.8° around Bangkok
 
 GISTDA_ENDPOINTS: tuple[EndpointSpec, ...] = (
     EndpointSpec(
         name="flood/1day (พื้นที่น้ำท่วม ปัจจุบัน/1 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/1day",
-        kind="json", records_key="features", extra_params={"bbox": _THAILAND_BBOX, "limit": "5"},
+        kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
         freshness_fields=("properties.img_date", "properties.date"),
         place_fields=("properties.pv_tn", "properties.province"),
     ),
     EndpointSpec(
         name="flood/3days (พื้นที่น้ำท่วมสะสม 3 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/3days",
-        kind="json", records_key="features", extra_params={"bbox": _THAILAND_BBOX, "limit": "5"},
+        kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
         freshness_fields=("properties.img_date", "properties.date"),
         place_fields=("properties.pv_tn", "properties.province"),
     ),
     EndpointSpec(
         name="flood/7days (พื้นที่น้ำท่วมสะสม 7 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/7days",
-        kind="json", records_key="features", extra_params={"bbox": _THAILAND_BBOX, "limit": "5"},
+        kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
         freshness_fields=("properties.img_date", "properties.date"),
         place_fields=("properties.pv_tn", "properties.province"),
     ),
     EndpointSpec(
         name="flood/30days (พื้นที่น้ำท่วมสะสม 30 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/30days",
-        kind="json", records_key="features", extra_params={"bbox": _THAILAND_BBOX, "limit": "5"},
+        kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
         freshness_fields=("properties.img_date", "properties.date"),
         place_fields=("properties.pv_tn", "properties.province"),
     ),
@@ -512,7 +384,7 @@ GISTDA_ENDPOINTS: tuple[EndpointSpec, ...] = (
         # not a rolling window) — a longer timeout, once, no retry loop.
         name="flood-freq (พื้นที่น้ำท่วมซ้ำซาก 2011-2023)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood-freq",
-        kind="json", records_key="features", extra_params={"bbox": _THAILAND_BBOX, "limit": "5"},
+        kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
         place_fields=("properties.pv_tn", "properties.province"),
         timeout=FETCH_TIMEOUT * 3,
     ),
@@ -911,41 +783,24 @@ def _run_list(specs: tuple[EndpointSpec, ...], urls: list[str], secrets: list[st
 def run_tmd(secret: Callable[[str], str | None], out=sys.stdout, as_json: bool = False,
             fetch: Callable[..., tuple[int, bytes]] | None = None,
             sleep: Callable[[float], None] = time.sleep) -> int:
-    """Probes BOTH TMD credentials this broker knows about, each only if its
-    own key is present: the newer NWP forecast token (TMD_NWP_TOKEN, Bearer
-    header) first, then the older TMDAPI uid/ukey pair (TMD_UID/TMD_UKEY,
-    query params) — the two are unrelated products with unrelated sign-ups
-    (see TMD_ENDPOINTS' and NWP_ENDPOINTS' own comments), so either, both, or
-    neither may be configured at once. Only when NEITHER is present does
-    this exit non-zero without any request."""
+    """Probes TMD's NWP forecast product (TMD_NWP_TOKEN, Bearer header) — the
+    only TMD credential this broker still uses. The older TMDAPI uid/ukey
+    pair was dropped for good (Poom 2026-09-26: no way to sign up); measured
+    values now come from free no-signup sources (SYNOP, METAR, สสน.,
+    Air4Thai) instead. Exits non-zero without any request when no NWP token
+    is present."""
     fetch = fetch or _fetch
     token = secret("TMD_NWP_TOKEN")
-    uid, ukey = secret("TMD_UID"), secret("TMD_UKEY")
-    if not token and not (uid and ukey):
-        print("ยังไม่มี key ของ tmd (nwp หรือ tmdapi) — ใช้ `$B keys set tmd-nwp` "
-              "หรือ `$B keys set tmd`", file=out)
+    if not token:
+        print("ยังไม่มี key ของ tmd-nwp — ใช้ `$B keys set tmd-nwp`", file=out)
         return 1
 
     all_results: list[tuple[ProbeResult, str]] = []
-    if token:
-        if not as_json:
-            print("\n--- NWP (data.tmd.go.th/nwpapi, Bearer token) ---", file=out)
-        urls = [spec.url for spec in NWP_ENDPOINTS]
-        all_results += _run_list(NWP_ENDPOINTS, urls, [token], fetch, out, as_json, sleep,
-                                  headers={"Authorization": f"Bearer {token}"})
-    else:
-        if not as_json:
-            print("\nยังไม่มี key ของ tmd-nwp — ข้ามส่วน NWP (`$B keys set tmd-nwp`)", file=out)
-
-    if uid and ukey:
-        if not as_json:
-            print("\n--- TMDAPI (data.tmd.go.th/api/, uid+ukey) ---", file=out)
-        urls = [_tmd_url(spec, uid, ukey) for spec in TMD_ENDPOINTS]
-        all_results += _run_list(TMD_ENDPOINTS, urls, [uid, ukey], fetch, out, as_json, sleep,
-                                  pause_before_first=bool(token))
-    else:
-        if not as_json:
-            print("\nยังไม่มี key ของ tmd (uid+ukey) — ข้ามส่วน TMDAPI (`$B keys set tmd`)", file=out)
+    if not as_json:
+        print("\n--- NWP (data.tmd.go.th/nwpapi, Bearer token) ---", file=out)
+    urls = [spec.url for spec in NWP_ENDPOINTS]
+    all_results += _run_list(NWP_ENDPOINTS, urls, [token], fetch, out, as_json, sleep,
+                              headers={"Authorization": f"Bearer {token}"})
 
     if as_json:
         print(json.dumps([_as_dict(r, p) for r, p in all_results], ensure_ascii=False, indent=2), file=out)

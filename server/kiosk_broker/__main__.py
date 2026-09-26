@@ -417,14 +417,18 @@ def _keys_set(group: str) -> int:
     """`keys set GROUP`: every secret a group needs, hidden input, never a
     command-line argument (nothing lands in shell history or `ps`), REPLACING
     whatever was there before — for a key that needs to change, like a
-    re-issued TMD account, where `set-key`'s append-only refusal is the wrong
-    tool. See envfile.replace_secrets for the atomic rewrite and the 0600
-    guarantee; the value is never printed, not even its length.
+    re-issued API credential, where `set-key`'s append-only refusal is the
+    wrong tool. See envfile.replace_secrets for the atomic rewrite and the
+    0600 guarantee; the value is never printed, not even its length.
     """
     import getpass
 
     from . import envfile
 
+    if group in envfile.RETIRED_GROUPS:
+        print(f"{group}: เลิกใช้แล้ว (Poom 2026-09-26) — ลบค่าเก่าด้วย `keys unset {group}`",
+              file=sys.stderr)
+        return 2
     names = envfile.KEY_GROUPS.get(group)
     if names is None:
         print(f"{group}: not a known key group. One of: {', '.join(sorted(envfile.KEY_GROUPS))}",
@@ -450,16 +454,20 @@ def _keys_set(group: str) -> int:
 
 def _keys_unset(group: str) -> int:
     """`keys unset GROUP`: removes every secret a group needs from the env
-    file, after an explicit y/N confirmation — for a key entered WRONG (the
-    2026-09-26 mix-up: a GISTDA value typed into TMD_UKEY), where the fix is
-    "gone", not another guess `keys set` would overwrite it with. Prints
-    which names were actually removed; a group with nothing to remove is not
-    an error (unsetting an already-empty group is a no-op, not a refusal)."""
+    file, after an explicit y/N confirmation — for a key entered WRONG (a
+    value typed into the wrong name), or for a retired group (envfile.
+    RETIRED_GROUPS — e.g. "tmd", the old TMDAPI uid/ukey pair dropped
+    2026-09-26) so Poom can clean an old wrong value out of his env file
+    even though nothing writes to those names anymore. `keys set` refuses a
+    retired group; `keys unset` still accepts it. Prints which names were
+    actually removed; a group with nothing to remove is not an error
+    (unsetting an already-empty group is a no-op, not a refusal)."""
     from . import envfile
 
-    names = envfile.KEY_GROUPS.get(group)
+    names = envfile.KEY_GROUPS.get(group) or envfile.RETIRED_GROUPS.get(group)
     if names is None:
-        print(f"{group}: not a known key group. One of: {', '.join(sorted(envfile.KEY_GROUPS))}",
+        known = sorted(set(envfile.KEY_GROUPS) | set(envfile.RETIRED_GROUPS))
+        print(f"{group}: not a known key group. One of: {', '.join(known)}",
               file=sys.stderr)
         return 2
     env_path = config_mod.DEFAULT_HOME / "env"
@@ -643,11 +651,12 @@ def main(argv: list[str] | None = None) -> int:
     p_keys_set = keys_sub.add_parser(
         "set", help="replace every secret a group needs — hidden input, never a command-line "
                     "argument, safe to re-run (unlike set-key, this DOES overwrite)")
-    p_keys_set.add_argument("group", help="e.g. tmd — see envfile.KEY_GROUPS for the full list")
+    p_keys_set.add_argument("group", help="e.g. tmd-nwp — see envfile.KEY_GROUPS for the full list")
     p_keys_unset = keys_sub.add_parser(
         "unset", help="remove every secret a group needs from the env file, after a y/N "
                      "confirmation — for a key entered wrong, where the fix is 'gone'")
-    p_keys_unset.add_argument("group", help="e.g. tmd — see envfile.KEY_GROUPS for the full list")
+    p_keys_unset.add_argument("group", help="e.g. tmd-nwp — see envfile.KEY_GROUPS "
+                                            "(or envfile.RETIRED_GROUPS) for the full list")
     p = sub.add_parser("set-key", help="append one secret to the env file, read without echo; "
                                        "never rewrites the file, refuses a name already there")
     p.add_argument("name", help="e.g. TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, TUYA_DATA_CENTER")
@@ -689,9 +698,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("training-usage", help="what has been spent building training data")
 
     p = sub.add_parser("forecast-score", help="weather-card forecast accuracy per source "
-                                              "(Brier, MAE/bias, flood hits/misses) and the "
-                                              "weights computed from it — see verify.py")
+                                              "and per province (Brier, MAE/bias, flood hits/misses, "
+                                              "measured-station distances) and the weights computed "
+                                              "from it — see verify.py")
     p.add_argument("--days", type=int, default=7, help="how many recent settled days to score")
+    p.add_argument("--area", default=None,
+                   help="province code to score (default: where the kiosk is now); results "
+                        "from different provinces are never pooled")
+    p.add_argument("--all-areas", action="store_true", help="one block per province that has results")
 
     p = sub.add_parser("botnoi-voices",
                        help="EXPERIMENT: Thai male voices from Botnoi, next to Google's, "
@@ -855,9 +869,11 @@ def main(argv: list[str] | None = None) -> int:
         httpd = make_server(cfg, _client(cfg), stt_client=stt_client, tts_api_key=tts_key,
                             botnoi_token=botnoi_token, google_stt_key=google_stt_key)
         logging.getLogger("kiosk_broker").info("stt provider default=%s", cfg.stt_provider)
+        from . import obs as obs_mod
+
         logging.getLogger("kiosk_broker").info(
-            "tmd observations: %s",
-            "on" if (_secret("TMD_UID") and _secret("TMD_UKEY")) else "off (no TMD_UID/TMD_UKEY)")
+            "measured-station readers: %s (no key needed)",
+            ", ".join(name for name, _url in obs_mod.health_sources()) or "none installed")
         logging.getLogger("kiosk_broker").info(
             "listening on http://%s:%d model=%s budget=$%.2f/month",
             cfg.host, cfg.port, cfg.model, cfg.monthly_budget_usd,
@@ -1109,8 +1125,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "forecast-score":
             from . import verify
 
-            return verify.cli_forecast_score(conn, args.days)
-            return 0
+            return verify.cli_forecast_score(conn, args.days, area=args.area,
+                                             all_areas=args.all_areas)
 
         if args.cmd == "botnoi-voices":
             return _botnoi_voices(conn, cfg, args)
@@ -1502,8 +1518,6 @@ def main(argv: list[str] | None = None) -> int:
                 ("QWEN_API_KEY", "the \"qwen\" transcriber (Alibaba, Singapore)"),
                 ("QWEN_WORKSPACE_ID", "optional: the newer Singapore domain for qwen"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
-                ("TMD_UID", "TMD station observations (data.tmd.go.th/api/), for the weather card"),
-                ("TMD_UKEY", "TMD station observations (data.tmd.go.th/api/), for the weather card"),
                 ("TMD_NWP_TOKEN", "TMD NWP forecast (data.tmd.go.th/nwpapi) — probe only, not wired yet"),
                 ("GISTDA_API_KEY", "GISTDA (flood/disaster data) — probe only, not wired yet"),
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
@@ -1531,6 +1545,10 @@ def main(argv: list[str] | None = None) -> int:
             for group, names in sorted(envfile_groups.KEY_GROUPS.items()):
                 present = all(_secret(name) for name in names)
                 print(f"  {group:<10} {'มี' if present else 'ไม่มี'}")
+            for group, names in sorted(envfile_groups.RETIRED_GROUPS.items()):
+                if any(_secret(name) for name in names):
+                    print()
+                    print(f"  {group}: ค่าเก่าที่เลิกใช้แล้วยังอยู่ในไฟล์ — ลบด้วย `keys unset {group}`")
             return 0
 
         if args.cmd == "prompt-size":

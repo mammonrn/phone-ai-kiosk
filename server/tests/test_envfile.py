@@ -100,28 +100,34 @@ def test_a_new_file_is_created_0600(tmp_path):
 
 # --------------------------------------------------- replace_secrets / groups
 
-def test_tmd_is_a_known_key_group_of_uid_and_ukey():
-    assert envfile.KEY_GROUPS["tmd"] == ("TMD_UID", "TMD_UKEY")
+def test_tmd_is_retired_not_a_settable_key_group(tmp_path):
+    # TMDAPI (uid/ukey) was dropped for good (Poom 2026-09-26: no way to sign
+    # up) — "tmd" must not be a group `keys set` can write to any more, but
+    # `keys unset` still needs to find it to clean an old env file.
+    assert "tmd" not in envfile.KEY_GROUPS
+    assert envfile.RETIRED_GROUPS["tmd"] == ("TMD_UID", "TMD_UKEY")
+    assert "TMD_UID" not in envfile.SETTABLE
+    assert "TMD_UKEY" not in envfile.SETTABLE
 
 
 def test_replace_secrets_overwrites_where_set_key_would_refuse(tmp_path):
-    path = _env(tmp_path, "TMD_UID=old-uid\nGROQ_API_KEY=ggg\nTMD_UKEY=old-ukey\n")
-    envfile.replace_secrets(path, {"TMD_UID": "new-uid", "TMD_UKEY": "new-ukey"})
+    path = _env(tmp_path, "TUYA_ACCESS_ID=old-id\nGROQ_API_KEY=ggg\nTUYA_ACCESS_SECRET=old-secret\n")
+    envfile.replace_secrets(path, {"TUYA_ACCESS_ID": "new-id", "TUYA_ACCESS_SECRET": "new-secret"})
     lines = path.read_text(encoding="utf-8").splitlines()
-    assert "TMD_UID=new-uid" in lines
-    assert "TMD_UKEY=new-ukey" in lines
+    assert "TUYA_ACCESS_ID=new-id" in lines
+    assert "TUYA_ACCESS_SECRET=new-secret" in lines
     assert "GROQ_API_KEY=ggg" in lines  # untouched, order aside
-    assert "TMD_UID=old-uid" not in lines
-    assert "TMD_UKEY=old-ukey" not in lines
+    assert "TUYA_ACCESS_ID=old-id" not in lines
+    assert "TUYA_ACCESS_SECRET=old-secret" not in lines
     # No duplicate lines for the replaced names.
-    assert sum(1 for l in lines if l.startswith("TMD_UID=")) == 1
-    assert sum(1 for l in lines if l.startswith("TMD_UKEY=")) == 1
+    assert sum(1 for l in lines if l.startswith("TUYA_ACCESS_ID=")) == 1
+    assert sum(1 for l in lines if l.startswith("TUYA_ACCESS_SECRET=")) == 1
 
 
 def test_replace_secrets_adds_a_name_not_previously_present(tmp_path):
     path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
-    envfile.replace_secrets(path, {"TMD_UID": SECRET})
-    assert f"TMD_UID={SECRET}" in path.read_text(encoding="utf-8").splitlines()
+    envfile.replace_secrets(path, {"TUYA_ACCESS_ID": SECRET})
+    assert f"TUYA_ACCESS_ID={SECRET}" in path.read_text(encoding="utf-8").splitlines()
 
 
 def test_replace_secrets_rejects_an_unknown_name_and_writes_nothing(tmp_path):
@@ -131,16 +137,26 @@ def test_replace_secrets_rejects_an_unknown_name_and_writes_nothing(tmp_path):
     assert path.read_text(encoding="utf-8") == "GROQ_API_KEY=ggg\n"
 
 
+def test_replace_secrets_rejects_the_retired_tmd_uid_and_writes_nothing(tmp_path):
+    # TMD_UID is no longer in SETTABLE at all — `keys set tmd` must refuse,
+    # not silently write it (see __main__._keys_set's own refusal for the
+    # group name; this is the same refusal one level down).
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    with pytest.raises(envfile.EnvError):
+        envfile.replace_secrets(path, {"TMD_UID": "some-value"})
+    assert path.read_text(encoding="utf-8") == "GROQ_API_KEY=ggg\n"
+
+
 def test_replace_secrets_rejects_a_bad_value_and_writes_nothing(tmp_path):
     path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
     with pytest.raises(envfile.EnvError):
-        envfile.replace_secrets(path, {"TMD_UID": "has a space"})
+        envfile.replace_secrets(path, {"TUYA_ACCESS_ID": "has a space"})
     assert path.read_text(encoding="utf-8") == "GROQ_API_KEY=ggg\n"
 
 
 def test_replace_secrets_leaves_no_temp_file_behind(tmp_path):
     path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
-    envfile.replace_secrets(path, {"TMD_UID": SECRET, "TMD_UKEY": SECRET})
+    envfile.replace_secrets(path, {"TUYA_ACCESS_ID": SECRET, "TUYA_ACCESS_SECRET": SECRET})
     leftovers = [p for p in tmp_path.iterdir() if p.name != "env"]
     assert leftovers == []
 
@@ -149,7 +165,7 @@ def test_replace_secrets_leaves_no_temp_file_behind(tmp_path):
 def test_replace_secrets_leaves_the_file_0600(tmp_path):
     path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
     os.chmod(path, 0o644)
-    envfile.replace_secrets(path, {"TMD_UID": SECRET, "TMD_UKEY": SECRET})
+    envfile.replace_secrets(path, {"TUYA_ACCESS_ID": SECRET, "TUYA_ACCESS_SECRET": SECRET})
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
@@ -189,7 +205,7 @@ def test_remove_secrets_only_removes_the_named_half_of_a_pair(tmp_path):
     # The exact 2026-09-26 mix-up: TMD_UKEY held a GISTDA value. Unsetting
     # the whole tmd group must not disturb an unrelated key like gistda's.
     path = _env(tmp_path, "TMD_UID=x\nTMD_UKEY=y\nGISTDA_API_KEY=z\n")
-    removed = envfile.remove_secrets(path, envfile.KEY_GROUPS["tmd"])
+    removed = envfile.remove_secrets(path, envfile.RETIRED_GROUPS["tmd"])
     assert removed == 2
     lines = path.read_text(encoding="utf-8").splitlines()
     assert lines == ["GISTDA_API_KEY=z"]

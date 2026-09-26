@@ -139,23 +139,6 @@ CREATE TABLE IF NOT EXISTS forecast_records (
 CREATE INDEX IF NOT EXISTS forecast_records_due ON forecast_records(kind, settled_at, valid_to);
 CREATE INDEX IF NOT EXISTS forecast_records_score ON forecast_records(kind, source, settled_at);
 
--- Every TMD station's own 3-HOUR rain reading (not the rolling 24h total),
--- one row per station per reporting time — see verify.py's own docstring
--- for why: a 6-hour rain_chance window must be settled by summing the
--- 3-hour slots that fall inside it, and TMD's Weather3Hours answer only
--- ever carries the LATEST reading per station, not history, so this table
--- is what lets a later settle find an earlier slot again. Keyed on the
--- STATION's own rounded position (verify.round_point's rounding), never the
--- kiosk's. Pruned the same KEEP_DAYS as forecast_records.
-CREATE TABLE IF NOT EXISTS tmd_rain_3h (
-    station_lat REAL NOT NULL,
-    station_lon REAL NOT NULL,
-    observed_at REAL NOT NULL,
-    rain_3h_mm  REAL NOT NULL,
-    PRIMARY KEY (station_lat, station_lon, observed_at)
-);
-CREATE INDEX IF NOT EXISTS tmd_rain_3h_prune ON tmd_rain_3h(observed_at);
-
 -- ThaiWater (สสน.) gauges' own HOURLY rain, one row per gauge per hour end,
 -- only gauges near the kiosk (thaiwater_rain.MAX_KM) — the rain ground truth
 -- while TMD's station key is absent. See verify.py's per-value section.
@@ -168,16 +151,28 @@ CREATE TABLE IF NOT EXISTS thaiwater_rain_1h (
 );
 CREATE INDEX IF NOT EXISTS thaiwater_rain_1h_prune ON thaiwater_rain_1h(observed_at);
 
--- TMD stations' 3-hourly AirTemperature, same shape and reason as
--- tmd_rain_3h — the temperature ground truth (empty without TMD_UID/UKEY).
-CREATE TABLE IF NOT EXISTS tmd_temp_3h (
+-- Measured weather from every free station source (obs.py: SYNOP, METAR,
+-- สสน., Air4Thai), one row per source per rounded station position per
+-- whole hour, only stations near the kiosk's current position or near a
+-- forecast still waiting to settle (obs.STORE_KM) — the temperature and
+-- fallback rain ground truth. Station positions are public; nothing about
+-- the kiosk is stored here. Pruned the same KEEP_DAYS as forecast_records.
+CREATE TABLE IF NOT EXISTS obs_hourly (
+    source      TEXT NOT NULL,
     station_lat REAL NOT NULL,
     station_lon REAL NOT NULL,
+    hour        REAL NOT NULL,
     observed_at REAL NOT NULL,
-    temp_c      REAL NOT NULL,
-    PRIMARY KEY (station_lat, station_lon, observed_at)
+    station_id  TEXT,
+    elev_m      REAL,
+    temp_c      REAL,
+    rh          REAL,
+    wind_kmh    REAL,
+    rain_mm     REAL,
+    rain_hours  REAL,
+    PRIMARY KEY (source, station_lat, station_lon, hour)
 );
-CREATE INDEX IF NOT EXISTS tmd_temp_3h_prune ON tmd_temp_3h(observed_at);
+CREATE INDEX IF NOT EXISTS obs_hourly_prune ON obs_hourly(hour);
 """
 
 
@@ -202,6 +197,13 @@ MIGRATIONS = [
     # what makes "no audio left this room before the wake word" checkable:
     # count /v1/stt rows over a quiet hour and the answer is a number.
     ("requests", "endpoint", "TEXT"),
+    # verify.py by AREA (Poom 2026-09-26: the kiosk travels; scores never
+    # pool provinces): the province code a forecast was made for, and which
+    # measured source / how far away settled it. NULL on older rows —
+    # verify derives the area from the rounded point then.
+    ("forecast_records", "area_code", "TEXT"),
+    ("forecast_records", "truth_source", "TEXT"),
+    ("forecast_records", "truth_km", "REAL"),
 ]
 
 

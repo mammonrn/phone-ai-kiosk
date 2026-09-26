@@ -165,5 +165,7 @@ def test_record_verification_writes_thaiwater_readings_and_loads_weights(board, 
     board.thaiwater_rain.poll_once(NOW)
     board.record_verification(conn, {"weather": {}, "forecast": {}}, *KIOSK, NOW)
     assert conn.execute("SELECT COUNT(*) FROM thaiwater_rain_1h").fetchone()[0] == 1
-    assert board._blend_weights["temp_c"] == {"open_meteo": 0.5, "tmd_nwp": 0.5}
-    assert verify.value_weights(conn)["temp_c"] == {"open_meteo": 0.5, "tmd_nwp": 0.5}
+    area = verify.area_code_for(KIOSK)
+    assert board._blend_weights[area]["temp_c"] == {"open_meteo": 0.5, "tmd_nwp": 0.5}
+    assert verify.value_weights(conn, area)["temp_c"] == {"open_meteo": 0.5, "tmd_nwp": 0.5}
+    assert verify.value_weights(conn, "10") == {} or area == "10"   # learned here, not elsewhere

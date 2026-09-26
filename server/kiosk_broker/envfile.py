@@ -38,12 +38,11 @@ SETTABLE: dict[str, str] = {
     "GOOGLE_TTS_API_KEY": "/v1/tts",
     "QWEN_API_KEY": "Alibaba Cloud Model Studio (Singapore) key, for the \"qwen\" transcriber",
     "QWEN_WORKSPACE_ID": "optional: the Model Studio workspace id, for the newer Singapore domain",
-    "TMD_UID": "data.tmd.go.th (Thai Meteorological Department) API uid, for tmd_obs.py — "
-               "the OLDER /api/ product (measured station observations), NOT the NWP token below",
-    "TMD_UKEY": "data.tmd.go.th (Thai Meteorological Department) API ukey, for tmd_obs.py",
-    "TMD_NWP_TOKEN": "data.tmd.go.th/nwpapi Bearer token (the NEWER NWP forecast product — a "
-                      "different sign-up and a different credential from TMD_UID/TMD_UKEY above); "
-                      "probe.py only so far, not wired into any live feature yet",
+    "TMD_NWP_TOKEN": "data.tmd.go.th/nwpapi Bearer token (the NWP forecast product — a MODEL "
+                      "forecast, not a station reading); probe.py only so far, not wired into "
+                      "any live feature yet. The older TMDAPI uid/ukey pair (measured station "
+                      "observations) is retired — Poom cannot sign up for it; measured values "
+                      "come from free no-signup sources (SYNOP, METAR, สสน., Air4Thai) instead",
     "GISTDA_API_KEY": "GISTDA (api-gateway.gistda.or.th) API key — a single value sent as the "
                        "api_key query parameter, for probe.py (not wired into any live feature yet)",
 }
@@ -52,10 +51,9 @@ SETTABLE: dict[str, str] = {
 #: Named groups of secrets that belong together, for `keys` (a มี/ไม่มี
 #: summary per group rather than per env-var name) and `keys set GROUP`
 #: (replace every secret a group needs in one prompt, hidden input). A group
-#: is "มี" only when every name in it has a value — TMD needs both TMD_UID
-#: and TMD_UKEY to do anything, so half a pair present is still "ไม่มี".
+#: is "มี" only when every name in it has a value — a pair with only one
+#: half present is still "ไม่มี" (see tuya's three-way group below).
 KEY_GROUPS: dict[str, tuple[str, ...]] = {
-    "tmd": ("TMD_UID", "TMD_UKEY"),
     "tmd-nwp": ("TMD_NWP_TOKEN",),
     "gistda": ("GISTDA_API_KEY",),
     "qwen": ("QWEN_API_KEY",),
@@ -64,6 +62,17 @@ KEY_GROUPS: dict[str, tuple[str, ...]] = {
     "anthropic": ("ANTHROPIC_API_KEY",),
     "tuya": ("TUYA_ACCESS_ID", "TUYA_ACCESS_SECRET", "TUYA_DATA_CENTER"),
     "ewelink": ("EWELINK_APP_ID", "EWELINK_APP_SECRET"),
+}
+
+#: Groups `keys set` refuses (retired for good) but `keys unset` still
+#: accepts, so Poom can clean an old wrong value out of his env file even
+#: though nothing writes to these names anymore. TMDAPI's uid/ukey pair was
+#: dropped 2026-09-26 (Poom cannot sign up for a TMD account) — measured
+#: values now come from free no-signup sources (SYNOP, METAR, สสน.,
+#: Air4Thai) instead; the separate NWP forecast product (TMD_NWP_TOKEN,
+#: "tmd-nwp" above) is unaffected and stays.
+RETIRED_GROUPS: dict[str, tuple[str, ...]] = {
+    "tmd": ("TMD_UID", "TMD_UKEY"),
 }
 
 

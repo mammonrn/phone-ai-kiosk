@@ -1,8 +1,13 @@
 """nwp.py — TMD NWP forecast (data.tmd.go.th/nwpapi).
 
-tests/data/nwp/*.json are SYNTHETIC (see tests/data/nwp/README.md): nobody
-local holds a TMD_NWP_TOKEN, so these match the documented response shape
-with made-up values, including one hour/day with every field null.
+tests/data/nwp/*.json match the REAL field set and top-level key spelling
+confirmed by Poom's own live probe on 2026-09-26 (`$B probe tmd`):
+"WeatherForecasts" (not the docs page's typo'd "WeatherForcasts"),
+cloudhigh/cloudlow/cloudmed/cond/rain/rh/slp/tc/time/wd10m/ws10m hourly,
+plus psfc/swdown/tc_max/tc_min daily (see tests/data/nwp/README.md) — the
+values themselves are still made-up (nobody local holds the real token),
+including one hour/day with every field null. The daily rain sample
+(62.3mm, 26 Sep) matches Poom's own probe output exactly.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ def test_parse_hourly_units_and_conversion():
     second = rows[1]
     # highest of cloudlow=30, cloudmed=45, cloudhigh=0
     assert second["cloud_pct"] == 45.0
+    assert first["slp_hpa"] == 1008.5
 
 
 def test_parse_hourly_missing_fields_are_none():
@@ -42,15 +48,21 @@ def test_parse_hourly_missing_fields_are_none():
     assert third["rh"] is None
     assert third["rain_mm"] is None
     assert third["wind_kmh"] is None
+    assert third["slp_hpa"] is None
     assert third["cloud_pct"] is None
     assert third["t"] is not None  # the timestamp itself is still readable
 
 
-def test_parse_hourly_timestamp_is_epoch_in_bangkok_offset():
+def test_parse_hourly_timestamp_is_shifted_back_one_hour_from_tmds_own_time():
+    # TMD's own "time": "2026-09-26T13:00:00+07:00" is read (WRF-standard,
+    # 🔶 see nwp.py's own docstring) as the END of the hour `rain` covers, so
+    # this module's own "t" names the START of that hour: 12:00, not 13:00 —
+    # keeping the same "t = start of hour covered" contract blend.py already
+    # assumes for Open-Meteo's own series.
     rows = nwp.parse_hourly(HOURLY_RAW)
-    # 2026-09-26T13:00:00+07:00
     import datetime as dt
-    expected = dt.datetime(2026, 9, 26, 13, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=7))).timestamp()
+    tmd_time = dt.datetime(2026, 9, 26, 13, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=7)))
+    expected = tmd_time.timestamp() - nwp.HOURLY_TIME_SHIFT_SECONDS
     assert rows[0]["t"] == expected
 
 
@@ -61,11 +73,22 @@ def test_parse_daily_units_and_conversion():
     assert first["date"] == "2026-09-26"
     assert first["tmin"] == 26.0
     assert first["tmax"] == 34.0
-    assert first["rain_mm"] == 2.0
+    # matches Poom's own live probe sample (Bangkok, 26 Sep)
+    assert first["rain_mm"] == 62.3
     assert first["rh"] == 70.0
     # 5.0 m/s * 3.6 = 18.0 km/h
     assert first["wind_kmh"] == 18.0
     assert first["cloud_pct"] == 40.0
+    assert first["slp_hpa"] == 1009.0
+    assert first["swdown_wm2"] == 210.4
+
+
+def test_parse_daily_no_time_shift_date_already_names_the_start_of_day():
+    # Unlike hourly, the daily row is not shifted: Poom's own probe sample
+    # ties the "2026-09-26T00:00:00+07:00" row to "26 Sep"'s rain, i.e. the
+    # date already names the start of the 24h window it covers.
+    rows = nwp.parse_daily(DAILY_RAW)
+    assert rows[0]["date"] == "2026-09-26"
 
 
 def test_parse_daily_missing_fields_are_none():
@@ -75,11 +98,22 @@ def test_parse_daily_missing_fields_are_none():
     assert third["tmin"] is None
     assert third["tmax"] is None
     assert third["cloud_pct"] is None
+    assert third["slp_hpa"] is None
+    assert third["swdown_wm2"] is None
 
 
 def test_parse_hourly_empty_payload_yields_empty_list():
     assert nwp.parse_hourly({}) == []
-    assert nwp.parse_hourly({"WeatherForcasts": []}) == []
+    assert nwp.parse_hourly({"WeatherForecasts": []}) == []
+    assert nwp.parse_hourly({"WeatherForcasts": []}) == []  # the old typo'd key, still tolerated
+
+
+def test_parse_hourly_accepts_the_old_typod_key_as_a_fallback():
+    # Defensive only — Poom's own live probe confirmed "WeatherForecasts" is
+    # the real spelling; this just guards against ever silently going back
+    # to an empty-list parse if some deployment answers with the typo.
+    typo_raw = {"WeatherForcasts": HOURLY_RAW["WeatherForecasts"]}
+    assert nwp.parse_hourly(typo_raw) == nwp.parse_hourly(HOURLY_RAW)
 
 
 def test_parse_daily_empty_payload_yields_empty_list():

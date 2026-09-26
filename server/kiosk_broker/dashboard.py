@@ -51,15 +51,15 @@ THE SOURCES, checked before they were chosen:
   telling anyone, which is exactly why the stale-value handling above exists.
 * Nationwide warnings (กรมอุตุฯ CAP, GDACS) — see alerts.py; one cache for
   every phone, refreshed in the background, the same items Jarvis reads out.
-* TMD (data.tmd.go.th, Weather3Hours) — the current temperature and humidity
-  MEASURED by the nearest ground station, when one has reported within the
-  hour and close enough to mean this position (tmd_obs.py, ≤50 km, ≤3 h).
-  Preferred over Open-Meteo's modelled `current` for those two fields while
-  it passes its own checks; Open-Meteo becomes the cross-check, logged (never
-  hidden) when the two disagree by more than 5°C. Off with no request or log
-  noise until Poom registers a free account and TMD_UID/TMD_UKEY are set —
-  see tmd_obs.py's own docstring for the endpoint and INSTALL.md for the
-  registration steps.
+* Measured stations (obs.py: กรมอุตุฯ SYNOP, every Thai airport's METAR,
+  สสน. and Air4Thai stations — all free, no sign-up) — the current
+  temperature and humidity MEASURED by the station obs.py chooses nearest
+  the kiosk's CURRENT position, only when it is close enough (obs.MAX_KM per
+  value, and for temperature a similar elevation) and fresh enough
+  (obs.MAX_AGE_SECONDS per source). Preferred over Open-Meteo's modelled
+  `current` for those two fields; Open-Meteo becomes the cross-check,
+  logged (never hidden) when the two disagree by more than 5°C. No station
+  near enough: the modelled value, said so by `temp_source`.
 
 WHAT THE GOLD PERCENTAGE IS MEASURED AGAINST, because a percentage with no
 stated base is a number pretending to be information. `/latest` is the only
@@ -169,10 +169,10 @@ CREDITS = {
     "place": "© OpenStreetMap contributors (ODbL)",
 }
 
-#: Appended to the weather panel's credit only on a fetch where a TMD field
-#: actually answered (see Dashboard.snapshot) — attribution for a source that
-#: was used, not a source that merely could have been.
-TMD_CREDIT_SUFFIX = " · กรมอุตุนิยมวิทยา (TMD, Weather3Hours)"
+#: The weather panel's credit gains " · <station source>" only on a fetch
+#: where a measured value actually answered (see Dashboard.snapshot) —
+#: attribution for a source that was used, not one that merely could have
+#: been. The texts are obs.credit()'s.
 
 #: verify.py source labels — short and stable, since compute_weights groups
 #: by this string exactly (see verify.py's own docstring). "ensemble" and
@@ -186,11 +186,10 @@ FLOOD_LEVEL_SOURCE = "ตู้คำนวณ"
 #: dashboard every few seconds and none of this needs to run that often.
 VERIFY_SETTLE_INTERVAL_SECONDS = 600
 
-#: How often Dashboard.tmd_stations refetches the WHOLE station list — TMD's
-#: own data changes every 3h (tmd_obs.py's own docstring); half of that is
-#: plenty to have every station on hand for verify.py's rain-window
-#: settling without adding a real-time load on TMD's API.
-TMD_STATIONS_TTL_SECONDS = 3600  # TMD publishes every 3 h at an uneven lag; hourly catches each slot once
+#: How often a dashboard request also stores obs.py's latest readings (the
+#: timer stores them after every poll anyway) — and always right after a move.
+OBS_STORE_INTERVAL_SECONDS = 600
+
 
 
 def _local_time_to_epoch(value: str) -> float:
@@ -323,12 +322,12 @@ def _picked(block: dict, names) -> dict:
     return {name: _pick(block, name) for name in names}
 
 
-def fetch_weather(latitude: float, longitude: float, timeout: float, secret=None) -> dict:
-    """`secret` is a `name -> value` callable (envfile.reader), passed down to
-    tmd_obs.fetch_reading so TMD_UID/TMD_UKEY are read fresh every call and
-    never kept here; None (the default, and what every existing caller/test
-    still passes) means "TMD is off", same as the key being absent."""
-    from . import forecast, tmd_obs, weather_checks
+def fetch_weather(latitude: float, longitude: float, timeout: float, measured=None,
+                  swdown_today: "float | None" = None) -> dict:
+    """`measured` is a `(kind, elevation_m) -> obs.choose() result | None`
+    callable (Dashboard passes obs.Observations.nearest for this position);
+    None means "no measured source", the modelled values only."""
+    from . import forecast, weather_checks
     raw = _get(WEATHER_URL.format(lat=latitude, lon=longitude), timeout)
     current = raw["current"]
     daily = _picked(raw.get("daily", {}) or {}, (
@@ -374,41 +373,41 @@ def fetch_weather(latitude: float, longitude: float, timeout: float, secret=None
     wind_kmh = weather_checks.checked(_first_int(daily.get("wind_speed_10m_max")),
                                       *weather_checks.WIND_RANGE)
 
-    # TMD (tmd_obs.py): a MEASURED reading from the nearest ground station,
-    # used as the primary for temp_c/humidity — the two fields above that mean
-    # "right now" the same way TMD's reading does. `wind_kmh` above is
+    # MEASURED (obs.py): the station obs.py chooses for THIS position, used
+    # as the primary for temp_c/humidity — the two fields above that mean
+    # "right now" the same way a station reading does. `wind_kmh` above is
     # `wind_speed_10m_max`, TODAY'S FORECAST PEAK, and the daily rain total is
     # a forecast sum for the whole day — neither is "wind/rain right now", so
-    # TMD's current wind and its rolling 24h rainfall are NOT written into
-    # those fields (that would quietly change what the number on screen means
-    # without changing its label). They travel as their own tmd_* fields
-    # instead, for a screen or a spoken answer that wants to say what a
-    # station actually measured, alongside what the number already there
-    # means. `secret` is None for every existing caller (tests, and this
-    # module's own defaults) — TMD stays off there exactly like a missing key.
+    # a station's current wind is NOT written into those fields (that would
+    # quietly change what the number on screen means without changing its
+    # label); it travels in `measured` instead, with the station's source,
+    # name and distance, for a screen or a spoken answer that wants to say
+    # what a station actually measured. Open-Meteo's own elevation for this
+    # point lets obs.py refuse a station at a very different height.
+    model_temp_c = round(float(temp_c), 1)
     temp_source = "Open-Meteo"
     humidity_source = "Open-Meteo"
-    tmd_wind_now_kmh = None
-    tmd_rain_24h_mm = None
-    tmd_station_km = None
-    if secret is not None:
-        tmd = tmd_obs.fetch_reading(latitude, longitude, timeout, secret)
-        if tmd is not None:
-            tmd_temp = tmd.get("temp_c")
-            if tmd_temp is not None:
-                if temp_c is not None and abs(tmd_temp - temp_c) > tmd_obs.TEMP_DISAGREEMENT_C:
-                    log.info("tmd/open-meteo temperature disagree by more than %.0f, "
-                            "preferring tmd", tmd_obs.TEMP_DISAGREEMENT_C)
-                temp_c = tmd_temp
-                temp_source = "TMD"
-                tmd_station_km = tmd.get("station_km")
-            tmd_humidity = tmd.get("humidity")
-            if tmd_humidity is not None:
-                humidity = tmd_humidity
-                humidity_source = "TMD"
-                tmd_station_km = tmd.get("station_km")
-            tmd_wind_now_kmh = tmd.get("wind_kmh")
-            tmd_rain_24h_mm = tmd.get("rain_mm")
+    measured_out: dict = {}
+    if measured is not None:
+        elevation = raw.get("elevation")
+        elevation = float(elevation) if isinstance(elevation, (int, float)) else None
+        from . import obs
+        for kind in ("temp", "rh", "wind"):
+            found = measured(kind, elevation)
+            if found:
+                measured_out[kind] = {k: found[k] for k in
+                                      ("value", "source", "name", "distance_km", "observed_at")}
+        station_temp = measured_out.get("temp")
+        if station_temp is not None:
+            if abs(station_temp["value"] - temp_c) > weather_checks.TEMP_DISAGREEMENT_C:
+                log.info("station/open-meteo temperature disagree by more than %.0f, "
+                         "preferring the station", weather_checks.TEMP_DISAGREEMENT_C)
+            temp_c = station_temp["value"]
+            temp_source = obs.LABELS.get(station_temp["source"], station_temp["source"])
+        station_rh = measured_out.get("rh")
+        if station_rh is not None:
+            humidity = station_rh["value"]
+            humidity_source = obs.LABELS.get(station_rh["source"], station_rh["source"])
 
     # UV NOW, NOT THE DAY'S PEAK (Poom, 2026-09-23: the card said "UV 8" at
     # night), and INTERPOLATED, NOT THE HOUR'S START (2026-09-26: 07:52 read
@@ -420,10 +419,18 @@ def fetch_weather(latitude: float, longitude: float, timeout: float, secret=None
     # question, named as the peak.
     uv = None
     if is_day:
+        # Second, independent check (0.72): strong sun all day by NWP's daily
+        # shortwave but a UV peak near zero (or the reverse) = a bad series.
+        from . import uv_check
+        suspect = uv_check.plausible_uv(
+            _first_number(daily.get("uv_index_max")), swdown_today) is False
+        if suspect:
+            log.info("uv day peak contradicts shortwave, trying backup")
         uv, _source = weather_checks.compute_uv(
             hourly_raw.get("time"), _pick(hourly_raw, "uv_index"), current_time,
             latitude, longitude, current.get("cloud_cover"),
-            lambda: _get(weather_checks.UV_BACKUP_URL.format(lat=latitude, lon=longitude), timeout))
+            lambda: _get(weather_checks.UV_BACKUP_URL.format(lat=latitude, lon=longitude), timeout),
+            primary_suspect=suspect)
 
     return {
         "temp_c": round(float(temp_c), 1),
@@ -451,19 +458,21 @@ def fetch_weather(latitude: float, longitude: float, timeout: float, secret=None
         # Tomorrow and the day after by their own numbers (forecast.day_lines), or None.
         "days": forecast.day_lines(daily),
         "model": "ECMWF",
-        # Which source answered temp_c/humidity — "TMD" (measured, the nearest
-        # station) or "Open-Meteo" (modelled) — the same idea as air's "source"
-        # for pm25. "Open-Meteo" on every fetch until Poom's TMD_UID/TMD_UKEY
-        # are set; tmd_obs.py is otherwise never called.
+        # Which source answered temp_c/humidity — a station source label
+        # (obs.LABELS: "SYNOP", "METAR", "สสน.", "Air4Thai") or "Open-Meteo"
+        # (modelled, no station close and fresh enough) — the same idea as
+        # air's "source" for pm25.
         "temp_source": temp_source,
         "humidity_source": humidity_source,
-        # A TMD station's OWN current wind and its rolling 24h rainfall, kept
-        # apart from wind_kmh/rain_mm above (today's forecast peak/total) so
-        # neither field quietly changes what it means. None until a station
-        # is close and fresh enough (tmd_obs.MAX_KM/MAX_AGE_SECONDS).
-        "tmd_wind_now_kmh": tmd_wind_now_kmh,
-        "tmd_rain_24h_mm": tmd_rain_24h_mm,
-        "tmd_station_km": tmd_station_km,
+        # Open-Meteo's own modelled temperature, kept even when a station
+        # replaced it on the card — what verify.py records as the forecast
+        # to check against the stations later.
+        "model_temp_c": model_temp_c,
+        # Each measured value that answered, with its station's source,
+        # name, distance from this position (km) and reading time — temp,
+        # rh, and the station's CURRENT wind (kept apart from wind_kmh
+        # above, today's forecast peak). {} when none was close and fresh.
+        "measured": measured_out,
     }
 
 
@@ -838,7 +847,9 @@ class Dashboard:
         from . import blend, thaiwater_rain
         self._blend_om = blend.open_meteo_cache()
         self._nwp = self._optional("nwp", "NwpCache")
-        self._blend_weights: dict = {}
+        #: verify.py's blend shares PER AREA (province code) — learned in one
+        #: province, never applied in another.
+        self._blend_weights: dict[str, dict] = {}
         self._blend_cache: dict[tuple[float, float], tuple[float, dict | None]] = {}
         # Measured hourly rain near the kiosk (thaiwater_rain.py) — the rain
         # ground truth; collected by its own timer so a night with the screen
@@ -851,30 +862,28 @@ class Dashboard:
         # never blocking the dashboard request itself.
         self.dams = dams.Dams()
         self.radar = radar.RadarCache()
+        # Measured stations nationwide (obs.py): one timer polls every source
+        # whatever the phone does, so nights are complete; its sink stores
+        # the readings near the kiosk (and near forecasts still waiting to
+        # settle) into SQLite for verify.py.
+        from . import obs
+        self.obs = obs.Observations(sink=self._store_observations)
+        #: Set by the first snapshot with a real (non-fallback) position —
+        #: the timer stores nothing near a position the phone never reported.
+        self._real_position: tuple[float, float] | None = None
         # The last position a snapshot was asked for — Jarvis (service.py)
         # has no position of its own to send (see handle_chat), so its
         # forecast answers read the kiosk's own last-seen position here,
         # falling back like clean_coords does when there has been none yet.
         self._last_position: tuple[float, float] = (FALLBACK_LATITUDE, FALLBACK_LONGITUDE)
-        # `name -> value` over the broker's own env file, read fresh every
-        # call (same as home_control's use of envfile.reader) — TMD_UID/
-        # TMD_UKEY are looked up when fetch_weather actually needs them, never
-        # kept here, so a `keys set tmd` while the broker is running takes
-        # effect on the next fetch with no restart. (Set above, before the
-        # flood forecast, which hands it to GISTDA.)
-        # verify.py wiring (forecast verification): the full TMD station list
-        # from the last successful fetch (see fetch_weather's station_sink
-        # and _store_tmd_stations) — needed for rain-window settling, which
-        # has no single position to ask about; and an in-process dedup set so
+        # verify.py wiring (forecast verification): an in-process dedup set so
         # a kiosk polling the dashboard every few seconds does not insert the
         # SAME still-open forecast window into forecast_records on every
-        # request (see record_verification). Both are process memory only,
-        # never written anywhere themselves.
-        self._tmd_stations: list[dict] = []
-        self._tmd_stations_at: float = 0.0
-        self._tmd_stations_refreshing: bool = False
+        # request (see record_verification). Process memory only.
         self._verify_recorded: set[tuple] = set()
         self._last_verify_settle: float = 0.0
+        self._last_obs_store: float = 0.0
+        self._last_obs_point: tuple[float, float] | None = None
 
     def _optional(self, module: str, cls: str):
         """nwp.NwpCache / gistda_flood.GistdaFlood built with the env-file
@@ -886,6 +895,28 @@ class Dashboard:
         except (ImportError, AttributeError, TypeError) as exc:
             log.warning("optional source %s unavailable: %s", module, type(exc).__name__)
             return None
+
+    def _uv_inputs(self, latitude: float, longitude: float, now: float) -> dict:
+        """fetch_weather's optional UV-check input, only when there is one."""
+        swdown = self._swdown_today(latitude, longitude, now)
+        return {"swdown_today": swdown} if swdown is not None else {}
+
+    def _swdown_today(self, latitude: float, longitude: float, now: float) -> "float | None":
+        """NWP's daily-mean shortwave (W/m²) for today at this position, from
+        the cache only (never waits); None without an NWP token or data."""
+        if self._nwp is None:
+            return None
+        try:
+            data = self._nwp.get(latitude, longitude, now)
+        except Exception:  # noqa: BLE001 - a check input, never a reason to fail the card
+            return None
+        import datetime as _dt
+        from . import alerts as _alerts
+        today = _dt.datetime.fromtimestamp(now, _alerts.BANGKOK).strftime("%Y-%m-%d")
+        for day in (data or {}).get("daily") or []:
+            if day.get("date") == today:
+                return day.get("swdown_wm2")
+        return None
 
     def blended(self, latitude: float, longitude: float, now: float | None = None) -> dict | None:
         """blend.blend()'s combined forecast for this position, or None when
@@ -899,7 +930,7 @@ class Dashboard:
             cached = self._blend_cache.get(key)
             if cached and now - cached[0] < blend.BLEND_TTL_SECONDS:
                 return cached[1]
-            weights = dict(self._blend_weights)
+            weights = dict(self._blend_weights.get(self._area_of(key), {}))
         try:
             om = self._blend_om.get(key[0], key[1], now)
             nwp = self._nwp.get(key[0], key[1], now) if self._nwp is not None else None
@@ -914,6 +945,29 @@ class Dashboard:
             self._blend_cache[key] = (now, out)
         return out
 
+    @staticmethod
+    def _area_of(key: tuple[float, float]) -> "str | None":
+        from . import flood_forecast
+        return flood_forecast.nearest_province_code(key[0], key[1])
+
+    def _store_observations(self, reports: list, now: float) -> None:
+        """obs.Observations' sink, called by its timer after every poll:
+        stores the readings near the kiosk's last real position and near
+        every forecast still waiting to settle. Own short-lived connection
+        (the timer is its own thread)."""
+        from . import obs, store, verify
+        db_path = getattr(self.cfg, "db_path", None)
+        if db_path is None:
+            return
+        conn = store.connect(db_path)
+        try:
+            points = verify.open_points(conn, now)
+            if self._real_position is not None:
+                points = [self._real_position, *points]
+            obs.record_hourly(conn, reports, points, now, keep_days=verify.KEEP_DAYS)
+        finally:
+            conn.close()
+
     def position(self) -> tuple[float, float]:
         """The kiosk's own last-seen position — Jarvis's forecast answers use
         this since chat questions carry no position of their own."""
@@ -925,46 +979,10 @@ class Dashboard:
         LocalRainCache.raw. `wait=True` for Jarvis, asked on purpose."""
         return self._local_rain.raw(latitude, longitude, now, wait=wait)
 
-    def tmd_stations(self, now: float) -> list[dict]:
-        """The full TMD station list, refreshed in the background at most
-        every TMD_STATIONS_TTL_SECONDS — a SEPARATE, occasional fetch from
-        the per-position weather panel above (that one only ever asks about
-        the kiosk's own nearest station); [] when TMD is off or nothing has
-        answered yet, and NEVER blocks the caller (same non-blocking shape as
-        alerts.Alerts.payload). verify.py's rain-window settling needs every
-        station, which no single position's weather fetch would carry (see
-        record_verification)."""
-        with self._lock:
-            due = now - self._tmd_stations_at >= TMD_STATIONS_TTL_SECONDS
-            already = self._tmd_stations_refreshing
-            if due and not already:
-                self._tmd_stations_at = now
-                self._tmd_stations_refreshing = True
-                start = True
-            else:
-                start = False
-            snapshot = list(self._tmd_stations)
-        if start:
-            threading.Thread(target=self._refresh_tmd_stations, name="tmd-stations-refresh",
-                             daemon=True).start()
-        return snapshot
-
-    def _refresh_tmd_stations(self) -> None:
-        from . import tmd_obs
-
-        try:
-            stations = tmd_obs.fetch_stations(self.cfg.dashboard_timeout, self._secret)
-        finally:
-            with self._lock:
-                self._tmd_stations_refreshing = False
-        if stations is not None:
-            with self._lock:
-                self._tmd_stations = stations
-
     def record_verification(self, conn, snapshot: dict, latitude: float, longitude: float,
                             now: float) -> None:
         """Records every forecast THIS snapshot actually shows (verify.py),
-        settles what has come due, and keeps the TMD 3-hour rain table fed —
+        settles what has come due, and keeps the measured-truth tables fed —
         all from data already fetched for the screen; no extra outbound call.
         Cheap, local SQLite only; the caller (service.py) wraps this so a bug
         here cannot take the dashboard itself down, the same rule as the
@@ -972,7 +990,7 @@ class Dashboard:
 
         DEDUP (see the module docstring's own instruction: never record the
         SAME shown forecast twice per request): "temp"/"uv" are point values
-        that are only ever new when Open-Meteo/TMD were actually just
+        that are only ever new when Open-Meteo was actually just
         fetched (`age_seconds == 0` on the weather panel — recording on every
         polled request, which shares the SAME weather reading, would record
         the same forecast many times over its whole TTL for no reason).
@@ -983,13 +1001,19 @@ class Dashboard:
         """
         from . import verify
 
+        from . import obs
+
+        area_code = verify.set_kiosk_area(conn, latitude, longitude, now)
         weather = snapshot.get("weather") or {}
         if weather.get("ok") and weather.get("age_seconds") == 0:
-            temp_c = weather.get("temp_c")
-            if temp_c is not None:
+            # The MODELLED value only: a station's own reading settled
+            # against stations would be checking a thermometer with itself.
+            model_temp = weather.get("model_temp_c")
+            if model_temp is None and weather.get("temp_source") == "Open-Meteo":
+                model_temp = weather.get("temp_c")  # a panel from before model_temp_c existed
+            if model_temp is not None:
                 verify.record(conn, kind="temp", area=(latitude, longitude),
-                              source=weather.get("temp_source") or "Open-Meteo",
-                              valid_from=now, valid_to=now, value=temp_c, now=now)
+                              source="Open-Meteo", valid_from=now, valid_to=now, value=model_temp, now=now)
             uv = weather.get("uv")
             if uv is not None:
                 verify.record(conn, kind="uv", area=(latitude, longitude),
@@ -1007,15 +1031,18 @@ class Dashboard:
             verify.observe_flood(
                 conn, thaiwater_stations=flood_forecast.stations_with_province_code(raw_stations), now=now)
 
-        # Feeds verify's rain-window ground truth table with whatever TMD
-        # currently carries — a no-op list when TMD is off (see
-        # _store_tmd_stations/tmd_stations).
-        stations = self.tmd_stations(now)
-        verify.record_tmd_rain_3h(conn, stations, now=now)
-        verify.record_tmd_temp_3h(conn, stations, now=now)
-        # ThaiWater's hourly gauges near THIS position (thaiwater_rain.py):
-        # its timer collects them, this writes what it has into SQLite.
-        self.thaiwater_rain.set_points([(latitude, longitude)])
+        # Measured truth near THIS position and near every forecast still
+        # waiting to settle (the kiosk may have moved on since): obs.py's
+        # latest readings (its timer also stores them on its own), and
+        # ThaiWater's hourly gauges, whose timer collects around the same
+        # points.
+        points = [(latitude, longitude), *verify.open_points(conn, now)]
+        if now - self._last_obs_store >= OBS_STORE_INTERVAL_SECONDS or points[0] != self._last_obs_point:
+            # Same readings as the timer's own store; here too so a move is
+            # stored at once, but not on every few-second poll.
+            self._last_obs_store, self._last_obs_point = now, points[0]
+            obs.record_hourly(conn, self.obs.reports(), points, now, keep_days=verify.KEEP_DAYS)
+        self.thaiwater_rain.set_points(points)
         self.thaiwater_rain.ensure_running()
         verify.record_thaiwater_rain_1h(conn, self.thaiwater_rain.readings(), now=now)
 
@@ -1029,20 +1056,21 @@ class Dashboard:
         # a kiosk polling every few seconds does not re-run them needlessly.
         if now - self._last_verify_settle >= VERIFY_SETTLE_INTERVAL_SECONDS:
             self._last_verify_settle = now
-            verify.settle_point_forecasts(conn, kind="rain_chance", now=now, tmd_stations=stations)
-            verify.settle_point_forecasts(conn, kind="temp", now=now, tmd_stations=stations)
+            verify.settle_point_forecasts(conn, kind="rain_chance", now=now)
+            verify.settle_point_forecasts(conn, kind="temp", now=now)
             verify.settle_flood(conn, now=now)
             verify.settle_blend_forecasts(conn, now=now)
-            # Once per Bangkok day at most (verify.update_value_weights).
-            shares = verify.update_value_weights(conn, now=now)
+            # Once per Bangkok day per area at most (verify.update_value_weights),
+            # from THIS area's results only.
+            shares = verify.update_value_weights(conn, now=now, area=area_code)
             with self._lock:
-                self._blend_weights = dict(shares)
+                self._blend_weights[area_code] = dict(shares)
 
     def _record_blend_forecasts(self, conn, latitude: float, longitude: float, now: float) -> None:
         """What verify.py's per-value section lists, each recorded once
         (verify.record_once): every 6-h window's rain probability before it
         starts (blend = ensemble), today's rain yes/no inputs before noon,
-        tomorrow's max/min and its eight TMD-hour temperatures — per
+        tomorrow's max/min and its eight SYNOP-hour temperatures — per
         deterministic source and for the blend. Values only, rounded
         position, no personal data."""
         from . import blend, verify
@@ -1075,7 +1103,7 @@ class Dashboard:
         today = dt.datetime.fromtimestamp(start, blend.BANGKOK).strftime("%Y-%m-%d")
         tomorrow_start = start + 86400
         tomorrow = dt.datetime.fromtimestamp(tomorrow_start, blend.BANGKOK).strftime("%Y-%m-%d")
-        slots = verify._expected_tmd_slots(tomorrow_start, tomorrow_start + 86400)
+        slots = verify.synoptic_hours(tomorrow_start, tomorrow_start + 86400)
 
         def source_day(data, date):
             return next((d for d in (data or {}).get("daily") or () if d.get("date") == date), {})
@@ -1170,14 +1198,21 @@ class Dashboard:
                      valid_to=valid_to, value=value, now=now)
 
     def latest(self, kind: str, now: float | None = None) -> tuple[int, dict] | None:
-        """The newest GOOD cached panel of this kind — (age in seconds, data) —
-        from any position, or None. Never fetches: this is for the chat
-        prompt, which must cost no outside request at all."""
+        """The GOOD cached panel of this kind — (age in seconds, data) — or
+        None. Never fetches: this is for the chat prompt, which must cost no
+        outside request at all. A per-position panel (weather, air, place)
+        is read for the kiosk's CURRENT position only: after a move to
+        another province the old province's weather is never offered as
+        "the weather", even while the new one is still being fetched."""
         now = time.time() if now is None else now
+        lat, lon = self._last_position
+        here = f"{kind}:{lat}:{lon}"
         best: tuple[float, Panel] | None = None
         with self._lock:
             for name, (fetched_at, panel) in self._cache.items():
                 if name.split(":", 1)[0] != kind or not panel.ok:
+                    continue
+                if ":" in name and name != here:
                     continue
                 if best is None or fetched_at > best[0]:
                     best = (fetched_at, panel)
@@ -1198,13 +1233,15 @@ class Dashboard:
         if self._nwp is not None:
             self._nwp.forget()
         self.thaiwater_rain.forget()
+        self.obs.forget()
         with self._lock:
             self._blend_cache = {}
             self._blend_weights = {}
-            self._tmd_stations = []
-            self._tmd_stations_at = 0.0
+            self._real_position = None
             self._verify_recorded = set()
             self._last_verify_settle = 0.0
+            self._last_obs_store = 0.0
+            self._last_obs_point = None
 
     def snapshot(self, latitude=None, longitude=None, now: float | None = None,
                  marks=None, symbols=None) -> dict:
@@ -1219,17 +1256,28 @@ class Dashboard:
         now = time.time() if now is None else now
         lat, lon, fallback = clean_coords(latitude, longitude)
         self._last_position = (lat, lon)
+        if not fallback:
+            self._real_position = (lat, lon)
+        self.obs.ensure_running()
 
         weather = self._panel(
             f"weather:{lat}:{lon}", now, self.cfg.dashboard_weather_ttl,
-            lambda: fetch_weather(lat, lon, self.cfg.dashboard_timeout, self._secret),
+            lambda: fetch_weather(lat, lon, self.cfg.dashboard_timeout,
+                                  lambda kind, elev: self.obs.nearest(kind, lat, lon, now, elev),
+                                  **self._uv_inputs(lat, lon, now)),
             credit=CREDITS["weather"])
         # Attribution for a source that was actually used this fetch, not one
-        # that merely could have been — TMD only when it answered temp_c or
-        # humidity (fetch_weather leaves *_source as "Open-Meteo" otherwise).
-        if weather.ok and "TMD" in (weather.data.get("temp_source"),
-                                    weather.data.get("humidity_source")):
-            weather.credit = CREDITS["weather"] + TMD_CREDIT_SUFFIX
+        # that merely could have been — a station source only when it
+        # answered temp_c or humidity.
+        if weather.ok:
+            from . import obs
+            used = []
+            for kind in ("temp", "rh"):
+                source = ((weather.data.get("measured") or {}).get(kind) or {}).get("source")
+                if source and source not in used:
+                    used.append(source)
+            if used:
+                weather.credit = CREDITS["weather"] + "".join(f" · {obs.credit(u)}" for u in used)
         air = self._panel(
             f"air:{lat}:{lon}", now, self.cfg.dashboard_air_ttl,
             lambda: fetch_air(lat, lon, self.cfg.dashboard_timeout),

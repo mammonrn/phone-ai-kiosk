@@ -63,11 +63,20 @@ def test_no_place_name_still_gives_the_weather(cfg):
     assert dashboard_mod.weather_line(board, NOW).startswith("อากาศ(ถูกถามให้ตอบประโยคเดียว): 28.4°C แดดจัด")
 
 
-def test_the_newest_position_wins(cfg):
+def test_the_kiosks_current_position_wins_never_another_provinces(cfg):
+    """Poom travels: after a move the old province's weather is never
+    offered as "the weather", even when it is the newer panel."""
     board = _dashboard(cfg)
     _seed(board, age=600)
     board._cache["weather:13.76:100.5"] = (NOW - 30, dashboard_mod.Panel(True, dict(WEATHER, temp_c=33.0)))
+    board._last_position = (13.76, 100.5)
     assert "33°C" in dashboard_mod.weather_line(board, NOW)
+    board._last_position = (20.05, 99.89)
+    assert "28.4°C" in dashboard_mod.weather_line(board, NOW)
+    # Moved on to a third place whose weather has not arrived yet: nothing,
+    # rather than either old province's numbers.
+    board._last_position = (7.0, 100.47)
+    assert dashboard_mod.weather_line(board, NOW) == dashboard_mod.NO_WEATHER_LINE
 
 
 def test_building_the_line_never_fetches(cfg, monkeypatch):

@@ -1,5 +1,5 @@
 """verify.py's per-source, per-value section (blend.py's verification):
-record_once, the ThaiWater/TMD truth tables, settling, the per-value weights
+record_once, the ThaiWater gauge / obs.py station truth tables, settling, the per-value weights
 with the 10%-a-day cap, and Poom's targets in forecast-score. No network."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ import datetime as dt
 
 import pytest
 
-from kiosk_broker import store, verify
+from kiosk_broker import obs, store, verify
 
 BKK = dt.timezone(dt.timedelta(hours=7))
 DAY = dt.datetime(2026, 9, 27, 0, 0, tzinfo=BKK).timestamp()
@@ -31,12 +31,12 @@ def gauge_hours(conn, start, n, mm=0.0, where=GAUGE, skip=()):
     return verify.record_thaiwater_rain_1h(conn, readings, now=start + n * 3600)
 
 
-def tmd_temps(conn, day_start, temps, where=GAUGE):
-    stations = []
-    for hour, temp in zip(verify.TMD_SLOT_HOURS, temps):
-        stations.append({"lat": where[0], "lon": where[1], "temp_c": temp,
-                         "observed_at": dt.datetime.fromtimestamp(day_start + hour * 3600, BKK)})
-    return sum(verify.record_tmd_temp_3h(conn, [s], now=day_start + 86400) for s in stations)
+def station_temps(conn, day_start, temps, where=GAUGE, hours=verify.SYNOP_HOURS, source="synop"):
+    """Reader-shaped readings at `hours` (Bangkok) of the day, stored the way
+    obs.py's timer stores them."""
+    reports = [{"source": source, "id": "48303", "lat": where[0], "lon": where[1], "temp_c": temp,
+                "observed_at": day_start + hour * 3600} for hour, temp in zip(hours, temps)]
+    return obs.record_hourly(conn, reports, [POINT], now=day_start + 86400)
 
 
 # ----------------------------------------------------------- recording ---
@@ -90,23 +90,25 @@ def test_a_not_yet_finished_window_is_not_settled(conn):
     assert conn.execute("SELECT outcome FROM forecast_records").fetchone()["outcome"] == "no"
 
 
-def test_tmd_three_hour_rain_is_the_fallback_truth(conn):
+def test_station_rain_periods_are_the_fallback_truth(conn):
     verify.record(conn, kind="rain_prob", area=POINT, source="blend", valid_from=DAY + 6 * 3600,
                   valid_to=DAY + 12 * 3600, value=40, now=DAY)
-    for hour in (7, 10):
-        conn.execute("INSERT INTO tmd_rain_3h VALUES (?,?,?,?)", (GAUGE[0], GAUGE[1], DAY + hour * 3600, 0.8))
-    assert verify.observed_rain_mm(conn, *POINT, DAY + 6 * 3600, DAY + 12 * 3600) == (pytest.approx(1.6), "tmd")
+    reports = [{"source": "synop", "id": "48303", "lat": GAUGE[0], "lon": GAUGE[1],
+                "observed_at": DAY + hour * 3600, "rain_mm": 0.8, "rain_hours": 3} for hour in (9, 12)]
+    obs.record_hourly(conn, reports, [POINT], now=DAY + 12 * 3600)
+    found = verify.observed_rain_mm(conn, *POINT, DAY + 6 * 3600, DAY + 12 * 3600)
+    assert found[:2] == (pytest.approx(1.6), "synop") and found[2] == pytest.approx(5.6, abs=0.2)
     assert verify.settle_blend_forecasts(conn, now=DAY + 13 * 3600) == 1
     assert conn.execute("SELECT outcome FROM forecast_records").fetchone()["outcome"] == "yes"
 
 
-def test_temp_max_and_min_need_all_eight_tmd_readings(conn):
+def test_temp_max_and_min_need_all_eight_synop_readings(conn):
     for kind, value in (("temp_max", 33.0), ("temp_min", 22.0)):
         verify.record(conn, kind=kind, area=POINT, source="open_meteo", valid_from=NEXT,
                       valid_to=NEXT + 86400, value=value, now=DAY)
-    tmd_temps(conn, NEXT, [24, 23, 25, 29, 31, 32, 28, 26][:7])
+    station_temps(conn, NEXT, [24, 23, 25, 29, 31, 32, 28, 26][:7])
     assert verify.settle_blend_forecasts(conn, now=NEXT + 86400 + 60) == 0
-    tmd_temps(conn, NEXT, [24, 23, 25, 29, 31, 32, 28, 26])
+    station_temps(conn, NEXT, [24, 23, 25, 29, 31, 32, 28, 26])
     assert verify.settle_blend_forecasts(conn, now=NEXT + 86400 + 60) == 2
     got = {r["kind"]: r["observed_value"] for r in conn.execute("SELECT kind, observed_value FROM forecast_records")}
     assert got == {"temp_max": 32.0, "temp_min": 23.0}
@@ -117,7 +119,7 @@ def test_temp_hour_compares_the_exact_hour(conn):
     verify.record(conn, kind="temp_hour", area=POINT, source="tmd_nwp", valid_from=slot, valid_to=slot,
                   value=30.0, now=DAY)
     assert verify.settle_blend_forecasts(conn, now=slot + 60) == 0
-    tmd_temps(conn, NEXT, [24, 23, 25, 29, 31, 32, 28, 26])
+    station_temps(conn, NEXT, [24, 23, 25, 29, 31, 32, 28, 26])
     assert verify.settle_blend_forecasts(conn, now=slot + 60) == 1
     assert conn.execute("SELECT observed_value FROM forecast_records").fetchone()[0] == 31.0
 
@@ -236,7 +238,7 @@ def test_best_source_needs_enough_cases(conn):
 
 def test_report_says_not_enough_and_names_the_missing_truth(conn):
     lines = "\n".join(verify.report_target_lines(verify.target_scores(conn, now=DAY), {}))
-    assert "ต้องมี TMD uid/ukey" in lines
+    assert "ต้องมีสถานีวัดอุณหภูมิห่างตู้ไม่เกิน 25 กม." in lines
     assert "ยังไม่มีผลเทียบ" in lines and "ยังไม่พอ" in lines
     settled(conn, "rain_day", "blend", 3.0, 5.0, 3, DAY, "yes")
     lines = "\n".join(verify.report_target_lines(verify.target_scores(conn, now=DAY + 60),
@@ -245,5 +247,65 @@ def test_report_says_not_enough_and_names_the_missing_truth(conn):
 
 
 def test_cli_prints_the_targets(conn, capsys):
+    verify.set_kiosk_area(conn, *POINT, DAY)
     verify.cli_forecast_score(conn, 7)
     assert "เป้า" in capsys.readouterr().out
+
+
+# ------------------------------------------------ complete days, by area ---
+
+def test_hourly_readings_make_a_day_only_with_twenty_hours_including_the_night(conn):
+    for kind, value in (("temp_max", 33.0), ("temp_min", 22.0)):
+        verify.record(conn, kind=kind, area=POINT, source="open_meteo", valid_from=NEXT,
+                      valid_to=NEXT + 86400, value=value, now=DAY)
+    temps = [22 + (h if h < 15 else 30 - h) * 0.7 for h in range(24)]
+    daytime = [h for h in range(24) if 5 <= h <= 23]                    # 19 hours: night missing
+    station_temps(conn, NEXT, [temps[h] for h in daytime], hours=daytime, source="metar")
+    assert verify.settle_blend_forecasts(conn, now=NEXT + 86400 + 60) == 0
+    station_temps(conn, NEXT, [temps[4]], hours=[4], source="metar")    # 20 hours
+    assert verify.settle_blend_forecasts(conn, now=NEXT + 86400 + 60) == 2
+    got = {r["kind"]: (r["observed_value"], r["truth_source"])
+           for r in conn.execute("SELECT kind, observed_value, truth_source FROM forecast_records")}
+    assert got["temp_min"] == (pytest.approx(temps[4]), "metar")
+    assert got["temp_max"][0] == pytest.approx(max(temps[4:]))
+
+
+def test_scores_and_targets_never_pool_two_provinces(conn):
+    from kiosk_broker import flood_forecast
+
+    chiang_rai, bangkok = (19.91, 99.83), (13.75, 100.50)
+    for point, error in ((chiang_rai, 0.5), (bangkok, 4.0)):
+        for i in range(30):
+            rid = verify.record(conn, kind="temp_max", area=point, source="blend", valid_from=DAY - i * 86400,
+                                valid_to=DAY - i * 86400 + 86400, value=32.0 + error, now=DAY)
+            conn.execute("UPDATE forecast_records SET observed_value = 32.0, settled_at = ? WHERE id = ?",
+                         (DAY, rid))
+    cr, bkk = (flood_forecast.nearest_province_code(*p) for p in (chiang_rai, bangkok))
+    assert cr != bkk
+    assert verify.areas_with_results(conn) == sorted([cr, bkk])
+    t_cr = verify.target_scores(conn, now=DAY + 60, area=cr)["temp_tomorrow"]["tmax"]["blend"]
+    t_bkk = verify.target_scores(conn, now=DAY + 60, area=bkk)["temp_tomorrow"]["tmax"]["blend"]
+    assert t_cr["n"] == 30 and t_cr["mae"] == pytest.approx(0.5)
+    assert t_bkk["n"] == 30 and t_bkk["mae"] == pytest.approx(4.0)
+
+
+def test_value_weights_are_kept_per_area(conn):
+    verify.update_value_weights(conn, now=DAY, area="57")
+    assert verify.value_weights(conn, "57")
+    assert verify.value_weights(conn, "10") == {}
+
+
+def test_cli_all_areas_prints_each_province_separately(conn, capsys):
+    for point in ((19.91, 99.83), (13.75, 100.50)):
+        rid = verify.record(conn, kind="temp_max", area=point, source="blend", valid_from=DAY,
+                            valid_to=NEXT, value=33.0, now=DAY)
+        conn.execute("UPDATE forecast_records SET observed_value = 32.0, settled_at = ?, truth_source = 'synop',"
+                     " truth_km = 7.5 WHERE id = ?", (DAY, rid))
+    verify.set_kiosk_area(conn, 13.75, 100.50, DAY)
+    verify.cli_forecast_score(conn, 7, now=DAY + 60)
+    one = capsys.readouterr().out
+    assert one.count("พื้นที่:") == 1 and "ตู้อยู่ที่นี่" in one
+    assert "synop" in one and "เฉลี่ย 7.5 กม." in one
+    verify.cli_forecast_score(conn, 7, all_areas=True, now=DAY + 60)
+    both = capsys.readouterr().out
+    assert both.count("พื้นที่:") == 2

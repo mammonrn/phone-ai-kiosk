@@ -18,5 +18,4 @@ with every field `null` to exercise the "missing field → None" path.
 
 When Poom's own probe (`$B probe tmd`, once `TMD_NWP_TOKEN` is set) returns
 a real response, replace these with a real trimmed sample the way
-`tests/data/forecast/ensemble_*.json` and `tests/data/weather/
-tmd_weather3hours_*.xml` already do, and delete this note.
+`tests/data/forecast/ensemble_*.json` already does, and delete this note.

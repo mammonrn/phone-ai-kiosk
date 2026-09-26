@@ -10,26 +10,14 @@ weather card's current temperature), "uv" (an index, for one moment), and
 
 SETTLING NEEDS A GROUND TRUTH, and not every kind has one here:
 
-* rain_chance and temp settle against the nearest TMD automatic station,
-  using tmd_obs.reading()'s OWN distance (<=50 km) and freshness rules
-  rather than a second copy of them — `settle_point_forecasts` asks
-  tmd_obs.reading() about the forecast's own `valid_to`, not the wall clock,
-  so a station polled long after a window closed correctly fails to settle
-  it (its reading is fresh for "now", not for that old window) instead of
-  quietly describing a later reading as if it were the window's own.
-
-  FIXED, WAS A KNOWN LIMITATION: an earlier version of this module settled
-  "rain in the window" against tmd_obs.reading()'s ROLLING 24-HOUR rainfall
-  (Rainfall24Hr) — honest for "did rain fall nearby", but coarser than the
-  record's own 6-hour window (any rain up to 24h before the window's end
-  would count as a hit). tmd_obs.parse_stations now also carries THIS
-  interval's own 3-hour rain (Rainfall, "rain_3h_mm"); a 6-hour rain_chance
-  window is exactly two of TMD's 3-hour reporting slots, and
-  `record_tmd_rain_3h`/`_summed_3h_rain` (below) settle it by summing the
-  slots that actually fall inside the window, settling ONLY once every one
-  of them has been stored — never a partial sum. A window whose slots never
-  all arrive (TMD off, or a gap) is simply never settled by this path; it
-  ages out with everything else.
+* rain_chance and temp settle against MEASURED values near the forecast's
+  own point (Poom 2026-09-26: free, no-signup sources nationwide, nearest
+  to wherever the kiosk was — obs.py): rain against สสน.'s hourly gauges
+  first, then any station whose rain periods exactly cover the window
+  (SYNOP 6RRR, hourly reports); temperature against the nearest station of
+  obs.py's choice (SYNOP, METAR, สสน., Air4Thai) that has a reading at that
+  hour. Never a partial sum, never a station outside obs.MAX_KM — a window
+  with no complete truth near it is simply never settled and ages out.
 
 * uv has no ground truth source wired here at all (no station in Thailand
   publishes a measured UV index this broker can reach for free). `record`
@@ -49,7 +37,7 @@ SETTLING NEEDS A GROUND TRUTH, and not every kind has one here:
   seen into hit/miss/false-alarm.
 
 WEIGHTS, the readable rule (see `compute_weights`): for a kind with more
-than one source — today, only "temp" (TMD vs Open-Meteo) has one — each
+than one source, each
 source's weight is 1 / (its 14-day mean absolute error + 0.5 degrees C),
 normalised so the weights for that kind sum to 1. A source with fewer than
 MIN_CASES_FOR_WEIGHT settled cases keeps weight 1 (not enough evidence to
@@ -78,7 +66,9 @@ import datetime as dt
 import time
 from statistics import mean
 
-from . import flood_forecast, store, tmd_obs
+from . import flood_forecast, obs, store
+
+BANGKOK = dt.timezone(dt.timedelta(hours=7))
 
 KINDS = ("rain_chance", "temp", "uv", "flood_level",
          # Added with blend.py (see "PER-SOURCE, PER-VALUE" below):
@@ -152,112 +142,114 @@ def _parse_point(area: str) -> "tuple[float, float] | None":
         return None
 
 
-# --------------------------------------------- TMD 3-hour rain (the fix) ---
+# ------------------------------------------------------------------ areas ---
 #
-# tmd_obs.reading()'s own "rain_mm" is TMD's ROLLING 24-HOUR total
-# (Rainfall24Hr) — settling a 6-hour rain_chance window against it overstates
-# "it rained" (any rain up to 24h before the window's own end would count).
-# TMD's Weather3Hours also carries <Rainfall>, THIS interval's own 3-hour
-# total (tmd_obs.parse_stations's own "rain_3h_mm"); a 6-hour window is
-# exactly two of TMD's 3-hour reporting slots (01:00, 04:00, ..., 22:00
-# Bangkok — see tmd_obs.py's own docstring), so this settles a window by
-# summing the slots that fall inside it — but ONLY once every one of them has
-# been seen and stored (see `record_tmd_rain_3h`): TMD's own answer carries
-# only the LATEST reading per station, never history, so a slot missed when
-# it was current is gone unless something stored it as it went by.
+# BY AREA (Poom 2026-09-26): the kiosk travels across provinces, so every
+# forecast carries the province it was made for (area_code, the same
+# nearest_province_code the flood card uses), and every score is computed
+# for ONE area — results from different provinces are never pooled.
 
-#: TMD's own reporting hours, Bangkok local — see tmd_obs.py's docstring.
-TMD_SLOT_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
+#: dashboard_state key for the kiosk's current area (a province code only,
+#: never a position) — forecast-score's default area.
+KIOSK_AREA_STATE_KEY = "kiosk_area"
 
-
-def _station_key(latitude: float, longitude: float) -> "tuple[float, float]":
-    """A station's own rounded position — same rounding as `round_point`,
-    restated as a (lat, lon) pair (rather than round_point's string) because
-    the tmd_rain_3h table's columns are numeric, for a plain index."""
-    return round(float(latitude), COORD_DECIMALS) + 0.0, round(float(longitude), COORD_DECIMALS) + 0.0
+#: SYNOP's main hours in Bangkok local time (00, 03, ... 21 UTC) — the eight
+#: hours tomorrow's hourly temperature forecasts are recorded for, and the
+#: eight readings that make a complete day for a 3-hourly station.
+SYNOP_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
 
 
-def record_tmd_rain_3h(conn, stations: "list[dict] | None", now: "float | None" = None) -> int:
-    """Stores every station's OWN 3-hour rain reading it currently carries
-    (tmd_obs.parse_stations()'s "rain_3h_mm"/"observed_at"), so a later
-    `settle_point_forecasts` call can still find it after TMD has moved on to
-    the next 3-hour slot. Call this every time a fresh TMD station list is on
-    hand (see dashboard.Dashboard — the same "watching" idea as
-    `observe_flood` below, just for a value instead of a level).
+def area_code_for(area) -> "str | None":
+    """The province code of a (lat, lon) point, or the code itself for a
+    flood_level row (whose area already is one)."""
+    if isinstance(area, (tuple, list)):
+        return flood_forecast.nearest_province_code(float(area[0]), float(area[1]))
+    return str(area) if area else None
 
-    Skips a station missing either field (rain_3h_mm or observed_at — e.g.
-    TMD is off, so `stations` is None/empty) rather than guessing. Rows
-    already stored for this station+time are left alone (INSERT OR IGNORE):
-    the same 3-hour reading fetched twice must not be double-counted, and it
-    never changes after TMD reports it. Prunes rows older than KEEP_DAYS on
-    every call, the same rule as `record`.
-    """
+
+def _row_area(row) -> "str | None":
+    """A stored row's area: its own area_code, or (older rows) derived."""
+    keys = row.keys() if hasattr(row, "keys") else ()
+    code = row["area_code"] if "area_code" in keys else None
+    if code:
+        return code
+    point = _parse_point(row["area"])
+    return area_code_for(point) if point is not None else str(row["area"])
+
+
+def area_name(code: "str | None") -> str:
+    for p in flood_forecast.load_provinces():
+        if p["code"] == code:
+            return p["name"]
+    return "ไม่ทราบพื้นที่"
+
+
+def set_kiosk_area(conn, latitude: float, longitude: float, now: "float | None" = None) -> "str | None":
+    """Remembers the province the kiosk is in now (code only), written only
+    when it changes."""
+    code = area_code_for((latitude, longitude))
+    stored, _ = store.read_state(conn, KIOSK_AREA_STATE_KEY)
+    if code and (not isinstance(stored, dict) or stored.get("code") != code):
+        store.write_state(conn, KIOSK_AREA_STATE_KEY, {"code": code}, now)
+    return code
+
+
+def kiosk_area(conn) -> "str | None":
+    stored, _ = store.read_state(conn, KIOSK_AREA_STATE_KEY)
+    return stored.get("code") if isinstance(stored, dict) else None
+
+
+def areas_with_results(conn) -> list[str]:
+    """Every area that has at least one settled forecast, sorted by code."""
+    rows = conn.execute("SELECT DISTINCT area, area_code FROM forecast_records"
+                        " WHERE settled_at IS NOT NULL").fetchall()
+    return sorted({a for a in (_row_area(r) for r in rows) if a})
+
+
+def open_points(conn, now: "float | None" = None, days: int = 3, limit: int = 20) -> list[tuple[float, float]]:
+    """Points of forecasts still waiting for their truth (window ended in
+    the last `days` or not yet ended) — the measured readers keep storing
+    stations near these even after the kiosk has moved away, so a forecast
+    made in one province can still settle after the kiosk left it."""
     now = time.time() if now is None else now
-    inserted = 0
-    for station in stations or ():
-        observed_at = station.get("observed_at")
-        rain = station.get("rain_3h_mm")
-        lat, lon = station.get("lat"), station.get("lon")
-        if observed_at is None or rain is None or lat is None or lon is None:
+    rows = conn.execute(
+        "SELECT DISTINCT area FROM forecast_records WHERE settled_at IS NULL AND valid_to >= ?"
+        " AND kind != 'flood_level' ORDER BY valid_to DESC", (now - days * 86400,)).fetchall()
+    out: list[tuple[float, float]] = []
+    for row in rows:
+        point = _parse_point(row["area"])
+        if point is None:
             continue
-        slat, slon = _station_key(lat, lon)
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO tmd_rain_3h (station_lat, station_lon, observed_at, rain_3h_mm)"
-            " VALUES (?,?,?,?)",
-            (slat, slon, observed_at.timestamp(), float(rain)),
-        )
-        inserted += cur.rowcount
-    conn.execute("DELETE FROM tmd_rain_3h WHERE observed_at < ?", (now - KEEP_DAYS * 86400,))
-    return inserted
+        if any(abs(point[0] - p[0]) < 0.1 and abs(point[1] - p[1]) < 0.1 for p in out):
+            continue
+        out.append(point)
+        if len(out) >= limit:
+            break
+    return out
 
 
-def _expected_tmd_slots(valid_from: float, valid_to: float) -> "list[float]":
-    """Every TMD 3-hour reporting time inside (valid_from, valid_to], as
-    epoch seconds — e.g. a 6-hour window is exactly two of these. Empty when
-    the window does not line up with TMD's own schedule at all (that window
-    is simply never settled by this path — it ages out like anything else,
-    see the module docstring)."""
-    start = dt.datetime.fromtimestamp(valid_from, tmd_obs.BANGKOK)
-    end = dt.datetime.fromtimestamp(valid_to, tmd_obs.BANGKOK)
+def synoptic_hours(valid_from: float, valid_to: float) -> "list[float]":
+    """Every SYNOP main hour inside (valid_from, valid_to], as epoch
+    seconds — a day has eight."""
+    start = dt.datetime.fromtimestamp(valid_from, BANGKOK)
+    end = dt.datetime.fromtimestamp(valid_to, BANGKOK)
     day = start.replace(hour=0, minute=0, second=0, microsecond=0)
     slots = []
     while day <= end:
-        for hour in TMD_SLOT_HOURS:
-            slot = day.replace(hour=hour)
-            slot_ts = slot.timestamp()
+        for hour in SYNOP_HOURS:
+            slot_ts = day.replace(hour=hour).timestamp()
             if valid_from < slot_ts <= valid_to:
                 slots.append(slot_ts)
         day += dt.timedelta(days=1)
     return slots
 
 
-def _summed_3h_rain(conn, station_lat: float, station_lon: float,
-                    valid_from: float, valid_to: float) -> "float | None":
-    """The sum of every TMD 3-hour slot inside (valid_from, valid_to] for
-    this station, or None when even one expected slot has not been stored
-    yet (see `record_tmd_rain_3h`) — never a partial sum, which would
-    understate the window's real total."""
-    slots = _expected_tmd_slots(valid_from, valid_to)
-    if not slots:
-        return None
-    slat, slon = _station_key(station_lat, station_lon)
-    total = 0.0
-    for slot_ts in slots:
-        row = conn.execute(
-            "SELECT rain_3h_mm FROM tmd_rain_3h WHERE station_lat = ? AND station_lon = ? AND observed_at = ?",
-            (slat, slon, slot_ts),
-        ).fetchone()
-        if row is None:
-            return None
-        total += row["rain_3h_mm"]
-    return total
-
-
 def record(conn, *, kind: str, area, source: str, valid_from: float, valid_to: float,
           value: float, now: "float | None" = None) -> int:
     """One forecast, exactly as shown. `area` is a (latitude, longitude) pair
-    for "rain_chance"/"temp"/"uv" (rounded here by `round_point`) or a
-    province code string for "flood_level". Returns the new row's id.
+    for the point kinds (rounded here by `round_point`) or a province code
+    string for "flood_level"; either way the row also carries its province
+    (area_code, see "areas" above). Returns the new row's id.
 
     Prunes rows older than KEEP_DAYS on every call — cheap (an indexed
     DELETE) and means nothing else has to remember to schedule it, the same
@@ -269,9 +261,10 @@ def record(conn, *, kind: str, area, source: str, valid_from: float, valid_to: f
     now = time.time() if now is None else now
     area_key = round_point(*area) if isinstance(area, (tuple, list)) else str(area)
     cur = conn.execute(
-        "INSERT INTO forecast_records (kind, area, source, valid_from, valid_to, value, recorded_at)"
-        " VALUES (?,?,?,?,?,?,?)",
-        (kind, area_key, source, float(valid_from), float(valid_to), float(value), now),
+        "INSERT INTO forecast_records (kind, area, source, valid_from, valid_to, value, recorded_at,"
+        " area_code) VALUES (?,?,?,?,?,?,?,?)",
+        (kind, area_key, source, float(valid_from), float(valid_to), float(value), now,
+         area_code_for(area)),
     )
     prune(conn, now)
     return int(cur.lastrowid)
@@ -288,22 +281,28 @@ def prune(conn, now: "float | None" = None) -> int:
 
 # --------------------------------------------------- settling: rain / temp ---
 
-def settle_point_forecasts(conn, *, kind: str, now: "float | None" = None,
-                           tmd_stations: "list[dict] | None" = None) -> int:
-    """Settle every due "rain_chance" or "temp" row against the nearest TMD
-    station, checked at the forecast's OWN `valid_to` — see the module
-    docstring for why that (not the wall clock) is what freshness is judged
-    against. `tmd_stations` is whatever tmd_obs.parse_stations() last
-    produced; pass the freshest list on hand each time this is called.
+def _settle(conn, row_id: int, observed: float, outcome, now: float,
+            truth_source: "str | None" = None, truth_km: "float | None" = None) -> None:
+    conn.execute(
+        "UPDATE forecast_records SET observed_value = ?, outcome = ?, settled_at = ?,"
+        " truth_source = ?, truth_km = ? WHERE id = ?",
+        (float(observed), outcome, now, truth_source,
+         None if truth_km is None else round(float(truth_km), 1), row_id))
 
-    Rows a station cannot vouch for (too far, too old, or the field it needs
-    is itself out of range) are left unsettled and tried again on the next
-    call — they age out with everything else once KEEP_DAYS passes.
+
+def settle_point_forecasts(conn, *, kind: str, now: "float | None" = None) -> int:
+    """Settle every due "rain_chance" or "temp" row against measured values
+    near its own point (see the module docstring): rain over the row's own
+    window (observed_rain_mm), temperature at the whole hour nearest the
+    row's own time (observed_temp_at) — never the wall clock's reading.
+
+    Rows nothing near enough can vouch for are left unsettled and tried again
+    on the next call — they age out with everything else once KEEP_DAYS
+    passes.
     """
     if kind not in ("rain_chance", "temp"):
         raise ValueError(f"settle_point_forecasts does not settle kind {kind!r}")
     now = time.time() if now is None else now
-    tmd_stations = tmd_stations or []
     rows = conn.execute(
         "SELECT id, area, value, valid_from, valid_to FROM forecast_records"
         " WHERE kind = ? AND settled_at IS NULL AND valid_to <= ?",
@@ -315,33 +314,18 @@ def settle_point_forecasts(conn, *, kind: str, now: "float | None" = None,
         if point is None:
             continue
         if kind == "rain_chance":
-            # The rolling-24h reading is the wrong ground truth for a 6-hour
-            # window (see this module's own docstring and _summed_3h_rain) —
-            # find the nearest station EXACTLY as tmd_obs.reading() would
-            # (same distance rule), then sum ITS stored 3-hour slots instead
-            # of reading a single "now" value off it.
-            station, km = tmd_obs.nearest_station(tmd_stations, point[0], point[1])
-            if station is None or km is None or km > tmd_obs.MAX_KM:
+            found = observed_rain_mm(conn, point[0], point[1], row["valid_from"], row["valid_to"])
+            if found is None:
                 continue
-            observed = _summed_3h_rain(conn, station["lat"], station["lon"],
-                                       row["valid_from"], row["valid_to"])
-            if observed is None:
-                continue
+            observed, source, km = found
             outcome = "yes" if observed >= RAIN_HIT_MM else "no"
         else:  # temp
-            window_end = dt.datetime.fromtimestamp(row["valid_to"], tmd_obs.BANGKOK)
-            station_reading = tmd_obs.reading(tmd_stations, point[0], point[1], now=window_end)
-            if station_reading is None:
+            found = observed_temp_at(conn, point[0], point[1], row["valid_to"])
+            if found is None:
                 continue
-            observed = station_reading.get("temp_c")
-            if observed is None:
-                continue
+            observed, source, km = found
             outcome = None
-        conn.execute(
-            "UPDATE forecast_records SET observed_value = ?, outcome = ?, settled_at = ?"
-            " WHERE id = ?",
-            (float(observed), outcome, now, row["id"]),
-        )
+        _settle(conn, row["id"], observed, outcome, now, source, km)
         settled += 1
     return settled
 
@@ -479,19 +463,22 @@ def _score_flood(rows: list) -> dict:
     return out
 
 
-def score(conn, days: int = 14, now: "float | None" = None) -> dict:
+def score(conn, days: int = 14, now: "float | None" = None, area: "str | None" = None) -> dict:
     """Per kind, per source: settled-forecast accuracy over the last `days`
-    days (by `settled_at`). "uv" is never populated — see the module
-    docstring — and comes back as a note rather than an empty, misleading
-    table.
+    days (by `settled_at`), for ONE area (a province code — see "areas"
+    above; None = every row, for tests only: forecast-score never pools
+    areas). "uv" is never populated — see the module docstring — and comes
+    back as a note rather than an empty, misleading table.
     """
     now = time.time() if now is None else now
     since = now - days * 86400
     rows_by_kind: dict[str, list] = {k: [] for k in KINDS}
     for row in conn.execute(
-        "SELECT kind, source, value, observed_value, outcome, valid_from, valid_to,"
+        "SELECT kind, area, area_code, source, value, observed_value, outcome, valid_from, valid_to,"
         " recorded_at, settled_at FROM forecast_records"
         " WHERE settled_at IS NOT NULL AND settled_at >= ?", (since,)):
+        if area is not None and _row_area(row) != area:
+            continue
         rows_by_kind.setdefault(row["kind"], []).append(row)
     return {
         "rain_chance": _score_rain(rows_by_kind.get("rain_chance", [])),
@@ -513,8 +500,7 @@ def compute_weights(scores: dict) -> dict:
     source (or none scored yet) keeps every source it has at weight 1 — there
     is nothing to weigh it against.
 
-    Only "temp" carries more than one source today (TMD vs Open-Meteo); this
-    reads generically off whatever `scores` has, so a second rain_chance
+    This reads generically off whatever `scores` has, so a second rain_chance
     source added later needs no change here.
     """
     target: dict[str, dict[str, float]] = {}
@@ -567,35 +553,41 @@ def apply_daily_cap(target: dict, previous: "dict | None") -> dict:
     return capped
 
 
-def load_previous_weights(conn) -> "dict | None":
-    value, _ = store.read_state(conn, WEIGHTS_STATE_KEY)
+def _state_key(base: str, area: "str | None") -> str:
+    """Weights are kept per area (never learned in one province and applied
+    in another); no area = the key used before areas existed."""
+    return f"{base}:{area}" if area else base
+
+
+def load_previous_weights(conn, area: "str | None" = None) -> "dict | None":
+    value, _ = store.read_state(conn, _state_key(WEIGHTS_STATE_KEY, area))
     return value
 
 
-def save_weights(conn, weights: dict, now: "float | None" = None) -> None:
-    store.write_state(conn, WEIGHTS_STATE_KEY, weights, now)
+def save_weights(conn, weights: dict, now: "float | None" = None, area: "str | None" = None) -> None:
+    store.write_state(conn, _state_key(WEIGHTS_STATE_KEY, area), weights, now)
 
 
-def update_weights(conn, days: int = 14, now: "float | None" = None) -> dict:
+def update_weights(conn, days: int = 14, now: "float | None" = None, area: "str | None" = None) -> dict:
     """score() -> compute_weights() -> capped against yesterday's own saved
     weights -> saved back. This is the one function meant to be called
     periodically (about once a day — see MAX_DAILY_MOVE_FRACTION's own
     docstring); `weights()` below is the read-only, no-side-effect view for
     anything that just wants the current numbers (e.g. `forecast-score`)."""
     now = time.time() if now is None else now
-    computed = score(conn, days=days, now=now)
+    computed = score(conn, days=days, now=now, area=area)
     target = compute_weights(computed)
-    previous = load_previous_weights(conn)
+    previous = load_previous_weights(conn, area)
     capped = apply_daily_cap(target, previous)
-    save_weights(conn, capped, now)
+    save_weights(conn, capped, now, area)
     return capped
 
 
-def weights(conn) -> dict:
+def weights(conn, area: "str | None" = None) -> dict:
     """The weights currently in effect (last saved by `update_weights`), or
     `{}` before the first call has ever happened — never computed fresh here,
     so reading this never itself moves a weight."""
-    return load_previous_weights(conn) or {}
+    return load_previous_weights(conn, area) or {}
 
 
 # ---------------------------------------------------------------------- CLI ---
@@ -657,19 +649,63 @@ def report_lines(scores: dict, current_weights: dict) -> list[str]:
     return lines
 
 
-def cli_forecast_score(conn, days: int) -> int:
-    """`forecast-score --days N` — refreshes the weights (see update_weights)
-    then prints the table. Nothing personal is printed: sources, counts and
-    numbers only, same rule as every other CLI report in this broker."""
-    computed_weights = update_weights(conn, days=days)
-    computed_scores = score(conn, days=days)
-    for line in report_lines(computed_scores, computed_weights):
-        print(line)
-    # Poom's targets per source + blend (see target_scores), read-only: the
-    # blend's own shares are only ever moved by the dashboard's daily update.
-    print("")
-    for line in report_target_lines(target_scores(conn), value_weights(conn)):
-        print(line)
+def truth_lines(conn, area: "str | None", days: int, now: "float | None" = None) -> list[str]:
+    """Which measured sources settled this area's forecasts and how far
+    their stations were from the forecast point (truth_km)."""
+    now = time.time() if now is None else now
+    per: dict[str, list[float]] = {}
+    for row in conn.execute(
+            "SELECT area, area_code, truth_source, truth_km FROM forecast_records"
+            " WHERE settled_at IS NOT NULL AND settled_at >= ? AND truth_source IS NOT NULL",
+            (now - days * 86400,)):
+        if area is not None and _row_area(row) != area:
+            continue
+        per.setdefault(row["truth_source"], []).append(row["truth_km"])
+    lines = ["ค่าจริงที่ใช้เทียบ (แหล่ง · จำนวน · ระยะสถานีจากจุดพยากรณ์):"]
+    if not per:
+        lines.append("  ยังไม่มี")
+    for source, kms in sorted(per.items()):
+        known = [k for k in kms if k is not None]
+        dist = (f"เฉลี่ย {mean(known):.1f} กม. ไกลสุด {max(known):.1f} กม." if known else "ไม่ทราบระยะ")
+        lines.append(f"  {source:<16} n={len(kms):<4} {dist}")
+    return lines
+
+
+def cli_forecast_score(conn, days: int, area: "str | None" = None, all_areas: bool = False,
+                       now: "float | None" = None) -> int:
+    """`forecast-score --days N [--area CODE | --all-areas]` — one block per
+    area, never pooled (Poom 2026-09-26). The default is the kiosk's current
+    area (set_kiosk_area); --all-areas prints every area that has results.
+    Refreshes the legacy weights of each printed area (update_weights), then
+    prints the table, the measured sources with their station distances, and
+    Poom's targets. Nothing personal: sources, counts and numbers only."""
+    now = time.time() if now is None else now
+    current = kiosk_area(conn)
+    if all_areas:
+        areas = areas_with_results(conn) or ([current] if current else [])
+    else:
+        areas = [area or current or (areas_with_results(conn) or [None])[0]]
+    if not areas or areas == [None]:
+        print("ยังไม่ทราบพื้นที่ของตู้ และยังไม่มีผลที่ยืนยันแล้ว")
+        return 0
+    for i, code in enumerate(areas):
+        if i:
+            print("")
+            print("=" * 40)
+        tag = " (ตู้อยู่ที่นี่)" if code == current else ""
+        print(f"พื้นที่: {area_name(code)} [{code}]{tag}")
+        print("")
+        computed_weights = update_weights(conn, days=days, now=now, area=code)
+        for line in report_lines(score(conn, days=days, now=now, area=code), computed_weights):
+            print(line)
+        print("")
+        for line in truth_lines(conn, code, days, now):
+            print(line)
+        # Poom's targets per source + blend (see target_scores), read-only:
+        # the blend's own shares are only ever moved by the dashboard's daily update.
+        print("")
+        for line in report_target_lines(target_scores(conn, now=now, area=code), value_weights(conn, code)):
+            print(line)
     return 0
 
 
@@ -687,31 +723,34 @@ def cli_forecast_score(conn, days: int) -> int:
 #                                   over the whole day)
 #   rain_day       mm               open_meteo, tmd_nwp, blend      today, first time seen before 12:00
 #   temp_max/min   deg C            open_meteo, tmd_nwp, blend      tomorrow, first time seen today
-#   temp_hour      deg C            open_meteo, tmd_nwp, blend      tomorrow's eight TMD hours
+#   temp_hour      deg C            open_meteo, tmd_nwp, blend      tomorrow's eight SYNOP hours
 #                                                                    (01, 04, ... 22), first time seen today
 #
 # "Before 12:00" for today's rain: a forecast first seen in the evening
 # already knows the afternoon's storm, so it is not a forecast any more.
 #
-# GROUND TRUTH (see the module docstring for the older kinds):
+# GROUND TRUTH (see the module docstring for the older kinds) — measured
+# values near the forecast's own point, chosen the same way obs.py chooses
+# for the card (obs.MAX_KM per kind, SYNOP first when distances are
+# similar), station distance kept with the settlement (truth_km):
 #
 # * Rain (rain_prob, rain_prob_day, rain_day): ThaiWater's hourly gauges
 #   (thaiwater_rain.py) first — the nearest gauge within THAIWATER_MAX_KM that
-#   has EVERY hour of the window stored — then TMD's 3-hour slots (the
-#   existing tmd_rain_3h table, nearest station within tmd_obs.MAX_KM, every
-#   slot present). Never a partial sum. "Rained" = at least RAIN_HIT_MM.
-# * Temperature (temp_hour, temp_max, temp_min): TMD's 3-hourly
-#   AirTemperature only (tmd_temp_3h) — ThaiWater publishes no temperature
-#   and no other free measured source was found. temp_hour compares the
-#   exact hour. temp_max/min compare the day's forecast extreme with the
-#   highest/lowest of the eight 3-hourly readings (all eight required): the
-#   true peak usually falls between 13:00 and 16:00, so the measured max is
-#   a little LOW and the measured min a little HIGH — this makes the
-#   forecasts look slightly worse, never better. Without Poom's TMD
-#   uid/ukey nothing here ever settles, and forecast-score says so.
+#   has EVERY hour of the window stored — then any obs.py station whose
+#   stored rain periods (SYNOP 6RRR, hourly reports) exactly tile the
+#   window. Never a partial sum. "Rained" = at least RAIN_HIT_MM.
+# * Temperature (temp_hour, temp_max, temp_min): obs.py's stored hourly
+#   readings (obs_hourly). temp_hour compares the exact hour. temp_max/min
+#   need a COMPLETE day from one station: at least MIN_HOURLY_READINGS of
+#   the 24 hours, or all eight SYNOP main hours — so the night is always in
+#   it. From eight 3-hourly readings the true peak usually falls between
+#   them (the measured max a little LOW, the min a little HIGH), which makes
+#   forecasts look slightly worse, never better.
 
 THAIWATER_MAX_KM = 20.0
-TMD_SLOTS_PER_DAY = len(TMD_SLOT_HOURS)
+#: A day's max/min from hourly readings needs at least this many of its 24
+#: hours (a 3-hourly station needs all eight SYNOP hours instead).
+MIN_HOURLY_READINGS = 20
 #: Sources that are blended (blend.py) — "blend" and "ensemble" are
 #: recorded too but never weighted against themselves.
 BLEND_SOURCES = ("open_meteo", "tmd_nwp")
@@ -765,6 +804,12 @@ def record_once(conn, *, kind: str, area, source: str, valid_from: float, valid_
 
 # ------------------------------------------------------- truth: storing ---
 
+def _station_key(latitude: float, longitude: float) -> "tuple[float, float]":
+    """A station's own rounded position — `round_point`'s rounding as a
+    numeric pair, for the truth tables' plain index."""
+    return round(float(latitude), COORD_DECIMALS) + 0.0, round(float(longitude), COORD_DECIMALS) + 0.0
+
+
 def record_thaiwater_rain_1h(conn, readings, now: "float | None" = None) -> int:
     """thaiwater_rain.ThaiWaterRain.readings() into SQLite (INSERT OR IGNORE:
     the same hour seen twice is one row). Pruned like everything else."""
@@ -783,39 +828,14 @@ def record_thaiwater_rain_1h(conn, readings, now: "float | None" = None) -> int:
     return inserted
 
 
-def record_tmd_temp_3h(conn, stations, now: "float | None" = None) -> int:
-    """Every TMD station's 3-hourly AirTemperature (tmd_obs.parse_stations'
-    "temp_c"/"observed_at"), the same way record_tmd_rain_3h keeps rain."""
-    now = time.time() if now is None else now
-    inserted = 0
-    for station in stations or ():
-        observed_at, temp = station.get("observed_at"), station.get("temp_c")
-        lat, lon = station.get("lat"), station.get("lon")
-        if observed_at is None or temp is None or lat is None or lon is None:
-            continue
-        if not (tmd_obs.TEMP_RANGE[0] <= float(temp) <= tmd_obs.TEMP_RANGE[1]):
-            continue
-        slat, slon = _station_key(lat, lon)
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO tmd_temp_3h (station_lat, station_lon, observed_at, temp_c)"
-            " VALUES (?,?,?,?)", (slat, slon, observed_at.timestamp(), float(temp)))
-        inserted += cur.rowcount
-    conn.execute("DELETE FROM tmd_temp_3h WHERE observed_at < ?", (now - KEEP_DAYS * 86400,))
-    return inserted
-
-
 # ------------------------------------------------------ truth: settling ---
 
-_TRUTH_TABLES = ("thaiwater_rain_1h", "tmd_rain_3h", "tmd_temp_3h")
-
-
-def _stations_by_distance(conn, table: str, lat: float, lon: float, max_km: float):
-    if table not in _TRUTH_TABLES:
-        raise ValueError(table)
-    rows = conn.execute(f"SELECT DISTINCT station_lat, station_lon FROM {table}").fetchall()  # noqa: S608
+def _stations_by_distance(conn, lat: float, lon: float, max_km: float):
+    """ThaiWater gauges within max_km, nearest first."""
+    rows = conn.execute("SELECT DISTINCT station_lat, station_lon FROM thaiwater_rain_1h").fetchall()
     near = []
     for row in rows:
-        km = tmd_obs._haversine_km(lat, lon, row["station_lat"], row["station_lon"])
+        km = obs.haversine_km(lat, lon, row["station_lat"], row["station_lon"])
         if km <= max_km:
             near.append((km, row["station_lat"], row["station_lon"]))
     near.sort()
@@ -829,43 +849,88 @@ def _expected_hour_ends(valid_from: float, valid_to: float) -> list[float]:
     return [float(t) for t in range(first, int(valid_to) + 1, 3600)]
 
 
+def _tiled_rain(periods: "list[tuple[float, float, float]]", start: float, end: float) -> "float | None":
+    """The rain over (start, end] from periods (begin, end, mm) that exactly
+    tile it — no gap, no overlap, nothing outside; None when they cannot."""
+    by_begin: dict[int, list[tuple[float, float]]] = {}
+    for begin, stop, mm in periods:
+        by_begin.setdefault(int(round(begin)), []).append((stop, mm))
+
+    def walk(cursor: float, depth: int) -> "float | None":
+        if abs(cursor - end) < 1:
+            return 0.0
+        if depth > 48:
+            return None
+        for stop, mm in sorted(by_begin.get(int(round(cursor)), []), reverse=True):
+            if stop > end + 1:
+                continue
+            rest = walk(stop, depth + 1)
+            if rest is not None:
+                return mm + rest
+        return None
+
+    return walk(start, 0)
+
+
 def observed_rain_mm(conn, lat: float, lon: float, valid_from: float,
-                     valid_to: float) -> "tuple[float, str] | None":
-    """(measured rain over the window in mm, "thaiwater"|"tmd"), or None
-    while no gauge near enough has every hour/slot of it — see the section
-    comment above for the order and the rules."""
+                     valid_to: float) -> "tuple[float, str, float] | None":
+    """(measured rain over the window in mm, source, station km), or None
+    while nothing near enough has all of it — see the section comment above
+    for the order and the rules."""
     hours = _expected_hour_ends(valid_from, valid_to)
     if hours:
-        for _km, slat, slon in _stations_by_distance(conn, "thaiwater_rain_1h", lat, lon, THAIWATER_MAX_KM):
+        for km, slat, slon in _stations_by_distance(conn, lat, lon, THAIWATER_MAX_KM):
             row = conn.execute(
                 "SELECT COUNT(*) AS n, SUM(rain_1h_mm) AS total FROM thaiwater_rain_1h"
                 " WHERE station_lat = ? AND station_lon = ? AND observed_at > ? AND observed_at <= ?",
                 (slat, slon, valid_from, valid_to)).fetchone()
             if row["n"] == len(hours):
-                return float(row["total"]), "thaiwater"
-    for _km, slat, slon in _stations_by_distance(conn, "tmd_rain_3h", lat, lon, tmd_obs.MAX_KM):
-        total = _summed_3h_rain(conn, slat, slon, valid_from, valid_to)
+                return float(row["total"]), "thaiwater_gauge", km
+    for km, source, slat, slon in obs.stations_near(conn, lat, lon, "rain"):
+        rows = conn.execute(
+            "SELECT hour, rain_mm, rain_hours FROM obs_hourly WHERE source = ? AND station_lat = ?"
+            " AND station_lon = ? AND rain_mm IS NOT NULL AND rain_hours IS NOT NULL"
+            " AND hour > ? AND hour <= ?",
+            (source, slat, slon, valid_from, valid_to + 1)).fetchall()
+        periods = [(r["hour"] - r["rain_hours"] * 3600, r["hour"], r["rain_mm"]) for r in rows]
+        total = _tiled_rain(periods, valid_from, valid_to)
         if total is not None:
-            return total, "tmd"
+            return total, source, km
     return None
 
 
-def _tmd_temps(conn, lat: float, lon: float, slots: list[float]) -> "list[float] | None":
-    """The nearest TMD station (<= tmd_obs.MAX_KM) that has a temperature at
-    EVERY one of `slots`, its readings in order; None when none has."""
-    if not slots:
-        return None
-    for _km, slat, slon in _stations_by_distance(conn, "tmd_temp_3h", lat, lon, tmd_obs.MAX_KM):
-        values = []
-        for slot in slots:
-            row = conn.execute(
-                "SELECT temp_c FROM tmd_temp_3h WHERE station_lat = ? AND station_lon = ? AND observed_at = ?",
-                (slat, slon, slot)).fetchone()
-            if row is None:
-                break
-            values.append(row["temp_c"])
-        else:
-            return values
+def observed_temp_at(conn, lat: float, lon: float, when: float,
+                     elevation_m: "float | None" = None) -> "tuple[float, str, float] | None":
+    """(temperature, source, station km) measured at the whole hour nearest
+    `when` by the preferred station near the point that has one."""
+    hour = round(when / 3600.0) * 3600.0
+    for km, source, slat, slon in obs.stations_near(conn, lat, lon, "temp", elevation_m):
+        row = conn.execute(
+            "SELECT temp_c FROM obs_hourly WHERE source = ? AND station_lat = ? AND station_lon = ?"
+            " AND hour = ? AND temp_c IS NOT NULL", (source, slat, slon, hour)).fetchone()
+        if row is not None:
+            return float(row["temp_c"]), source, km
+    return None
+
+
+def observed_temp_extreme(conn, lat: float, lon: float, day_from: float, day_to: float,
+                          which: str) -> "tuple[float, str, float] | None":
+    """(the day's measured max or min, source, station km) from the preferred
+    station near the point that has a COMPLETE day in [day_from, day_to):
+    at least MIN_HOURLY_READINGS hours, or every SYNOP main hour. None when
+    no station near enough has one (the forecast waits, then ages out)."""
+    if which not in ("max", "min"):
+        raise ValueError(which)
+    synop = set(synoptic_hours(day_from - 1, day_to - 1))
+    for km, source, slat, slon in obs.stations_near(conn, lat, lon, "temp"):
+        rows = conn.execute(
+            "SELECT hour, temp_c FROM obs_hourly WHERE source = ? AND station_lat = ? AND station_lon = ?"
+            " AND hour >= ? AND hour < ? AND temp_c IS NOT NULL",
+            (source, slat, slon, day_from, day_to)).fetchall()
+        have = {r["hour"]: r["temp_c"] for r in rows}
+        if len(have) >= MIN_HOURLY_READINGS or (synop and synop <= set(have)):
+            values = list(have.values())
+            return (max(values) if which == "max" else min(values)), source, km
     return None
 
 
@@ -889,32 +954,31 @@ def settle_blend_forecasts(conn, now: "float | None" = None) -> int:
             found = observed_rain_mm(conn, point[0], point[1], row["valid_from"], row["valid_to"])
             if found is None:
                 continue
-            observed = found[0]
-            outcome = "yes" if observed >= RAIN_HIT_MM else "no"
+            outcome = "yes" if found[0] >= RAIN_HIT_MM else "no"
         elif kind == "temp_hour":
-            temps = _tmd_temps(conn, point[0], point[1], [row["valid_from"]])
-            if temps is None:
+            found = observed_temp_at(conn, point[0], point[1], row["valid_from"])
+            if found is None:
                 continue
-            observed, outcome = temps[0], None
+            outcome = None
         else:
-            temps = _tmd_temps(conn, point[0], point[1],
-                               _expected_tmd_slots(row["valid_from"], row["valid_to"]))
-            if temps is None or len(temps) != TMD_SLOTS_PER_DAY:
+            found = observed_temp_extreme(conn, point[0], point[1], row["valid_from"], row["valid_to"],
+                                          "max" if kind == "temp_max" else "min")
+            if found is None:
                 continue
-            observed, outcome = (max(temps) if kind == "temp_max" else min(temps)), None
-        conn.execute("UPDATE forecast_records SET observed_value = ?, outcome = ?, settled_at = ? WHERE id = ?",
-                     (float(observed), outcome, now, row["id"]))
+            outcome = None
+        _settle(conn, row["id"], found[0], outcome, now, found[1], found[2])
         settled += 1
     return settled
 
 
 # --------------------------------------------------------- value weights ---
 
-def _settled(conn, kind: str, since: float) -> list:
-    return conn.execute(
-        "SELECT source, value, observed_value, outcome FROM forecast_records"
+def _settled(conn, kind: str, since: float, area: "str | None" = None) -> list:
+    rows = conn.execute(
+        "SELECT area, area_code, source, value, observed_value, outcome FROM forecast_records"
         " WHERE kind = ? AND settled_at IS NOT NULL AND settled_at >= ? AND observed_value IS NOT NULL",
         (kind, since)).fetchall()
+    return rows if area is None else [r for r in rows if _row_area(r) == area]
 
 
 def _mae_by_source(rows) -> dict:
@@ -924,7 +988,8 @@ def _mae_by_source(rows) -> dict:
     return {s: {"n": len(e), "mae": mean(e)} for s, e in by.items()}
 
 
-def compute_value_weights(conn, now: "float | None" = None, sources=BLEND_SOURCES) -> dict:
+def compute_value_weights(conn, now: "float | None" = None, sources=BLEND_SOURCES,
+                          area: "str | None" = None) -> dict:
     """{value: {source: share}}, shares summing to 1 — DESIGN 5ป's rule:
     equal until EVERY blended source has MIN_CASES_FOR_WEIGHT settled cases
     for that value in the last WEIGHT_DAYS, then 1 / (MAE + 0.5) normalised.
@@ -939,7 +1004,7 @@ def compute_value_weights(conn, now: "float | None" = None, sources=BLEND_SOURCE
         if kind is None:
             out[value] = dict(equal)
             continue
-        stats = _mae_by_source(r for r in _settled(conn, kind, since) if r["source"] in sources)
+        stats = _mae_by_source(r for r in _settled(conn, kind, since, area) if r["source"] in sources)
         if all(stats.get(s, {}).get("n", 0) >= MIN_CASES_FOR_WEIGHT for s in sources):
             raw = {s: 1.0 / (stats[s]["mae"] + MAE_OFFSET) for s in sources}
             total = sum(raw.values())
@@ -973,27 +1038,28 @@ def apply_share_cap(target: dict, previous: "dict | None") -> dict:
 
 
 def _local_day(now: float) -> str:
-    return dt.datetime.fromtimestamp(now, tmd_obs.BANGKOK).strftime("%Y-%m-%d")
+    return dt.datetime.fromtimestamp(now, BANGKOK).strftime("%Y-%m-%d")
 
 
-def update_value_weights(conn, now: "float | None" = None) -> dict:
+def update_value_weights(conn, now: "float | None" = None, area: "str | None" = None) -> dict:
     """At most once per Bangkok calendar day (so the 10%-a-day cap means a
     day however often the dashboard asks): compute, cap against the last
     saved shares, save. Returns the shares in effect."""
     now = time.time() if now is None else now
-    state, _ = store.read_state(conn, VALUE_WEIGHTS_STATE_KEY)
+    key = _state_key(VALUE_WEIGHTS_STATE_KEY, area)
+    state, _ = store.read_state(conn, key)
     today = _local_day(now)
     if isinstance(state, dict) and state.get("day") == today and state.get("weights"):
         return state["weights"]
     previous = state.get("weights") if isinstance(state, dict) else None
-    capped = apply_share_cap(compute_value_weights(conn, now), previous)
-    store.write_state(conn, VALUE_WEIGHTS_STATE_KEY, {"day": today, "weights": capped}, now)
+    capped = apply_share_cap(compute_value_weights(conn, now, area=area), previous)
+    store.write_state(conn, key, {"day": today, "weights": capped}, now)
     return capped
 
 
-def value_weights(conn) -> dict:
-    """The shares in effect, read-only ({} before the first update)."""
-    state, _ = store.read_state(conn, VALUE_WEIGHTS_STATE_KEY)
+def value_weights(conn, area: "str | None" = None) -> dict:
+    """The shares in effect for an area, read-only ({} before the first update)."""
+    state, _ = store.read_state(conn, _state_key(VALUE_WEIGHTS_STATE_KEY, area))
     if not isinstance(state, dict):
         return {}
     return state.get("weights") or {}
@@ -1080,15 +1146,16 @@ def _best(per_source: dict, key: str, lower_is_better: bool) -> "list[str] | Non
     return sorted(s for s, v in ready.items() if abs(v - best) < 1e-9)
 
 
-def target_scores(conn, now: "float | None" = None, days: int = TARGET_DAYS) -> dict:
+def target_scores(conn, now: "float | None" = None, days: int = TARGET_DAYS,
+                  area: "str | None" = None) -> dict:
     """Poom's three targets, per source (see report_target_lines for the
     words): temperature tomorrow within +/-2 C >= 90% (tmax and tmin both),
     rain today yes/no right >= 80%, rain probability calibrated. Plus the
     best source per value. Pure reading — no weight moves, nothing tuned."""
     now = time.time() if now is None else now
     since = now - days * 86400
-    tmax = _temp_target(_settled(conn, "temp_max", since))
-    tmin = _temp_target(_settled(conn, "temp_min", since))
+    tmax = _temp_target(_settled(conn, "temp_max", since, area))
+    tmin = _temp_target(_settled(conn, "temp_min", since, area))
     temp_verdict = {}
     for s in sorted(set(tmax) | set(tmin)):
         a, b = tmax.get(s), tmin.get(s)
@@ -1096,15 +1163,17 @@ def target_scores(conn, now: "float | None" = None, days: int = TARGET_DAYS) -> 
             temp_verdict[s] = "insufficient"
         else:
             temp_verdict[s] = "pass" if min(a["share"], b["share"]) >= TEMP_TARGET_SHARE else "fail"
-    rain_today = _rain_today_target(_settled(conn, "rain_day", since), _settled(conn, "rain_prob_day", since))
+    rain_today = _rain_today_target(_settled(conn, "rain_day", since, area),
+                                    _settled(conn, "rain_prob_day", since, area))
     rain_verdict = {s: ("insufficient" if v["n"] < MIN_TARGET_CASES
                         else "pass" if v["share"] >= RAIN_TODAY_TARGET_SHARE else "fail")
                     for s, v in rain_today.items()}
-    calibration = _calibration(_settled(conn, "rain_prob", since))
-    temp_hour = _mae_by_source(_settled(conn, "temp_hour", since))
-    rain_amount = _mae_by_source(_settled(conn, "rain_day", since))
+    calibration = _calibration(_settled(conn, "rain_prob", since, area))
+    temp_hour = _mae_by_source(_settled(conn, "temp_hour", since, area))
+    rain_amount = _mae_by_source(_settled(conn, "rain_day", since, area))
     return {
         "days": days,
+        "area": area,
         "temp_tomorrow": {"tmax": tmax, "tmin": tmin, "verdict": temp_verdict},
         "rain_today": {"sources": rain_today, "verdict": rain_verdict},
         "calibration": calibration,
@@ -1139,7 +1208,8 @@ def report_target_lines(targets: dict, value_shares: "dict | None" = None) -> li
                  "(สูงสุดและต่ำสุด ต้องผ่านทั้งคู่):")
     tt = targets["temp_tomorrow"]
     if not tt["verdict"]:
-        lines.append("  ยังไม่มีผลเทียบ — ต้องมี TMD uid/ukey (สถานีวัดอุณหภูมิ) จึงเริ่มวัดได้")
+        lines.append(f"  ยังไม่มีผลเทียบ — ต้องมีสถานีวัดอุณหภูมิห่างตู้ไม่เกิน {obs.MAX_KM['temp']:.0f} กม. "
+                     f"ที่มีค่าครบทั้งวัน (≥{MIN_HOURLY_READINGS} ชม. หรือครบ 8 เวลาหลักของ SYNOP)")
     for s, verdict in tt["verdict"].items():
         parts = []
         for label, table in (("สูงสุด", tt["tmax"]), ("ต่ำสุด", tt["tmin"])):

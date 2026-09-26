@@ -1,7 +1,6 @@
 """Measured hourly rain from สสน.'s ThaiWater rain gauges — the GROUND TRUTH
-verify.py settles rain forecasts against while TMD's Weather3Hours needs a
-uid/ukey Poom does not have (the TMD NWP token is a different key and gives
-forecasts, not measurements).
+verify.py settles rain forecasts against first (then obs.py's stations);
+the TMD NWP token gives forecasts, not measurements.
 
 THE SOURCE: https://api-v3.thaiwater.net/api/v1/thaiwater30/public/rain_24h —
 the same agency and API family as the water levels alerts.py already reads
@@ -34,8 +33,9 @@ WHY A TIMER AND NOT ONLY THE DASHBOARD REQUEST: the phone asks the broker
 only while its screen is on. A night with the screen off would leave the
 night's hours missing, and a day with a missing hour is never settled — so
 without the timer almost no day would ever settle. The timer keeps the
-readings in memory (48 h, only gauges within MAX_KM of the kiosk's own
-position); the next dashboard request writes them into SQLite
+readings in memory (48 h, only gauges within MAX_KM of the kiosk's CURRENT
+position — nationwide, whatever province it is in — or of a forecast point
+still waiting to settle, see Dashboard.record_verification); the next dashboard request writes them into SQLite
 (verify.record_thaiwater_rain_1h). A broker restart loses at most the
 readings since the last request.
 

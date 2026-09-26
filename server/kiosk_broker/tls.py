@@ -63,7 +63,6 @@ SOURCES: tuple[tuple[str, str], ...] = (
     ("tmd_cap", "https://www.tmd.go.th/api/xml/CAP"),
     ("tmd_rss", "https://www.tmd.go.th/api/xml/warning-news"),
     ("air4thai", "https://air4thai.pcd.go.th/services/getNewAQI_JSON.php"),
-    ("tmd_obs", "https://data.tmd.go.th/api/Weather3Hours/V2/"),
     ("thaiwater", "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_load"),
     ("gdacs", "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"),
     ("open_meteo", "https://api.open-meteo.com/v1/forecast"),
@@ -412,6 +411,13 @@ def _health_rows(sources, probe_fn, last):
         parts = urllib.parse.urlsplit(url)
         host = parts.hostname or ""
         override = _LOCATION_PROBES.get(name) if probe_fn is _DEFAULT_PROBE else None
+        if override is None and probe_fn is _DEFAULT_PROBE and name.startswith("obs_"):
+            # A measured-station reader (obs.py): one real whole-country
+            # fetch, answered with how many stations it returned and how many
+            # are fresh — the numbers the card's choice has to work with.
+            from . import obs  # noqa: PLC0415 — deferred: the readers import this module
+
+            override = (lambda module: lambda: obs.health_probe(module))(name[4:])
         if override is not None:
             result, reason = override()
         else:
@@ -445,6 +451,9 @@ def read_status_file(path: Path) -> dict:
 
 def health_main(home: Path) -> int:
     """`python -m kiosk_broker health`: 0 when no source failed TLS."""
-    rows = _health_rows(SOURCES, probe, read_status_file(home / "tls_status.json"))
+    from . import obs  # noqa: PLC0415 — deferred: the readers import this module
+
+    rows = _health_rows(SOURCES + tuple(obs.health_sources()), probe,
+                        read_status_file(home / "tls_status.json"))
     print("\n".join(_format(rows)))
     return 1 if any(r[2] == "TLS-FAIL" for r in rows) else 0

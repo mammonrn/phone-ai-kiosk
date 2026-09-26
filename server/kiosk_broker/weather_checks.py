@@ -246,7 +246,7 @@ def uv_sanity_ok(uv: "float | None", elevation_deg: float, cloud_cover_pct) -> b
 
 def compute_uv(hourly_times, hourly_values, current_time: str,
                 latitude: float, longitude: float, cloud_cover_pct,
-                fetch_backup) -> "tuple[float | None, str]":
+                fetch_backup, primary_suspect: bool = False) -> "tuple[float | None, str]":
     """The UV value for the card: Open-Meteo's own hourly series interpolated
     to now, sanity-checked against the sun's real position; the backup only
     when the primary is missing or fails that check. Returns (value, source),
@@ -262,7 +262,9 @@ def compute_uv(hourly_times, hourly_values, current_time: str,
 
     primary = interpolate_hourly(hourly_times, hourly_values, now)
     primary_rounded = round(max(primary, 0.0), 1) if primary is not None else None
-    if uv_sanity_ok(primary_rounded, elevation, cloud_cover_pct):
+    # primary_suspect (0.72): the day's own UV peak contradicts NWP's daily
+    # shortwave (uv_check.plausible_uv) -> the series is not trusted today.
+    if not primary_suspect and uv_sanity_ok(primary_rounded, elevation, cloud_cover_pct):
         return primary_rounded, "open-meteo"
 
     if primary_rounded is not None:
