@@ -343,6 +343,25 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         reset()
     }
 
+    /** The weather line's turns: the forecast and two sample warnings, one picture each. */
+    private fun homeAlerts() {
+        if (!wanted("home-alerts")) return
+        com.mammonrn.phoneaikiosk.weather.WeatherAlerts.override =
+            com.mammonrn.phoneaikiosk.TestTriggerReceiver.sampleAlerts()
+        try {
+            SystemClock.sleep(1_500)                             // the line is redrawn every second
+            for (i in 0 until 3) {
+                if (i > 0) {
+                    mainSync { top()?.findViewById<View>(R.id.weather_outlook)?.performClick() }
+                    SystemClock.sleep(600)                       // the fade, both halves
+                }
+                check("home-alerts-$i", ::homeRules)
+            }
+        } finally {
+            com.mammonrn.phoneaikiosk.weather.WeatherAlerts.override = null
+        }
+    }
+
     // ------------------------------------------------------------ the walk
 
     fun everyScreen() {
@@ -360,6 +379,9 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         homeInState("resting", { hold = WakePause.hold(WakePause.Source.MUSIC, media) }, { hold?.let { WakePause.release(it) } })
         val mic = VoiceState.mic
         homeInState("unavailable", { VoiceState.mic = "error" }, { VoiceState.mic = mic })
+        // The weather window with sample warnings (DEBUG ONLY, TestTriggerReceiver.sampleAlerts):
+        // the forecast, then each warning after a tap, all at the same height.
+        homeAlerts()
 
         panel(); check("panel")
         panel(); press("โฟลเดอร์สื่อ"); check("folder-media")

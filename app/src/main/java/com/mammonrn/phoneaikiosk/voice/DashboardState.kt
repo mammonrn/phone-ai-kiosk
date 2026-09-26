@@ -89,6 +89,13 @@ object DashboardState {
         val weatherStats: List<Pair<String, String>> = emptyList(),
         /** The next three days in one sentence, or empty. */
         val outlook: String = "",
+        /**
+         * The country-wide warnings (weather/WeatherAlerts), which take turns
+         * with [outlook] on the window's last line. NONE from a broker that
+         * does not send them.
+         */
+        val alerts: com.mammonrn.phoneaikiosk.weather.WeatherAlerts.Block =
+            com.mammonrn.phoneaikiosk.weather.WeatherAlerts.NONE,
     )
 
     /**
@@ -114,6 +121,7 @@ object DashboardState {
                 ?.takeUnless { it == "null" }.orEmpty(),
             sunrise = clock12(usable(weather)?.first?.optString("sunrise", "") ?: ""),
             sunset = clock12(usable(weather)?.first?.optString("sunset", "") ?: ""),
+            alerts = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.parse(root.optJSONObject("alerts")),
         )
     } catch (e: Exception) {
         val panel = Panel(unavailable, false)

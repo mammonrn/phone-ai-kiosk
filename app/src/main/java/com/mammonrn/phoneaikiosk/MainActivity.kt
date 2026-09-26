@@ -92,6 +92,26 @@ class MainActivity : Activity() {
     private lateinit var weatherStats: android.widget.TableLayout
     private lateinit var weatherOutlook: TextView
 
+    // ------------------------------------------------ the weather window's words
+    /** The place's name from the phone's own position (weather/PlaceLookup). */
+    private lateinit var placeLookup: com.mammonrn.phoneaikiosk.weather.PlaceLookup
+    /** Names for the title, most detailed first; the first that fits whole is shown. */
+    private var titlePlaces: List<String> = emptyList()
+    /** "ตำแหน่งจริง" or "ตำแหน่งสำรอง"; empty until the first dashboard. */
+    private var titleSource = ""
+    /** The broker's own name, and whether its weather is for the fallback position. */
+    private var brokerPlace = ""
+    private var weatherForFallback = false
+    /** The forecast sentence and the warnings that take turns with it. */
+    private var outlookText = ""
+    private var weatherAlerts = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.NONE
+    private val lineRotation = com.mammonrn.phoneaikiosk.weather.LineRotation()
+    private var shownWeatherLine: String? = null
+    private var weatherLineTurns = false
+    /** Debug builds' sample warnings (WeatherAlerts.override), parsed once per change. */
+    private var seenAlertOverride: String? = null
+    private var overrideAlerts: com.mammonrn.phoneaikiosk.weather.WeatherAlerts.Block? = null
+
     /** News for the price windows: a move of 3% (crypto) or 1% (gold and fuel). */
     private val cryptoMoves = com.mammonrn.phoneaikiosk.ui.MoveTracker(
         com.mammonrn.phoneaikiosk.ui.MoveTracker.CRYPTO_PCT)
@@ -254,6 +274,7 @@ class MainActivity : Activity() {
                 handler.post(refreshDashboard)
             }
             showMusic(nowMs)
+            showWeatherLine()
             renderCards(nowMs)
             jarvisState.text = DashboardState.jarvisState(
                 VoiceState.mic, VoiceState.stt, VoiceState.chat, VoiceState.tts,
@@ -289,6 +310,8 @@ class MainActivity : Activity() {
             val fix = location.coordinates()
             // For Maps: search near the kiosk, not the whole world (MapsLauncher).
             if (fix != null) VoiceState.near = fix
+            // The place's name for the title (once a day, or when there is none yet).
+            placeLookup.refresh(fix) { handler.post { updateWeatherTitle() } }
 
             dashboardThread.execute {
                 val token = TokenStore(this@MainActivity).token()
@@ -381,12 +404,10 @@ class MainActivity : Activity() {
             summaries[id] = fact.second
         }
         showWeatherStats(screen.weatherStats)
-        if (screen.outlook.isEmpty()) {
-            weatherOutlook.visibility = android.view.View.GONE
-        } else {
-            weatherOutlook.text = screen.outlook
-            weatherOutlook.visibility = android.view.View.VISIBLE
-        }
+        // The forecast, taking turns with any country-wide warnings (showWeatherLine).
+        outlookText = screen.outlook
+        weatherAlerts = screen.alerts
+        showWeatherLine()
         // Numbers into the pixel face, the freshness note turned down. The
         // strings themselves are DashboardState's business and are not touched
         // here — this only decides what they look like.
@@ -442,10 +463,11 @@ class MainActivity : Activity() {
 
         // WHICH POSITION (0.42.0, Poom): the real one the phone reported, or the
         // university's fallback — said in a word, never a coordinate.
-        val source = getString(if (VoiceState.weatherFallback == true) R.string.weather_source_fallback
-                               else R.string.weather_source_phone)
-        weatherTitle.text = if (screen.place.isEmpty()) "${getString(R.string.window_weather)} · $source"
-                            else "${getString(R.string.window_weather)} · ${screen.place} · $source"
+        weatherForFallback = VoiceState.weatherFallback == true
+        titleSource = getString(if (weatherForFallback) R.string.weather_source_fallback
+                                else R.string.weather_source_phone)
+        brokerPlace = screen.place
+        updateWeatherTitle()
 
         // The gold title carries the PURITY, as a word and a number:
         // "ราคาทอง · ความบริสุทธิ์ 96.5%". What the price move is measured
@@ -458,6 +480,89 @@ class MainActivity : Activity() {
             screen.goldPurity.isEmpty() -> name
             screen.oil != null -> "$name · " + getString(R.string.gold_purity_short, screen.goldPurity)
             else -> "$name · " + getString(R.string.gold_purity, screen.goldPurity)
+        }
+    }
+
+    /**
+     * The weather title's place: the phone's own district and province from the
+     * Geocoder (weather/PlaceLookup) while the weather is for the phone's
+     * position; otherwise — or while there is no name for here yet — the
+     * broker's; with neither, no name, as before. Never a coordinate.
+     */
+    private fun updateWeatherTitle() {
+        if (titleSource.isEmpty()) return                       // no dashboard yet
+        val own = if (weatherForFallback) emptyList() else placeLookup.names(location.coordinates())
+        titlePlaces = own.ifEmpty { listOf(brokerPlace).filter { it.isNotEmpty() } }
+        fitWeatherTitle()
+    }
+
+    /**
+     * The most detailed name that fits the title bar WHOLE, so a long name loses
+     * a part (the ตำบล, then the province) instead of being cut mid-word; the
+     * title without a name if none fits. Still one line with "…" if even that
+     * is too long, the title's rule since it was made.
+     */
+    private fun fitWeatherTitle() {
+        if (titleSource.isEmpty()) return
+        val head = getString(R.string.window_weather)
+        val options = titlePlaces.map { "$head · $it · $titleSource" } + "$head · $titleSource"
+        val room = weatherTitle.width - weatherTitle.totalPaddingLeft - weatherTitle.totalPaddingRight
+        val chosen = if (room <= 0) options.first()
+                     else options.firstOrNull { weatherTitle.paint.measureText(it) <= room } ?: options.last()
+        if (weatherTitle.text.toString() != chosen) weatherTitle.text = chosen
+    }
+
+    /**
+     * The weather window's last line: the forecast alone, as always — or, while
+     * the broker has country-wide warnings (weather/WeatherAlerts), the forecast
+     * ("▸") and each warning ("⚠") in turn, six seconds each (LineRotation), a
+     * tap for the next. Two lines' height held while they take turns, so the
+     * card does not move; the change is a short fade (none with animations off).
+     */
+    private fun showWeatherLine(tapped: Boolean = false) {
+        val sample = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.override
+        if (sample !== seenAlertOverride) {
+            seenAlertOverride = sample
+            overrideAlerts = sample?.let {
+                runCatching { com.mammonrn.phoneaikiosk.weather.WeatherAlerts.parse(org.json.JSONObject(it)) }.getOrNull()
+            }
+        }
+        val lines = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.lines(
+            outlookText, overrideAlerts ?: weatherAlerts, System.currentTimeMillis(),
+            java.time.ZoneId.systemDefault())
+        if (lines.isEmpty()) {
+            weatherOutlook.animate().cancel()
+            weatherOutlook.visibility = android.view.View.GONE
+            weatherOutlook.isClickable = false
+            weatherLineTurns = false
+            shownWeatherLine = null
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        val text = lines[if (tapped) lineRotation.advance(lines.size, now) else lineRotation.current(lines.size, now)]
+        val turns = lines.size > 1
+        if (turns != weatherLineTurns) {
+            weatherLineTurns = turns
+            if (turns) weatherOutlook.setLines(2) else { weatherOutlook.minLines = 0; weatherOutlook.maxLines = 2 }
+            // A button only while there is a next line to show (no button that does nothing).
+            weatherOutlook.isClickable = turns
+            weatherOutlook.isFocusable = turns
+        }
+        weatherOutlook.visibility = android.view.View.VISIBLE
+        if (text == shownWeatherLine) return
+        val direct = shownWeatherLine == null || !turns
+        shownWeatherLine = text
+        weatherOutlook.animate().cancel()
+        if (direct) {
+            weatherOutlook.alpha = 1f
+            weatherOutlook.text = text
+            weatherOutlook.contentDescription = if (turns) text else null
+        } else {
+            weatherOutlook.animate().alpha(0f).setDuration(LINE_FADE_MS).withEndAction {
+                weatherOutlook.text = text
+                weatherOutlook.contentDescription = text
+                weatherOutlook.animate().alpha(1f).setDuration(LINE_FADE_MS).start()
+            }.start()
         }
     }
 
@@ -1055,6 +1160,7 @@ class MainActivity : Activity() {
             ?: android.graphics.Typeface.MONOSPACE
 
         location = KioskLocation(this)
+        placeLookup = com.mammonrn.phoneaikiosk.weather.PlaceLookup(this, dashboardThread)
 
         status = findViewById(R.id.status)
         voiceStatus = findViewById(R.id.voice_status)
@@ -1098,6 +1204,19 @@ class MainActivity : Activity() {
         sunRow = findViewById(R.id.sun_row)
         weatherStats = findViewById(R.id.weather_stats)
         weatherOutlook = findViewById(R.id.weather_outlook)
+        // A tap shows the next line while the forecast and warnings take turns;
+        // the line is two lines of small text, so what a finger may press is
+        // 48dp (TouchAreas), reaching into the panel around it.
+        weatherOutlook.setOnClickListener { showWeatherLine(tapped = true) }
+        weatherOutlook.isClickable = false
+        findViewById<android.view.View>(R.id.weather_panel).let { panel ->
+            panel.touchDelegate = com.mammonrn.phoneaikiosk.ui.TouchAreas(panel).apply { add(weatherOutlook) }
+        }
+        // The badge beside the title comes and goes: the name is fitted again
+        // to the room that is left (fitWeatherTitle).
+        weatherTitle.addOnLayoutChangeListener { _, l, _, r, _, ol, _, or, _ ->
+            if (r - l != or - ol) handler.post { fitWeatherTitle() }
+        }
         cardStack = findViewById(R.id.card_stack)
         commodityPages = findViewById(R.id.commodity_pages)
         // 0.53.2: swipe, and the page squares in the title bar — no tab row.
@@ -1699,6 +1818,9 @@ class MainActivity : Activity() {
          * lifetime.
          */
         const val DASHBOARD_INTERVAL_MILLIS = 60_000L
+
+        /** Each half of the weather line's change: out, then in. */
+        const val LINE_FADE_MS = 180L
 
         /** Its own logcat tag, so `adb logcat -s KioskDashboard:*`
          *  shows the screen refreshing without the voice pipeline's

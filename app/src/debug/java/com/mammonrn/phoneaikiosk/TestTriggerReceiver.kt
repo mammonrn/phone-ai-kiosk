@@ -120,6 +120,16 @@ class TestTriggerReceiver : BroadcastReceiver() {
                 android.util.Log.i("KioskHome", "sample home card ${if (com.mammonrn.phoneaikiosk.home.HomeCard.override != null) "on" else "off"}")
             }
 
+            ACTION_WEATHER_ALERTS -> {
+                // DEBUG ONLY: sample country-wide warnings on the weather window,
+                // to see the forecast and warnings take turns on the A07 before
+                // the broker sends real ones. --ez on true|false. Shown within a
+                // second; made-up text, nothing here reaches the broker.
+                com.mammonrn.phoneaikiosk.weather.WeatherAlerts.override =
+                    if (intent.getBooleanExtra("on", true)) sampleAlerts() else null
+                android.util.Log.i("KioskHome", "sample weather alerts ${if (com.mammonrn.phoneaikiosk.weather.WeatherAlerts.override != null) "on" else "off"}")
+            }
+
             ACTION_FX -> {
                 // 0.55.0: checks the equalizer on the phone, in numbers. --es preset Rock|Flat|…
                 // sets it (--ez on false turns it off); then the bars are averaged over 3 s of
@@ -577,6 +587,23 @@ class TestTriggerReceiver : BroadcastReceiver() {
         const val ACTION_CLOCK = "com.mammonrn.phoneaikiosk.TEST_CLOCK"
         const val ACTION_HOME_CARD = "com.mammonrn.phoneaikiosk.TEST_HOME_CARD"
         const val ACTION_LIGHTS_PAGE = "com.mammonrn.phoneaikiosk.TEST_LIGHTS_PAGE"
+        const val ACTION_WEATHER_ALERTS = "com.mammonrn.phoneaikiosk.TEST_WEATHER_ALERTS"
+
+        /**
+         * DEBUG ONLY: made-up warnings in the broker's "alerts" shape, read a few
+         * minutes ago and ending tomorrow, so they are never dropped as expired.
+         * The second is a long one that should still fit two lines.
+         */
+        fun sampleAlerts(): String {
+            val now = System.currentTimeMillis() / 1000
+            val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+            return """{"items": [
+                {"kind": "warning", "title": "ฝนตกหนักถึงหนักมาก", "areas": "22 จังหวัด", "until": "$tomorrow",
+                 "source": "กรมอุตุฯ", "line": "⚠ ฝนตกหนักถึงหนักมาก 22 จังหวัด ถึงพรุ่งนี้ (กรมอุตุฯ)"},
+                {"kind": "warning", "title": "คลื่นลมแรง", "areas": "อ่าวไทยตอนบนและทะเลอันดามันตอนบน", "until": null,
+                 "source": "กรมอุตุฯ", "line": "⚠ คลื่นลมแรง อ่าวไทยตอนบนและทะเลอันดามันตอนบน คลื่นสูง 2-3 เมตร (กรมอุตุฯ)"}],
+                "updated": ${now - 300}, "ok": true}"""
+        }
 
         /** Poom's house as home_settings.view would send it after naming one channel. */
         private const val SAMPLE_LIGHTS = """{"ok": true, "age_seconds": 0, "control": true, "devices": [
