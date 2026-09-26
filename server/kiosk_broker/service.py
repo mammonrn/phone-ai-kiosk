@@ -22,6 +22,7 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                oggopus, pronounce, register, shorten, stt, stt_hints, stt_router, store, tts,
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
                auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd, social_cmd,
+               bluetooth_cmd,
                calendar_app, holidays_q, alerts)
 from .config import Config
 from .llm import UpstreamError, ask
@@ -922,6 +923,16 @@ def handle_chat(
         log_intent("skipped")
         action, reply = social_cmd.action_and_reply(heard_social)
         return answer_in_code(reply, action, f"social:{heard_social}")
+
+    # ---- Bluetooth (0.68): recognised in code; the PHONE turns it on/off or
+    # connects/disconnects the named device (settings/BluetoothVoice). After
+    # the code recognisers that could collide on the word "ต่อ" — music's and
+    # radio's "next" and the countdown — so "ต่อไป"/"ต่อเวลา" keep going their way.
+    heard_bluetooth = bluetooth_cmd.match(text) if not is_camera and alarm is None and not calendar_yes else None
+    if heard_bluetooth is not None:
+        log_intent("skipped")
+        action, reply = bluetooth_cmd.action_and_reply(heard_bluetooth)
+        return answer_in_code(reply, action, f"bluetooth:{heard_bluetooth['command']}")
 
     # ---- the lights (0.46.0): switched in code, answered from eWeLink ----
     # After the camera and the alarms, which own their sentences ("ปิดปลุก").
