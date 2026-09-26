@@ -341,6 +341,10 @@ def parse_cap(body: bytes, feed_title: str = "") -> dict | None:
             "effective": _iso(_cap(info, "effective")),
             "expires": expires,
             "source": SOURCE_TMD,
+            # The CAP area's own ISO 3166-2 province codes ("TH-xx"), kept for
+            # the flood forecast feature (flood_forecast.py) — never shown on
+            # the card itself, which speaks areas_text()'s Thai names instead.
+            "provinces": provinces,
         }
     return None
 
@@ -543,9 +547,14 @@ def fit(text: str, limit: int, measure=width) -> str:
 
 
 def line(item: dict, now: float) -> str:
-    """"⚠ ฝนตกหนักมาก 23 จังหวัด ถึง 18:00 น. (กรมอุตุฯ)" — formal, one line.
-    The title gives way first; the expiry and the source are never cut."""
-    tail = (f" ถึง {_when(item['expires'], now)}" if item.get("expires") else "") + f" ({item['source']})"
+    """"⚠ ฝนตกหนักมาก 23 จังหวัด ถึง 18:00 น." — formal, one line, carrying no
+    source name (Poom: the card's "ที่มาข้อมูล" page lists sources instead,
+    and Jarvis names them when asked — see `reply` below for "ที่มาข้อมูล...").
+    The room freed by dropping "(source)" stays with the item's own detail —
+    the area (`areas_text`) and the time window (`_when`) already use it in
+    full; only the title gives way when a line still does not fit, and the
+    expiry is never cut."""
+    tail = f" ถึง {_when(item['expires'], now)}" if item.get("expires") else ""
     areas = item.get("areas") or ""
     head = f"⚠ {item['title']}"
     if areas and width(f"{head} {areas}{tail}") > LINE_WIDTH:
@@ -586,7 +595,11 @@ def payload_items(items: list[dict], now: float) -> list[dict]:
     object's overall `updated`/`ok`, which follow TMD's CAP alone."""
     return [{"kind": "warning", "title": i["title"], "areas": i.get("areas") or "",
              "until": _until_iso(i.get("expires")), "source": i["source"], "line": line(i, now),
-             "fetched": int(i["fetched"]) if i.get("fetched") is not None else None}
+             "fetched": int(i["fetched"]) if i.get("fetched") is not None else None,
+             # The CAP area's own province codes, kept for the flood forecast
+             # feature; empty for sources that name none of their own (TMD's
+             # plain RSS, GDACS, ThaiWater).
+             "provinces": list(i.get("provinces") or [])}
             for i in current(items, now)]
 
 
@@ -833,4 +846,34 @@ def reply(board: Alerts, text: str, now: float) -> str:
         said = shape.format(what=what)
         if len(said) <= ANSWER_CHARS:
             return said
+    return fit(said, ANSWER_CHARS, len)
+
+
+#: "ข้อมูลเตือนภัยมาจากไหน", "ที่มาข้อมูล", "ที่มาข้อมูลเตือนภัย/อากาศ", "แหล่งข้อมูลอะไร" —
+#: asked separately from `match`/`reply` above: this names the sources, it
+#: does not repeat the warnings themselves (the "ที่มาข้อมูล" window on the
+#: phone lists every source in full; this is Jarvis's short spoken answer).
+_SOURCE_ASKS = re.compile(r"ข้อมูลเตือนภัยมาจากไหน|ที่มาข้อมูล(?:เตือนภัย|อากาศ)?|แหล่งข้อมูลอะไร")
+
+_SOURCE_NAMES = {SOURCE_TMD: "กรมอุตุฯ", SOURCE_GDACS: "GDACS", SOURCE_THAIWATER: "สสน."}
+
+
+def match_source(text: str) -> bool:
+    t = "".join((text or "").split())
+    return bool(_SOURCE_ASKS.search(t))
+
+
+def reply_source(board: Alerts, now: float) -> str:
+    """≤ ANSWER_CHARS, spoken casually (persona, unlike the card's formal
+    lines): the sources behind the card's CURRENT lines — whichever of TMD,
+    GDACS and สสน. are actually showing a warning right now, plus the
+    weather forecast's own source (Open-Meteo; fetched by weather.py, not
+    this module, but always the other line on the same card)."""
+    names = []
+    for item in board.items(now):
+        name = _SOURCE_NAMES.get(item["source"], item["source"])
+        if name not in names:
+            names.append(name)
+    warn = " กับ ".join(names) if names else "กรมอุตุฯ"
+    said = f"เตือนภัยจาก{warn} ส่วนอากาศจาก Open-Meteo ครับ"
     return fit(said, ANSWER_CHARS, len)

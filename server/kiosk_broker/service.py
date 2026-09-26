@@ -999,6 +999,20 @@ def handle_chat(
             reply = alerts.FAILED
         return answer_in_code(reply, None, "alerts")
 
+    # ---- where the warning/weather card's lines come from (alerts.py): a
+    # short spoken answer naming the sources, never the card's own formal
+    # wording. ------------------------------------------------------------
+    if not is_camera and alarm is None and not calendar_yes and alerts.match_source(text):
+        log_intent("skipped")
+        board = _dashboard(cfg).alerts
+        try:
+            board.ensure_fresh()
+            reply = alerts.reply_source(board, time.time())
+        except Exception as exc:  # noqa: BLE001 — a feed problem must not end the conversation
+            log.warning("alerts device=%s failed: %s", label, type(exc).__name__)
+            reply = alerts.FAILED
+        return answer_in_code(reply, None, "alerts_source")
+
     private_kind = "calendar" if calendar_yes else None
     if is_camera or alarm is not None or private_kind:
         log_intent("skipped")

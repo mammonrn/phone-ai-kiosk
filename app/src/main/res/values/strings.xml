@@ -292,6 +292,7 @@
     <string name="window_sources">ที่มาข้อมูล</string>
     <string-array name="data_sources">
         <item>อากาศและพยากรณ์|Open-Meteo (open-meteo.com) สัญญาอนุญาต CC BY 4.0 แบบจำลอง ECMWF ค่ายูวีสำรองจาก currentuvindex.com สัญญาอนุญาต CC BY 4.0 ใช้เมื่อค่าหลักตรวจสอบแล้วไม่น่าเชื่อถือ</item>
+        <item>ประกาศเตือนภัย|กรมอุตุนิยมวิทยา ประกาศเตือนภัยและสถานีตรวจวัดเมื่อมีคีย์ (tmd.go.th) สสน. สถาบันสารสนเทศทรัพยากรน้ำ ระดับน้ำจากสถานีโทรมาตร (thaiwater.net) GDACS ศูนย์ประสานงานภัยพิบัติโลกของสหประชาชาติและสหภาพยุโรป (gdacs.org) ข้อมูลสาธารณะ ไม่ต้องสมัครสมาชิก</item>
         <item>ฝุ่น PM2.5|Air4Thai กรมควบคุมมลพิษ จากสถานีตรวจวัดที่ใกล้ที่สุด เมื่อไม่มีสถานีใกล้พอ ใช้ Open-Meteo Air Quality สัญญาอนุญาต CC BY 4.0 ข้อมูลจาก CAMS, Copernicus Atmosphere Monitoring Service แทน ระดับตามเกณฑ์กรมควบคุมมลพิษ พ.ศ. 2566</item>
         <item>ชื่อพื้นที่|© OpenStreetMap contributors สัญญาอนุญาต ODbL</item>
         <item>ราคาทอง|สมาคมค้าทองคำ ผ่าน chnwt.dev</item>

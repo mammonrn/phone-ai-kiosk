@@ -97,8 +97,12 @@ def test_a_cap_document_gives_hazard_areas_severity_and_expiry():
     assert item["areas"] == "23 จังหวัด และภาคตะวันออก"
     assert item["severity"] == "Extreme" and item["event"] == "Very Heavy Rain"
     assert item["expires"] == EXPIRY
+    # The CAP area's own ISO 3166-2 province codes, kept for the flood
+    # forecast feature — 23 of them, never shown on the card itself.
+    assert len(item["provinces"]) == 23 and all(p.startswith("TH-") for p in item["provinces"])
     heavy = alerts.parse_cap(HEAVY, "ฝนตกหนัก")
     assert (heavy["areas"], heavy["severity"]) == ("20 จังหวัด", "Severe")
+    assert len(heavy["provinces"]) == 20
 
 
 def test_without_the_feed_title_the_headline_is_trimmed_to_the_hazard():
@@ -181,7 +185,9 @@ def test_thaiwater_lines_fit_the_card():
         for item in alerts.parse_thaiwater(body):
             line = alerts.line(item, NOW)
             assert alerts.width(line) <= alerts.LINE_WIDTH
-            assert line.endswith("(สสน.)")
+            # No source name on the card's line (Poom, 2026-09-26): สสน. stays
+            # on the "ที่มาข้อมูล" window, not appended here.
+            assert "สสน." not in line and "(" not in line
 
 
 def test_thaiwater_bad_shape_is_a_source_error():
@@ -196,23 +202,28 @@ def test_thaiwater_bad_shape_is_a_source_error():
 def test_one_short_formal_line_per_item():
     very = alerts.parse_cap(VERY_HEAVY, "ฝนตกหนักมาก")
     heavy = alerts.parse_cap(HEAVY, "ฝนตกหนัก")
-    assert alerts.line(heavy, NOW) == "⚠ ฝนตกหนัก 20 จังหวัด ถึง 18:00 น. (กรมอุตุฯ)"
-    # The region does not fit: the list gives way, the expiry and source stay.
-    assert alerts.line(very, NOW) == "⚠ ฝนตกหนักมาก 23 จังหวัด… ถึง 18:00 น. (กรมอุตุฯ)"
+    # No "(source)" suffix (Poom, 2026-09-26): the room it freed stays with
+    # the area and the time window in full.
+    assert alerts.line(heavy, NOW) == "⚠ ฝนตกหนัก 20 จังหวัด ถึง 18:00 น."
+    # The region still does not fully fit even with the room the source's
+    # removal freed: the list gives way, the expiry still stays.
+    assert alerts.line(very, NOW) == "⚠ ฝนตกหนักมาก 23 จังหวัด และภาค… ถึง 18:00 น."
     # Ending another day: the date, with a Thai month abbreviation.
-    assert alerts.line(heavy, at("2026-09-25T20:00:00+07:00")).endswith("ถึง 26 ก.ย. (กรมอุตุฯ)")
+    assert alerts.line(heavy, at("2026-09-25T20:00:00+07:00")).endswith("ถึง 26 ก.ย.")
     for line in (alerts.line(very, NOW), alerts.line(heavy, NOW)):
         assert alerts.width(line) <= alerts.LINE_WIDTH
         assert "ครับ" not in line and "นะ" not in line
+        assert "(" not in line and "กรมอุตุฯ" not in line
 
 
-def test_a_long_title_is_cut_at_a_word_never_losing_expiry_or_source():
+def test_a_long_title_is_cut_at_a_word_never_losing_expiry():
     then = at("2022-12-19T12:00:00+07:00")
     item = alerts.parse_warning_rss(WARNING_RSS, then)[0]
     line = alerts.line(item, then)
     assert alerts.width(line) <= alerts.LINE_WIDTH
     assert line.startswith("⚠ อากาศหนาวเย็น") and "…" in line
-    assert line.endswith("ถึง 20 ธ.ค. (กรมอุตุฯ)")
+    assert line.endswith("ถึง 20 ธ.ค.")
+    assert "กรมอุตุฯ" not in line
 
 
 # ------------------------------------------------------------------ the cache
@@ -355,11 +366,13 @@ def test_the_dashboard_carries_the_alerts_object_in_the_agreed_shape(cfg, monkey
     for entry in got["sources"].values():
         assert set(entry) == {"ok", "updated"}
     for item in got["items"]:
-        assert set(item) == {"kind", "title", "areas", "until", "source", "line", "fetched"}
+        assert set(item) == {"kind", "title", "areas", "until", "source", "line", "fetched", "provinces"}
         assert item["kind"] == "warning"
         assert all(isinstance(item[k], str) for k in ("title", "areas", "source", "line"))
         assert item["until"] is None or datetime.fromisoformat(item["until"]).tzinfo
         assert isinstance(item["fetched"], int)
+        assert isinstance(item["provinces"], list)
+        assert all(isinstance(p, str) for p in item["provinces"])
     # Every other panel still there: the warnings are one more box, not a gate.
     assert {"weather", "gold", "crypto", "air", "oil"} <= set(snap)
 
@@ -423,6 +436,37 @@ def test_flood_question_also_answers_from_thaiwater():
 def test_nothing_fetched_is_said_never_guessed():
     assert alerts.reply(board(Web({})), "มีเตือนภัยไหม", NOW) == alerts.FAILED
     assert len(alerts.FAILED) <= alerts.ANSWER_CHARS
+
+
+# ---------------------------------------------------------- Jarvis: sources
+
+@pytest.mark.parametrize("said, asked", [
+    ("ข้อมูลเตือนภัยมาจากไหน", True), ("ที่มาข้อมูล", True), ("ที่มาข้อมูลเตือนภัย", True),
+    ("ที่มาข้อมูลอากาศ", True), ("แหล่งข้อมูลอะไร", True),
+    ("มีเตือนภัยอะไรไหม", False), ("ราคาทองวันนี้", False),
+])
+def test_what_counts_as_asking_where_the_data_comes_from(said, asked):
+    assert alerts.match_source(said) is asked
+
+
+def test_the_source_answer_names_the_current_warnings_sources():
+    said = alerts.reply_source(_loaded(), NOW)
+    assert said == "เตือนภัยจากกรมอุตุฯ ส่วนอากาศจาก Open-Meteo ครับ"
+    assert len(said) <= alerts.ANSWER_CHARS
+
+
+def test_the_source_answer_lists_every_source_currently_shown():
+    b = board(Web({**PAGES, alerts.THAIWATER_URL: THAIWATER_FULL}))
+    b.refresh(NOW)
+    said = alerts.reply_source(b, NOW)
+    assert "กรมอุตุฯ" in said and "สสน." in said and "Open-Meteo" in said
+    assert len(said) <= alerts.ANSWER_CHARS
+
+
+def test_the_source_answer_never_guesses_when_nothing_is_fetched():
+    said = alerts.reply_source(board(Web({})), NOW)
+    assert said == "เตือนภัยจากกรมอุตุฯ ส่วนอากาศจาก Open-Meteo ครับ"
+    assert len(said) <= alerts.ANSWER_CHARS
 
 
 def test_in_the_chat_answered_in_code_with_no_model(conn, cfg):

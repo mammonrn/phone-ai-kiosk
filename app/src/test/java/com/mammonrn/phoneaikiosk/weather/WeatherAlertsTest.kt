@@ -23,9 +23,9 @@ class WeatherAlertsTest {
         JSONObject("""
             {"items": [
                {"kind": "warning", "title": "ฝนตกหนักมาก", "areas": "22 จังหวัด", "until": $until,
-                "source": "กรมอุตุฯ", "line": "⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ)", "fetched": $fetched1},
+                "source": "กรมอุตุฯ", "line": "⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย.", "fetched": $fetched1},
                {"kind": "warning", "title": "คลื่นลมแรง", "areas": "อ่าวไทยตอนบน", "until": null,
-                "source": "กรมอุตุฯ", "line": "คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ)", "fetched": $fetched2}],
+                "source": "กรมอุตุฯ", "line": "คลื่นลมแรง อ่าวไทยตอนบน", "fetched": $fetched2}],
              "updated": $updated, "ok": $ok}
         """.trimIndent())
 
@@ -102,18 +102,25 @@ class WeatherAlertsTest {
     // ------------------------------------------------------------ the words
 
     @Test
-    fun `a fresh warning says its source and the time it was read`() {
+    fun `a fresh warning shows its own line, with no source name and no time`() {
         val b = WeatherAlerts.parse(block(), zone)
-        assertEquals("⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ 2:30 PM)",
+        assertEquals("⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย.",
                      WeatherAlerts.line(b.items[0], b, nowMs, zone))
     }
 
     @Test
     fun `every warning starts with the triangle, whatever the broker wrote`() {
         val b = WeatherAlerts.parse(block(), zone)
-        assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ 2:30 PM)", WeatherAlerts.line(b.items[1], b, nowMs, zone))
+        assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน", WeatherAlerts.line(b.items[1], b, nowMs, zone))
         val bare = b.items[1].copy(line = "")
-        assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน (กรมอุตุฯ 2:30 PM)", WeatherAlerts.line(bare, b, nowMs, zone))
+        assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน", WeatherAlerts.line(bare, b, nowMs, zone))
+    }
+
+    @Test
+    fun `kind forecast starts with the diamond, never the triangle`() {
+        val b = WeatherAlerts.parse(block(), zone)
+        val forecast = b.items[0].copy(kind = "forecast", line = "")
+        assertEquals("◇ ฝนตกหนักมาก 22 จังหวัด", WeatherAlerts.line(forecast, b, nowMs, zone))
     }
 
     @Test
@@ -124,27 +131,28 @@ class WeatherAlertsTest {
         // never "ข้อมูลอาจไม่เป็นปัจจุบัน".
         val b = WeatherAlerts.parse(block(ok = false, updated = "null", fetched1 = "$updatedS"), zone)
         val line = WeatherAlerts.line(b.items[0], b, nowMs, zone)
-        assertTrue(line.endsWith("(กรมอุตุฯ 2:30 PM)"))
+        assertEquals("⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย.", line)
         assertTrue("ข้อมูลอาจไม่เป็นปัจจุบัน" !in line)
         // The OTHER item on the same block, with no "fetched" of its own,
-        // still falls back to the block's failed state.
+        // still falls back to the block's failed state — and the note never
+        // names a source.
         val other = WeatherAlerts.line(b.items[1], b, nowMs, zone)
-        assertTrue(other.endsWith("(กรมอุตุฯ · ข้อมูลอาจไม่เป็นปัจจุบัน)"))
+        assertEquals("⚠ คลื่นลมแรง อ่าวไทยตอนบน · ข้อมูลอาจไม่เป็นปัจจุบัน", other)
     }
 
     @Test
-    fun `old or unread data says how old`() {
+    fun `old or unread data says how old, never naming a source`() {
         val threeHours = WeatherAlerts.parse(block(ok = false), zone)
         val later = (updatedS + 3 * 3600) * 1000
-        assertEquals("⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. (กรมอุตุฯ · ข้อมูลเมื่อ 3 ชม.ที่แล้ว)",
+        assertEquals("⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย. · ข้อมูลเมื่อ 3 ชม.ที่แล้ว",
                      WeatherAlerts.line(threeHours.items[0], threeHours, later, zone))
         // ok, but over six hours old.
         val fresh = WeatherAlerts.parse(block(), zone)
         val sevenHours = (updatedS + 7 * 3600) * 1000
-        assertTrue(WeatherAlerts.line(fresh.items[0], fresh, sevenHours, zone).endsWith("(กรมอุตุฯ · ข้อมูลเมื่อ 7 ชม.ที่แล้ว)"))
+        assertTrue(WeatherAlerts.line(fresh.items[0], fresh, sevenHours, zone).endsWith("· ข้อมูลเมื่อ 7 ชม.ที่แล้ว"))
         // Not read, and no time: said, without a number.
         val unknown = WeatherAlerts.parse(block(ok = false, updated = "null"), zone)
-        assertTrue(WeatherAlerts.line(unknown.items[0], unknown, nowMs, zone).endsWith("(กรมอุตุฯ · ข้อมูลอาจไม่เป็นปัจจุบัน)"))
+        assertTrue(WeatherAlerts.line(unknown.items[0], unknown, nowMs, zone).endsWith("· ข้อมูลอาจไม่เป็นปัจจุบัน"))
     }
 
     @Test

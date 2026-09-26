@@ -22,16 +22,25 @@ import java.time.ZonedDateTime
  * is no warnings, and the weather window's last line is the forecast exactly as
  * before.
  *
- * A WARNING IS A TRIANGLE: every line built here starts with "⚠", whatever the
- * broker wrote, so a warning and the forecast (which starts with [FORECAST_MARK]
- * while the two take turns) differ in shape, not only in colour.
+ * NO SOURCE NAMES ON THE CARD (Poom, 2026-09-26): a line never carries
+ * "(กรมอุตุฯ)" or a "(source time)" tail — the broker's own `line` already
+ * drops it, and this file never adds one back. Sources stay listed on the
+ * "ที่มาข้อมูล" window, and Jarvis names them when asked. The room that freed
+ * goes to the item's own detail (area, time window); the only thing added
+ * here is a staleness note, and only when that item's own data is old.
+ *
+ * A WARNING IS A TRIANGLE, A KIOSK FORECAST IS A DIAMOND: every line built
+ * here starts with "⚠" for kind "warning" or "◇" ([KIOSK_FORECAST_MARK]) for
+ * kind "forecast", whatever the broker wrote — so each kind differs from the
+ * location forecast (which starts with [FORECAST_MARK] while the two take
+ * turns) in shape, not only in colour.
  *
  * FRESHNESS IS PER ITEM (2026-09-26, Poom): the top-level "updated"/"ok" only
  * ever follow TMD's CAP fetch, kept for a broker that predates this — an item
  * from สสน. (ThaiWater) that is perfectly fresh was once shown as possibly
  * stale purely because TMD had not answered. Each item's own "fetched" is
- * used for its "(source time)" wording; the object's "updated" is the
- * fallback only when an item carries no "fetched" of its own (older broker).
+ * used for its staleness note; the object's "updated" is the fallback only
+ * when an item carries no "fetched" of its own (older broker).
  */
 object WeatherAlerts {
 
@@ -39,6 +48,10 @@ object WeatherAlerts {
 
     /** The forecast's own mark, only while it takes turns with warnings. */
     const val FORECAST_MARK = "▸"
+
+    /** The kiosk's own forecast (kind "forecast", coming later) — distinct
+     *  from [FORECAST_MARK], which stays for the location forecast. */
+    const val KIOSK_FORECAST_MARK = "◇"
 
     /** Older than this and the line says how old, not the time it came. */
     const val OLD_AFTER_S = 6 * 60 * 60L
@@ -125,12 +138,15 @@ object WeatherAlerts {
         block.items.filter { it.untilMs == null || it.untilMs > nowMs }
 
     /**
-     * One warning as the screen shows it: the broker's line, starting with the
-     * triangle, its source followed by the time it was read ("(กรมอุตุฯ 2:30 PM)",
-     * the clock the rest of the screen uses) — or by how old it is when its OWN
-     * source could not be read ([Item.fetchedS] absent, falling back to
-     * [Block.ok]/[Block.updatedS] only on a broker old enough not to send it)
-     * or it is over [OLD_AFTER_S] old ("(กรมอุตุฯ · ข้อมูลเมื่อ 3 ชม.ที่แล้ว)").
+     * One item as the screen shows it: the broker's own `line` (no source name
+     * in it — Poom, 2026-09-26), forced to start with the triangle for kind
+     * "warning" or the diamond ([KIOSK_FORECAST_MARK]) for kind "forecast",
+     * whatever the broker wrote. A staleness note is appended ONLY when this
+     * item's own data is old — over [OLD_AFTER_S] ("· ข้อมูลเมื่อ 3 ชม.ที่แล้ว"),
+     * or unknown because its OWN source could not be read ([Item.fetchedS]
+     * absent, falling back to [Block.ok]/[Block.updatedS] only on a broker old
+     * enough not to send it: "· ข้อมูลอาจไม่เป็นปัจจุบัน"). The note never names
+     * a source; sources stay on the "ที่มาข้อมูล" window.
      *
      * Each item's own freshness, not the block's: a fresh สสน. item must not
      * be marked stale merely because TMD's CAP (the block's own "updated")
@@ -138,11 +154,8 @@ object WeatherAlerts {
      */
     fun line(item: Item, block: Block, nowMs: Long, zone: ZoneId = BANGKOK): String {
         var body = item.line.ifEmpty { listOf(item.title, item.areas).filter { it.isNotEmpty() }.joinToString(" ") }
-        if (!body.startsWith(WARNING_MARK)) body = "$WARNING_MARK $body"
-        val source = item.source
-        // The broker ends its line with "(source)"; the note goes inside it.
-        val tail = if (source.isNotEmpty()) "($source)" else ""
-        if (tail.isNotEmpty() && body.endsWith(tail)) body = body.removeSuffix(tail).trimEnd()
+        val mark = if (item.kind == "forecast") KIOSK_FORECAST_MARK else WARNING_MARK
+        if (!body.startsWith(mark)) body = "$mark $body"
 
         val fetchedS = item.fetchedS ?: block.updatedS
         val ageS = fetchedS?.let { (nowMs / 1000 - it).coerceAtLeast(0) }
@@ -152,16 +165,9 @@ object WeatherAlerts {
         val note = when {
             old && ageS != null -> "ข้อมูลเมื่อ ${ago(ageS)}"
             old -> "ข้อมูลอาจไม่เป็นปัจจุบัน"
-            fetchedS != null -> clock(fetchedS, zone)
             else -> ""
         }
-        val inside = when {
-            source.isEmpty() -> note
-            note.isEmpty() -> source
-            old -> "$source · $note"
-            else -> "$source $note"
-        }
-        return if (inside.isEmpty()) body else "$body ($inside)"
+        return if (note.isEmpty()) body else "$body · $note"
     }
 
     /** "5 นาทีที่แล้ว", "3 ชม.ที่แล้ว", "2 วันที่แล้ว". */
