@@ -1028,7 +1028,7 @@ class MainActivity : Activity() {
 
         when (source) {
             NowPlayingCard.Source.MUSIC -> {
-                icon.setImageResource(R.drawable.ic_pixel_music_light)
+                icon.setImageResource(R.drawable.ic_pixel_music)
                 icon.contentDescription = getString(R.string.window_music)
                 val titleText = getString(R.string.window_music)
                 if (title.text.toString() != titleText) title.text = titleText
@@ -1056,7 +1056,7 @@ class MainActivity : Activity() {
                 if (track != null) board.report("music", "m:" + track.id, nowMs)
             }
             NowPlayingCard.Source.RADIO -> {
-                icon.setImageResource(R.drawable.ic_pixel_radio_light)
+                icon.setImageResource(R.drawable.ic_pixel_radio)
                 icon.contentDescription = getString(R.string.window_radio)
                 val titleText = getString(R.string.window_radio)
                 if (title.text.toString() != titleText) title.text = titleText

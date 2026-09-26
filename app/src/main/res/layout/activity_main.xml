@@ -603,8 +603,14 @@
             android:padding="5dp"
             android:visibility="gone">
 
+            <!-- Hidden (Poom 2026-09-26: this card is HALF the height of the
+                 open "อุปกรณ์ในบ้าน" card — measured on the A07, 178 px with the
+                 bar against 283 px). The card is held open whenever it shows,
+                 so it never folds down to this bar; the icon moved into the
+                 row below. Kept for the ids the card board registers. -->
             <LinearLayout
                 android:id="@+id/music_titlebar"
+                android:visibility="gone"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -614,13 +620,6 @@
                 android:paddingEnd="6dp"
                 android:paddingTop="2dp"
                 android:paddingBottom="2dp">
-
-                <ImageView
-                    android:id="@+id/music_icon"
-                    android:layout_width="13dp"
-                    android:layout_height="13dp"
-                    android:src="@drawable/ic_pixel_music_light"
-                    android:contentDescription="@string/window_music" />
 
                 <TextView
                     android:id="@+id/music_title"
@@ -654,8 +653,17 @@
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/retro_sunken"
-                android:layout_marginTop="3dp"
                 android:padding="5dp">
+
+                <!-- Music (a note) or radio (a set with its aerial): told
+                     apart by shape; set at runtime (showNowPlaying). -->
+                <ImageView
+                    android:id="@+id/music_icon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="3dp"
+                    android:src="@drawable/ic_pixel_music"
+                    android:contentDescription="@string/window_music" />
 
                 <TextView
                     android:id="@+id/music_song"
@@ -695,7 +703,7 @@
                     android:id="@+id/music_toggle"
                     android:layout_width="wrap_content"
                     android:layout_height="48dp"
-                    android:minWidth="96dp"
+                    android:minWidth="72dp"
                     android:layout_marginStart="5dp"
                     android:gravity="center"
                     android:paddingStart="8dp"
