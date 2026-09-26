@@ -50,8 +50,8 @@ import com.mammonrn.phoneaikiosk.voice.WakePause
  * the microphone to the app in front, and ours hears silence meanwhile.
  *
  * IN A WINDOW (Poom 2026-09-26): with freeform switched on, the app opens as a window in
- * the kiosk's own 1995 frame (SocialFrameActivity), which is opened just before it and
- * is under it the whole visit. Its X ends the visit; the app going away (Back out of it,
+ * the kiosk's own 1995 frame (SocialFrameActivity), which is opened first, starts it
+ * and is under it the whole visit. Its X ends the visit; the app going away (Back out of it,
  * closed) leaves it as a kiosk screen coming forward does. The frame is not "a kiosk
  * screen in front". Without freeform, the app opens full screen as before.
  *
@@ -161,13 +161,18 @@ object SocialVisit {
         refuseNotifications(activity)
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + pkg)
         return try {
-            // The frame first, in the kiosk's own task and full screen; then the app, in a
-            // window in the frame's well. The app's launch alone asks for a window.
-            val options = if (framed && app != null) {
-                activity.startActivity(SocialFrameActivity.intent(activity, app, Origin.of(activity)))
-                SocialFrameActivity.launchOptions(activity)
-            } else null
-            activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), options)
+            // Framed: the frame now, a full-screen kiosk screen; the app from the frame once
+            // the frame is the top screen ([launchInFrame]) - started together, the lock task
+            // brought the frame's task forward over the app (A07 log: "startLockTask
+            // findTaskToMoveToFront" after the app resumed). Only the app asks for a window.
+            val framedNow = framed && app != null
+            if (framedNow) {
+                pending = intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(SocialFrameActivity.intent(activity, app!!, Origin.of(activity)))
+            } else {
+                pending = null
+                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
             active = pkg
             label = what
             keeps = app?.keepsPlaying == true
@@ -175,7 +180,7 @@ object SocialVisit {
             appContext = activity.applicationContext
             startedAt = SystemClock.elapsedRealtime()
             watch(activity.applicationContext, if (limitMs != LIMIT_MS) limitMs else app?.limitMs ?: LIMIT_MS)
-            Log.i(TAG, "visit start app=$what framed=${options != null}")
+            Log.i(TAG, "visit start app=$what framed=$framedNow")
             Result.OPENED
         } catch (e: Exception) {
             Log.w(TAG, "visit failed app=$what ${e.javaClass.simpleName}")
@@ -188,6 +193,7 @@ object SocialVisit {
     fun end(context: Context, reason: String, restore: Boolean = true) {
         val pkg = active ?: return
         active = null
+        pending = null
         main.removeCallbacksAndMessages(null)
         screenOff?.let { runCatching { context.applicationContext.unregisterReceiver(it) } }
         screenOff = null
@@ -220,6 +226,28 @@ object SocialVisit {
             return
         }
         leave(activity, "kiosk-front")
+    }
+
+    /** A framed visit's app, not started yet: the frame starts it ([launchInFrame]). */
+    private var pending: Intent? = null
+
+    /**
+     * From the frame, once it is the top screen: the visited app, as a window in its well.
+     * False when there is nothing to start or it could not start (the visit then ends).
+     */
+    fun launchInFrame(frame: Activity): Boolean {
+        val intent = pending ?: return false
+        pending = null
+        if (active == null) return false
+        return try {
+            frame.startActivity(intent, SocialFrameActivity.launchOptions(frame))
+            Log.i(TAG, "frame app started app=$label")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "frame app failed app=$label ${e.javaClass.simpleName}")
+            end(frame, "failed")
+            false
+        }
     }
 
     /** The frame is the top screen again: the app was closed or backed out of. */

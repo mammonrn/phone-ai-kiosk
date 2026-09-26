@@ -34,7 +34,7 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
  * HOW. The visited app is launched as a FREEFORM window (the system's own windowing,
  * switched on by adb: `settings put global enable_freeform_support 1`) with its bounds
  * set to this screen's well ([hole]). This screen is an ordinary full-screen kiosk
- * screen in the kiosk's own task, opened just before the app: the desktop, a raised
+ * screen, opened first; it starts the app once it is the top screen: the desktop, a raised
  * window, the navy title bar (the app's own-drawn icon, its name, the Jarvis button,
  * the X) and a sunken well the app's window sits in. The kiosk's screens never become
  * windows: only the visited app's launch asks for one (SocialVisit.begin), and without
@@ -113,6 +113,8 @@ class SocialFrameActivity : Activity() {
     private lateinit var app: SocialVisit.App
     /** The app has been above this screen once: its going away is now worth looking at. */
     private var appWasOnTop = false
+    /** The app was asked for (SocialVisit.launchInFrame), once, when this screen first came on top. */
+    private var launched = false
     /** What SocialVisit calls when the visit ends: this frame closes too. */
     private val onEndHook: () -> Unit = { if (!isFinishing) Origin.close(this, "social-frame-end") }
 
@@ -159,8 +161,16 @@ class SocialFrameActivity : Activity() {
      */
     override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
         super.onTopResumedActivityChanged(isTopResumedActivity)
-        if (!isTopResumedActivity) { appWasOnTop = true; return }
-        if (!appWasOnTop || isFinishing) return
+        if (isFinishing) return
+        if (!isTopResumedActivity) { if (launched) appWasOnTop = true; return }
+        if (!launched) {
+            // First on top: now the app, over this screen (its failure ends the visit,
+            // and onEnd closes this screen).
+            launched = true
+            SocialVisit.launchInFrame(this)
+            return
+        }
+        if (!appWasOnTop) return
         Log.i(TAG, "frame on top again: the app went away")
         SocialVisit.appLeft(this)
         if (!isFinishing) Origin.close(this, "social-frame-app-gone")
