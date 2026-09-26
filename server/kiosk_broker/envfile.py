@@ -38,6 +38,24 @@ SETTABLE: dict[str, str] = {
     "GOOGLE_TTS_API_KEY": "/v1/tts",
     "QWEN_API_KEY": "Alibaba Cloud Model Studio (Singapore) key, for the \"qwen\" transcriber",
     "QWEN_WORKSPACE_ID": "optional: the Model Studio workspace id, for the newer Singapore domain",
+    "TMD_UID": "data.tmd.go.th (Thai Meteorological Department) API uid, for tmd_obs.py",
+    "TMD_UKEY": "data.tmd.go.th (Thai Meteorological Department) API ukey, for tmd_obs.py",
+}
+
+
+#: Named groups of secrets that belong together, for `keys` (a มี/ไม่มี
+#: summary per group rather than per env-var name) and `keys set GROUP`
+#: (replace every secret a group needs in one prompt, hidden input). A group
+#: is "มี" only when every name in it has a value — TMD needs both TMD_UID
+#: and TMD_UKEY to do anything, so half a pair present is still "ไม่มี".
+KEY_GROUPS: dict[str, tuple[str, ...]] = {
+    "tmd": ("TMD_UID", "TMD_UKEY"),
+    "qwen": ("QWEN_API_KEY",),
+    "groq": ("GROQ_API_KEY",),
+    "google": ("GOOGLE_TTS_API_KEY",),
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "tuya": ("TUYA_ACCESS_ID", "TUYA_ACCESS_SECRET", "TUYA_DATA_CENTER"),
+    "ewelink": ("EWELINK_APP_ID", "EWELINK_APP_SECRET"),
 }
 
 
@@ -126,3 +144,59 @@ def append_secret(env_path: Path, name: str, value: str) -> None:
     mode = stat.S_IMODE(env_path.stat().st_mode)
     if mode & 0o077:
         os.chmod(env_path, mode & 0o700)
+
+
+def replace_secrets(env_path: Path, values: dict[str, str]) -> None:
+    """Overwrites one or more SETTABLE secrets by rewriting the whole file —
+    the one place in this module that is not append-only, for the one case
+    append-only cannot serve: a group whose value changed (a TMD account
+    re-issued, say) where `set-key`'s refusal to overwrite is the wrong tool.
+
+    Safe the same way a config file should be rewritten on any system: a new
+    file, written with 0600 from its very first byte (never briefly 0644 the
+    way `open(...).write()` then `chmod` would leave it), in the SAME
+    directory as `env_path` so the final `os.replace` is one atomic rename on
+    both POSIX and Windows — a crash mid-write leaves the temp file orphaned
+    and the real env file exactly as it was, never half-written and never
+    world-readable even for an instant.
+
+    Every name in `values` must be in SETTABLE (same rule as append_secret)
+    and pass the same `check_value`; a name not in the file already is simply
+    added, same as `set-key` would for a first-time key.
+    """
+    checked: dict[str, str] = {}
+    for name, value in values.items():
+        if name not in SETTABLE:
+            raise EnvError(f"{name}: not a name this command writes "
+                           f"(one of: {', '.join(sorted(SETTABLE))})")
+        checked[name] = check_value(name, value)
+
+    kept_lines: list[str] = []
+    if env_path.is_file():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and "=" in stripped:
+                existing_name = stripped.split("=", 1)[0].strip()
+                if existing_name in checked:
+                    continue  # this line's value is being replaced below
+            kept_lines.append(line)
+    kept_lines.extend(f"{name}={value}" for name, value in checked.items())
+    body = ("\n".join(kept_lines) + "\n") if kept_lines else ""
+
+    tmp_path = env_path.with_name(env_path.name + f".tmp{os.getpid()}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(tmp_path, flags, 0o600)
+    try:
+        os.write(fd, body.encode("utf-8"))
+    finally:
+        os.close(fd)
+    # Belt and braces: os.open's mode argument is masked by umask, so a loose
+    # umask on the broker's own account would otherwise leave the temp file
+    # (briefly the only copy of every secret) more readable than 0600.
+    os.chmod(tmp_path, 0o600)
+    try:
+        os.replace(tmp_path, env_path)
+    except OSError:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    os.chmod(env_path, 0o600)

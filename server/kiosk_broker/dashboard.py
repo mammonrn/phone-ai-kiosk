@@ -51,6 +51,15 @@ THE SOURCES, checked before they were chosen:
   telling anyone, which is exactly why the stale-value handling above exists.
 * Nationwide warnings (กรมอุตุฯ CAP, GDACS) — see alerts.py; one cache for
   every phone, refreshed in the background, the same items Jarvis reads out.
+* TMD (data.tmd.go.th, Weather3Hours) — the current temperature and humidity
+  MEASURED by the nearest ground station, when one has reported within the
+  hour and close enough to mean this position (tmd_obs.py, ≤50 km, ≤3 h).
+  Preferred over Open-Meteo's modelled `current` for those two fields while
+  it passes its own checks; Open-Meteo becomes the cross-check, logged (never
+  hidden) when the two disagree by more than 5°C. Off with no request or log
+  noise until Poom registers a free account and TMD_UID/TMD_UKEY are set —
+  see tmd_obs.py's own docstring for the endpoint and INSTALL.md for the
+  registration steps.
 
 WHAT THE GOLD PERCENTAGE IS MEASURED AGAINST, because a percentage with no
 stated base is a number pretending to be information. `/latest` is the only
@@ -156,6 +165,11 @@ CREDITS = {
     "air": "Air4Thai กรมควบคุมมลพิษ · Open-Meteo (CC BY 4.0) · CAMS, Copernicus Atmosphere Monitoring Service",
     "place": "© OpenStreetMap contributors (ODbL)",
 }
+
+#: Appended to the weather panel's credit only on a fetch where a TMD field
+#: actually answered (see Dashboard.snapshot) — attribution for a source that
+#: was used, not a source that merely could have been.
+TMD_CREDIT_SUFFIX = " · กรมอุตุนิยมวิทยา (TMD, Weather3Hours)"
 
 
 @dataclass
@@ -279,8 +293,12 @@ def _picked(block: dict, names) -> dict:
     return {name: _pick(block, name) for name in names}
 
 
-def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
-    from . import forecast, weather_checks
+def fetch_weather(latitude: float, longitude: float, timeout: float, secret=None) -> dict:
+    """`secret` is a `name -> value` callable (envfile.reader), passed down to
+    tmd_obs.fetch_reading so TMD_UID/TMD_UKEY are read fresh every call and
+    never kept here; None (the default, and what every existing caller/test
+    still passes) means "TMD is off", same as the key being absent."""
+    from . import forecast, tmd_obs, weather_checks
     raw = _get(WEATHER_URL.format(lat=latitude, lon=longitude), timeout)
     current = raw["current"]
     daily = _picked(raw.get("daily", {}) or {}, (
@@ -326,6 +344,42 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
     wind_kmh = weather_checks.checked(_first_int(daily.get("wind_speed_10m_max")),
                                       *weather_checks.WIND_RANGE)
 
+    # TMD (tmd_obs.py): a MEASURED reading from the nearest ground station,
+    # used as the primary for temp_c/humidity — the two fields above that mean
+    # "right now" the same way TMD's reading does. `wind_kmh` above is
+    # `wind_speed_10m_max`, TODAY'S FORECAST PEAK, and the daily rain total is
+    # a forecast sum for the whole day — neither is "wind/rain right now", so
+    # TMD's current wind and its rolling 24h rainfall are NOT written into
+    # those fields (that would quietly change what the number on screen means
+    # without changing its label). They travel as their own tmd_* fields
+    # instead, for a screen or a spoken answer that wants to say what a
+    # station actually measured, alongside what the number already there
+    # means. `secret` is None for every existing caller (tests, and this
+    # module's own defaults) — TMD stays off there exactly like a missing key.
+    temp_source = "Open-Meteo"
+    humidity_source = "Open-Meteo"
+    tmd_wind_now_kmh = None
+    tmd_rain_24h_mm = None
+    tmd_station_km = None
+    if secret is not None:
+        tmd = tmd_obs.fetch_reading(latitude, longitude, timeout, secret)
+        if tmd is not None:
+            tmd_temp = tmd.get("temp_c")
+            if tmd_temp is not None:
+                if temp_c is not None and abs(tmd_temp - temp_c) > tmd_obs.TEMP_DISAGREEMENT_C:
+                    log.info("tmd/open-meteo temperature disagree by more than %.0f, "
+                            "preferring tmd", tmd_obs.TEMP_DISAGREEMENT_C)
+                temp_c = tmd_temp
+                temp_source = "TMD"
+                tmd_station_km = tmd.get("station_km")
+            tmd_humidity = tmd.get("humidity")
+            if tmd_humidity is not None:
+                humidity = tmd_humidity
+                humidity_source = "TMD"
+                tmd_station_km = tmd.get("station_km")
+            tmd_wind_now_kmh = tmd.get("wind_kmh")
+            tmd_rain_24h_mm = tmd.get("rain_mm")
+
     # UV NOW, NOT THE DAY'S PEAK (Poom, 2026-09-23: the card said "UV 8" at
     # night), and INTERPOLATED, NOT THE HOUR'S START (2026-09-26: 07:52 read
     # 07:00's 0.2 while 08:00 was already 1.5, and the phone rounds). See
@@ -367,6 +421,19 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
         # Tomorrow and the day after by their own numbers (forecast.day_lines), or None.
         "days": forecast.day_lines(daily),
         "model": "ECMWF",
+        # Which source answered temp_c/humidity — "TMD" (measured, the nearest
+        # station) or "Open-Meteo" (modelled) — the same idea as air's "source"
+        # for pm25. "Open-Meteo" on every fetch until Poom's TMD_UID/TMD_UKEY
+        # are set; tmd_obs.py is otherwise never called.
+        "temp_source": temp_source,
+        "humidity_source": humidity_source,
+        # A TMD station's OWN current wind and its rolling 24h rainfall, kept
+        # apart from wind_kmh/rain_mm above (today's forecast peak/total) so
+        # neither field quietly changes what it means. None until a station
+        # is close and fresh enough (tmd_obs.MAX_KM/MAX_AGE_SECONDS).
+        "tmd_wind_now_kmh": tmd_wind_now_kmh,
+        "tmd_rain_24h_mm": tmd_rain_24h_mm,
+        "tmd_station_km": tmd_station_km,
     }
 
 
@@ -723,8 +790,14 @@ class Dashboard:
         self._cache: dict[str, tuple[float, Panel]] = {}
         # Nationwide warnings: one cache for every phone and every position,
         # refreshed in the background (alerts.py) — also what Jarvis reads.
-        from . import alerts
+        from . import alerts, envfile
         self.alerts = alerts.Alerts(ttl=cfg.dashboard_alerts_ttl)
+        # `name -> value` over the broker's own env file, read fresh every
+        # call (same as home_control's use of envfile.reader) — TMD_UID/
+        # TMD_UKEY are looked up when fetch_weather actually needs them, never
+        # kept here, so a `keys set tmd` while the broker is running takes
+        # effect on the next fetch with no restart.
+        self._secret = envfile.reader(cfg.env_path)
 
     def latest(self, kind: str, now: float | None = None) -> tuple[int, dict] | None:
         """The newest GOOD cached panel of this kind — (age in seconds, data) —
@@ -763,8 +836,14 @@ class Dashboard:
 
         weather = self._panel(
             f"weather:{lat}:{lon}", now, self.cfg.dashboard_weather_ttl,
-            lambda: fetch_weather(lat, lon, self.cfg.dashboard_timeout),
+            lambda: fetch_weather(lat, lon, self.cfg.dashboard_timeout, self._secret),
             credit=CREDITS["weather"])
+        # Attribution for a source that was actually used this fetch, not one
+        # that merely could have been — TMD only when it answered temp_c or
+        # humidity (fetch_weather leaves *_source as "Open-Meteo" otherwise).
+        if weather.ok and "TMD" in (weather.data.get("temp_source"),
+                                    weather.data.get("humidity_source")):
+            weather.credit = CREDITS["weather"] + TMD_CREDIT_SUFFIX
         air = self._panel(
             f"air:{lat}:{lon}", now, self.cfg.dashboard_air_ttl,
             lambda: fetch_air(lat, lon, self.cfg.dashboard_timeout),

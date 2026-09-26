@@ -10,6 +10,7 @@ import argparse
 import datetime as _dt
 import logging
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -412,6 +413,41 @@ def _set_key(name: str) -> int:
     return 0
 
 
+def _keys_set(group: str) -> int:
+    """`keys set GROUP`: every secret a group needs, hidden input, never a
+    command-line argument (nothing lands in shell history or `ps`), REPLACING
+    whatever was there before — for a key that needs to change, like a
+    re-issued TMD account, where `set-key`'s append-only refusal is the wrong
+    tool. See envfile.replace_secrets for the atomic rewrite and the 0600
+    guarantee; the value is never printed, not even its length.
+    """
+    import getpass
+
+    from . import envfile
+
+    names = envfile.KEY_GROUPS.get(group)
+    if names is None:
+        print(f"{group}: not a known key group. One of: {', '.join(sorted(envfile.KEY_GROUPS))}",
+              file=sys.stderr)
+        return 2
+    env_path = config_mod.DEFAULT_HOME / "env"
+    values: dict[str, str] = {}
+    for name in names:
+        if sys.stdin.isatty():
+            values[name] = getpass.getpass(f"{name} (input hidden): ")
+        else:
+            values[name] = sys.stdin.readline()
+    try:
+        envfile.replace_secrets(env_path, values)
+    except envfile.EnvError as refused:
+        print(str(refused), file=sys.stderr)
+        return 1
+    mode = stat.S_IMODE(env_path.stat().st_mode)
+    print(f"{group}: {len(names)} secret(s) replaced in {env_path} "
+          f"(mode {oct(mode)}). Check with `keys`.")
+    return 0
+
+
 def _client(cfg: "config_mod.Config"):
     """The Anthropic client."""
     import anthropic
@@ -566,7 +602,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("usage", help="this month's spend, by service and by day, and what a "
                                      "spoken answer costs")
     p.add_argument("--days", type=int, default=7, help="how many recent days to list (this month)")
-    sub.add_parser("keys", help="which secrets are configured (present/missing, never the value)")
+    p_keys = sub.add_parser("keys", help="which secrets are configured (present/missing, never "
+                                         "the value); `keys set GROUP` replaces a whole group")
+    keys_sub = p_keys.add_subparsers(dest="keys_cmd")
+    p_keys_set = keys_sub.add_parser(
+        "set", help="replace every secret a group needs — hidden input, never a command-line "
+                    "argument, safe to re-run (unlike set-key, this DOES overwrite)")
+    p_keys_set.add_argument("group", help="e.g. tmd — see envfile.KEY_GROUPS for the full list")
     p = sub.add_parser("set-key", help="append one secret to the env file, read without echo; "
                                        "never rewrites the file, refuses a name already there")
     p.add_argument("name", help="e.g. TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, TUYA_DATA_CENTER")
@@ -765,6 +807,9 @@ def main(argv: list[str] | None = None) -> int:
                             botnoi_token=botnoi_token, google_stt_key=google_stt_key)
         logging.getLogger("kiosk_broker").info("stt provider default=%s", cfg.stt_provider)
         logging.getLogger("kiosk_broker").info(
+            "tmd observations: %s",
+            "on" if (_secret("TMD_UID") and _secret("TMD_UKEY")) else "off (no TMD_UID/TMD_UKEY)")
+        logging.getLogger("kiosk_broker").info(
             "listening on http://%s:%d model=%s budget=$%.2f/month",
             cfg.host, cfg.port, cfg.model, cfg.monthly_budget_usd,
         )
@@ -778,6 +823,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "set-key":
         return _set_key(args.name)
+    if args.cmd == "keys" and getattr(args, "keys_cmd", None) == "set":
+        return _keys_set(args.group)
     if args.cmd == "stt-hints-check":
         from . import stt_hints
 
@@ -1394,6 +1441,8 @@ def main(argv: list[str] | None = None) -> int:
                 ("QWEN_API_KEY", "the \"qwen\" transcriber (Alibaba, Singapore)"),
                 ("QWEN_WORKSPACE_ID", "optional: the newer Singapore domain for qwen"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
+                ("TMD_UID", "TMD station observations (data.tmd.go.th), for the weather card"),
+                ("TMD_UKEY", "TMD station observations (data.tmd.go.th), for the weather card"),
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
                 ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),
                 ("TUYA_DATA_CENTER", "which Tuya host to call"),
@@ -1405,6 +1454,13 @@ def main(argv: list[str] | None = None) -> int:
             print()
             print("BOTNOI_TOKEN missing is normal: tts_provider is 'google' and")
             print("production does not use Botnoi.")
+            print()
+            print("สรุปตามชุด (มี/ไม่มี ทุกคีย์ในชุดนั้น — ไม่มีค่าใดๆ พิมพ์ออกมา):")
+            from . import envfile as envfile_groups
+
+            for group, names in sorted(envfile_groups.KEY_GROUPS.items()):
+                present = all(_secret(name) for name in names)
+                print(f"  {group:<10} {'มี' if present else 'ไม่มี'}")
             return 0
 
         if args.cmd == "prompt-size":

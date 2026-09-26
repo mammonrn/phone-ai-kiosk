@@ -27,6 +27,7 @@ import logging
 import pytest
 
 from kiosk_broker import auth, dashboard as dashboard_mod, store
+from kiosk_broker import tmd_obs as tmd_obs_mod
 from kiosk_broker.service import handle_dashboard
 
 
@@ -51,7 +52,7 @@ def fake_sources(monkeypatch):
     """Every source replaced, and a counter so caching can be proved."""
     calls = {"weather": 0, "gold": 0, "crypto": 0, "place": 0, "rank": 0}
 
-    def weather(latitude, longitude, timeout):
+    def weather(latitude, longitude, timeout, secret=None):
         calls["weather"] += 1
         return {"temp_c": 28.2, "humidity": 83, "code": 1, "is_day": 1,
                 "word": "แดดรำไร", "high_c": 30.7, "low_c": 22.9}
@@ -239,7 +240,7 @@ def test_a_failed_place_lookup_leaves_the_weather_alone(cfg, fake_sources,
 def test_every_shape_of_failure_is_caught(cfg, fake_sources, monkeypatch, boom):
     """A source can fail by refusing, by being slow, or by answering with
     something that is not the shape it promised. All three land here."""
-    def explode(latitude, longitude, timeout):
+    def explode(latitude, longitude, timeout, secret=None):
         raise boom
 
     monkeypatch.setattr(dashboard_mod, "fetch_weather", explode)
@@ -350,6 +351,77 @@ def _open_meteo(monkeypatch, **current):
     return dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
 
 
+# ------------------------------------------------------------------ TMD ---
+
+def test_without_a_secret_reader_tmd_is_never_called(monkeypatch):
+    """`secret=None`, the default and what every other test above already
+    exercises implicitly — tmd_obs.fetch_reading must not even be reached."""
+    called = []
+    monkeypatch.setattr(tmd_obs_mod, "fetch_reading",
+                        lambda *a, **k: called.append(1))
+    got = _open_meteo(monkeypatch, is_day=1)
+    assert called == []
+    assert got["temp_source"] == "Open-Meteo"
+    assert got["humidity_source"] == "Open-Meteo"
+
+
+def test_with_a_secret_but_no_tmd_keys_the_source_stays_open_meteo(monkeypatch):
+    """secret present but answering None for TMD_UID/TMD_UKEY — the shape
+    envfile.reader takes for a broker that has never set the key."""
+    got = _open_meteo(monkeypatch, is_day=1)
+    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
+                        "weather_code": 0, "is_day": 1},
+            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4],
+                      "sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, secret=lambda name: None)
+    assert got["temp_source"] == "Open-Meteo"
+    assert got["temp_c"] == pytest.approx(22.8)
+
+
+def test_a_fresh_nearby_tmd_reading_becomes_the_primary_temperature_and_humidity(monkeypatch):
+    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
+                        "weather_code": 0, "is_day": 1},
+            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4],
+                      "sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
+    monkeypatch.setattr(tmd_obs_mod, "fetch_reading",
+                        lambda lat, lon, timeout, secret: {
+                            "temp_c": 25.0, "humidity": 70.0, "wind_kmh": 5.6,
+                            "rain_mm": 2.4, "station_name": "CHIANG RAI", "station_km": 5.2})
+    got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1,
+                                      secret=lambda name: "x")
+    assert got["temp_c"] == 25.0 and got["temp_source"] == "TMD"
+    assert got["humidity"] == 70 and got["humidity_source"] == "TMD"
+    # wind_kmh/rain_mm (today's forecast peak/total) are untouched by TMD —
+    # its own current wind and 24h rainfall travel separately.
+    assert got["tmd_wind_now_kmh"] == 5.6
+    assert got["tmd_rain_24h_mm"] == 2.4
+    assert got["tmd_station_km"] == 5.2
+
+
+def test_tmd_and_open_meteo_disagreeing_by_a_lot_is_logged_and_tmd_wins(monkeypatch, caplog):
+    body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
+                        "weather_code": 0, "is_day": 1},
+            "daily": {"temperature_2m_max": [30.1], "temperature_2m_min": [21.4]}}
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: body)
+    monkeypatch.setattr(tmd_obs_mod, "fetch_reading",
+                        lambda lat, lon, timeout, secret: {
+                            "temp_c": 31.0, "humidity": None, "wind_kmh": None,
+                            "rain_mm": None, "station_name": "CHIANG RAI", "station_km": 5.2})
+    with caplog.at_level("INFO", logger="kiosk_broker"):
+        got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, secret=lambda name: "x")
+    assert got["temp_c"] == 31.0 and got["temp_source"] == "TMD"
+    assert "disagree" in caplog.text
+
+
+def test_a_tmd_credit_line_only_appears_on_a_fetch_where_tmd_actually_answered(cfg, fake_sources):
+    """See dashboard.Dashboard.snapshot: attribution for a source used this
+    fetch, not one merely wired in."""
+    snapshot = _snapshot(cfg)  # fake_sources' fake weather() never uses TMD
+    assert "TMD" not in snapshot["weather"]["credit"]
+
+
 def test_sunrise_and_sunset_come_from_the_same_request(monkeypatch):
     urls = []
     body = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
@@ -400,7 +472,7 @@ def test_is_day_reaches_the_screen_so_the_icon_can_follow(cfg, fake_sources,
                                                           monkeypatch):
     """The word is chosen here; the sun-or-moon icon is chosen on the phone,
     and it needs the same fact to do it."""
-    def night(latitude, longitude, timeout):
+    def night(latitude, longitude, timeout, secret=None):
         return {"temp_c": 23.5, "humidity": 92, "code": 0, "is_day": 0,
                 "word": dashboard_mod.weather_word(0, is_day=False),
                 "high_c": 30.7, "low_c": 22.6}
@@ -760,7 +832,7 @@ def test_a_failing_panel_does_not_name_the_position_in_the_log(cfg, fake_sources
                                                                monkeypatch, caplog):
     """The cache key has the coordinates in it. The log line that names a
     failing panel must not."""
-    def explode(latitude, longitude, timeout):
+    def explode(latitude, longitude, timeout, secret=None):
         raise OSError("down")
 
     monkeypatch.setattr(dashboard_mod, "fetch_weather", explode)

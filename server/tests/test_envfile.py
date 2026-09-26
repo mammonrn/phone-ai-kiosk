@@ -96,3 +96,58 @@ def test_a_new_file_is_created_0600(tmp_path):
     finally:
         os.umask(old)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+# --------------------------------------------------- replace_secrets / groups
+
+def test_tmd_is_a_known_key_group_of_uid_and_ukey():
+    assert envfile.KEY_GROUPS["tmd"] == ("TMD_UID", "TMD_UKEY")
+
+
+def test_replace_secrets_overwrites_where_set_key_would_refuse(tmp_path):
+    path = _env(tmp_path, "TMD_UID=old-uid\nGROQ_API_KEY=ggg\nTMD_UKEY=old-ukey\n")
+    envfile.replace_secrets(path, {"TMD_UID": "new-uid", "TMD_UKEY": "new-ukey"})
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert "TMD_UID=new-uid" in lines
+    assert "TMD_UKEY=new-ukey" in lines
+    assert "GROQ_API_KEY=ggg" in lines  # untouched, order aside
+    assert "TMD_UID=old-uid" not in lines
+    assert "TMD_UKEY=old-ukey" not in lines
+    # No duplicate lines for the replaced names.
+    assert sum(1 for l in lines if l.startswith("TMD_UID=")) == 1
+    assert sum(1 for l in lines if l.startswith("TMD_UKEY=")) == 1
+
+
+def test_replace_secrets_adds_a_name_not_previously_present(tmp_path):
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    envfile.replace_secrets(path, {"TMD_UID": SECRET})
+    assert f"TMD_UID={SECRET}" in path.read_text(encoding="utf-8").splitlines()
+
+
+def test_replace_secrets_rejects_an_unknown_name_and_writes_nothing(tmp_path):
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    with pytest.raises(envfile.EnvError):
+        envfile.replace_secrets(path, {"NOT_A_REAL_NAME": SECRET})
+    assert path.read_text(encoding="utf-8") == "GROQ_API_KEY=ggg\n"
+
+
+def test_replace_secrets_rejects_a_bad_value_and_writes_nothing(tmp_path):
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    with pytest.raises(envfile.EnvError):
+        envfile.replace_secrets(path, {"TMD_UID": "has a space"})
+    assert path.read_text(encoding="utf-8") == "GROQ_API_KEY=ggg\n"
+
+
+def test_replace_secrets_leaves_no_temp_file_behind(tmp_path):
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    envfile.replace_secrets(path, {"TMD_UID": SECRET, "TMD_UKEY": SECRET})
+    leftovers = [p for p in tmp_path.iterdir() if p.name != "env"]
+    assert leftovers == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="file modes are POSIX")
+def test_replace_secrets_leaves_the_file_0600(tmp_path):
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    os.chmod(path, 0o644)
+    envfile.replace_secrets(path, {"TMD_UID": SECRET, "TMD_UKEY": SECRET})
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
