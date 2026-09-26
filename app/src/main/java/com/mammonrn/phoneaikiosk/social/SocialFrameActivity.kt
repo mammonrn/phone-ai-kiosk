@@ -34,7 +34,7 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
  * HOW. The visited app is launched as a FREEFORM window (the system's own windowing,
  * switched on by adb: `settings put global enable_freeform_support 1`) with its bounds
  * set to this screen's well ([hole]). This screen is an ordinary full-screen kiosk
- * screen, opened first; it starts the app once it is the top screen: the desktop, a raised
+ * screen, opened first; it starts the app once its own opening is over: the desktop, a raised
  * window, the navy title bar (the app's own-drawn icon, its name, the Jarvis button,
  * the X) and a sunken well the app's window sits in. The kiosk's screens never become
  * windows: only the visited app's launch asks for one (SocialVisit.begin), and without
@@ -113,7 +113,7 @@ class SocialFrameActivity : Activity() {
     private lateinit var app: SocialVisit.App
     /** The app has been above this screen once: its going away is now worth looking at. */
     private var appWasOnTop = false
-    /** The app was asked for (SocialVisit.launchInFrame), once, when this screen first came on top. */
+    /** The app was asked for (SocialVisit.launchInFrame), once, when this screen's opening was over. */
     private var launched = false
     /** What SocialVisit calls when the visit ends: this frame closes too. */
     private val onEndHook: () -> Unit = { if (!isFinishing) Origin.close(this, "social-frame-end") }
@@ -163,17 +163,25 @@ class SocialFrameActivity : Activity() {
         super.onTopResumedActivityChanged(isTopResumedActivity)
         if (isFinishing) return
         if (!isTopResumedActivity) { if (launched) appWasOnTop = true; return }
-        if (!launched) {
-            // First on top: now the app, over this screen (its failure ends the visit,
-            // and onEnd closes this screen).
-            launched = true
-            SocialVisit.launchInFrame(this)
-            return
-        }
-        if (!appWasOnTop) return
+        if (!launched || !appWasOnTop) return
         Log.i(TAG, "frame on top again: the app went away")
         SocialVisit.appLeft(this)
         if (!isFinishing) Origin.close(this, "social-frame-app-gone")
+    }
+
+    /**
+     * This screen's opening is over: now the app, over it (its failure ends the visit, and
+     * onEnd closes this screen). Not sooner: every kiosk screen that starts while the kiosk
+     * is locked brings its task forward, and One UI then sends any freeform window to the
+     * back (A07 log: "MultiWindowEnableController: dismissMultiWindowMode: freeform to back",
+     * from LockTaskController.startLockTaskMode, queued behind this screen's opening
+     * transition). Started at once, the app went behind this screen within 0.4 s.
+     */
+    override fun onEnterAnimationComplete() {
+        super.onEnterAnimationComplete()
+        if (launched || isFinishing) return
+        launched = true
+        SocialVisit.launchInFrame(this)
     }
 
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")

@@ -163,7 +163,7 @@ object SocialVisit {
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + pkg)
         return try {
             // Framed: the frame now, a full-screen kiosk screen; the app from the frame once
-            // the frame is the top screen ([launchInFrame]) - started together, the lock task
+            // the frame's opening is over ([launchInFrame]) - started together, the lock task
             // brought the frame's task forward over the app (A07 log: "startLockTask
             // findTaskToMoveToFront" after the app resumed). Only the app asks for a window.
             val framedNow = framed && app != null
