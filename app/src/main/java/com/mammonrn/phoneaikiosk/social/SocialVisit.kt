@@ -159,6 +159,7 @@ object SocialVisit {
         end(activity, "replaced", restore = false)
         val admin = KioskDeviceAdminReceiver.componentName(activity)
         refuseNotifications(activity)
+        liftSuspension(activity, pkg)
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + pkg)
         return try {
             // Framed: the frame now, a full-screen kiosk screen; the app from the frame once
@@ -174,6 +175,7 @@ object SocialVisit {
                 activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
             active = pkg
+            framedVisit = framedNow
             label = what
             keeps = app?.keepsPlaying == true
             background = false
@@ -203,6 +205,8 @@ object SocialVisit {
         background = false
         jarvisTurn(false)
         if (restore) WifiPanel.restore(context)
+        if (framedVisit) closeWindow(context, pkg)
+        framedVisit = false
         onEnd?.invoke()
         val minutes = (SystemClock.elapsedRealtime() - startedAt) / 60_000
         Log.i(TAG, "visit end app=$label reason=$reason minutes=$minutes still_allowed=${allowed(context, pkg)}")
@@ -230,6 +234,34 @@ object SocialVisit {
 
     /** A framed visit's app, not started yet: the frame starts it ([launchInFrame]). */
     private var pending: Intent? = null
+    /** This visit's app is in a window over the kiosk: its end must close that window ([closeWindow]). */
+    private var framedVisit = false
+
+    /**
+     * A windowed app outlives its place on the list: the system took the task off the lock
+     * task but left its window on screen, above the kiosk (A07, 2026-09-26: after X the
+     * app's window stayed isOnScreen=true over the home screen). Suspending the package
+     * closes its activities (the task was gone at once on the A07); it is lifted again at
+     * once, so the next visit opens it as usual. Only the visit's own package, only at its end.
+     */
+    private fun closeWindow(context: Context, pkg: String) {
+        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return
+        val admin = KioskDeviceAdminReceiver.componentName(context)
+        val off = runCatching { dpm.setPackagesSuspended(admin, arrayOf(pkg), true).isEmpty() }.getOrDefault(false)
+        val on = runCatching { dpm.setPackagesSuspended(admin, arrayOf(pkg), false).isEmpty() }.getOrDefault(false)
+        Log.i(TAG, "app window closed app=$label suspended=$off lifted=$on")
+    }
+
+    /** A suspension left over (lifting it failed once): lifted before the app is opened. */
+    private fun liftSuspension(context: Context, pkg: String) {
+        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
+        val admin = KioskDeviceAdminReceiver.componentName(context)
+        if (runCatching { dpm.isPackageSuspended(admin, pkg) }.getOrDefault(false)) {
+            val on = runCatching { dpm.setPackagesSuspended(admin, arrayOf(pkg), false).isEmpty() }.getOrDefault(false)
+            Log.i(TAG, "left-over suspension lifted=$on")
+        }
+    }
 
     /**
      * From the frame, once it is the top screen: the visited app, as a window in its well.
