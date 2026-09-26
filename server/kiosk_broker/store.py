@@ -114,6 +114,30 @@ CREATE TABLE IF NOT EXISTS training_usage (
     cost_usd  REAL NOT NULL,
     note      TEXT
 );
+
+-- Every forecast the weather card showed, and later what actually happened —
+-- so a source's weight can be set from a record instead of a guess. See
+-- verify.py. `area` is a province code (flood_level) or "lat,lon" rounded to
+-- 2 decimals (rain_chance/temp/uv, same rounding as dashboard.round_coord) —
+-- no personal data, only weather values and a time window. `observed_value`
+-- and `outcome` stay NULL until the window has passed and a ground truth was
+-- found to settle it against; some rows (uv, or a window nothing ever
+-- confirmed) stay NULL forever and are pruned like everything else here.
+CREATE TABLE IF NOT EXISTS forecast_records (
+    id              INTEGER PRIMARY KEY,
+    kind            TEXT    NOT NULL, -- rain_chance | temp | uv | flood_level
+    area            TEXT    NOT NULL,
+    source          TEXT    NOT NULL,
+    valid_from      REAL    NOT NULL,
+    valid_to        REAL    NOT NULL,
+    value           REAL    NOT NULL,
+    recorded_at     REAL    NOT NULL,
+    observed_value  REAL,
+    outcome         TEXT,
+    settled_at      REAL
+);
+CREATE INDEX IF NOT EXISTS forecast_records_due ON forecast_records(kind, settled_at, valid_to);
+CREATE INDEX IF NOT EXISTS forecast_records_score ON forecast_records(kind, source, settled_at);
 """
 
 

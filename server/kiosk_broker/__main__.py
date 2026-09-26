@@ -644,6 +644,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("training-usage", help="what has been spent building training data")
 
+    p = sub.add_parser("forecast-score", help="weather-card forecast accuracy per source "
+                                              "(Brier, MAE/bias, flood hits/misses) and the "
+                                              "weights computed from it — see verify.py")
+    p.add_argument("--days", type=int, default=7, help="how many recent settled days to score")
+
     p = sub.add_parser("botnoi-voices",
                        help="EXPERIMENT: Thai male voices from Botnoi, next to Google's, "
                             "for a listening comparison. Does not change production.")
@@ -1049,6 +1054,12 @@ def main(argv: list[str] | None = None) -> int:
             print()
             print("This is NOT the phone's $5 — separate table, separate ceiling, and")
             print("`usage` does not count it.")
+            return 0
+
+        if args.cmd == "forecast-score":
+            from . import verify
+
+            return verify.cli_forecast_score(conn, args.days)
             return 0
 
         if args.cmd == "botnoi-voices":
