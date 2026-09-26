@@ -1,0 +1,1875 @@
+{
+"_about": "Real inputs of the weather card's two rows, fetched live 2026-09-26 ~17:30 ICT (Open-Meteo ECMWF + 82-member ensemble, CAMS PM2.5, TMD CAP, ThaiWater, the kiosk's own flood forecast). 'north' is a point in northern Thailand, 'bangkok' central Bangkok. No coordinates kept.",
+"north": {
+"now": 1790418997.48969,
+"official": [
+"⚠ ฝนตกหนักมาก 23 จังหวัด และภาคตะวันออก ถึง 18:00 น.",
+"⚠ น้ำล้นตลิ่ง 66 จุด ทั่วประเทศ",
+"⚠ ฝนตกหนัก 20 จังหวัด ถึง 18:00 น.",
+"⚠ น้ำมาก 188 จุด ทั่วประเทศ"
+],
+"risk": [
+"◇ ภาคกลาง และอีก 2 ภาคเสี่ยงสูงน้ำท่วม 26–27 ก.ย."
+],
+"blended": {
+"hourly": [
+{
+"t": 1790416800,
+"temp_c": 29.4,
+"rh": 71.0,
+"rain_mm": 0.0,
+"wind_kmh": 3.4,
+"cloud_pct": 4.0,
+"gust_kmh": 13.0,
+"rain_prob": 37,
+"heavy_prob": 0
+},
+{
+"t": 1790420400,
+"temp_c": 28.3,
+"rh": 77.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.5,
+"cloud_pct": 4.0,
+"gust_kmh": 8.3,
+"rain_prob": 37,
+"heavy_prob": 0
+},
+{
+"t": 1790424000,
+"temp_c": 27.3,
+"rh": 82.0,
+"rain_mm": 0.0,
+"wind_kmh": 2.2,
+"cloud_pct": 9.0,
+"gust_kmh": 5.8,
+"rain_prob": 37,
+"heavy_prob": 0
+},
+{
+"t": 1790427600,
+"temp_c": 26.4,
+"rh": 86.0,
+"rain_mm": 0.6,
+"wind_kmh": 1.3,
+"cloud_pct": 27.0,
+"gust_kmh": 8.3,
+"rain_prob": 38,
+"heavy_prob": 0
+},
+{
+"t": 1790431200,
+"temp_c": 25.6,
+"rh": 89.0,
+"rain_mm": 0.6,
+"wind_kmh": 3.6,
+"cloud_pct": 50.0,
+"gust_kmh": 13.0,
+"rain_prob": 38,
+"heavy_prob": 0
+},
+{
+"t": 1790434800,
+"temp_c": 24.9,
+"rh": 91.0,
+"rain_mm": 0.6,
+"wind_kmh": 5.6,
+"cloud_pct": 62.0,
+"gust_kmh": 15.8,
+"rain_prob": 38,
+"heavy_prob": 0
+},
+{
+"t": 1790438400,
+"temp_c": 24.6,
+"rh": 93.0,
+"rain_mm": 0.3,
+"wind_kmh": 4.3,
+"cloud_pct": 52.0,
+"gust_kmh": 14.4,
+"rain_prob": 74,
+"heavy_prob": 0
+},
+{
+"t": 1790442000,
+"temp_c": 24.5,
+"rh": 95.0,
+"rain_mm": 0.3,
+"wind_kmh": 1.5,
+"cloud_pct": 30.0,
+"gust_kmh": 11.2,
+"rain_prob": 74,
+"heavy_prob": 0
+},
+{
+"t": 1790445600,
+"temp_c": 24.4,
+"rh": 96.0,
+"rain_mm": 0.3,
+"wind_kmh": 0.5,
+"cloud_pct": 14.0,
+"gust_kmh": 8.3,
+"rain_prob": 74,
+"heavy_prob": 0
+},
+{
+"t": 1790449200,
+"temp_c": 24.1,
+"rh": 97.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.5,
+"cloud_pct": 9.0,
+"gust_kmh": 7.2,
+"rain_prob": 43,
+"heavy_prob": 0
+},
+{
+"t": 1790452800,
+"temp_c": 23.8,
+"rh": 97.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.9,
+"cloud_pct": 10.0,
+"gust_kmh": 6.8,
+"rain_prob": 43,
+"heavy_prob": 0
+},
+{
+"t": 1790456400,
+"temp_c": 23.6,
+"rh": 97.0,
+"rain_mm": 0.0,
+"wind_kmh": 2.4,
+"cloud_pct": 11.0,
+"gust_kmh": 6.5,
+"rain_prob": 43,
+"heavy_prob": 0
+},
+{
+"t": 1790460000,
+"temp_c": 23.6,
+"rh": 97.0,
+"rain_mm": 0.0,
+"wind_kmh": 2.3,
+"cloud_pct": 12.0,
+"gust_kmh": 5.8,
+"rain_prob": 7,
+"heavy_prob": 0
+},
+{
+"t": 1790463600,
+"temp_c": 23.7,
+"rh": 97.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.5,
+"cloud_pct": 15.0,
+"gust_kmh": 5.4,
+"rain_prob": 7,
+"heavy_prob": 0
+},
+{
+"t": 1790467200,
+"temp_c": 24.0,
+"rh": 96.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.0,
+"cloud_pct": 18.0,
+"gust_kmh": 5.8,
+"rain_prob": 7,
+"heavy_prob": 0
+},
+{
+"t": 1790470800,
+"temp_c": 24.7,
+"rh": 93.0,
+"rain_mm": 0.2,
+"wind_kmh": 0.4,
+"cloud_pct": 22.0,
+"gust_kmh": 8.3,
+"rain_prob": 52,
+"heavy_prob": 0
+},
+{
+"t": 1790474400,
+"temp_c": 25.7,
+"rh": 88.0,
+"rain_mm": 0.2,
+"wind_kmh": 2.4,
+"cloud_pct": 26.0,
+"gust_kmh": 11.5,
+"rain_prob": 52,
+"heavy_prob": 0
+},
+{
+"t": 1790478000,
+"temp_c": 26.7,
+"rh": 83.0,
+"rain_mm": 0.2,
+"wind_kmh": 3.9,
+"cloud_pct": 28.0,
+"gust_kmh": 14.8,
+"rain_prob": 52,
+"heavy_prob": 0
+},
+{
+"t": 1790481600,
+"temp_c": 27.7,
+"rh": 78.0,
+"rain_mm": 0.2,
+"wind_kmh": 4.8,
+"cloud_pct": 25.0,
+"gust_kmh": 16.9,
+"rain_prob": 85,
+"heavy_prob": 0
+},
+{
+"t": 1790485200,
+"temp_c": 28.8,
+"rh": 73.0,
+"rain_mm": 0.2,
+"wind_kmh": 5.4,
+"cloud_pct": 19.0,
+"gust_kmh": 18.7,
+"rain_prob": 85,
+"heavy_prob": 0
+},
+{
+"t": 1790488800,
+"temp_c": 29.6,
+"rh": 69.0,
+"rain_mm": 0.2,
+"wind_kmh": 6.1,
+"cloud_pct": 14.0,
+"gust_kmh": 19.8,
+"rain_prob": 85,
+"heavy_prob": 0
+},
+{
+"t": 1790492400,
+"temp_c": 30.0,
+"rh": 67.0,
+"rain_mm": 0.1,
+"wind_kmh": 7.1,
+"cloud_pct": 9.0,
+"gust_kmh": 20.9,
+"rain_prob": 70,
+"heavy_prob": 0
+},
+{
+"t": 1790496000,
+"temp_c": 30.1,
+"rh": 67.0,
+"rain_mm": 0.1,
+"wind_kmh": 7.6,
+"cloud_pct": 6.0,
+"gust_kmh": 21.2,
+"rain_prob": 70,
+"heavy_prob": 0
+},
+{
+"t": 1790499600,
+"temp_c": 29.8,
+"rh": 68.0,
+"rain_mm": 0.1,
+"wind_kmh": 7.7,
+"cloud_pct": 9.0,
+"gust_kmh": 20.9,
+"rain_prob": 70,
+"heavy_prob": 0
+},
+{
+"t": 1790503200,
+"temp_c": 29.1,
+"rh": 72.0,
+"rain_mm": 0.0,
+"wind_kmh": 5.5,
+"cloud_pct": 27.0,
+"gust_kmh": 18.0,
+"rain_prob": 61,
+"heavy_prob": 0
+},
+{
+"t": 1790506800,
+"temp_c": 28.1,
+"rh": 78.0,
+"rain_mm": 0.0,
+"wind_kmh": 2.9,
+"cloud_pct": 53.0,
+"gust_kmh": 14.0,
+"rain_prob": 61,
+"heavy_prob": 0
+},
+{
+"t": 1790510400,
+"temp_c": 27.2,
+"rh": 82.0,
+"rain_mm": 0.0,
+"wind_kmh": 2.8,
+"cloud_pct": 66.0,
+"gust_kmh": 11.9,
+"rain_prob": 61,
+"heavy_prob": 0
+},
+{
+"t": 1790514000,
+"temp_c": 26.7,
+"rh": 83.0,
+"rain_mm": 0.0,
+"wind_kmh": 3.7,
+"cloud_pct": 55.0,
+"gust_kmh": 13.7,
+"rain_prob": 17,
+"heavy_prob": 0
+},
+{
+"t": 1790517600,
+"temp_c": 26.3,
+"rh": 82.0,
+"rain_mm": 0.0,
+"wind_kmh": 5.1,
+"cloud_pct": 32.0,
+"gust_kmh": 16.9,
+"rain_prob": 17,
+"heavy_prob": 0
+},
+{
+"t": 1790521200,
+"temp_c": 25.9,
+"rh": 82.0,
+"rain_mm": 0.0,
+"wind_kmh": 6.1,
+"cloud_pct": 15.0,
+"gust_kmh": 19.4,
+"rain_prob": 17,
+"heavy_prob": 0
+},
+{
+"t": 1790524800,
+"temp_c": 25.4,
+"rh": 83.0,
+"rain_mm": 0.0,
+"wind_kmh": 5.8,
+"cloud_pct": 10.0,
+"gust_kmh": 19.4,
+"rain_prob": 5,
+"heavy_prob": 0
+},
+{
+"t": 1790528400,
+"temp_c": 24.9,
+"rh": 85.0,
+"rain_mm": 0.0,
+"wind_kmh": 4.7,
+"cloud_pct": 10.0,
+"gust_kmh": 18.4,
+"rain_prob": 5,
+"heavy_prob": 0
+},
+{
+"t": 1790532000,
+"temp_c": 24.5,
+"rh": 87.0,
+"rain_mm": 0.0,
+"wind_kmh": 4.2,
+"cloud_pct": 19.0,
+"gust_kmh": 17.3,
+"rain_prob": 5,
+"heavy_prob": 0
+},
+{
+"t": 1790535600,
+"temp_c": 24.2,
+"rh": 88.0,
+"rain_mm": 0.0,
+"wind_kmh": 4.0,
+"cloud_pct": 43.0,
+"gust_kmh": 16.6,
+"rain_prob": 15,
+"heavy_prob": 0
+},
+{
+"t": 1790539200,
+"temp_c": 24.0,
+"rh": 88.0,
+"rain_mm": 0.0,
+"wind_kmh": 3.9,
+"cloud_pct": 74.0,
+"gust_kmh": 15.5,
+"rain_prob": 15,
+"heavy_prob": 0
+},
+{
+"t": 1790542800,
+"temp_c": 24.0,
+"rh": 88.0,
+"rain_mm": 0.0,
+"wind_kmh": 3.3,
+"cloud_pct": 95.0,
+"gust_kmh": 14.4,
+"rain_prob": 15,
+"heavy_prob": 0
+},
+{
+"t": 1790546400,
+"temp_c": 24.0,
+"rh": 89.0,
+"rain_mm": 0.0,
+"wind_kmh": 2.1,
+"cloud_pct": 95.0,
+"gust_kmh": 11.5,
+"rain_prob": 24,
+"heavy_prob": 0
+},
+{
+"t": 1790550000,
+"temp_c": 24.0,
+"rh": 89.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.0,
+"cloud_pct": 84.0,
+"gust_kmh": 8.6,
+"rain_prob": 24,
+"heavy_prob": 0
+},
+{
+"t": 1790553600,
+"temp_c": 24.3,
+"rh": 89.0,
+"rain_mm": 0.0,
+"wind_kmh": 1.5,
+"cloud_pct": 72.0,
+"gust_kmh": 7.9,
+"rain_prob": 24,
+"heavy_prob": 0
+},
+{
+"t": 1790557200,
+"temp_c": 25.0,
+"rh": 88.0,
+"rain_mm": 0.4,
+"wind_kmh": 1.8,
+"cloud_pct": 60.0,
+"gust_kmh": 12.2,
+"rain_prob": 83,
+"heavy_prob": 0
+},
+{
+"t": 1790560800,
+"temp_c": 25.8,
+"rh": 86.0,
+"rain_mm": 0.4,
+"wind_kmh": 4.2,
+"cloud_pct": 47.0,
+"gust_kmh": 19.1,
+"rain_prob": 83,
+"heavy_prob": 0
+},
+{
+"t": 1790564400,
+"temp_c": 26.6,
+"rh": 84.0,
+"rain_mm": 0.4,
+"wind_kmh": 6.3,
+"cloud_pct": 37.0,
+"gust_kmh": 24.8,
+"rain_prob": 83,
+"heavy_prob": 0
+},
+{
+"t": 1790568000,
+"temp_c": 27.4,
+"rh": 81.0,
+"rain_mm": 0.1,
+"wind_kmh": 8.7,
+"cloud_pct": 31.0,
+"gust_kmh": 28.8,
+"rain_prob": 91,
+"heavy_prob": 0
+},
+{
+"t": 1790571600,
+"temp_c": 28.2,
+"rh": 78.0,
+"rain_mm": 0.1,
+"wind_kmh": 10.7,
+"cloud_pct": 29.0,
+"gust_kmh": 32.0,
+"rain_prob": 91,
+"heavy_prob": 0
+},
+{
+"t": 1790575200,
+"temp_c": 28.4,
+"rh": 78.0,
+"rain_mm": 0.1,
+"wind_kmh": 11.5,
+"cloud_pct": 34.0,
+"gust_kmh": 33.8,
+"rain_prob": 91,
+"heavy_prob": 0
+},
+{
+"t": 1790578800,
+"temp_c": 27.4,
+"rh": 82.0,
+"rain_mm": 2.0,
+"wind_kmh": 9.5,
+"cloud_pct": 53.0,
+"gust_kmh": 33.8,
+"rain_prob": 95,
+"heavy_prob": 0
+},
+{
+"t": 1790582400,
+"temp_c": 25.9,
+"rh": 89.0,
+"rain_mm": 2.0,
+"wind_kmh": 6.3,
+"cloud_pct": 80.0,
+"gust_kmh": 32.4,
+"rain_prob": 95,
+"heavy_prob": 0
+},
+{
+"t": 1790586000,
+"temp_c": 24.7,
+"rh": 94.0,
+"rain_mm": 2.0,
+"wind_kmh": 4.3,
+"cloud_pct": 99.0,
+"gust_kmh": 30.2,
+"rain_prob": 95,
+"heavy_prob": 0
+},
+{
+"t": 1790589600,
+"temp_c": 24.2,
+"rh": 96.0,
+"rain_mm": 0.3,
+"wind_kmh": 3.3,
+"cloud_pct": 100.0,
+"gust_kmh": 26.6,
+"rain_prob": 85,
+"heavy_prob": 0
+},
+{
+"t": 1790593200,
+"temp_c": 24.0,
+"rh": 97.0,
+"rain_mm": 0.3,
+"wind_kmh": 2.2,
+"cloud_pct": 100.0,
+"gust_kmh": 22.0,
+"rain_prob": 85,
+"heavy_prob": 0
+},
+{
+"t": 1790596800,
+"temp_c": 23.9,
+"rh": 97.0,
+"rain_mm": 0.3,
+"wind_kmh": 1.8,
+"cloud_pct": 100.0,
+"gust_kmh": 18.7,
+"rain_prob": 85,
+"heavy_prob": 0
+},
+{
+"t": 1790600400,
+"temp_c": 23.7,
+"rh": 97.0,
+"rain_mm": 0.4,
+"wind_kmh": 2.2,
+"cloud_pct": 100.0,
+"gust_kmh": 18.0,
+"rain_prob": 54,
+"heavy_prob": 0
+},
+{
+"t": 1790604000,
+"temp_c": 23.6,
+"rh": 98.0,
+"rain_mm": 0.4,
+"wind_kmh": 2.9,
+"cloud_pct": 100.0,
+"gust_kmh": 18.4,
+"rain_prob": 54,
+"heavy_prob": 0
+},
+{
+"t": 1790607600,
+"temp_c": 23.4,
+"rh": 98.0,
+"rain_mm": 0.4,
+"wind_kmh": 2.9,
+"cloud_pct": 100.0,
+"gust_kmh": 18.7,
+"rain_prob": 54,
+"heavy_prob": 0
+},
+{
+"t": 1790611200,
+"temp_c": 23.2,
+"rh": 98.0,
+"rain_mm": 0.9,
+"wind_kmh": 1.6,
+"cloud_pct": 100.0,
+"gust_kmh": 18.4,
+"rain_prob": 66,
+"heavy_prob": 0
+}
+],
+"windows": [
+{
+"start": 1790398800,
+"end": 1790420400,
+"rain_prob": 12,
+"heavy_prob": 0,
+"rain_mm": 0.2
+},
+{
+"start": 1790420400,
+"end": 1790442000,
+"rain_prob": 33,
+"heavy_prob": 0,
+"rain_mm": 2.1
+},
+{
+"start": 1790442000,
+"end": 1790463600,
+"rain_prob": 37,
+"heavy_prob": 0,
+"rain_mm": 0.6
+},
+{
+"start": 1790463600,
+"end": 1790485200,
+"rain_prob": 6,
+"heavy_prob": 0,
+"rain_mm": 0.8
+},
+{
+"start": 1790485200,
+"end": 1790506800,
+"rain_prob": 33,
+"heavy_prob": 0,
+"rain_mm": 0.7
+},
+{
+"start": 1790506800,
+"end": 1790528400,
+"rain_prob": 18,
+"heavy_prob": 0,
+"rain_mm": 0.0
+},
+{
+"start": 1790528400,
+"end": 1790550000,
+"rain_prob": 5,
+"heavy_prob": 0,
+"rain_mm": 0.0
+},
+{
+"start": 1790550000,
+"end": 1790571600,
+"rain_prob": 56,
+"heavy_prob": 0,
+"rain_mm": 1.3
+},
+{
+"start": 1790571600,
+"end": 1790593200,
+"rain_prob": 90,
+"heavy_prob": 0,
+"rain_mm": 6.5
+},
+{
+"start": 1790593200,
+"end": 1790614800,
+"rain_prob": 61,
+"heavy_prob": 0,
+"rain_mm": 2.7
+}
+],
+"daily": [
+{
+"date": "2026-09-26",
+"tmin": 23.1,
+"tmax": 30.8,
+"rain_mm": 0.4,
+"rain_prob": 33,
+"wind_kmh": 5.9,
+"gust_kmh": 20.2
+},
+{
+"date": "2026-09-27",
+"tmin": 23.6,
+"tmax": 30.1,
+"rain_mm": 4.2,
+"rain_prob": 37,
+"wind_kmh": 7.7,
+"gust_kmh": 21.2
+},
+{
+"date": "2026-09-28",
+"tmin": 23.2,
+"tmax": 28.4,
+"rain_mm": 8.5,
+"rain_prob": 90,
+"wind_kmh": 11.5,
+"gust_kmh": 33.8
+}
+]
+},
+"weather": {
+"high_c": 30.8,
+"low_c": 23.1,
+"rain_chance": 45,
+"wind_kmh": 6,
+"uv": 1.4,
+"uv_peaks": [
+{
+"date": "2026-09-26",
+"hour": 13,
+"uv": 8.3
+},
+{
+"date": "2026-09-27",
+"hour": 13,
+"uv": 8.2
+}
+]
+},
+"pm25": 12.4,
+"air_trend": [
+[
+1790355600,
+6.8
+],
+[
+1790359200,
+5.9
+],
+[
+1790362800,
+4.9
+],
+[
+1790366400,
+4.0
+],
+[
+1790370000,
+3.8
+],
+[
+1790373600,
+3.9
+],
+[
+1790377200,
+3.9
+],
+[
+1790380800,
+0.1
+],
+[
+1790384400,
+0.9
+],
+[
+1790388000,
+1.1
+],
+[
+1790391600,
+1.2
+],
+[
+1790395200,
+1.4
+],
+[
+1790398800,
+1.5
+],
+[
+1790402400,
+1.7
+],
+[
+1790406000,
+1.9
+],
+[
+1790409600,
+2.2
+],
+[
+1790413200,
+2.5
+],
+[
+1790416800,
+2.9
+],
+[
+1790420400,
+4.0
+],
+[
+1790424000,
+4.9
+],
+[
+1790427600,
+5.0
+],
+[
+1790431200,
+4.8
+],
+[
+1790434800,
+4.8
+],
+[
+1790438400,
+4.3
+],
+[
+1790442000,
+3.7
+],
+[
+1790445600,
+3.1
+],
+[
+1790449200,
+3.0
+],
+[
+1790452800,
+3.3
+],
+[
+1790456400,
+3.7
+],
+[
+1790460000,
+4.1
+],
+[
+1790463600,
+4.1
+],
+[
+1790467200,
+4.1
+],
+[
+1790470800,
+3.8
+],
+[
+1790474400,
+3.9
+],
+[
+1790478000,
+3.4
+],
+[
+1790481600,
+2.9
+],
+[
+1790485200,
+2.6
+],
+[
+1790488800,
+2.6
+],
+[
+1790492400,
+2.6
+],
+[
+1790496000,
+2.5
+],
+[
+1790499600,
+2.4
+],
+[
+1790503200,
+2.4
+],
+[
+1790506800,
+3.0
+],
+[
+1790510400,
+3.5
+],
+[
+1790514000,
+3.5
+],
+[
+1790517600,
+3.3
+],
+[
+1790521200,
+3.2
+],
+[
+1790524800,
+3.3
+]
+]
+},
+"bangkok": {
+"now": 1790419007.8519714,
+"official": [
+"⚠ ฝนตกหนักมาก 23 จังหวัด และภาคตะวันออก ถึง 18:00 น.",
+"⚠ น้ำล้นตลิ่ง 66 จุด ทั่วประเทศ",
+"⚠ ฝนตกหนัก 20 จังหวัด ถึง 18:00 น.",
+"⚠ น้ำมาก 188 จุด ทั่วประเทศ"
+],
+"risk": [
+"◇ ภาคกลาง และอีก 2 ภาคเสี่ยงสูงน้ำท่วม 26–27 ก.ย."
+],
+"blended": {
+"hourly": [
+{
+"t": 1790416800,
+"temp_c": 25.3,
+"rh": 95.0,
+"rain_mm": 1.9,
+"wind_kmh": 16.6,
+"cloud_pct": 100.0,
+"gust_kmh": 36.7,
+"rain_prob": 99,
+"heavy_prob": 77
+},
+{
+"t": 1790420400,
+"temp_c": 25.2,
+"rh": 92.0,
+"rain_mm": 1.9,
+"wind_kmh": 17.3,
+"cloud_pct": 100.0,
+"gust_kmh": 40.3,
+"rain_prob": 99,
+"heavy_prob": 77
+},
+{
+"t": 1790424000,
+"temp_c": 25.1,
+"rh": 91.0,
+"rain_mm": 1.9,
+"wind_kmh": 17.9,
+"cloud_pct": 100.0,
+"gust_kmh": 41.0,
+"rain_prob": 99,
+"heavy_prob": 77
+},
+{
+"t": 1790427600,
+"temp_c": 25.1,
+"rh": 92.0,
+"rain_mm": 1.6,
+"wind_kmh": 15.8,
+"cloud_pct": 100.0,
+"gust_kmh": 36.0,
+"rain_prob": 98,
+"heavy_prob": 77
+},
+{
+"t": 1790431200,
+"temp_c": 25.1,
+"rh": 93.0,
+"rain_mm": 1.6,
+"wind_kmh": 12.9,
+"cloud_pct": 100.0,
+"gust_kmh": 27.7,
+"rain_prob": 98,
+"heavy_prob": 77
+},
+{
+"t": 1790434800,
+"temp_c": 25.2,
+"rh": 94.0,
+"rain_mm": 1.6,
+"wind_kmh": 11.5,
+"cloud_pct": 100.0,
+"gust_kmh": 23.0,
+"rain_prob": 98,
+"heavy_prob": 77
+},
+{
+"t": 1790438400,
+"temp_c": 25.3,
+"rh": 94.0,
+"rain_mm": 1.2,
+"wind_kmh": 12.6,
+"cloud_pct": 100.0,
+"gust_kmh": 24.8,
+"rain_prob": 98,
+"heavy_prob": 77
+},
+{
+"t": 1790442000,
+"temp_c": 25.4,
+"rh": 93.0,
+"rain_mm": 1.2,
+"wind_kmh": 15.2,
+"cloud_pct": 100.0,
+"gust_kmh": 29.9,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790445600,
+"temp_c": 25.4,
+"rh": 93.0,
+"rain_mm": 1.2,
+"wind_kmh": 16.6,
+"cloud_pct": 100.0,
+"gust_kmh": 33.5,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790449200,
+"temp_c": 25.3,
+"rh": 93.0,
+"rain_mm": 2.2,
+"wind_kmh": 16.8,
+"cloud_pct": 100.0,
+"gust_kmh": 34.6,
+"rain_prob": 96,
+"heavy_prob": 38
+},
+{
+"t": 1790452800,
+"temp_c": 25.2,
+"rh": 93.0,
+"rain_mm": 2.2,
+"wind_kmh": 15.9,
+"cloud_pct": 100.0,
+"gust_kmh": 34.2,
+"rain_prob": 96,
+"heavy_prob": 38
+},
+{
+"t": 1790456400,
+"temp_c": 25.1,
+"rh": 93.0,
+"rain_mm": 2.2,
+"wind_kmh": 15.1,
+"cloud_pct": 100.0,
+"gust_kmh": 33.5,
+"rain_prob": 96,
+"heavy_prob": 38
+},
+{
+"t": 1790460000,
+"temp_c": 25.0,
+"rh": 93.0,
+"rain_mm": 1.9,
+"wind_kmh": 13.9,
+"cloud_pct": 100.0,
+"gust_kmh": 32.4,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790463600,
+"temp_c": 24.9,
+"rh": 93.0,
+"rain_mm": 1.9,
+"wind_kmh": 12.8,
+"cloud_pct": 100.0,
+"gust_kmh": 31.0,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790467200,
+"temp_c": 24.9,
+"rh": 93.0,
+"rain_mm": 1.9,
+"wind_kmh": 12.1,
+"cloud_pct": 100.0,
+"gust_kmh": 29.9,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790470800,
+"temp_c": 25.1,
+"rh": 93.0,
+"rain_mm": 3.1,
+"wind_kmh": 12.3,
+"cloud_pct": 100.0,
+"gust_kmh": 29.5,
+"rain_prob": 100,
+"heavy_prob": 38
+},
+{
+"t": 1790474400,
+"temp_c": 25.4,
+"rh": 94.0,
+"rain_mm": 3.1,
+"wind_kmh": 13.4,
+"cloud_pct": 100.0,
+"gust_kmh": 29.5,
+"rain_prob": 100,
+"heavy_prob": 38
+},
+{
+"t": 1790478000,
+"temp_c": 25.8,
+"rh": 93.0,
+"rain_mm": 3.1,
+"wind_kmh": 14.8,
+"cloud_pct": 100.0,
+"gust_kmh": 31.3,
+"rain_prob": 100,
+"heavy_prob": 38
+},
+{
+"t": 1790481600,
+"temp_c": 26.4,
+"rh": 90.0,
+"rain_mm": 1.1,
+"wind_kmh": 16.3,
+"cloud_pct": 100.0,
+"gust_kmh": 36.7,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790485200,
+"temp_c": 27.1,
+"rh": 87.0,
+"rain_mm": 1.1,
+"wind_kmh": 17.7,
+"cloud_pct": 100.0,
+"gust_kmh": 43.9,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790488800,
+"temp_c": 27.6,
+"rh": 84.0,
+"rain_mm": 1.1,
+"wind_kmh": 18.5,
+"cloud_pct": 100.0,
+"gust_kmh": 48.6,
+"rain_prob": 98,
+"heavy_prob": 38
+},
+{
+"t": 1790492400,
+"temp_c": 27.8,
+"rh": 83.0,
+"rain_mm": 0.8,
+"wind_kmh": 18.4,
+"cloud_pct": 100.0,
+"gust_kmh": 49.0,
+"rain_prob": 99,
+"heavy_prob": 38
+},
+{
+"t": 1790496000,
+"temp_c": 27.9,
+"rh": 82.0,
+"rain_mm": 0.8,
+"wind_kmh": 18.3,
+"cloud_pct": 100.0,
+"gust_kmh": 46.8,
+"rain_prob": 99,
+"heavy_prob": 38
+},
+{
+"t": 1790499600,
+"temp_c": 27.8,
+"rh": 82.0,
+"rain_mm": 0.8,
+"wind_kmh": 17.8,
+"cloud_pct": 100.0,
+"gust_kmh": 44.3,
+"rain_prob": 99,
+"heavy_prob": 38
+},
+{
+"t": 1790503200,
+"temp_c": 27.5,
+"rh": 83.0,
+"rain_mm": 0.3,
+"wind_kmh": 17.5,
+"cloud_pct": 100.0,
+"gust_kmh": 42.1,
+"rain_prob": 91,
+"heavy_prob": 38
+},
+{
+"t": 1790506800,
+"temp_c": 27.1,
+"rh": 84.0,
+"rain_mm": 0.3,
+"wind_kmh": 16.5,
+"cloud_pct": 100.0,
+"gust_kmh": 39.6,
+"rain_prob": 91,
+"heavy_prob": 38
+},
+{
+"t": 1790510400,
+"temp_c": 26.6,
+"rh": 86.0,
+"rain_mm": 0.3,
+"wind_kmh": 15.4,
+"cloud_pct": 100.0,
+"gust_kmh": 36.4,
+"rain_prob": 91,
+"heavy_prob": 38
+},
+{
+"t": 1790514000,
+"temp_c": 25.9,
+"rh": 89.0,
+"rain_mm": 1.1,
+"wind_kmh": 13.2,
+"cloud_pct": 100.0,
+"gust_kmh": 32.0,
+"rain_prob": 78,
+"heavy_prob": 38
+},
+{
+"t": 1790517600,
+"temp_c": 25.2,
+"rh": 92.0,
+"rain_mm": 1.1,
+"wind_kmh": 11.0,
+"cloud_pct": 100.0,
+"gust_kmh": 27.0,
+"rain_prob": 78,
+"heavy_prob": 38
+},
+{
+"t": 1790521200,
+"temp_c": 24.8,
+"rh": 94.0,
+"rain_mm": 1.1,
+"wind_kmh": 10.2,
+"cloud_pct": 100.0,
+"gust_kmh": 24.5,
+"rain_prob": 78,
+"heavy_prob": 38
+},
+{
+"t": 1790524800,
+"temp_c": 24.7,
+"rh": 95.0,
+"rain_mm": 1.1,
+"wind_kmh": 9.9,
+"cloud_pct": 100.0,
+"gust_kmh": 25.9,
+"rain_prob": 74,
+"heavy_prob": 38
+},
+{
+"t": 1790528400,
+"temp_c": 24.8,
+"rh": 95.0,
+"rain_mm": 1.1,
+"wind_kmh": 10.9,
+"cloud_pct": 100.0,
+"gust_kmh": 29.5,
+"rain_prob": 74,
+"heavy_prob": 7
+},
+{
+"t": 1790532000,
+"temp_c": 25.0,
+"rh": 94.0,
+"rain_mm": 1.1,
+"wind_kmh": 12.3,
+"cloud_pct": 100.0,
+"gust_kmh": 32.0,
+"rain_prob": 74,
+"heavy_prob": 7
+},
+{
+"t": 1790535600,
+"temp_c": 25.3,
+"rh": 93.0,
+"rain_mm": 0.1,
+"wind_kmh": 13.1,
+"cloud_pct": 100.0,
+"gust_kmh": 32.0,
+"rain_prob": 66,
+"heavy_prob": 7
+},
+{
+"t": 1790539200,
+"temp_c": 25.8,
+"rh": 91.0,
+"rain_mm": 0.1,
+"wind_kmh": 14.1,
+"cloud_pct": 99.0,
+"gust_kmh": 31.3,
+"rain_prob": 66,
+"heavy_prob": 7
+},
+{
+"t": 1790542800,
+"temp_c": 26.1,
+"rh": 89.0,
+"rain_mm": 0.1,
+"wind_kmh": 14.4,
+"cloud_pct": 99.0,
+"gust_kmh": 30.6,
+"rain_prob": 66,
+"heavy_prob": 7
+},
+{
+"t": 1790546400,
+"temp_c": 26.3,
+"rh": 87.0,
+"rain_mm": 0.1,
+"wind_kmh": 14.1,
+"cloud_pct": 99.0,
+"gust_kmh": 30.2,
+"rain_prob": 70,
+"heavy_prob": 7
+},
+{
+"t": 1790550000,
+"temp_c": 26.5,
+"rh": 85.0,
+"rain_mm": 0.1,
+"wind_kmh": 13.1,
+"cloud_pct": 100.0,
+"gust_kmh": 29.9,
+"rain_prob": 70,
+"heavy_prob": 7
+},
+{
+"t": 1790553600,
+"temp_c": 26.7,
+"rh": 83.0,
+"rain_mm": 0.1,
+"wind_kmh": 12.5,
+"cloud_pct": 100.0,
+"gust_kmh": 30.2,
+"rain_prob": 70,
+"heavy_prob": 7
+},
+{
+"t": 1790557200,
+"temp_c": 26.9,
+"rh": 83.0,
+"rain_mm": 1.0,
+"wind_kmh": 13.1,
+"cloud_pct": 100.0,
+"gust_kmh": 31.7,
+"rain_prob": 79,
+"heavy_prob": 7
+},
+{
+"t": 1790560800,
+"temp_c": 27.2,
+"rh": 83.0,
+"rain_mm": 1.0,
+"wind_kmh": 14.1,
+"cloud_pct": 100.0,
+"gust_kmh": 33.8,
+"rain_prob": 79,
+"heavy_prob": 7
+},
+{
+"t": 1790564400,
+"temp_c": 27.4,
+"rh": 84.0,
+"rain_mm": 1.0,
+"wind_kmh": 14.5,
+"cloud_pct": 100.0,
+"gust_kmh": 35.3,
+"rain_prob": 79,
+"heavy_prob": 7
+},
+{
+"t": 1790568000,
+"temp_c": 27.4,
+"rh": 85.0,
+"rain_mm": 0.9,
+"wind_kmh": 13.2,
+"cloud_pct": 100.0,
+"gust_kmh": 35.3,
+"rain_prob": 84,
+"heavy_prob": 7
+},
+{
+"t": 1790571600,
+"temp_c": 27.4,
+"rh": 87.0,
+"rain_mm": 0.9,
+"wind_kmh": 12.0,
+"cloud_pct": 100.0,
+"gust_kmh": 34.6,
+"rain_prob": 84,
+"heavy_prob": 7
+},
+{
+"t": 1790575200,
+"temp_c": 27.4,
+"rh": 87.0,
+"rain_mm": 0.9,
+"wind_kmh": 10.9,
+"cloud_pct": 100.0,
+"gust_kmh": 34.2,
+"rain_prob": 84,
+"heavy_prob": 7
+},
+{
+"t": 1790578800,
+"temp_c": 27.8,
+"rh": 85.0,
+"rain_mm": 1.2,
+"wind_kmh": 10.8,
+"cloud_pct": 100.0,
+"gust_kmh": 34.6,
+"rain_prob": 83,
+"heavy_prob": 7
+},
+{
+"t": 1790582400,
+"temp_c": 28.2,
+"rh": 82.0,
+"rain_mm": 1.2,
+"wind_kmh": 11.8,
+"cloud_pct": 99.0,
+"gust_kmh": 35.3,
+"rain_prob": 83,
+"heavy_prob": 7
+},
+{
+"t": 1790586000,
+"temp_c": 28.3,
+"rh": 81.0,
+"rain_mm": 1.2,
+"wind_kmh": 12.3,
+"cloud_pct": 99.0,
+"gust_kmh": 34.6,
+"rain_prob": 83,
+"heavy_prob": 7
+},
+{
+"t": 1790589600,
+"temp_c": 27.9,
+"rh": 83.0,
+"rain_mm": 0.8,
+"wind_kmh": 11.7,
+"cloud_pct": 99.0,
+"gust_kmh": 30.6,
+"rain_prob": 73,
+"heavy_prob": 7
+},
+{
+"t": 1790593200,
+"temp_c": 27.3,
+"rh": 87.0,
+"rain_mm": 0.8,
+"wind_kmh": 11.0,
+"cloud_pct": 99.0,
+"gust_kmh": 25.6,
+"rain_prob": 73,
+"heavy_prob": 7
+},
+{
+"t": 1790596800,
+"temp_c": 26.8,
+"rh": 90.0,
+"rain_mm": 0.8,
+"wind_kmh": 10.5,
+"cloud_pct": 99.0,
+"gust_kmh": 22.0,
+"rain_prob": 73,
+"heavy_prob": 7
+},
+{
+"t": 1790600400,
+"temp_c": 26.7,
+"rh": 90.0,
+"rain_mm": 0.0,
+"wind_kmh": 10.5,
+"cloud_pct": 97.0,
+"gust_kmh": 22.0,
+"rain_prob": 50,
+"heavy_prob": 7
+},
+{
+"t": 1790604000,
+"temp_c": 26.8,
+"rh": 88.0,
+"rain_mm": 0.0,
+"wind_kmh": 10.6,
+"cloud_pct": 95.0,
+"gust_kmh": 23.8,
+"rain_prob": 50,
+"heavy_prob": 7
+},
+{
+"t": 1790607600,
+"temp_c": 26.8,
+"rh": 87.0,
+"rain_mm": 0.0,
+"wind_kmh": 10.4,
+"cloud_pct": 94.0,
+"gust_kmh": 24.5,
+"rain_prob": 50,
+"heavy_prob": 7
+},
+{
+"t": 1790611200,
+"temp_c": 26.8,
+"rh": 86.0,
+"rain_mm": 0.1,
+"wind_kmh": 9.8,
+"cloud_pct": 96.0,
+"gust_kmh": 22.7,
+"rain_prob": 46,
+"heavy_prob": 7
+}
+],
+"windows": [
+{
+"start": 1790398800,
+"end": 1790420400,
+"rain_prob": 100,
+"heavy_prob": 77,
+"rain_mm": 22.1
+},
+{
+"start": 1790420400,
+"end": 1790442000,
+"rain_prob": 99,
+"heavy_prob": 77,
+"rain_mm": 9.8
+},
+{
+"start": 1790442000,
+"end": 1790463600,
+"rain_prob": 98,
+"heavy_prob": 38,
+"rain_mm": 10.9
+},
+{
+"start": 1790463600,
+"end": 1790485200,
+"rain_prob": 98,
+"heavy_prob": 38,
+"rain_mm": 14.2
+},
+{
+"start": 1790485200,
+"end": 1790506800,
+"rain_prob": 96,
+"heavy_prob": 38,
+"rain_mm": 4.9
+},
+{
+"start": 1790506800,
+"end": 1790528400,
+"rain_prob": 73,
+"heavy_prob": 38,
+"rain_mm": 5.0
+},
+{
+"start": 1790528400,
+"end": 1790550000,
+"rain_prob": 62,
+"heavy_prob": 7,
+"rain_mm": 2.6
+},
+{
+"start": 1790550000,
+"end": 1790571600,
+"rain_prob": 76,
+"heavy_prob": 7,
+"rain_mm": 4.1
+},
+{
+"start": 1790571600,
+"end": 1790593200,
+"rain_prob": 76,
+"heavy_prob": 7,
+"rain_mm": 6.2
+},
+{
+"start": 1790593200,
+"end": 1790614800,
+"rain_prob": 50,
+"heavy_prob": 7,
+"rain_mm": 1.7
+}
+],
+"daily": [
+{
+"date": "2026-09-26",
+"tmin": 24.1,
+"tmax": 27.0,
+"rain_mm": 66.6,
+"rain_prob": 100,
+"wind_kmh": 17.9,
+"gust_kmh": 41.0
+},
+{
+"date": "2026-09-27",
+"tmin": 24.7,
+"tmax": 27.9,
+"rain_mm": 36.5,
+"rain_prob": 98,
+"wind_kmh": 18.5,
+"gust_kmh": 49.0
+},
+{
+"date": "2026-09-28",
+"tmin": 24.8,
+"tmax": 28.3,
+"rain_mm": 18.9,
+"rain_prob": 76,
+"wind_kmh": 14.5,
+"gust_kmh": 35.3
+}
+]
+},
+"weather": {
+"high_c": 27.0,
+"low_c": 24.1,
+"rain_chance": 100,
+"wind_kmh": 18,
+"uv": 0.1,
+"uv_peaks": [
+{
+"date": "2026-09-26",
+"hour": 15,
+"uv": 0.9
+},
+{
+"date": "2026-09-27",
+"hour": 12,
+"uv": 3.4
+}
+]
+},
+"pm25": 9.5,
+"air_trend": [
+[
+1790355600,
+2.9
+],
+[
+1790359200,
+2.3
+],
+[
+1790362800,
+1.9
+],
+[
+1790366400,
+2.0
+],
+[
+1790370000,
+2.1
+],
+[
+1790373600,
+2.3
+],
+[
+1790377200,
+2.5
+],
+[
+1790380800,
+2.9
+],
+[
+1790384400,
+3.4
+],
+[
+1790388000,
+3.1
+],
+[
+1790391600,
+2.3
+],
+[
+1790395200,
+1.9
+],
+[
+1790398800,
+1.8
+],
+[
+1790402400,
+1.9
+],
+[
+1790406000,
+2.0
+],
+[
+1790409600,
+2.0
+],
+[
+1790413200,
+1.6
+],
+[
+1790416800,
+2.1
+],
+[
+1790420400,
+2.1
+],
+[
+1790424000,
+1.8
+],
+[
+1790427600,
+1.6
+],
+[
+1790431200,
+1.4
+],
+[
+1790434800,
+1.4
+],
+[
+1790438400,
+1.3
+],
+[
+1790442000,
+1.1
+],
+[
+1790445600,
+0.8
+],
+[
+1790449200,
+0.7
+],
+[
+1790452800,
+0.5
+],
+[
+1790456400,
+0.5
+],
+[
+1790460000,
+0.7
+],
+[
+1790463600,
+0.8
+],
+[
+1790467200,
+1.4
+],
+[
+1790470800,
+1.7
+],
+[
+1790474400,
+1.9
+],
+[
+1790478000,
+2.0
+],
+[
+1790481600,
+1.8
+],
+[
+1790485200,
+1.7
+],
+[
+1790488800,
+1.6
+],
+[
+1790492400,
+2.2
+],
+[
+1790496000,
+2.0
+],
+[
+1790499600,
+1.9
+],
+[
+1790503200,
+2.1
+],
+[
+1790506800,
+2.1
+],
+[
+1790510400,
+1.9
+],
+[
+1790514000,
+1.8
+],
+[
+1790517600,
+1.8
+],
+[
+1790521200,
+1.6
+],
+[
+1790524800,
+1.4
+]
+]
+}
+}

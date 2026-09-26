@@ -453,6 +453,9 @@ def fetch_weather(latitude: float, longitude: float, timeout: float, measured=No
         "wind_kmh": wind_kmh,
         "uv": uv,
         "uv_max": _first_number(daily.get("uv_index_max")),
+        # Each day's UV peak hour (0.74): the card's first row says WHEN the
+        # sun is strongest ("UV สูงสุด 12 น."); the card shows UV now only.
+        "uv_peaks": uv_peaks(hourly_raw.get("time"), _pick(hourly_raw, "uv_index")),
         # The next three days in one sentence (forecast.py), or None.
         "outlook": forecast.outlook(daily, hourly),
         # Tomorrow and the day after by their own numbers (forecast.day_lines), or None.
@@ -474,6 +477,23 @@ def fetch_weather(latitude: float, longitude: float, timeout: float, measured=No
         # above, today's forecast peak). {} when none was close and fresh.
         "measured": measured_out,
     }
+
+
+def uv_peaks(times, values, days: int = 2) -> list[dict]:
+    """[{"date", "hour", "uv"}] — the first `days` dates' highest hourly UV
+    and the hour it comes (the earliest of equal values)."""
+    out: dict[str, dict] = {}
+    for when, uv in zip(times or (), values or ()):
+        if not isinstance(when, str) or not isinstance(uv, (int, float)):
+            continue
+        match = _ISO_LOCAL_TIME.match(when)
+        if not match:
+            continue
+        date, hour = when[:10], int(match.group(1))
+        best = out.get(date)
+        if best is None or uv > best["uv"]:
+            out[date] = {"date": date, "hour": hour, "uv": round(float(uv), 1)}
+    return [out[d] for d in sorted(out)[:days]]
 
 
 def _first_int(values) -> int | None:
@@ -618,6 +638,33 @@ def fetch_air(latitude: float, longitude: float, timeout: float) -> dict:
     if not weather_checks.in_range(pm, *weather_checks.PM25_RANGE):
         raise ValueError("pm2_5 out of range")
     return {"pm25": pm, "pm25_word": pm25_word(pm), "source": "Open-Meteo"}
+
+
+#: PM2.5 over the next day and a half (0.74), CAMS via Open-Meteo, for the
+#: card's "where is the dust heading" phrase — a forecast, so always CAMS,
+#: whichever source answered the reading now.
+AIR_TREND_URL = (
+    "https://air-quality-api.open-meteo.com/v1/air-quality"
+    "?latitude={lat}&longitude={lon}&hourly=pm2_5&forecast_days=2&timezone=Asia%2FBangkok"
+)
+
+
+def fetch_air_trend(latitude: float, longitude: float, timeout: float) -> dict:
+    """{"hours": [[epoch, µg/m³], ...]} — out-of-range values dropped."""
+    from . import weather_checks
+    raw = _get(AIR_TREND_URL.format(lat=latitude, lon=longitude), timeout)
+    hourly = raw.get("hourly") or {}
+    hours = []
+    for when, value in zip(hourly.get("time") or (), hourly.get("pm2_5") or ()):
+        if value is None or not weather_checks.in_range(float(value), *weather_checks.PM25_RANGE):
+            continue
+        try:
+            hours.append([int(_local_time_to_epoch(when)), round(float(value), 1)])
+        except (TypeError, ValueError):
+            continue
+    if not hours:
+        raise ValueError("no pm2_5 hours")
+    return {"hours": hours}
 
 
 def fetch_oil(timeout: float) -> dict:
@@ -1282,6 +1329,10 @@ class Dashboard:
             f"air:{lat}:{lon}", now, self.cfg.dashboard_air_ttl,
             lambda: fetch_air(lat, lon, self.cfg.dashboard_timeout),
             credit=CREDITS["air"])
+        air_trend = self._panel(
+            f"airtrend:{lat}:{lon}", now, self.cfg.dashboard_air_ttl,
+            lambda: fetch_air_trend(lat, lon, self.cfg.dashboard_timeout),
+            credit=CREDITS["air"])
         place = self._panel(
             f"place:{lat}:{lon}", now, self.cfg.dashboard_place_ttl,
             lambda: fetch_place(lat, lon, self.cfg.dashboard_timeout),
@@ -1339,6 +1390,18 @@ class Dashboard:
             card_lines = flood_forecast.order_lines(
                 official_lines, flood_payload.get("line"),
                 local_out["line"] if local_out else None)
+        # 0.74 (Poom): both card rows at once — row 1 the kiosk's position to
+        # tomorrow morning, row 2 the nationwide lines taking turns (or the
+        # next day here). Without a blended forecast, row 1 is the older
+        # local-rain line.
+        from . import forecast_text as _ft
+        card_rows = _ft.card_rows(
+            official_lines, [flood_payload["line"]] if flood_payload.get("line") else [],
+            blended, weather.data if weather.ok else None,
+            air_trend.data.get("hours") if air_trend.ok else None,
+            air.data.get("pm25") if air.ok else None, now)
+        if card_rows["line1"] is None and local_out and local_out.get("line"):
+            card_rows["line1"] = local_out["line"]
 
         return {
             "weather": weather.as_json(),
@@ -1373,6 +1436,11 @@ class Dashboard:
             # exactly these lines and nothing else; an older phone without it
             # keeps building its own lines from "alerts" and "forecast".
             "card_lines": card_lines,
+            # 0.74: {"line1": str|None, "line2": [str, ...]} — shown TOGETHER,
+            # line1 fixed and line2's items taking turns; every string fits one
+            # row of the card (forecast_text.ROW_WIDTH), never cut with "…".
+            # card_lines above stays for phones older than 0.74.
+            "card_rows": card_rows,
             # Empty string when the lookup failed or the name could not be read.
             # The phone shows "ตำแหน่งปัจจุบัน" for that, never a coordinate.
             "place": place.data.get("place", "") if place.ok else "",

@@ -205,9 +205,12 @@ def test_one_short_formal_line_per_item():
     # No "(source)" suffix (Poom, 2026-09-26): the room it freed stays with
     # the area and the time window in full.
     assert alerts.line(heavy, NOW) == "⚠ ฝนตกหนัก 20 จังหวัด ถึง 18:00 น."
-    # The region still does not fully fit even with the room the source's
-    # removal freed: the list gives way, the expiry still stays.
-    assert alerts.line(very, NOW) == "⚠ ฝนตกหนักมาก 23 จังหวัด และภาค… ถึง 18:00 น."
+    # 0.74: one card row is 48 columns and NOTHING is cut with "…" (Poom);
+    # this real one fits whole.
+    assert alerts.line(very, NOW) == "⚠ ฝนตกหนักมาก 23 จังหวัด และภาคตะวันออก ถึง 18:00 น."
+    # Too wide: the regions after the count go whole, never "และภาค…".
+    tight = dict(very, title="ฝนตกหนักมากถึงหนักมากที่สุด")
+    assert alerts.line(tight, NOW) == "⚠ ฝนตกหนักมากถึงหนักมากที่สุด 23 จังหวัด ถึง 18:00 น."
     # Ending another day: the date, with a Thai month abbreviation.
     assert alerts.line(heavy, at("2026-09-25T20:00:00+07:00")).endswith("ถึง 26 ก.ย.")
     for line in (alerts.line(very, NOW), alerts.line(heavy, NOW)):
@@ -216,12 +219,14 @@ def test_one_short_formal_line_per_item():
         assert "(" not in line and "กรมอุตุฯ" not in line
 
 
-def test_a_long_title_is_cut_at_a_word_never_losing_expiry():
+def test_a_long_title_loses_its_places_never_a_hazard_or_the_expiry():
     then = at("2022-12-19T12:00:00+07:00")
     item = alerts.parse_warning_rss(WARNING_RSS, then)[0]
     line = alerts.line(item, then)
     assert alerts.width(line) <= alerts.LINE_WIDTH
-    assert line.startswith("⚠ อากาศหนาวเย็น") and "…" in line
+    # 0.74 (Poom: nothing cut): both hazards stay, their places go.
+    assert "…" not in line
+    assert "อากาศหนาวเย็น" in line and "คลื่นลมแรง" in line
     assert line.endswith("ถึง 20 ธ.ค.")
     assert "กรมอุตุฯ" not in line
 

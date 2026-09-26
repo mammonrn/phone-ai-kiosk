@@ -378,6 +378,280 @@ def card_lines(official: list[str], risk: list[str], blended: dict | None,
     return out[:2]
 
 
+# ------------------------------------------------------------ card rows ---
+#
+# 0.74 (Poom 2026-09-26, seen on the kiosk: "บรรทัดพยากรณ์สั้นและมีแค่บรรทัด
+# เดียว ทั้งที่มีข้อมูลเยอะ"). The phone showed card_lines ONE AT A TIME, so the
+# second row of the card was always empty. Now the card shows TWO ROWS AT ONCE:
+#
+#   row 1 = THE KIOSK'S POSITION from now until tomorrow morning (HORIZON_END_HOUR
+#           once at least ROW1_MIN_HOURS ahead): the sky, rain with its % and
+#           hours, when UV peaks, where PM2.5 is heading, gusts, when it is
+#           hottest — as many as fit one row, the least important dropped whole.
+#   row 2 = what matters NATIONWIDE, taking turns (⚠ official warnings incl.
+#           สสน.'s water over the bank, ◇ the kiosk's own flood risk); with none
+#           of those, the next day at the kiosk's position.
+#
+# RAIN always carries its number (Poom): <40% "ฝนเล็กน้อย 30%", 40–69% "อาจฝน
+# 50%", ≥70% "ฝน 75%"; below RAIN_MENTION_PCT it is not mentioned at all.
+# ONLY a value the card already shows as such is never repeated (today's
+# high/low, today's rain chance, the wind, UV and PM2.5 now); a time or a trend
+# of one is new ("ร้อนสุด 14 น.").
+# NOTHING IS CUT: each row fits ROW_WIDTH columns (alerts.width) by dropping
+# whole phrases, least important first — never an ellipsis.
+
+ROW_WIDTH = alerts.LINE_WIDTH
+ROW_SEP = " · "
+RAIN_MENTION_PCT = 20   # below this the ensemble is noise, and rain is not named
+RAIN_LIGHT_WORD = "ฝนเล็กน้อย"
+HORIZON_END_HOUR = 9    # row 1 runs to this hour of "tomorrow morning"
+ROW1_MIN_HOURS = 6
+UV_PEAK_MENTION = 6.0   # "สูง" and above (dashboard.uv_word): worth a time
+GUST_MENTION_KMH = 30.0
+DAY_START_HOUR = 6      # row 2's "next day" is 06:00–24:00 of that date
+
+_SKY_WORDS = ((25.0, "ฟ้าโปร่ง"), (65.0, "เมฆบางส่วน"))
+_SKY_MANY = "เมฆมาก"
+
+
+def horizon_end(now: float) -> float:
+    """The first HORIZON_END_HOUR:00 at least ROW1_MIN_HOURS from now — at
+    17:00 tomorrow 09:00, at 02:00 today 09:00."""
+    t = _bkk(now + ROW1_MIN_HOURS * 3600)
+    end = t.replace(hour=HORIZON_END_HOUR, minute=0, second=0, microsecond=0)
+    if end < t:
+        end = end + (_bkk(now + 86400) - _bkk(now))
+    return end.timestamp()
+
+
+def next_day(now: float) -> tuple[str, str]:
+    """("พรุ่งนี้", date), or ("วันนี้", today) before DAY_START_HOUR — at
+    02:00 the coming daytime is today's."""
+    if _bkk(now).hour < DAY_START_HOUR:
+        return "วันนี้", _date_str(now)
+    return "พรุ่งนี้", _date_str(now + 24 * 3600)
+
+
+def _hours_between(blended: dict, start: float, end: float) -> list[dict]:
+    return sorted((h for h in blended.get("hourly") or ()
+                   if h.get("t") is not None and start <= h["t"] < end), key=lambda h: h["t"])
+
+
+def _clock(ts: float) -> str:
+    return f"{_bkk(ts).hour:02d} น."
+
+
+def _rain_band(prob: float) -> tuple[str, float]:
+    """(word, the band's own lower bound)."""
+    if prob >= RAIN_SAY_PCT:
+        return "ฝน", RAIN_SAY_PCT
+    if prob >= RAIN_MAYBE_PCT:
+        return "อาจฝน", RAIN_MAYBE_PCT
+    return RAIN_LIGHT_WORD, RAIN_MENTION_PCT
+
+
+RAIN_PCT_CAP = 90       # DESIGN 5ป: an 82-member ensemble is not a certainty
+
+
+def _rain_spells(hours: list[dict], most: int = 2) -> list[str]:
+    """Up to `most` separate rain spells in these hours, likeliest first:
+    word, % and the contiguous hours around each peak that stay in that
+    peak's band ("ฝน 74% 23–02 น.", "อาจฝน 52% 08–09 น.")."""
+    scored = [h for h in hours if h.get("rain_prob") is not None]
+    used: set[int] = set()
+    out = []
+    while len(out) < most:
+        free = [i for i in range(len(scored)) if i not in used]
+        if not free:
+            break
+        i = max(free, key=lambda k: (scored[k]["rain_prob"], -scored[k]["t"]))
+        peak = scored[i]
+        prob = peak["rain_prob"]
+        if prob < RAIN_MENTION_PCT:
+            break
+        word, floor = _rain_band(prob)
+        if floor >= RAIN_MAYBE_PCT and peak.get("heavy_prob") is not None                 and peak["heavy_prob"] >= RAIN_HEAVY_PCT:
+            word = "ฝนหนัก" if word == "ฝน" else "อาจฝนหนัก"
+        lo = hi = i
+        while lo > 0 and lo - 1 not in used and scored[lo - 1]["rain_prob"] >= floor                 and scored[lo - 1]["t"] == scored[lo]["t"] - 3600:
+            lo -= 1
+        while hi < len(scored) - 1 and hi + 1 not in used and scored[hi + 1]["rain_prob"] >= floor                 and scored[hi + 1]["t"] == scored[hi]["t"] + 3600:
+            hi += 1
+        # The hours next to a spell belong to it, not to a second spell.
+        used.update(range(max(lo - 1, 0), min(hi + 2, len(scored))))
+        span = _hour_range(scored[lo]["t"], scored[hi]["t"] + 3600).replace("24–", "00–")
+        out.append(f"{word} {min(round(prob), RAIN_PCT_CAP)}% {span}")
+    return out
+
+
+def _rain_phrase(hours: list[dict]) -> str | None:
+    spells = _rain_spells(hours, 1)
+    return spells[0] if spells else None
+
+
+def _sky_class(cloud: float) -> str:
+    for ceiling, word in _SKY_WORDS:
+        if cloud < ceiling:
+            return word
+    return _SKY_MANY
+
+
+def _sky_phrase(hours: list[dict]) -> str | None:
+    """The sky from now for as long as it stays the same kind, with the hour
+    it changes ("ฟ้าโปร่งถึง 20 น."), or the whole row's hours alone."""
+    clouded = [h for h in hours if h.get("cloud_pct") is not None]
+    if not clouded:
+        return None
+    word = _sky_class(clouded[0]["cloud_pct"])
+    for h in clouded[1:]:
+        if _sky_class(h["cloud_pct"]) != word:
+            return f"{word}ถึง {_clock(h['t'])}"
+    return word
+
+
+def _coolest_phrase(hours: list[dict], now: float) -> str | None:
+    """"ต่ำสุด 24° ราว 05 น." — tonight's low and when, only when the row's
+    hours reach past midnight (the card's own low is this morning's)."""
+    later = [h for h in hours if h.get("temp_c") is not None and _date_str(h["t"]) != _date_str(now)]
+    if not later:
+        return None
+    low = min(later, key=lambda h: (h["temp_c"], h["t"]))
+    return f"ต่ำสุด {low['temp_c']:.0f}° ราว {_clock(low['t'])}"
+
+
+def _gust_phrase(hours: list[dict]) -> str | None:
+    gusts = [h for h in hours if h.get("gust_kmh") is not None]
+    if not gusts:
+        return None
+    top = max(gusts, key=lambda h: (h["gust_kmh"], -h["t"]))
+    if top["gust_kmh"] < GUST_MENTION_KMH:
+        return None
+    return f"ลมกระโชก {round(top['gust_kmh'])} กม./ชม. {_clock(top['t'])}"
+
+
+def _hottest_phrase(hours: list[dict], now: float) -> str | None:
+    """"ร้อนสุด 14 น." — today's warmest hour, only while it is still ahead."""
+    today = [h for h in hours if h.get("temp_c") is not None and _date_str(h["t"]) == _date_str(now)]
+    if not today:
+        return None
+    top = max(today, key=lambda h: (h["temp_c"], -h["t"]))
+    if top["t"] <= now or _bkk(top["t"]).hour < 10:
+        return None
+    return f"ร้อนสุด {_clock(top['t'])}"
+
+
+def _uv_phrase(uv_peaks: list | None, date: str, after: float) -> str | None:
+    """"UV สูงสุด 12 น." for that date's peak, when it is "สูง" or worse and
+    still ahead of `after`."""
+    for peak in uv_peaks or ():
+        if peak.get("date") != date or peak.get("uv") is None or peak.get("hour") is None:
+            continue
+        if peak["uv"] < UV_PEAK_MENTION:
+            return None
+        start = _bkk(after)
+        if date == _date_str(after) and peak["hour"] <= start.hour:
+            return None
+        return f"UV สูงสุด {peak['hour']:02d} น."
+    return None
+
+
+def _pm_phrase(trend: list | None, now: float, end: float, pm_now: float | None) -> str | None:
+    """Where PM2.5 is heading (CAMS hourly, [[epoch, µg/m³], ...]): a rise into
+    a worse band than now ("PM2.5 เพิ่มถึง 40 ราว 21 น."), or, when the air is
+    already unhealthy, a fall back to a better one. Bands are the card's own
+    (dashboard.pm25_word), so the words never disagree with the card."""
+    from .dashboard import PM25_BANDS
+    ahead = [(t, v) for t, v in trend or () if now <= t < end and v is not None]
+    if len(ahead) < 3:
+        return None
+
+    def band(value: float) -> int:
+        return next((i for i, (ceiling, _) in enumerate(PM25_BANDS) if value <= ceiling), len(PM25_BANDS))
+
+    base = pm_now if pm_now is not None else ahead[0][1]
+    high = max(ahead, key=lambda p: p[1])
+    if band(high[1]) > band(base) and high[1] > PM25_BANDS[1][0]:
+        return f"PM2.5 เพิ่มถึง {round(high[1])} ราว {_clock(high[0])}"
+    low = min(ahead, key=lambda p: p[1])
+    if band(base) >= 3 and band(low[1]) < band(base):
+        return f"PM2.5 ลดเหลือ {round(low[1])} ราว {_clock(low[0])}"
+    return None
+
+
+def fit_row(phrases: list[tuple[int, str | None]], lead: str = "▸ ") -> str | None:
+    """`phrases` in display order, each (importance, text) — 0 is the most
+    important. Whole phrases go, least important first, until the row fits
+    ROW_WIDTH; never an ellipsis. None when there is nothing to say."""
+    live = [(rank, text) for rank, text in phrases if text]
+    while live:
+        row = lead + ROW_SEP.join(text for _, text in live)
+        if alerts.width(row) <= ROW_WIDTH:
+            return row
+        worst = max(range(len(live)), key=lambda i: (live[i][0], i))
+        del live[worst]
+    return None
+
+
+def kiosk_row(blended: dict | None, weather: dict | None, air_trend: list | None,
+              pm_now: float | None, now: float) -> str | None:
+    """Row 1: the kiosk's position from now to tomorrow morning."""
+    if not blended:
+        return None
+    end = horizon_end(now)
+    hours = _hours_between(blended, now - 3600, end)
+    hours = [h for h in hours if h["t"] + 3600 > now]
+    if not hours:
+        return None
+    uv_peaks = (weather or {}).get("uv_peaks")
+    spells = _rain_spells(hours) + [None, None]
+    # (importance, phrase) in the order they are read; 0 is kept longest.
+    return fit_row([
+        (6, _sky_phrase(hours)),
+        (0, spells[0]),
+        (3, spells[1]),
+        (4, _uv_phrase(uv_peaks, _date_str(now), now)),
+        (2, _pm_phrase(air_trend, now, end, pm_now)),
+        (1, _gust_phrase(hours)),
+        (5, _hottest_phrase(hours, now)),
+        (7, _coolest_phrase(hours, now)),
+    ])
+
+
+def next_day_row(blended: dict | None, weather: dict | None, now: float) -> str | None:
+    """Row 2 when nothing matters nationwide: the next daytime at the kiosk.
+    Its high/low are not the card's (the card shows today's)."""
+    if not blended:
+        return None
+    word, date = next_day(now)
+    day = _daily_for(blended, date)
+    start = datetime.fromisoformat(date).replace(hour=DAY_START_HOUR, tzinfo=BANGKOK).timestamp()
+    hours = _hours_between(blended, start, start + (24 - DAY_START_HOUR) * 3600)
+    degrees = None
+    if day and day.get("tmin") is not None and day.get("tmax") is not None:
+        degrees = _fmt_degrees(day["tmin"], day["tmax"])
+        if day["tmax"] >= HEAT_EXTREME_C:
+            degrees += " ร้อนจัด"
+    body = fit_row([
+        (1, degrees),
+        (0, _rain_phrase(hours)),
+        (3, _uv_phrase((weather or {}).get("uv_peaks"), date, start - 1)),
+        (2, _gust_phrase(hours)),
+    ], lead=f"▸ {word} ")
+    return body
+
+
+def card_rows(official: list[str], risk: list[str], blended: dict | None,
+              weather: dict | None, air_trend: list | None, pm_now: float | None,
+              now: float) -> dict:
+    """{"line1": row 1 or None, "line2": [row 2's lines, taking turns]} —
+    the ⚠ lines first, then ◇, as flood_forecast.order_lines always put them."""
+    nationwide = [line for line in list(official or []) + list(risk or []) if line]
+    if not nationwide:
+        tomorrow = next_day_row(blended, weather, now)
+        nationwide = [tomorrow] if tomorrow else []
+    return {"line1": kiosk_row(blended, weather, air_trend, pm_now, now), "line2": nationwide}
+
+
 def spoken(blended: dict | None, now: float) -> str:
     """Jarvis's casual answer to "พยากรณ์เป็นยังไง" -- persona register (ครับ),
     <= SPOKEN_CHARS, built from the same numbers as card_lines() so the

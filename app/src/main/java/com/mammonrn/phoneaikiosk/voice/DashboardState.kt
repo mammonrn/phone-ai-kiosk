@@ -109,7 +109,27 @@ object DashboardState {
          * back to [outlook].
          */
         val cardLines: List<String>? = null,
+        /**
+         * The card's two visual rows at once (broker 0.7x, replacing
+         * [cardLines] for a phone new enough to read it): [CardRows.line1] is
+         * the fixed forecast for the kiosk's own position, [CardRows.line2]
+         * takes turns underneath (nationwide warnings, or tomorrow's detail
+         * when there are none). Null when the broker did not send
+         * "card_rows" (older broker), so the caller falls back to
+         * [cardLines]/[alerts]/[outlook] exactly as before "card_rows"
+         * existed.
+         */
+        val cardRows: CardRows? = null,
     )
+
+    /**
+     * [Screen.cardRows]. Every string the broker puts in either field already
+     * fits one visual row (no "…" needed on the phone). [line1] null means
+     * the broker had no fixed-position forecast to show; [line2] empty means
+     * it had nothing to rotate — either can be empty independently, and both
+     * empty is a legal (if unlikely) "nothing to show on this line" answer.
+     */
+    data class CardRows(val line1: String?, val line2: List<String>)
 
     /**
      * Reads the payload. Never throws: a malformed reply is a screen that says
@@ -136,6 +156,7 @@ object DashboardState {
             sunset = clock12(usable(weather)?.first?.optString("sunset", "") ?: ""),
             alerts = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.parse(root.optJSONObject("alerts")),
             cardLines = cardLines(root),
+            cardRows = cardRows(root),
         )
     } catch (e: Exception) {
         val panel = Panel(unavailable, false)
@@ -250,6 +271,47 @@ object DashboardState {
             if (line.isNotEmpty()) out.add(line)
         }
         return out
+    }
+
+    /**
+     * "card_rows": present -> [CardRows] with line1 (blank dropped to null)
+     * and line2 (blank entries dropped); absent, or not an object -> null, so
+     * the caller falls back to [cardLines]/[Screen.alerts]/[Screen.outlook].
+     */
+    private fun cardRows(root: JSONObject): CardRows? {
+        val obj = root.optJSONObject("card_rows") ?: return null
+        val line1 = obj.optString("line1", "").takeIf { it.isNotBlank() }
+        val array = obj.optJSONArray("line2")
+        val line2 = ArrayList<String>()
+        if (array != null) {
+            for (i in 0 until array.length()) {
+                val line = array.optString(i, "")
+                if (line.isNotBlank()) line2.add(line)
+            }
+        }
+        return CardRows(line1, line2)
+    }
+
+    /**
+     * What the two-row card shows at rotation index [index] of [rows].line2:
+     * [rows].line1 on top and that line2 item underneath, joined by "\n";
+     * either half missing collapses to the other alone (one line); both
+     * missing is null (hidden, same as before "card_rows" existed).
+     *
+     * [index] is expected already bounded by the caller's own rotation
+     * (LineRotation) against a non-empty line2 — an out-of-range index (or
+     * an empty line2, where any index is "out of range") simply has no
+     * bottom row rather than throwing.
+     */
+    fun rowsText(rows: CardRows, index: Int): String? {
+        val bottom = rows.line2.let { if (it.isEmpty()) null else it[index.coerceIn(0, it.size - 1)] }
+        val top = rows.line1
+        return when {
+            top != null && bottom != null -> "$top\n$bottom"
+            top != null -> top
+            bottom != null -> bottom
+            else -> null
+        }
     }
 
     /**

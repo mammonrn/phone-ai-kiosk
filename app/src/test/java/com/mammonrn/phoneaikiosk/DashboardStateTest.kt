@@ -488,4 +488,86 @@ class DashboardStateTest {
                        "card_lines":["▸ บ่ายนี้ฝน 60%", ""]}"""
         assertEquals(listOf("▸ บ่ายนี้ฝน 60%"), DashboardState.parse(json, unavailable).cardLines)
     }
+
+    // ------------------------------------------------------- card_rows (0.7x)
+
+    @Test
+    fun `card_rows absent leaves the field null`() {
+        assertEquals(null, DashboardState.parse(everything, unavailable).cardRows)
+    }
+
+    @Test
+    fun `card_rows present is parsed into line1 and line2`() {
+        val json = """{"weather":{"ok":true,"temp_c":28.0},
+                       "card_rows":{"line1":"▸ วันนี้ฝน 60%",
+                                    "line2":["⚠ ฝนตกหนักมาก 20 จังหวัด",
+                                             "◇ เชียงรายเสี่ยงน้ำท่วม 27–28 ก.ย."]}}"""
+        val rows = DashboardState.parse(json, unavailable).cardRows
+        assertEquals("▸ วันนี้ฝน 60%", rows?.line1)
+        assertEquals(
+            listOf("⚠ ฝนตกหนักมาก 20 จังหวัด", "◇ เชียงรายเสี่ยงน้ำท่วม 27–28 ก.ย."),
+            rows?.line2,
+        )
+    }
+
+    @Test
+    fun `a blank line1 is null, not an empty line`() {
+        val json = """{"card_rows":{"line1":"","line2":["▸ พรุ่งนี้ฝน 40%"]}}"""
+        assertEquals(null, DashboardState.parse(json, unavailable).cardRows?.line1)
+    }
+
+    @Test
+    fun `line1 absent is null and line2 can still carry the rotation`() {
+        val json = """{"card_rows":{"line2":["▸ พรุ่งนี้ฝน 40%"]}}"""
+        val rows = DashboardState.parse(json, unavailable).cardRows
+        assertEquals(null, rows?.line1)
+        assertEquals(listOf("▸ พรุ่งนี้ฝน 40%"), rows?.line2)
+    }
+
+    @Test
+    fun `a blank entry in line2 is dropped rather than shown empty`() {
+        val json = """{"card_rows":{"line1":"▸ วันนี้ฝน 60%","line2":["⚠ …", "", "◇ …"]}}"""
+        assertEquals(listOf("⚠ …", "◇ …"), DashboardState.parse(json, unavailable).cardRows?.line2)
+    }
+
+    @Test
+    fun `line2 absent is an empty list, not null`() {
+        val json = """{"card_rows":{"line1":"▸ วันนี้ฝน 60%"}}"""
+        val rows = DashboardState.parse(json, unavailable).cardRows
+        assertEquals("▸ วันนี้ฝน 60%", rows?.line1)
+        assertEquals(emptyList<String>(), rows?.line2)
+    }
+
+    // ------------------------------------------ rowsText: what shows at index i
+
+    @Test
+    fun `both rows present are joined, line1 on top`() {
+        val rows = DashboardState.CardRows("▸ วันนี้ฝน 60%", listOf("⚠ หนึ่ง", "◇ สอง"))
+        assertEquals("▸ วันนี้ฝน 60%\n⚠ หนึ่ง", DashboardState.rowsText(rows, 0))
+        assertEquals("▸ วันนี้ฝน 60%\n◇ สอง", DashboardState.rowsText(rows, 1))
+    }
+
+    @Test
+    fun `an empty line2 leaves line1 alone, one line`() {
+        val rows = DashboardState.CardRows("▸ วันนี้ฝน 60%", emptyList())
+        assertEquals("▸ วันนี้ฝน 60%", DashboardState.rowsText(rows, 0))
+    }
+
+    @Test
+    fun `a null line1 leaves the line2 item alone, one line`() {
+        val rows = DashboardState.CardRows(null, listOf("⚠ หนึ่ง"))
+        assertEquals("⚠ หนึ่ง", DashboardState.rowsText(rows, 0))
+    }
+
+    @Test
+    fun `both empty is null, hidden as before card_rows existed`() {
+        val rows = DashboardState.CardRows(null, emptyList())
+        assertEquals(null, DashboardState.rowsText(rows, 0))
+    }
+
+    @Test
+    fun `an out-of-range index falls back to the last item rather than throwing`() {
+        val rows = DashboardState.CardRows("▸ …", listOf("⚠ หนึ่ง", "◇ สอง"))
+        assertEquals("▸ …\n◇ สอง", DashboardState.rowsText(rows, 5))
+    }
 }

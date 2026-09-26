@@ -171,9 +171,12 @@ WATER_ALL_REGIONS = 4
 #: than that is a region-wide count, not a place list.
 WATER_MAX_NAMED_PROVINCES = 3
 
-#: One line on the phone: "aim ≤ 45", counted as the eye sees it — Thai vowel
-#: and tone marks above or below a letter take no width of their own.
-LINE_WIDTH = 45
+#: One ROW of the weather card, counted as the eye sees it — Thai vowel and
+#: tone marks above or below a letter take no width of their own. 0.74:
+#: measured on the A07's own screen, a 41-column line took 523 of the row's
+#: ~653 px (~12.8 px a column, ~51 columns), so 48 leaves ~6% to spare for
+#: wider glyphs. Was 45 ("aim"), when a line could still wrap to a second row.
+LINE_WIDTH = 48
 #: Jarvis's answers are spoken; the persona's ceiling for a code answer.
 ANSWER_CHARS = 70
 
@@ -609,23 +612,38 @@ def fit(text: str, limit: int, measure=width) -> str:
 
 
 def line(item: dict, now: float) -> str:
-    """"⚠ ฝนตกหนักมาก 23 จังหวัด ถึง 18:00 น." — formal, one line, carrying no
-    source name (Poom: the card's "ที่มาข้อมูล" page lists sources instead,
-    and Jarvis names them when asked — see `reply` below for "ที่มาข้อมูล...").
-    The room freed by dropping "(source)" stays with the item's own detail —
-    the area (`areas_text`) and the time window (`_when`) already use it in
-    full; only the title gives way when a line still does not fit, and the
-    expiry is never cut."""
+    """"⚠ ฝนตกหนักมาก 23 จังหวัด ถึง 18:00 น." — formal, ONE card row,
+    carrying no source name (Poom: the card's "ที่มาข้อมูล" page lists
+    sources instead, and Jarvis names them when asked — see `reply` below).
+
+    NOTHING IS CUT (0.74, Poom: "ข้อความต้องไม่ถูกตัด ถ้ายาวเกินให้ตัดส่วนสำคัญ
+    น้อยที่สุดออกก่อน"): 0.73 showed "และภาค…" on the kiosk. When the whole line
+    does not fit, whole parts go, least important first — the regions named
+    after the province count, then the area — and the hazard and its expiry
+    never do. Only a title that alone is wider than a row is cut (never seen)."""
     tail = f" ถึง {_when(item['expires'], now)}" if item.get("expires") else ""
-    areas = item.get("areas") or ""
     head = f"⚠ {item['title']}"
-    if areas and width(f"{head} {areas}{tail}") > LINE_WIDTH:
-        # A long list of names gives way to a count before the hazard does.
-        areas = fit(areas, max(LINE_WIDTH - width(head + tail) - 1, 8))
-    body = f"{head} {areas}".rstrip()
-    if width(body + tail) > LINE_WIDTH:
-        body = fit(body, max(LINE_WIDTH - width(tail), 6))
-    return body + tail
+    areas = item.get("areas") or ""
+    candidates = [areas]
+    if " และ" in areas:
+        candidates.append(areas.split(" และ", 1)[0])
+    candidates.append("")
+    for choice in candidates:
+        text = f"{head} {choice}".rstrip() + tail
+        if width(text) <= LINE_WIDTH:
+            return text
+    # A long announcement title names each hazard with its place ("อากาศหนาว
+    # เย็นบริเวณประเทศไทยตอนบนและคลื่นลมแรงบริเวณอ่าวไทย"): the places go
+    # before any hazard does.
+    for title in (item["title"].replace("บริเวณ", ""), _BRIWEN.sub("", item["title"])):
+        text = f"⚠ {title}{tail}"
+        if width(text) <= LINE_WIDTH:
+            return text
+    return fit(head, max(LINE_WIDTH - width(tail), 6)) + tail
+
+
+#: "บริเวณ<place>" up to the next "และ" or the end — a hazard's place.
+_BRIWEN = re.compile(r"บริเวณ.*?(?=และ|$)")
 
 
 def _until_iso(expires: float | None) -> str | None:

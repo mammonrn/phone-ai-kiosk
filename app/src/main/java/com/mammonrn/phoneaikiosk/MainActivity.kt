@@ -113,8 +113,21 @@ class MainActivity : Activity() {
      * mark or ordering logic on the phone.
      */
     private var weatherCardLines: List<String>? = null
+    /**
+     * The broker's own two rows (0.7x, DashboardState.Screen.cardRows), which
+     * takes over from [weatherCardLines] whenever the broker sends it: line1
+     * fixed, only line2 rotates. Null on a broker old enough not to send
+     * "card_rows", which keeps [weatherCardLines] (or [weatherAlerts]/
+     * [outlookText]) building the line exactly as before.
+     */
+    private var weatherCardRows: com.mammonrn.phoneaikiosk.voice.DashboardState.CardRows? = null
     private val lineRotation = com.mammonrn.phoneaikiosk.weather.LineRotation()
     private var shownWeatherLine: String? = null
+    /** The line2 item currently on screen in the card_rows path, for the tap's
+     *  flood check (onWeatherLineTap) — never the combined two-line text,
+     *  which would no longer start with the item's own mark. Null outside
+     *  that path. */
+    private var shownRow2: String? = null
     private var weatherLineTurns = false
     /**
      * The emergency-numbers overlay (weather/EmergencyNumbers, Poom): a tap on
@@ -426,6 +439,7 @@ class MainActivity : Activity() {
         outlookText = screen.outlook
         weatherAlerts = screen.alerts
         weatherCardLines = screen.cardLines
+        weatherCardRows = screen.cardRows
         showWeatherLine()
         // Numbers into the pixel face, the freshness note turned down. The
         // strings themselves are DashboardState's business and are not touched
@@ -553,6 +567,16 @@ class MainActivity : Activity() {
                 runCatching { com.mammonrn.phoneaikiosk.weather.WeatherAlerts.parse(org.json.JSONObject(it)) }.getOrNull()
             }
         }
+        // "card_rows" (0.7x) takes over from everything below it, whole-cloth,
+        // whenever the broker sent it and no debug override is active — see
+        // showWeatherRows. A debug override or an older broker (weatherCardRows
+        // null) falls through to card_lines / the old alerts+outlook build.
+        val rows = if (seenAlertOverride == null) weatherCardRows else null
+        if (rows != null) {
+            showWeatherRows(rows, tapped)
+            return
+        }
+        shownRow2 = null
         // The broker's own ready-made lines (0.69+) take over the rotation
         // whole-cloth when present (even an empty list — the broker looked
         // and found nothing to show); a debug override or an older broker
@@ -606,6 +630,71 @@ class MainActivity : Activity() {
     }
 
     /**
+     * The "card_rows" path (0.7x, Poom): [rows].line1 sits fixed on the
+     * card's top line; only [rows].line2 rotates underneath, one item every
+     * [LineRotation.PERIOD_MS] ([lineRotation], shared with the old
+     * card_lines path — the two never run at once, so sharing its state is
+     * safe).
+     *
+     * ROW2 SWAPS RATHER THAN FADES: line1 must never blink, and animating a
+     * fade on only part of one TextView means an alpha-animated span — a
+     * plain text swap gets the same "row1 never blinks" result far more
+     * simply, so that is what this does (no [LINE_FADE_MS] cross-fade here).
+     *
+     * Tappable only when there is a next line2 item to turn to, or the
+     * current one is flood-related (no button that would do nothing) —
+     * [onWeatherLineTap] reads [shownRow2], not the combined two-line text,
+     * to test that, since the combined text starts with line1's own mark.
+     */
+    private fun showWeatherRows(rows: com.mammonrn.phoneaikiosk.voice.DashboardState.CardRows, tapped: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        val count = rows.line2.size
+        val index = if (count == 0) 0
+                     else if (tapped) lineRotation.advance(count, now) else lineRotation.current(count, now)
+        val bottom = rows.line2.getOrNull(index)
+        val text = com.mammonrn.phoneaikiosk.voice.DashboardState.rowsText(rows, index)
+        if (text == null) {
+            weatherOutlook.animate().cancel()
+            weatherOutlook.visibility = android.view.View.GONE
+            weatherOutlook.isClickable = false
+            weatherLineTurns = false
+            shownWeatherLine = null
+            shownRow2 = null
+            return
+        }
+        val floodNow = bottom?.let { com.mammonrn.phoneaikiosk.weather.WeatherAlerts.isFloodRelated(it) } ?: false
+        val reserveTwoLines = count > 1 || floodNow
+        if (reserveTwoLines != weatherLineTurns) {
+            weatherLineTurns = reserveTwoLines
+            if (reserveTwoLines) weatherOutlook.setLines(2) else { weatherOutlook.minLines = 0; weatherOutlook.maxLines = 2 }
+            weatherOutlook.isClickable = reserveTwoLines
+            weatherOutlook.isFocusable = reserveTwoLines
+        }
+        weatherOutlook.visibility = android.view.View.VISIBLE
+        shownRow2 = bottom
+        if (text == shownWeatherLine) return
+        shownWeatherLine = text
+        weatherOutlook.animate().cancel()
+        weatherOutlook.alpha = 1f
+        weatherOutlook.text = text
+        weatherOutlook.contentDescription = text
+        // maxLines already keeps a too-wide row from pushing the other one
+        // out; this only logs that it happened, counts-only (no row text).
+        warnIfRowTooWide(rows.line1)
+        warnIfRowTooWide(bottom)
+    }
+
+    /** [showWeatherRows]'s width-safety check: `weatherOutlook`'s own width, so
+     *  it only fires once the card has actually been laid out. */
+    private fun warnIfRowTooWide(row: String?) {
+        if (row.isNullOrEmpty()) return
+        val width = weatherOutlook.width - weatherOutlook.totalPaddingLeft - weatherOutlook.totalPaddingRight
+        if (width > 0 && weatherOutlook.paint.measureText(row) > width) {
+            Log.w(DASHBOARD_TAG, "weather row too wide")
+        }
+    }
+
+    /**
      * The weather line's tap (Poom): a flood-related line ("⚠" about a flood,
      * or "◇" — WeatherAlerts.isFloodRelated) shows the related emergency
      * numbers (weather/EmergencyNumbers) instead of advancing the rotation; a
@@ -627,7 +716,10 @@ class MainActivity : Activity() {
             showWeatherLine(tapped = false)
             return
         }
-        val current = shownWeatherLine
+        // shownRow2 (set only in the card_rows path) is checked first: the
+        // combined two-line text in shownWeatherLine starts with line1's own
+        // mark there, not the rotating row's, so it would never match.
+        val current = shownRow2 ?: shownWeatherLine
         if (current != null && com.mammonrn.phoneaikiosk.weather.WeatherAlerts.isFloodRelated(current)) {
             showEmergencyNumbers()
         } else {
@@ -658,6 +750,7 @@ class MainActivity : Activity() {
         // null, not the numbers' own text: the next real update must redraw
         // (not skip as "unchanged") once the numbers revert.
         shownWeatherLine = null
+        shownRow2 = null
         val revert = Runnable {
             emergencyNumbersUntilMs = 0L
             showWeatherLine(tapped = false)

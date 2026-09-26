@@ -1117,6 +1117,7 @@ def test_card_lines_use_forecast_text_when_blended(cfg, fake_sources, monkeypatc
         seen.update(shown=shown, blended=blended)
         return ["▸ ฝน 15–18 น. โอกาส 70% ควรพกร่ม"]
     monkeypatch.setattr(forecast_text, "card_lines", fake)
+    monkeypatch.setattr(forecast_text, "card_rows", lambda *a: {"line1": None, "line2": []})
     out = board.snapshot(19.9, 99.8, now=1000.0)
     assert out["card_lines"] == ["▸ ฝน 15–18 น. โอกาส 70% ควรพกร่ม"]
     assert set(seen["shown"]) == {"tmin", "tmax", "rain_prob_today", "wind_kmh"}
