@@ -43,6 +43,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -109,6 +111,77 @@ def fetch_ensemble(latitude: float, longitude: float, timeout: float = FETCH_TIM
     url = ENSEMBLE_URL.format(lat=latitude, lon=longitude)
     body = getter(url, timeout, MAX_RESPONSE_BYTES)
     return json.loads(body.decode("utf-8"))
+
+
+#: Tests switch this off so a refresh runs in the caller's thread — same idea
+#: as alerts.BACKGROUND / flood_forecast.BACKGROUND.
+BACKGROUND = True
+
+
+class LocalRainCache:
+    """One ensemble fetch per rounded position (CACHE_DECIMALS), refreshed at
+    most once an hour and in the BACKGROUND (like flood_forecast.FloodForecast
+    and alerts.Alerts) so the phone's own request never waits on Open-Meteo's
+    ensemble API. One instance per broker process; a kiosk that does not move
+    keeps one cached fetch, the same idea as dashboard.Dashboard's weather
+    cache."""
+
+    def __init__(self, ttl: int = TTL_SECONDS, timeout: float = FETCH_TIMEOUT, fetch=None):
+        self.ttl = ttl
+        self.timeout = timeout
+        self._fetch_with = fetch
+        self._lock = threading.Lock()
+        self._cache: dict[tuple[float, float], tuple[float, dict]] = {}
+        self._refreshing: set[tuple[float, float]] = set()
+
+    @staticmethod
+    def _key(latitude: float, longitude: float) -> tuple[float, float]:
+        return round(latitude, CACHE_DECIMALS), round(longitude, CACHE_DECIMALS)
+
+    def raw(self, latitude: float, longitude: float, now: float | None = None,
+           wait: bool = False) -> dict | None:
+        """The cached ensemble response for the nearest rounded position, or
+        None before any fetch of it has ever succeeded. `wait=True` (Jarvis,
+        asked on purpose) blocks on a due fetch; `wait=False` (the dashboard's
+        own use) starts a due fetch in the background and returns whatever is
+        already cached, same as flood_forecast.FloodForecast.payload."""
+        now = time.time() if now is None else now
+        key = self._key(latitude, longitude)
+        with self._lock:
+            cached = self._cache.get(key)
+            due = cached is None or now - cached[0] >= self.ttl
+            already = key in self._refreshing
+            if due and not already:
+                self._refreshing.add(key)
+                start = True
+            else:
+                start = False
+        if start:
+            if wait or not BACKGROUND:
+                self._refresh_guarded(key, latitude, longitude, now)
+            else:
+                threading.Thread(target=self._refresh_guarded, args=(key, latitude, longitude, now),
+                                 name="local-rain-refresh", daemon=True).start()
+        with self._lock:
+            cached = self._cache.get(key)
+        return cached[1] if cached else None
+
+    def _refresh_guarded(self, key: tuple[float, float], latitude: float, longitude: float,
+                         now: float) -> None:
+        try:
+            raw = fetch_ensemble(latitude, longitude, self.timeout, self._fetch_with)
+            with self._lock:
+                self._cache[key] = (now, raw)
+        except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as exc:
+            log.warning("local_rain ensemble fetch failed: %s", type(exc).__name__)
+        finally:
+            with self._lock:
+                self._refreshing.discard(key)
+
+    def forget(self) -> None:
+        with self._lock:
+            self._cache.clear()
+            self._refreshing.clear()
 
 
 # ------------------------------------------------------------------ parsing ---
@@ -308,10 +381,18 @@ def snapshot(raw: dict, now: "datetime", station_mm: float | None = None) -> dic
 # ---------------------------------------------------------- Jarvis answer ---
 
 _ASKS = re.compile(r"พรุ่งนี้.*ฝน|ฝน.*พรุ่งนี้|ฝนตกไหม|ฝนจะตกไหม")
+_ASKS_TOMORROW = re.compile(r"พรุ่งนี้")
 
 
 def match(text: str) -> bool:
     return bool(_ASKS.search("".join((text or "").split())))
+
+
+def asks_tomorrow(text: str) -> bool:
+    """Which of the two canned answers below a matched question wants:
+    tomorrow's own four windows (tomorrow_answer) or the next four windows
+    from now (now_answer) — "วันนี้ฝนตกไหม"/"ฝนจะตกไหม" name no particular day."""
+    return bool(_ASKS_TOMORROW.search("".join((text or "").split())))
 
 
 def tomorrow_answer(raw: dict, now: "datetime") -> str:
@@ -340,4 +421,26 @@ def tomorrow_answer(raw: dict, now: "datetime") -> str:
         tail = "ส่วนใหญ่ไม่หนัก" if not heavy_shown else "และมีโอกาสฝนหนักด้วย"
         said = (f"พรุ่งนี้มีโอกาส{word} {shown}% มากสุดช่วง{QUARTER_NAMES[quarter]} "
                f"{tail}ครับ")
+    return said if len(said) <= ANSWER_CHARS else alerts.fit(said, ANSWER_CHARS, len)
+
+
+def now_answer(raw: dict, now: "datetime") -> str:
+    """"บ่ายนี้มีโอกาสฝน 60% ส่วนใหญ่ไม่หนักครับ" — ≤70 chars, picked from the
+    best of the next four six-hour windows FROM NOW (the same windows the
+    card's own ▸ line picks, see `snapshot`/`best_of_next_windows`), for
+    "วันนี้ฝนตกไหม"/"ฝนจะตกไหม" style questions that name no particular day."""
+    parsed = parse_ensemble(raw)
+    picked = best_of_next_windows(parsed, now.hour)
+    day, quarter, chance, answered = picked["day"], picked["quarter"], picked["chance"], picked["members"]
+    if answered < MIN_MEMBERS:
+        return NO_DATA_ANSWER
+    heavy, _ = heavy_chance(parsed["precip"], day)
+    heavy_shown = heavy is not None and heavy >= MIN_SHOW_PCT
+    if chance is None and not heavy_shown:
+        said = "ตอนนี้โอกาสฝนน้อยครับ"
+    else:
+        shown = heavy if heavy_shown else chance
+        word = "ฝนหนัก" if heavy_shown else "ฝน"
+        tail = "ส่วนใหญ่ไม่หนัก" if not heavy_shown else "และมีโอกาสฝนหนักด้วย"
+        said = f"{_window_label(day, quarter)}มีโอกาส{word} {shown}% {tail}ครับ"
     return said if len(said) <= ANSWER_CHARS else alerts.fit(said, ANSWER_CHARS, len)

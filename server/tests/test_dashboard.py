@@ -934,3 +934,76 @@ def test_uv_at_night_is_not_shown_and_never_the_days_peak(monkeypatch):
     monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer(21, 15, 0))
     got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
     assert got["uv"] is None and got["uv_max"] == 8.3
+
+
+# ---------------------------------------------------- forecast / card_lines ---
+
+def _rig_forecast(board, monkeypatch, *, alerts_items=None, flood_line=None, local_line=None):
+    from kiosk_broker import local_rain as local_rain_mod
+
+    monkeypatch.setattr(board.alerts, "payload",
+                        lambda now: {"items": alerts_items or [], "updated": 1, "ok": True,
+                                    "sources": {}})
+    monkeypatch.setattr(board.alerts, "thaiwater_stations", lambda: ([], None))
+    monkeypatch.setattr(board.alerts, "tmd_warned_provinces", lambda now: set())
+    monkeypatch.setattr(board.alerts, "storm_active", lambda now: False)
+    monkeypatch.setattr(board.flood, "update_river", lambda *a, **k: None)
+    monkeypatch.setattr(board.flood, "payload",
+                        lambda *a, **k: {"ok": flood_line is not None, "updated": 1 if flood_line else None,
+                                        "line": flood_line, "items": [], "areas": []})
+    if local_line is None:
+        monkeypatch.setattr(board._local_rain, "raw", lambda *a, **k: None)
+    else:
+        monkeypatch.setattr(board._local_rain, "raw", lambda *a, **k: {"fake": True})
+        monkeypatch.setattr(local_rain_mod, "snapshot",
+                            lambda raw, now, station_mm=None: {"line": local_line})
+
+
+def test_card_lines_two_official_lines_crowd_out_forecast_and_local(cfg, fake_sources, monkeypatch):
+    board = dashboard_mod.Dashboard(cfg)
+    _rig_forecast(board, monkeypatch,
+                 alerts_items=[{"line": "⚠ a"}, {"line": "⚠ b"}],
+                 flood_line="◇ c", local_line="▸ d")
+    out = board.snapshot(19.9, 99.8, now=1000.0)
+    assert out["card_lines"] == ["⚠ a", "⚠ b"]
+
+
+def test_card_lines_one_official_line_makes_room_for_the_forecast_line(cfg, fake_sources, monkeypatch):
+    board = dashboard_mod.Dashboard(cfg)
+    _rig_forecast(board, monkeypatch, alerts_items=[{"line": "⚠ a"}],
+                 flood_line="◇ c", local_line="▸ d")
+    out = board.snapshot(19.9, 99.8, now=1000.0)
+    assert out["card_lines"] == ["⚠ a", "◇ c"]
+
+
+def test_card_lines_no_official_warnings_shows_forecast_then_local(cfg, fake_sources, monkeypatch):
+    board = dashboard_mod.Dashboard(cfg)
+    _rig_forecast(board, monkeypatch, alerts_items=[], flood_line="◇ c", local_line="▸ d")
+    out = board.snapshot(19.9, 99.8, now=1000.0)
+    assert out["card_lines"] == ["◇ c", "▸ d"]
+
+
+def test_card_lines_local_only_when_nothing_else_qualifies(cfg, fake_sources, monkeypatch):
+    board = dashboard_mod.Dashboard(cfg)
+    _rig_forecast(board, monkeypatch, alerts_items=[], flood_line=None, local_line="▸ d")
+    out = board.snapshot(19.9, 99.8, now=1000.0)
+    assert out["card_lines"] == ["▸ d"]
+
+
+def test_card_lines_empty_when_nothing_qualifies(cfg, fake_sources, monkeypatch):
+    board = dashboard_mod.Dashboard(cfg)
+    _rig_forecast(board, monkeypatch, alerts_items=[], flood_line=None, local_line=None)
+    out = board.snapshot(19.9, 99.8, now=1000.0)
+    assert out["card_lines"] == []
+
+
+def test_the_forecast_object_has_the_designed_shape(cfg, fake_sources):
+    """Nothing wired for flood/local (network is off in the tests): a
+    complete, honest "loading"/"no data yet" shape rather than a missing key."""
+    out = _snapshot(cfg)
+    forecast = out["forecast"]
+    assert set(forecast) == {"ok", "updated", "line", "items", "areas", "local", "sources"}
+    assert forecast["line"] is None and forecast["local"] is None
+    assert forecast["items"] == [] and forecast["areas"] == []
+    assert set(forecast["sources"]) == {"rain", "river", "local"}
+    assert out["card_lines"] == []

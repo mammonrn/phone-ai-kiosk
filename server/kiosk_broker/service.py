@@ -23,7 +23,7 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
                auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd, social_cmd,
                bluetooth_cmd,
-               calendar_app, holidays_q, alerts)
+               calendar_app, holidays_q, alerts, flood_forecast, local_rain)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -985,6 +985,48 @@ def handle_chat(
                 log.warning("holidays device=%s failed: %s", label, type(exc).__name__)
                 reply = holidays_q.FAILED
         return answer_in_code(reply, None, "holidays")
+
+    # ---- the kiosk's own flood forecast (flood_forecast.py, the ◇ line):
+    # "ที่ไหน/จังหวัดไหนเสี่ยงน้ำท่วม" — checked BEFORE the generic warnings
+    # route below, whose own match() also fires on the word "น้ำท่วม"; the
+    # official warnings still come first inside the answer itself. ----------
+    if not is_camera and alarm is None and not calendar_yes and flood_forecast.match(text):
+        log_intent("skipped")
+        board = _dashboard(cfg)
+        try:
+            board.alerts.ensure_fresh()
+            now = time.time()
+            official_lines = [i["line"] for i in board.alerts.payload(now)["items"]]
+            areas, has_data = board.flood.areas(
+                now, tmd_provinces=board.alerts.tmd_warned_provinces(now),
+                storm=board.alerts.storm_active(now))
+            reply = flood_forecast.jarvis_answer(official_lines, areas, has_data)
+        except Exception as exc:  # noqa: BLE001 — a feed problem must not end the conversation
+            log.warning("flood_forecast device=%s failed: %s", label, type(exc).__name__)
+            reply = flood_forecast.NO_DATA
+        return answer_in_code(reply, None, "flood_forecast")
+
+    # ---- the kiosk's own local rain chance (local_rain.py, the ▸ line):
+    # "วันนี้/พรุ่งนี้/จะฝนตกไหม" — answered from a real ensemble forecast
+    # rather than left to the model. --------------------------------------
+    if not is_camera and alarm is None and not calendar_yes and local_rain.match(text):
+        log_intent("skipped")
+        board = _dashboard(cfg)
+        try:
+            lat, lon = board.position()
+            now_ts = time.time()
+            raw = board.local_rain_raw(lat, lon, now_ts, wait=True)
+            now_dt = clock.now_in(cfg.clock_timezone)
+            if raw is None:
+                reply = local_rain.NO_DATA_ANSWER
+            elif local_rain.asks_tomorrow(text):
+                reply = local_rain.tomorrow_answer(raw, now_dt)
+            else:
+                reply = local_rain.now_answer(raw, now_dt)
+        except Exception as exc:  # noqa: BLE001 — a feed problem must not end the conversation
+            log.warning("local_rain device=%s failed: %s", label, type(exc).__name__)
+            reply = local_rain.NO_DATA_ANSWER
+        return answer_in_code(reply, None, "local_rain")
 
     # ---- nationwide warnings (alerts.py): TMD's CAP warnings and GDACS, the
     # same items as the home card, answered in code; never guessed. ---------

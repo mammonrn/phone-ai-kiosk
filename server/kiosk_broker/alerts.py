@@ -421,7 +421,10 @@ def parse_warning_rss(body: bytes, now: float) -> list[dict]:
         if expires is None or expires <= now:
             continue
         out.append({"title": short_title(raw_title), "areas": "", "severity": "Severe",
-                    "sent": published, "expires": expires, "source": SOURCE_TMD})
+                    "sent": published, "expires": expires, "source": SOURCE_TMD,
+                    # For flood_forecast's "storm" flag only, read from the
+                    # RAW title (short_title can drop the word) — never shown.
+                    "storm": any(w in raw_title for w in _STORM_TITLES)})
     return out
 
 
@@ -449,7 +452,10 @@ def parse_gdacs(body: bytes) -> list[dict]:
         out.append({"title": word, "areas": "ไทย" if not others else f"ไทยและอีก {others} ประเทศ",
                     "severity": "Extreme" if p.get("alertlevel") == "Red" else "Severe",
                     "sent": _iso(str(p.get("fromdate") or "") + "Z") if p.get("fromdate") else None,
-                    "expires": None, "source": SOURCE_GDACS})
+                    "expires": None, "source": SOURCE_GDACS,
+                    # For flood_forecast's "storm" flag: an orange/red event
+                    # already filtered to GDACS_LEVELS above, listing THA.
+                    "storm": p.get("eventtype") == "TC"})
     return out
 
 
@@ -501,6 +507,44 @@ def parse_thaiwater(body: bytes) -> list[dict]:
         out.append({"title": f"{label} {len(here)} จุด", "areas": water_areas_text(here),
                     "severity": severity, "sent": None, "expires": None,
                     "source": SOURCE_THAIWATER})
+    return out
+
+
+def parse_thaiwater_stations(body: bytes) -> list[dict]:
+    """Every telemetry station's own province name and situation_level, for
+    the kiosk's own flood forecast (flood_forecast.py) to count "how many
+    stations at level 4/5" per province — the SAME body parse_thaiwater
+    already reads, not a second fetch.
+
+    THE FEED CARRIES NO STATION ID AND NO STORAGE PERCENTAGE (checked
+    2026-09-26, same response parse_thaiwater reads): only `situation_level`
+    and `geocode`. `code` and `storage_percent` are always None here,
+    honestly, rather than invented — flood_forecast.RiverMemory needs a
+    storage reading and something stable to track it under to compute a
+    24-hour rise, and this feed gives neither, so that reason never fires
+    until สสน. publishes one. That gap goes in the report to Poom, not
+    plugged with a guess."""
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AlertSourceError("bad json") from exc
+    try:
+        stations = data["waterlevel_data"]["data"]
+    except (KeyError, TypeError) as exc:
+        raise AlertSourceError("unexpected shape") from exc
+    out = []
+    for station in stations:
+        if not isinstance(station, dict):
+            continue
+        level = station.get("situation_level")
+        if not isinstance(level, int):
+            continue
+        geo = station.get("geocode") or {}
+        province = _text((geo.get("province_name") or {}).get("th"))
+        if not province:
+            continue
+        out.append({"code": None, "province_name": province, "level": level,
+                    "storage_percent": None})
     return out
 
 
@@ -636,6 +680,10 @@ class Alerts:
         self._source_ok: dict[str, bool] = {}
         #: CAP documents never change once published; parsed once, by link.
         self._docs: dict[str, dict | None] = {}
+        #: (fetched_at, [station dicts]) from the SAME ThaiWater body already
+        #: fetched for the warning card — see parse_thaiwater_stations and
+        #: thaiwater_stations() below; never a second outbound call.
+        self._thaiwater_stations: tuple[float, list[dict]] | None = None
 
     # -- state ---------------------------------------------------------------
     def _due(self, now: float) -> bool:
@@ -691,6 +739,50 @@ class Alerts:
             self._docs.clear()
             self._attempted = 0.0
             self._last_ok = None
+            self._thaiwater_stations = None
+
+    def thaiwater_stations(self) -> tuple[list[dict], float | None]:
+        """([station dicts], fetched_at) from the last successful ThaiWater
+        fetch — flood_forecast.py's own river input, so it never fetches
+        ThaiWater a second time (see that module's docstring). ([], None)
+        before the first successful fetch."""
+        with self._lock:
+            if self._thaiwater_stations is None:
+                return [], None
+            fetched_at, stations = self._thaiwater_stations
+            return list(stations), fetched_at
+
+    def tmd_warned_provinces(self, now: float) -> set[str]:
+        """provinces.json's own two-digit codes (ISO 3166-2:TH's "TH-"
+        stripped) that TMD's own CAP currently warns by name — the only input
+        flood_forecast's per-province `tmd_warned` needs. A CAP area naming no
+        province (a whole region) contributes none: this module does not
+        guess which provinces make up a region."""
+        with self._lock:
+            _, items = self._good.get("tmd_cap", (0.0, []))
+        out = set()
+        for item in current(items, now):
+            for code in item.get("provinces") or ():
+                if code.startswith("TH-"):
+                    out.add(code[3:])
+        return out
+
+    def storm_active(self, now: float) -> bool:
+        """True when TMD's own plain-RSS warning names a storm/depression, or
+        GDACS lists a current orange/red tropical cyclone reaching Thailand —
+        flood_forecast's only use of "storm": it never invents a level by
+        itself, only closes the gap between a rain-only เฝ้าระวัง and เสี่ยง
+        (see level_for_province)."""
+        with self._lock:
+            good = dict(self._good)
+        for name in ("tmd_rss", "gdacs"):
+            fetched_at, items = good.get(name, (0.0, []))
+            if items and not items[0].get("expires") and now - fetched_at > STALE_UNDATED_SECONDS:
+                continue  # same staleness rule as items() for undated sources (GDACS)
+            for item in current(items, now):
+                if item.get("storm"):
+                    return True
+        return False
 
     # -- refreshing ------------------------------------------------------------
     def _maybe_refresh(self, now: float, wait: bool) -> None:
@@ -770,7 +862,12 @@ class Alerts:
         return parse_gdacs(self._get(GDACS_URL, MAX_FEED_BYTES))
 
     def _thaiwater(self, now: float) -> list[dict]:
-        return parse_thaiwater(self._get(THAIWATER_URL, MAX_THAIWATER_BYTES))
+        body = self._get(THAIWATER_URL, MAX_THAIWATER_BYTES)
+        # The kiosk's own flood forecast (flood_forecast.py) reads the exact
+        # same body's stations, kept here rather than fetched a second time.
+        with self._lock:
+            self._thaiwater_stations = (now, parse_thaiwater_stations(body))
+        return parse_thaiwater(body)
 
     def _get(self, url: str, limit: int) -> bytes:
         return (self._fetch_with or _fetch)(url, self.timeout, limit)

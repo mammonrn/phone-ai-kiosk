@@ -151,3 +151,64 @@ def test_32_jarvis_no_data_sentence():
     empty = {"hourly": {"time": [], "precipitation_member01": [], "wind_gusts_10m_member01": []}}
     said = lr.tomorrow_answer(empty, datetime(2026, 9, 26, 0, 0))
     assert said == lr.NO_DATA_ANSWER
+
+
+# --------------------------------------------------------------- now_answer ---
+
+def test_now_answer_uses_the_best_of_the_next_four_windows():
+    said = lr.now_answer(ENSEMBLE_RAW, datetime(2026, 9, 26, 0, 0))
+    assert len(said) <= lr.ANSWER_CHARS
+    assert "โอกาสฝน" in said or "โอกาสน้อย" in said
+
+
+def test_now_answer_no_data_sentence():
+    empty = {"hourly": {"time": [], "precipitation_member01": [], "wind_gusts_10m_member01": []}}
+    assert lr.now_answer(empty, datetime(2026, 9, 26, 0, 0)) == lr.NO_DATA_ANSWER
+
+
+def test_asks_tomorrow_distinguishes_the_two_answers():
+    assert lr.asks_tomorrow("พรุ่งนี้ฝนตกไหม") is True
+    assert lr.asks_tomorrow("วันนี้ฝนตกไหม") is False
+    assert lr.asks_tomorrow("ฝนจะตกไหม") is False
+
+
+# ------------------------------------------------------------ LocalRainCache ---
+
+def test_local_rain_cache_fetches_once_per_rounded_position(monkeypatch):
+    calls = []
+
+    def fake(url, timeout, limit):
+        calls.append(url)
+        return json.dumps(ENSEMBLE_RAW).encode("utf-8")
+
+    cache = lr.LocalRainCache(fetch=fake)
+    monkeypatch.setattr(lr, "BACKGROUND", False)
+    now = 1_800_000_000.0
+    first = cache.raw(19.9, 99.8, now)
+    second = cache.raw(19.902, 99.799, now)  # rounds to the same cache key
+    assert first is not None and second is not None
+    assert len(calls) == 1
+
+
+def test_local_rain_cache_none_before_first_fetch_succeeds(monkeypatch):
+    def fails(url, timeout, limit):
+        raise ValueError("boom")
+
+    cache = lr.LocalRainCache(fetch=fails)
+    monkeypatch.setattr(lr, "BACKGROUND", False)
+    assert cache.raw(19.9, 99.8, 1_800_000_000.0) is None
+
+
+def test_local_rain_cache_does_not_refetch_within_the_ttl(monkeypatch):
+    calls = []
+
+    def fake(url, timeout, limit):
+        calls.append(url)
+        return json.dumps(ENSEMBLE_RAW).encode("utf-8")
+
+    cache = lr.LocalRainCache(fetch=fake)
+    monkeypatch.setattr(lr, "BACKGROUND", False)
+    now = 1_800_000_000.0
+    cache.raw(19.9, 99.8, now)
+    cache.raw(19.9, 99.8, now + 1)  # well inside TTL_SECONDS (1h)
+    assert len(calls) == 1

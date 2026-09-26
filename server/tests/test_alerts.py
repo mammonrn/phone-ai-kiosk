@@ -487,3 +487,86 @@ def test_the_log_has_counts_and_error_types_only(caplog):
     logged = caplog.text
     assert "alerts refreshed ok=True tmd_cap=2 tmd_rss=0 gdacs=failed thaiwater=failed" in logged
     assert "http" not in logged and "ฝน" not in logged
+
+
+# ------------------------------------------------------- flood_forecast wiring
+
+def test_parse_thaiwater_stations_reads_every_station_no_id_no_storage():
+    stations = alerts.parse_thaiwater_stations(THAIWATER_ONE_REGION)
+    assert stations  # a real, small fixture: not empty
+    assert all(s["code"] is None and s["storage_percent"] is None for s in stations)
+    assert all(s["level"] in (1, 2, 3, 4, 5) for s in stations)
+    assert all(s["province_name"] for s in stations)
+
+
+def test_parse_thaiwater_stations_bad_shape_is_a_source_error():
+    with pytest.raises(alerts.AlertSourceError):
+        alerts.parse_thaiwater_stations(b'{"not_waterlevel_data": true}')
+
+
+def test_thaiwater_stations_come_from_the_same_fetch_as_the_warning_items():
+    web = Web({**PAGES, alerts.THAIWATER_URL: THAIWATER_ONE_REGION})
+    b = board(web)
+    b.refresh(NOW)
+    stations, fetched_at = b.thaiwater_stations()
+    assert stations and fetched_at == NOW
+    # One fetch of the ThaiWater URL serves both the warning items and the
+    # flood forecast's own station list.
+    assert web.asked.count(alerts.THAIWATER_URL) == 1
+
+
+def test_thaiwater_stations_empty_before_any_fetch():
+    assert board(Web({})).thaiwater_stations() == ([], None)
+
+
+def test_tmd_warned_provinces_from_the_caps_own_codes():
+    b = board()
+    b.refresh(NOW)
+    codes = b.tmd_warned_provinces(NOW)
+    assert codes and all(len(c) == 2 and c.isdigit() for c in codes)
+
+
+def test_tmd_warned_provinces_empty_before_any_fetch():
+    assert board(Web({})).tmd_warned_provinces(NOW) == set()
+
+
+def test_storm_flag_on_a_tmd_rss_title_naming_a_storm():
+    body = ('<rss><channel><item>'
+           '<title>พายุโซนร้อนกำลังเข้าใกล้ประเทศไทย</title>'
+           '<pubDate>26/9/2569 0:00</pubDate>'
+           '</item></channel></rss>').encode("utf-8")
+    now = at("2026-09-26T08:00:00+07:00")
+    items = alerts.parse_warning_rss(body, now)
+    assert len(items) == 1 and items[0]["storm"] is True
+
+
+def test_storm_flag_false_on_an_ordinary_tmd_rss_title():
+    body = ('<rss><channel><item>'
+           '<title>ฝนตกหนักบริเวณประเทศไทยตอนบน</title>'
+           '<pubDate>26/9/2569 0:00</pubDate>'
+           '</item></channel></rss>').encode("utf-8")
+    now = at("2026-09-26T08:00:00+07:00")
+    items = alerts.parse_warning_rss(body, now)
+    assert len(items) == 1 and items[0]["storm"] is False
+
+
+def test_storm_flag_on_a_gdacs_tropical_cyclone():
+    data = json.loads(GDACS.decode("utf-8"))
+    data["features"][3]["properties"]["iscurrent"] = "true"  # the TC, Orange
+    items = alerts.parse_gdacs(json.dumps(data).encode("utf-8"))
+    assert len(items) == 1 and items[0]["storm"] is True
+
+
+def test_storm_active_reads_current_tmd_rss_and_gdacs_items():
+    tc_body = json.loads(GDACS.decode("utf-8"))
+    tc_body["features"][3]["properties"]["iscurrent"] = "true"
+    web = Web({**PAGES, alerts.GDACS_URL: json.dumps(tc_body).encode("utf-8")})
+    b = board(web)
+    b.refresh(NOW)
+    assert b.storm_active(NOW) is True
+
+
+def test_storm_active_false_with_nothing_current():
+    b = board()
+    b.refresh(NOW)
+    assert b.storm_active(NOW) is False

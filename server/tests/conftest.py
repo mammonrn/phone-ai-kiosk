@@ -196,3 +196,17 @@ def _no_real_network_for_the_dashboard(monkeypatch):
 
     monkeypatch.setattr(alerts_mod, "_fetch", refuse_alerts)
     monkeypatch.setattr(alerts_mod, "BACKGROUND", False)
+
+    # The kiosk's own flood forecast (flood_forecast.py) and local rain
+    # chance (local_rain.py) fetch Open-Meteo through their own `_fetch`, and
+    # refresh in the caller's thread here too, same reasons as alerts above.
+    from kiosk_broker import flood_forecast as flood_forecast_mod
+    from kiosk_broker import local_rain as local_rain_mod
+
+    def refuse_forecast(url, timeout, limit):
+        raise urllib.error.URLError("network is disabled in the tests")
+
+    monkeypatch.setattr(flood_forecast_mod, "_fetch", refuse_forecast)
+    monkeypatch.setattr(flood_forecast_mod, "BACKGROUND", False)
+    monkeypatch.setattr(local_rain_mod, "_fetch", refuse_forecast)
+    monkeypatch.setattr(local_rain_mod, "BACKGROUND", False)

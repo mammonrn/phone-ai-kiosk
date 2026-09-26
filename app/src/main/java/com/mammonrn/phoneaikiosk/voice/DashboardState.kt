@@ -96,6 +96,19 @@ object DashboardState {
          */
         val alerts: com.mammonrn.phoneaikiosk.weather.WeatherAlerts.Block =
             com.mammonrn.phoneaikiosk.weather.WeatherAlerts.NONE,
+        /**
+         * The card's own ready-made rotating lines (broker 0.69+): "⚠ …"
+         * official warnings first, then at most one "◇ …" (the kiosk's own
+         * flood forecast) or "▸ …" (the location's own rain chance), never
+         * both unless a warning already used the other slot — see
+         * flood_forecast.order_lines on the broker. Null when the broker did
+         * not send "card_lines" at all (older broker): [alerts] and
+         * [outlook] then build the line exactly as before. An EMPTY list is
+         * different from null — it means the broker looked and found nothing
+         * to show, and the window's last line is blank rather than falling
+         * back to [outlook].
+         */
+        val cardLines: List<String>? = null,
     )
 
     /**
@@ -122,6 +135,7 @@ object DashboardState {
             sunrise = clock12(usable(weather)?.first?.optString("sunrise", "") ?: ""),
             sunset = clock12(usable(weather)?.first?.optString("sunset", "") ?: ""),
             alerts = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.parse(root.optJSONObject("alerts")),
+            cardLines = cardLines(root),
         )
     } catch (e: Exception) {
         val panel = Panel(unavailable, false)
@@ -220,6 +234,22 @@ object DashboardState {
     private fun isDay(panel: JSONObject?): Boolean {
         val data = usable(panel)?.first ?: return true
         return data.optInt("is_day", 1) != 0
+    }
+
+    /**
+     * "card_lines": present -> the list exactly as sent (each already a full
+     * "⚠ …"/"◇ …"/"▸ …" line, even an empty list); absent, or not an array ->
+     * null, so the caller falls back to [Screen.alerts]/[Screen.outlook]
+     * exactly as it did before this key existed.
+     */
+    private fun cardLines(root: JSONObject): List<String>? {
+        val array = root.optJSONArray("card_lines") ?: return null
+        val out = ArrayList<String>(array.length())
+        for (i in 0 until array.length()) {
+            val line = array.optString(i, "")
+            if (line.isNotEmpty()) out.add(line)
+        }
+        return out
     }
 
     /**

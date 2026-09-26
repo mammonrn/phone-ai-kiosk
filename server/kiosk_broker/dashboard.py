@@ -790,14 +790,36 @@ class Dashboard:
         self._cache: dict[str, tuple[float, Panel]] = {}
         # Nationwide warnings: one cache for every phone and every position,
         # refreshed in the background (alerts.py) — also what Jarvis reads.
-        from . import alerts, envfile
+        from . import alerts, envfile, flood_forecast, local_rain
         self.alerts = alerts.Alerts(ttl=cfg.dashboard_alerts_ttl)
+        # The kiosk's own flood forecast (◇) and local rain chance (▸) — see
+        # flood_forecast.py/local_rain.py. Both refresh in the background,
+        # same shape as `self.alerts` above, so the phone's own request never
+        # waits on Open-Meteo either.
+        self.flood = flood_forecast.FloodForecast()
+        self._local_rain = local_rain.LocalRainCache()
+        # The last position a snapshot was asked for — Jarvis (service.py)
+        # has no position of its own to send (see handle_chat), so its
+        # forecast answers read the kiosk's own last-seen position here,
+        # falling back like clean_coords does when there has been none yet.
+        self._last_position: tuple[float, float] = (FALLBACK_LATITUDE, FALLBACK_LONGITUDE)
         # `name -> value` over the broker's own env file, read fresh every
         # call (same as home_control's use of envfile.reader) — TMD_UID/
         # TMD_UKEY are looked up when fetch_weather actually needs them, never
         # kept here, so a `keys set tmd` while the broker is running takes
         # effect on the next fetch with no restart.
         self._secret = envfile.reader(cfg.env_path)
+
+    def position(self) -> tuple[float, float]:
+        """The kiosk's own last-seen position — Jarvis's forecast answers use
+        this since chat questions carry no position of their own."""
+        return self._last_position
+
+    def local_rain_raw(self, latitude: float, longitude: float, now: float | None = None,
+                       wait: bool = False) -> dict | None:
+        """The cached ensemble response local_rain.py needs — see
+        LocalRainCache.raw. `wait=True` for Jarvis, asked on purpose."""
+        return self._local_rain.raw(latitude, longitude, now, wait=wait)
 
     def latest(self, kind: str, now: float | None = None) -> tuple[int, dict] | None:
         """The newest GOOD cached panel of this kind — (age in seconds, data) —
@@ -820,6 +842,8 @@ class Dashboard:
         with self._lock:
             self._cache.clear()
         self.alerts.forget()
+        self.flood.forget()
+        self._local_rain.forget()
 
     def snapshot(self, latitude=None, longitude=None, now: float | None = None,
                  marks=None, symbols=None) -> dict:
@@ -833,6 +857,7 @@ class Dashboard:
         """
         now = time.time() if now is None else now
         lat, lon, fallback = clean_coords(latitude, longitude)
+        self._last_position = (lat, lon)
 
         weather = self._panel(
             f"weather:{lat}:{lon}", now, self.cfg.dashboard_weather_ttl,
@@ -865,6 +890,31 @@ class Dashboard:
             lambda: fetch_crypto(symbols or [], self.cfg.dashboard_timeout),
             credit=CREDITS["crypto"])
 
+        alerts_payload = self.alerts.payload(now)
+
+        import datetime as _dt
+
+        from . import alerts as alerts_mod, flood_forecast, local_rain
+        # สสน.'s stations, from the SAME fetch alerts.py already made — never
+        # a second outbound call (see alerts.Alerts.thaiwater_stations).
+        raw_stations, stations_at = self.alerts.thaiwater_stations()
+        self.flood.update_river(flood_forecast.stations_with_province_code(raw_stations),
+                                stations_at or now)
+        kiosk_code = flood_forecast.nearest_province_code(lat, lon)
+        flood_payload = self.flood.payload(
+            now, kiosk_province_code=kiosk_code,
+            tmd_provinces=self.alerts.tmd_warned_provinces(now),
+            storm=self.alerts.storm_active(now), background=True)
+        local_raw = self._local_rain.raw(lat, lon, now)
+        local_out = local_rain.snapshot(
+            local_raw, _dt.datetime.fromtimestamp(now, alerts_mod.BANGKOK)) \
+            if local_raw is not None else None
+
+        official_lines = [item["line"] for item in alerts_payload["items"]]
+        card_lines = flood_forecast.order_lines(
+            official_lines, flood_payload.get("line"),
+            local_out["line"] if local_out else None)
+
         return {
             "weather": weather.as_json(),
             "air": air.as_json(),
@@ -874,7 +924,30 @@ class Dashboard:
             # {"items": [...], "updated": epoch|None, "ok": bool} — warnings
             # for the whole country, not this position (alerts.py). Never
             # waits on the network: a due refresh runs in the background.
-            "alerts": self.alerts.payload(now),
+            "alerts": alerts_payload,
+            # The kiosk's own flood forecast (◇, flood_forecast.py) and local
+            # rain chance (▸, local_rain.py) — both refresh in the
+            # background, same as "alerts" above; older phones that do not
+            # read this object keep working from "alerts" alone.
+            "forecast": {
+                "ok": flood_payload["ok"], "updated": flood_payload["updated"],
+                "line": flood_payload["line"], "items": flood_payload["items"],
+                "areas": flood_payload["areas"],
+                "local": local_out,
+                "sources": {
+                    "rain": {"ok": flood_payload["updated"] is not None,
+                             "updated": flood_payload["updated"]},
+                    "river": {"ok": stations_at is not None, "updated": stations_at},
+                    "local": {"ok": local_out is not None,
+                             "updated": int(now) if local_out else None},
+                },
+            },
+            # The card's own ≤2 rotating lines, worst-first (⚠ official, then
+            # ◇ the kiosk's own forecast, then ▸ local rain) — see
+            # flood_forecast.order_lines. A phone that reads this shows
+            # exactly these lines and nothing else; an older phone without it
+            # keeps building its own lines from "alerts" and "forecast".
+            "card_lines": card_lines,
             # Empty string when the lookup failed or the name could not be read.
             # The phone shows "ตำแหน่งปัจจุบัน" for that, never a coordinate.
             "place": place.data.get("place", "") if place.ok else "",

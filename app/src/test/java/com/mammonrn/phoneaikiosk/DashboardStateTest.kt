@@ -457,4 +457,35 @@ class DashboardStateTest {
         val fallback = """{"weather":{"ok":true,"temp_c":28.0},"location_fallback":true}"""
         assertTrue(DashboardState.parse(fallback, unavailable).locationFallback)
     }
+
+    // -------------------------------------------------------- card_lines (0.69)
+
+    @Test
+    fun `card_lines absent leaves the field null so the old rotation still runs`() {
+        assertEquals(null, DashboardState.parse(everything, unavailable).cardLines)
+    }
+
+    @Test
+    fun `card_lines present is read exactly, worst-first, marks and all`() {
+        val json = """{"weather":{"ok":true,"temp_c":28.0},
+                       "card_lines":["⚠ ฝนตกหนักมาก 20 จังหวัด ถึง 18:00 น.",
+                                     "◇ เชียงรายเสี่ยงน้ำท่วม 27–28 ก.ย."]}"""
+        assertEquals(
+            listOf("⚠ ฝนตกหนักมาก 20 จังหวัด ถึง 18:00 น.", "◇ เชียงรายเสี่ยงน้ำท่วม 27–28 ก.ย."),
+            DashboardState.parse(json, unavailable).cardLines,
+        )
+    }
+
+    @Test
+    fun `card_lines present but empty is an empty list, not null`() {
+        val json = """{"weather":{"ok":true,"temp_c":28.0},"card_lines":[]}"""
+        assertEquals(emptyList<String>(), DashboardState.parse(json, unavailable).cardLines)
+    }
+
+    @Test
+    fun `a blank entry in card_lines is dropped rather than shown empty`() {
+        val json = """{"weather":{"ok":true,"temp_c":28.0},
+                       "card_lines":["▸ บ่ายนี้ฝน 60%", ""]}"""
+        assertEquals(listOf("▸ บ่ายนี้ฝน 60%"), DashboardState.parse(json, unavailable).cardLines)
+    }
 }

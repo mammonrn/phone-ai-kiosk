@@ -210,3 +210,75 @@ def test_province_rain_metrics_matches_the_real_numbers():
     assert f3 == pytest.approx((10.2 + 111.3) / 2)
     assert f3max == pytest.approx(111.3)
     assert day_means[0] == pytest.approx((0.5 + 34.7) / 2)
+
+
+# --------------------------------------------------------- province lookup ---
+
+def test_province_name_to_code_matches_the_shipped_table():
+    by_name = ff.province_name_to_code()
+    assert by_name["เชียงราย"] == "57"
+    assert by_name["กรุงเทพมหานคร"] == "10"
+
+
+def test_stations_with_province_code_drops_unknown_names():
+    stations = [{"code": None, "province_name": "เชียงราย", "level": 5, "storage_percent": None},
+               {"code": None, "province_name": "เมียนมา", "level": 5, "storage_percent": None}]
+    out = ff.stations_with_province_code(stations)
+    assert len(out) == 1
+    assert out[0]["province_code"] == "57" and out[0]["level"] == 5
+
+
+def test_nearest_province_code_finds_the_kiosks_own_fallback_position():
+    # 19.9, 99.8 is the kiosk's own fallback position (Mae Fah Luang
+    # University), inside เชียงราย's own grid cells.
+    assert ff.nearest_province_code(19.9, 99.8) == "57"
+
+
+# ------------------------------------------------------------ FloodForecast ---
+
+def _fake_rain_for_every_province(mm_per_day: float = 40.0):
+    """A fetch that answers however many points a batch actually asked for
+    (real province table has 241 distinct cells, several batches) rather
+    than a fixed fixture sized for a 3-point test."""
+    import urllib.parse
+
+    def fake(url, timeout, limit):
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        n = len(qs["latitude"][0].split(","))
+        points = [{"daily": {"precipitation_sum": [mm_per_day] * 3}} for _ in range(n)]
+        return json.dumps(points).encode("utf-8")
+
+    return fake
+
+
+def test_flood_forecast_areas_reads_the_cached_grid_and_stations():
+    board = ff.FloodForecast(fetch=_fake_rain_for_every_province())
+    now = 1_800_000_000.0
+    board.update_river([{"code": None, "province_code": "57", "level": 5,
+                         "storage_percent": None}], now)
+    areas, has_data = board.areas(now, tmd_provinces=set(), storm=False)
+    assert has_data is True
+    assert any(a["code"] == "57" for a in areas)
+
+
+def test_flood_forecast_payload_background_never_blocks_when_not_due():
+    """`background=True` still fetches when a refresh is due (BACKGROUND
+    forced off so the test's own thread does the work), and does NOT fetch
+    again for a second call still inside the TTL."""
+    calls = []
+
+    def counting(url, timeout, limit):
+        calls.append(url)
+        return _fake_rain_for_every_province()(url, timeout, limit)
+
+    board = ff.FloodForecast(fetch=counting)
+    now = 1_800_000_000.0
+    ff.BACKGROUND = False  # run the due refresh in the caller's thread for the test
+    try:
+        board.payload(now, background=True)
+        first_batch_count = len(calls)
+        assert first_batch_count > 0
+        board.payload(now + 1, background=True)  # still within the TTL: not due
+    finally:
+        ff.BACKGROUND = True
+    assert len(calls) == first_batch_count

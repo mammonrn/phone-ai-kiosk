@@ -294,6 +294,47 @@ def load_provinces() -> list[dict]:
 REGION_DISPLAY = {"เหนือ": "ภาคเหนือ", "อีสาน": "ภาคอีสาน", "กลาง": "ภาคกลาง",
                   "ใต้": "ภาคใต้", "กทม.": "กรุงเทพมหานคร"}
 
+
+def province_name_to_code(provinces: list[dict] | None = None) -> dict[str, str]:
+    """สสน.'s own Thai province name -> provinces.json's own code — for
+    turning alerts.parse_thaiwater_stations' raw station list (which only
+    ever names a province, never its code) into what compute_areas wants."""
+    provinces = provinces if provinces is not None else load_provinces()
+    return {p["name"]: p["code"] for p in provinces}
+
+
+def stations_with_province_code(stations: list[dict], provinces: list[dict] | None = None) -> list[dict]:
+    """alerts.parse_thaiwater_stations()'s raw list -> compute_areas' own
+    shape ("province_code" instead of a name). A station whose province name
+    is not in provinces.json (a neighbouring country's gauge — already kept
+    out by alerts.WATER_REGIONS) is dropped rather than guessed at."""
+    by_name = province_name_to_code(provinces)
+    out = []
+    for s in stations:
+        code = by_name.get(s.get("province_name"))
+        if code is None:
+            continue
+        out.append({"code": s.get("code"), "province_code": code,
+                    "level": s.get("level"), "storage_percent": s.get("storage_percent")})
+    return out
+
+
+def nearest_province_code(latitude: float, longitude: float,
+                          provinces: list[dict] | None = None) -> str | None:
+    """The province whose own grid cell sits closest to a position — used
+    ONLY to know which province is "the kiosk's own" for should_show_card's
+    rule (card_line's `kiosk_province_code`), never for the rain numbers
+    themselves (those stay per-province, not per-point). None with an empty
+    province table."""
+    provinces = provinces if provinces is not None else load_provinces()
+    best: tuple[float, str] | None = None
+    for p in provinces:
+        for cell in p["cells"]:
+            d = (cell[0] - latitude) ** 2 + (cell[1] - longitude) ** 2
+            if best is None or d < best[0]:
+                best = (d, p["code"])
+    return best[1] if best else None
+
 #: A region reads as affected on the card once at least this many of its
 #: provinces are เสี่ยง+ (Poom's design: "≥5 provinces in one region").
 REGION_CARD_THRESHOLD = 5
@@ -627,6 +668,12 @@ def payload(provinces: list[dict], rain_by_cell: dict, thaiwater_stations: list[
 
 # ------------------------------------------------------------------ board ---
 
+#: Tests switch this off so a refresh runs in the caller's thread (and never
+#: outlives the test that patched the network away) — same idea as
+#: alerts.BACKGROUND.
+BACKGROUND = True
+
+
 class FloodForecast:
     """Owns the rain-grid cache, the river memory and the hysteresis — one
     instance per broker process, the same shape as alerts.Alerts. Never
@@ -642,6 +689,7 @@ class FloodForecast:
         self._rain: dict[tuple[float, float], list[float]] = {}
         self._rain_fetched_at: float | None = None
         self._attempted = 0.0
+        self._refreshing = False
         self._thaiwater_stations: list[dict] = []
         self._thaiwater_fetched_at: float | None = None
         self.hysteresis = LevelHysteresis()
@@ -672,9 +720,19 @@ class FloodForecast:
         return True
 
     def payload(self, now: float | None = None, kiosk_province_code: str | None = None,
-               tmd_provinces: set | None = None, storm: bool = False) -> dict:
+               tmd_provinces: set | None = None, storm: bool = False,
+               background: bool = False) -> dict:
+        """`background=True` (the dashboard's own use, like alerts.Alerts):
+        a due refresh starts in the background and this call never waits on
+        Open-Meteo — the phone gets whatever rain grid is already cached,
+        same as the phone's warnings. `background=False` (the default, and
+        Jarvis's own use through `refresh`/`areas`): waits, because it was
+        asked on purpose and a few seconds is fine."""
         now = time.time() if now is None else now
-        self.refresh(now)
+        if background:
+            self._refresh_background(now)
+        else:
+            self.refresh(now)
         with self._lock:
             rain, rain_at = dict(self._rain), self._rain_fetched_at
             stations, stations_at = list(self._thaiwater_stations), self._thaiwater_fetched_at
@@ -682,11 +740,46 @@ class FloodForecast:
                        rain_at, stations_at, self.hysteresis, kiosk_province_code,
                        self.river_memory)
 
+    def areas(self, now: float | None = None, tmd_provinces: set | None = None,
+             storm: bool = False) -> tuple[list[dict], bool]:
+        """(compute_areas' own flat per-province list, has_data) — for
+        Jarvis's own answer (flood_forecast.jarvis_answer), which needs the
+        flat list rather than `payload()`'s region-grouped "areas". Waits on
+        a due refresh, same as `payload(background=False)`."""
+        now = time.time() if now is None else now
+        self.refresh(now)
+        with self._lock:
+            rain, rain_at = dict(self._rain), self._rain_fetched_at
+            stations, stations_at = list(self._thaiwater_stations), self._thaiwater_fetched_at
+        out = compute_areas(load_provinces(), rain, stations, tmd_provinces or set(), storm, now,
+                            rain_at, stations_at, self.hysteresis, self.river_memory)
+        return out, rain_at is not None
+
+    def _refresh_background(self, now: float) -> None:
+        with self._lock:
+            if self._refreshing or (self._rain_fetched_at is not None
+                                    and now - self._attempted < self.ttl):
+                return
+            self._refreshing = True
+        if BACKGROUND:
+            threading.Thread(target=self._refresh_background_guarded, args=(now,),
+                             name="flood-refresh", daemon=True).start()
+        else:
+            self._refresh_background_guarded(now)
+
+    def _refresh_background_guarded(self, now: float) -> None:
+        try:
+            self.refresh(now)
+        finally:
+            with self._lock:
+                self._refreshing = False
+
     def forget(self) -> None:
         with self._lock:
             self._rain = {}
             self._rain_fetched_at = None
             self._attempted = 0.0
+            self._refreshing = False
             self._thaiwater_stations = []
             self._thaiwater_fetched_at = None
         self.hysteresis.forget()

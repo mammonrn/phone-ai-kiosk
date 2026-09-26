@@ -488,3 +488,57 @@ def test_the_clock_zone_is_configurable_without_touching_the_budget_zone(conn, c
 
     assert clock.context_line("Asia/Tokyo") in client.calls[0]["system"]
     assert tokyo.budget_timezone == "Asia/Bangkok"
+
+
+# ------------------------------------------------- flood forecast / local rain
+
+def test_flood_forecast_question_answered_in_code_no_model(conn, cfg, client):
+    """"ที่ไหนเสี่ยงน้ำท่วม" also contains the word alerts.match() itself reacts
+    to ("น้ำท่วม") — this must reach flood_forecast's own route, not the
+    generic warnings one, and the network is off in the tests so it is
+    answered as "no data yet", never guessed."""
+    from kiosk_broker import flood_forecast
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "ที่ไหนเสี่ยงน้ำท่วมบ้าง"})
+    assert status == 200
+    assert body["reply"] == flood_forecast.NO_DATA
+    assert body["action"] is None
+    assert not client.calls
+
+
+def test_local_rain_question_answered_in_code_no_model(conn, cfg, client):
+    from kiosk_broker import local_rain
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "วันนี้ฝนตกไหม"})
+    assert status == 200
+    assert body["reply"] == local_rain.NO_DATA_ANSWER
+    assert body["action"] is None
+    assert not client.calls
+
+
+def test_a_plain_warning_question_still_reaches_the_generic_alerts_route(conn, cfg, client):
+    """No mention of "น้ำท่วม" naming a place or "เสี่ยง": still the existing
+    nationwide-warnings answer, unchanged by the new routes above it."""
+    from kiosk_broker import alerts
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "มีเตือนภัยอะไรไหม"})
+    assert status == 200
+    assert body["reply"] == alerts.FAILED
+    assert not client.calls
+
+
+def test_a_generic_rain_question_still_reaches_the_llm_when_unmatched(conn, cfg, client):
+    """A phrase that is not one of the three canned local_rain triggers keeps
+    going to the model, same as before this feature — "ฝน" alone (without
+    "ตกไหม"/"จะตกไหม"/"พรุ่งนี้...ฝน") is not one of local_rain.match()'s
+    patterns."""
+    from kiosk_broker import local_rain
+
+    assert local_rain.match("ฝนเยอะไหม") is False
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "ฝนเยอะไหม"})
+    assert status == 200
+    assert client.calls  # reached the model, as it did before this feature

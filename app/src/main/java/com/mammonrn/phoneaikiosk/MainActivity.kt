@@ -105,6 +105,14 @@ class MainActivity : Activity() {
     /** The forecast sentence and the warnings that take turns with it. */
     private var outlookText = ""
     private var weatherAlerts = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.NONE
+    /**
+     * The broker's own ready-made rotating lines (0.69+, DashboardState.
+     * Screen.cardLines): null on an older broker, which keeps building the
+     * line from [weatherAlerts]/[outlookText] exactly as before; a (possibly
+     * empty) list on a broker that sends it, shown as-is with no further
+     * mark or ordering logic on the phone.
+     */
+    private var weatherCardLines: List<String>? = null
     private val lineRotation = com.mammonrn.phoneaikiosk.weather.LineRotation()
     private var shownWeatherLine: String? = null
     private var weatherLineTurns = false
@@ -407,6 +415,7 @@ class MainActivity : Activity() {
         // The forecast, taking turns with any country-wide warnings (showWeatherLine).
         outlookText = screen.outlook
         weatherAlerts = screen.alerts
+        weatherCardLines = screen.cardLines
         showWeatherLine()
         // Numbers into the pixel face, the freshness note turned down. The
         // strings themselves are DashboardState's business and are not touched
@@ -527,9 +536,14 @@ class MainActivity : Activity() {
                 runCatching { com.mammonrn.phoneaikiosk.weather.WeatherAlerts.parse(org.json.JSONObject(it)) }.getOrNull()
             }
         }
-        val lines = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.lines(
-            outlookText, overrideAlerts ?: weatherAlerts, System.currentTimeMillis(),
-            java.time.ZoneId.systemDefault())
+        // The broker's own ready-made lines (0.69+) take over the rotation
+        // whole-cloth when present (even an empty list — the broker looked
+        // and found nothing to show); a debug override or an older broker
+        // (weatherCardLines null) keeps building the line the old way.
+        val lines = if (seenAlertOverride == null && weatherCardLines != null) weatherCardLines!!
+                    else com.mammonrn.phoneaikiosk.weather.WeatherAlerts.lines(
+                        outlookText, overrideAlerts ?: weatherAlerts, System.currentTimeMillis(),
+                        java.time.ZoneId.systemDefault())
         if (lines.isEmpty()) {
             weatherOutlook.animate().cancel()
             weatherOutlook.visibility = android.view.View.GONE
