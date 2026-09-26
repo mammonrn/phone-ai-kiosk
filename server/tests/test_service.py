@@ -490,6 +490,39 @@ def test_the_clock_zone_is_configurable_without_touching_the_budget_zone(conn, c
     assert tokyo.budget_timezone == "Asia/Bangkok"
 
 
+# --------------------------------------------------------- emergency numbers
+
+def test_emergency_flood_call_answered_in_code_before_flood_forecast(conn, cfg, client):
+    """"น้ำท่วมโทรหาใคร" contains both flood_forecast._ASKS's "น้ำท่วม.*ที่ไหน"
+    style patterns and alerts._ASKS's bare "น้ำท่วม" — it must reach
+    emergency's own route (a phone number), not either of those."""
+    from kiosk_broker import emergency
+
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "น้ำท่วมโทรหาใคร"})
+    assert status == 200
+    assert "1784" in body["reply"]
+    assert body["reply"] == emergency.reply("น้ำท่วมโทรหาใคร")
+    assert body["action"] is None
+    assert not client.calls
+
+
+def test_emergency_pdpm_number_answered_in_code(conn, cfg, client):
+    token = _token(conn)
+    status, body = _post(conn, cfg, client, token, {"text": "เบอร์ ปภ."})
+    assert status == 200
+    assert "1784" in body["reply"]
+    assert not client.calls
+
+
+def test_flood_forecast_where_question_still_reaches_its_own_route(conn, cfg, client):
+    """No "โทร" in it: emergency.match() must not fire, and this still reaches
+    flood_forecast exactly as before emergency.py was added."""
+    from kiosk_broker import emergency
+
+    assert emergency.match("ที่ไหนเสี่ยงน้ำท่วมบ้าง") is False
+
+
 # ------------------------------------------------- flood forecast / local rain
 
 def test_flood_forecast_question_answered_in_code_no_model(conn, cfg, client):

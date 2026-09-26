@@ -18,6 +18,36 @@
       "say": "แผนที่",
       "space_around": true,
       "why": "Production, 2026-09-23 after aab1e71: \"กำลังเปิดแผนที่ไปให้พี่นะครับ\" was heard as \"เปิดแผน ที่ ไป\" — the voice split แผนที่ in two (เปิดแผน, then ที่ไป). The text sent had no space; the split was the voice's. A space on each side of the word leaves it no other way to read it. Until 0.38 this was two phrase entries (เปิดแผนที่ → เปิด แผนที่, แผนที่ไป → แผนที่ ไป) because the string search could not match a word; with the words known it is one entry, and the text sent is the same."
+    },
+    {
+      "spelling": "1784",
+      "say": "หนึ่ง เจ็ด แปด สี่",
+      "why": "Emergency numbers (0.70, kiosk_broker/emergency.py) are read digit by digit, like a phone number, not as one quantity (\"หนึ่งพันเจ็ดร้อยแปดสิบสี่\"). Not yet confirmed by ear on the real voice — added on the same reasoning as the rest of this file, flagged for a listening test."
+    },
+    {
+      "spelling": "1669",
+      "say": "หนึ่ง หก หก เก้า",
+      "why": "Same as 1784 above — สพฉ.'s ambulance number, read digit by digit."
+    },
+    {
+      "spelling": "1586",
+      "say": "หนึ่ง ห้า แปด หก",
+      "why": "Same as 1784 above — กรมทางหลวง's number, read digit by digit."
+    },
+    {
+      "spelling": "1146",
+      "say": "หนึ่ง หนึ่ง สี่ หก",
+      "why": "Same as 1784 above — ทางหลวงชนบท's number, read digit by digit."
+    },
+    {
+      "spelling": "1129",
+      "say": "หนึ่ง หนึ่ง สอง เก้า",
+      "why": "Same as 1784 above — กฟภ.'s number, read digit by digit."
+    },
+    {
+      "spelling": "1130",
+      "say": "หนึ่ง หนึ่ง สาม ศูนย์",
+      "why": "Same as 1784 above — กฟน.'s number, read digit by digit."
     }
   ],
   "_how_to_add": "Add {\"spelling\": ..., \"say\": ..., \"why\": ...} and optionally \"space_around\": true. Add only words heard wrong on the real voice, and say in \"why\" what was heard. Longest entries apply first. The broker re-reads this file when it changes; no restart. A broken file is ignored with a warning in the journal. If the segmenter splits a word wrongly, add the word to tts_words.txt instead."

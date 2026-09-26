@@ -198,6 +198,31 @@ object WeatherAlerts {
     }
 
     val BANGKOK: ZoneId = ZoneId.of("Asia/Bangkok")
+
+    /**
+     * Words that make a "⚠" line about a flood specifically, not some other
+     * hazard (a heatwave warning, say) — the same set of words
+     * kiosk_broker/alerts.py's _FLOOD_TITLES checks server-side, so a line
+     * counted as flood-related here is the same one the broker would call a
+     * flood if asked. Kept here rather than sent by the broker because this
+     * only decides whether a TAP on the already-rendered line shows the
+     * emergency numbers (weather/EmergencyNumbers) — it never changes what
+     * the line itself says.
+     */
+    private val FLOOD_WORDS = listOf("น้ำท่วม", "น้ำป่า", "ดินถล่ม", "ฝนตกหนัก", "น้ำล้นตลิ่ง", "น้ำมาก")
+
+    /**
+     * Whether a rendered card line (as [lines]/[line] built it, or the
+     * broker's own `card_lines`) is about a flood: every "◇" line always is
+     * (the kiosk's own flood-risk forecast, DESIGN 5ป never uses it for
+     * anything else) and a "⚠" line is when it names one of [FLOOD_WORDS]; a
+     * "▸" line (the location rain chance) never is on its own.
+     */
+    fun isFloodRelated(line: String): Boolean = when {
+        line.startsWith(KIOSK_FORECAST_MARK) -> true
+        line.startsWith(WARNING_MARK) -> FLOOD_WORDS.any { line.contains(it) }
+        else -> false
+    }
 }
 
 /**

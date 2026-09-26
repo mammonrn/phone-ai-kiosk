@@ -116,6 +116,16 @@ class MainActivity : Activity() {
     private val lineRotation = com.mammonrn.phoneaikiosk.weather.LineRotation()
     private var shownWeatherLine: String? = null
     private var weatherLineTurns = false
+    /**
+     * The emergency-numbers overlay (weather/EmergencyNumbers, Poom): a tap on
+     * a flood-related line (⚠ about a flood, or ◇) shows the numbers IN PLACE
+     * of the card's own lines instead of advancing the rotation; elapsedRealtime
+     * this reverts at, or 0L while not showing. A second tap while showing
+     * reverts early (onWeatherLineTap). Never touches [lineRotation]'s own
+     * state, so rotation resumes exactly where it left off.
+     */
+    private var emergencyNumbersUntilMs = 0L
+    private var emergencyNumbersRevert: Runnable? = null
     /** Debug builds' sample warnings (WeatherAlerts.override), parsed once per change. */
     private var seenAlertOverride: String? = null
     private var overrideAlerts: com.mammonrn.phoneaikiosk.weather.WeatherAlerts.Block? = null
@@ -527,8 +537,15 @@ class MainActivity : Activity() {
      * ("▸") and each warning ("⚠") in turn, six seconds each (LineRotation), a
      * tap for the next. Two lines' height held while they take turns, so the
      * card does not move; the change is a short fade (none with animations off).
+     *
+     * While the emergency-numbers overlay is showing (onWeatherLineTap,
+     * [emergencyNumbersUntilMs]) this does nothing — a periodic dashboard
+     * refresh must not paper over the numbers before their own 15 seconds are
+     * up; [showEmergencyNumbers]'s own revert callback is what calls this
+     * again once they are.
      */
     private fun showWeatherLine(tapped: Boolean = false) {
+        if (emergencyNumbersUntilMs > SystemClock.elapsedRealtime()) return
         val sample = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.override
         if (sample !== seenAlertOverride) {
             seenAlertOverride = sample
@@ -555,12 +572,20 @@ class MainActivity : Activity() {
         val now = SystemClock.elapsedRealtime()
         val text = lines[if (tapped) lineRotation.advance(lines.size, now) else lineRotation.current(lines.size, now)]
         val turns = lines.size > 1
-        if (turns != weatherLineTurns) {
-            weatherLineTurns = turns
-            if (turns) weatherOutlook.setLines(2) else { weatherOutlook.minLines = 0; weatherOutlook.maxLines = 2 }
-            // A button only while there is a next line to show (no button that does nothing).
-            weatherOutlook.isClickable = turns
-            weatherOutlook.isFocusable = turns
+        // A flood-related line (⚠ about a flood, or ◇) is tappable even alone
+        // (onWeatherLineTap shows the emergency numbers instead of advancing
+        // the rotation), and that overlay is always two lines, so its height
+        // is reserved here too — the same "reserve two lines" the rotation
+        // already used, just no longer only for when there is a next line.
+        val floodNow = com.mammonrn.phoneaikiosk.weather.WeatherAlerts.isFloodRelated(text)
+        val reserveTwoLines = turns || floodNow
+        if (reserveTwoLines != weatherLineTurns) {
+            weatherLineTurns = reserveTwoLines
+            if (reserveTwoLines) weatherOutlook.setLines(2) else { weatherOutlook.minLines = 0; weatherOutlook.maxLines = 2 }
+            // A button only while there is a next line, or numbers to show for
+            // this one (no button that does nothing).
+            weatherOutlook.isClickable = reserveTwoLines
+            weatherOutlook.isFocusable = reserveTwoLines
         }
         weatherOutlook.visibility = android.view.View.VISIBLE
         if (text == shownWeatherLine) return
@@ -570,7 +595,7 @@ class MainActivity : Activity() {
         if (direct) {
             weatherOutlook.alpha = 1f
             weatherOutlook.text = text
-            weatherOutlook.contentDescription = if (turns) text else null
+            weatherOutlook.contentDescription = if (reserveTwoLines) text else null
         } else {
             weatherOutlook.animate().alpha(0f).setDuration(LINE_FADE_MS).withEndAction {
                 weatherOutlook.text = text
@@ -578,6 +603,74 @@ class MainActivity : Activity() {
                 weatherOutlook.animate().alpha(1f).setDuration(LINE_FADE_MS).start()
             }.start()
         }
+    }
+
+    /**
+     * The weather line's tap (Poom): a flood-related line ("⚠" about a flood,
+     * or "◇" — WeatherAlerts.isFloodRelated) shows the related emergency
+     * numbers (weather/EmergencyNumbers) instead of advancing the rotation; a
+     * second tap while they are showing puts the rotation back early. Any
+     * other line keeps the tap's old meaning — the next line, right away
+     * (showWeatherLine's own rotation).
+     *
+     * TOLD APART FROM THE WEATHER CARD'S OWN fold/expand TAP (setUpCards,
+     * `card("weather", ...)`) by not being the same gesture at all: the
+     * weather card is registered `alwaysOpen = true`, so it never gets a
+     * fold/expand click listener in the first place (see the `if
+     * (!alwaysOpen)` guard in setUpCards) — [weatherOutlook] is the only view
+     * in this card with a click listener, and this is it.
+     */
+    private fun onWeatherLineTap() {
+        val now = SystemClock.elapsedRealtime()
+        if (emergencyNumbersUntilMs > now) {
+            hideEmergencyNumbers()
+            showWeatherLine(tapped = false)
+            return
+        }
+        val current = shownWeatherLine
+        if (current != null && com.mammonrn.phoneaikiosk.weather.WeatherAlerts.isFloodRelated(current)) {
+            showEmergencyNumbers()
+        } else {
+            showWeatherLine(tapped = true)
+        }
+    }
+
+    /**
+     * The numbers IN PLACE of the card's own two lines, for
+     * [EmergencyNumbers.SHOW_MS] or until [onWeatherLineTap] is called again.
+     * Never a third line and never a taller card: [EmergencyNumbers.CARD_LINES]
+     * is always exactly two lines, the same height [showWeatherLine] already
+     * reserves for two lines taking turns.
+     */
+    private fun showEmergencyNumbers() {
+        emergencyNumbersRevert?.let { handler.removeCallbacks(it) }
+        val now = SystemClock.elapsedRealtime()
+        emergencyNumbersUntilMs = now + com.mammonrn.phoneaikiosk.weather.EmergencyNumbers.SHOW_MS
+        weatherOutlook.animate().cancel()
+        weatherOutlook.alpha = 1f
+        weatherOutlook.setLines(2)
+        weatherLineTurns = true
+        weatherOutlook.isClickable = true
+        weatherOutlook.isFocusable = true
+        weatherOutlook.visibility = android.view.View.VISIBLE
+        weatherOutlook.text = com.mammonrn.phoneaikiosk.weather.EmergencyNumbers.CARD_LINES.joinToString("\n")
+        weatherOutlook.contentDescription = com.mammonrn.phoneaikiosk.weather.EmergencyNumbers.SPOKEN
+        // null, not the numbers' own text: the next real update must redraw
+        // (not skip as "unchanged") once the numbers revert.
+        shownWeatherLine = null
+        val revert = Runnable {
+            emergencyNumbersUntilMs = 0L
+            showWeatherLine(tapped = false)
+        }
+        emergencyNumbersRevert = revert
+        handler.postDelayed(revert, com.mammonrn.phoneaikiosk.weather.EmergencyNumbers.SHOW_MS)
+    }
+
+    /** Puts the weather line's rotation back before the numbers' own timeout. */
+    private fun hideEmergencyNumbers() {
+        emergencyNumbersRevert?.let { handler.removeCallbacks(it) }
+        emergencyNumbersRevert = null
+        emergencyNumbersUntilMs = 0L
     }
 
     /**
@@ -1250,7 +1343,7 @@ class MainActivity : Activity() {
         // A tap shows the next line while the forecast and warnings take turns;
         // the line is two lines of small text, so what a finger may press is
         // 48dp (TouchAreas), reaching into the panel around it.
-        weatherOutlook.setOnClickListener { showWeatherLine(tapped = true) }
+        weatherOutlook.setOnClickListener { onWeatherLineTap() }
         weatherOutlook.isClickable = false
         findViewById<android.view.View>(R.id.weather_panel).let { panel ->
             panel.touchDelegate = com.mammonrn.phoneaikiosk.ui.TouchAreas(panel).apply { add(weatherOutlook) }
@@ -1441,6 +1534,10 @@ class MainActivity : Activity() {
         // Stopped with the clock: a paused kiosk polling the broker every
         // minute forever is a background job nobody asked for.
         handler.removeCallbacks(refreshDashboard)
+        // A dark screen must not come back to a stale emergency-numbers
+        // overlay past its own 15 seconds — the screen going off already
+        // pauses the whole activity, so there is no tick to revert it itself.
+        hideEmergencyNumbers()
         unregisterReceiver(powerReceiver)
     }
 

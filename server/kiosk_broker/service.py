@@ -23,7 +23,7 @@ from . import (screen_context, actions, alarms, analysis, auth, botnoi, clock, d
                voicetext, brevity, calendar_add, calendar_read, google_auth, identity, redact, soak,
                auth_reset, local_facts, envfile, maps_rescue, music, notes, video, timers, radio_cmd, social_cmd,
                bluetooth_cmd,
-               calendar_app, holidays_q, alerts, flood_forecast, local_rain)
+               calendar_app, holidays_q, alerts, flood_forecast, local_rain, emergency)
 from .config import Config
 from .llm import UpstreamError, ask
 from .persona import SYSTEM_PROMPT
@@ -985,6 +985,16 @@ def handle_chat(
                 log.warning("holidays device=%s failed: %s", label, type(exc).__name__)
                 reply = holidays_q.FAILED
         return answer_in_code(reply, None, "holidays")
+
+    # ---- emergency phone numbers (emergency.py): ปภ./สพฉ./ทางหลวง/ทางหลวง
+    # ชนบท/กฟภ./กฟน., a fixed table answered in code — checked BEFORE
+    # flood_forecast and alerts below, whose own match() also fire on the
+    # bare word "น้ำท่วม" ("น้ำท่วมโทรหาใคร" would otherwise be answered with
+    # a flood-risk forecast instead of a phone number). -----------------
+    if not is_camera and alarm is None and not calendar_yes and emergency.match(text):
+        log_intent("skipped")
+        reply = emergency.reply(text)
+        return answer_in_code(reply, None, "emergency")
 
     # ---- the kiosk's own flood forecast (flood_forecast.py, the ◇ line):
     # "ที่ไหน/จังหวัดไหนเสี่ยงน้ำท่วม" — checked BEFORE the generic warnings

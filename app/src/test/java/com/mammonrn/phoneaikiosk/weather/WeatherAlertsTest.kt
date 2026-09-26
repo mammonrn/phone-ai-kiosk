@@ -3,6 +3,7 @@ package com.mammonrn.phoneaikiosk.weather
 import com.mammonrn.phoneaikiosk.voice.DashboardState
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -215,5 +216,29 @@ class WeatherAlertsTest {
         assertEquals(0, r.current(2, 12_500))       // a warning ended
         assertEquals(0, r.current(1, 50_000))
         assertEquals(0, r.advance(1, 50_000))
+    }
+
+    // -------------------------------------------------------- isFloodRelated
+
+    @Test
+    fun `a diamond line is always flood-related`() {
+        assertTrue(WeatherAlerts.isFloodRelated("◇ ภาคกลาง 18 จังหวัดเสี่ยงสูงน้ำท่วม 23-25 ก.ย."))
+        // Even one that, oddly, names no flood word by itself — the mark alone
+        // decides for "◇" (DESIGN 5ป: it is never used for anything else).
+        assertTrue(WeatherAlerts.isFloodRelated("◇ ทดสอบ"))
+    }
+
+    @Test
+    fun `a triangle line is flood-related only when it names a flood`() {
+        assertTrue(WeatherAlerts.isFloodRelated("⚠ น้ำท่วมฉับพลัน 3 จังหวัด ถึง 27 ก.ย."))
+        assertTrue(WeatherAlerts.isFloodRelated("⚠ ฝนตกหนักมาก 22 จังหวัด ถึง 27 ก.ย."))
+        assertTrue(WeatherAlerts.isFloodRelated("⚠ น้ำล้นตลิ่ง แม่น้ำเจ้าพระยา"))
+        // A real warning that is not about a flood at all.
+        assertFalse(WeatherAlerts.isFloodRelated("⚠ คลื่นลมแรง อ่าวไทยตอนบน"))
+    }
+
+    @Test
+    fun `an arrow line (the local rain chance) is never flood-related on its own`() {
+        assertFalse(WeatherAlerts.isFloodRelated("▸ บ่ายนี้มีโอกาสฝน 60%"))
     }
 }
