@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import com.mammonrn.phoneaikiosk.home.HomeCard
+import com.mammonrn.phoneaikiosk.media.NowPlayingCard
 import com.mammonrn.phoneaikiosk.alarm.AlarmBook
 import com.mammonrn.phoneaikiosk.alarm.AlarmScheduler
 import com.mammonrn.phoneaikiosk.alarm.AlarmStore
@@ -245,6 +246,21 @@ class MainActivity : Activity() {
     /** What the "อุปกรณ์ในบ้าน" card shows; null keeps it hidden. */
     private var homeCard: HomeCard.Card? = null
 
+    // ------------------------------------------------- the shared now-playing card
+    // One card for music and radio (Poom): NowPlayingCard decides, from each
+    // player's own state, whether it shows and which of the two it shows.
+    /** Since when MusicPlayer/RadioPlayer was last seen PAUSED; null while it
+     *  is not paused now (NowPlayingCard.pausedAt keeps this current). Radio
+     *  has no pause of its own, so its value stays null in practice. */
+    private var musicPausedAtMs: Long? = null
+    private var radioPausedAtMs: Long? = null
+    /** Which source the card is showing now, so its buttons and the tap on
+     *  its title know what to do; null while the card is hidden. */
+    private var nowPlayingSource: NowPlayingCard.Source? = null
+    /** [renderCards]'s `hidden()` reads this rather than re-deriving it from
+     *  either player, so the card's own visibility rule is the only one. */
+    private var nowPlayingVisible = false
+
     /**
      * 12-hour with AM/PM, as Poom asked, and in Locale.US on purpose: under the
      * phone's Thai locale "a" is "ก่อนเที่ยง"/"หลังเที่ยง", which is correct Thai
@@ -304,7 +320,7 @@ class MainActivity : Activity() {
                 handler.removeCallbacks(refreshDashboard)
                 handler.post(refreshDashboard)
             }
-            showMusic(nowMs)
+            showNowPlaying(nowMs)
             showWeatherLine()
             renderCards(nowMs)
             jarvisState.text = DashboardState.jarvisState(
@@ -823,21 +839,24 @@ class MainActivity : Activity() {
         card("home", R.id.card_home, R.id.home_body, R.id.home_badge, R.id.home_titlebar,
              0.7f, 60 * minute)
         // 0.53.0: the music, last so it sits just above Jarvis; held open while
-        // something is loaded (showMusic), hidden when nothing is.
+        // something is loaded (showNowPlaying), hidden when nothing is. Shared
+        // with the radio since this round — still the id "music" (CardBoardTest).
         card("music", R.id.card_music, R.id.music_body, R.id.music_badge, R.id.music_titlebar,
              0f, 60 * minute)
         // 0.58.0: music only — a video never plays behind the home screen (Poom).
+        // Shared with the radio (this round): the tap opens whichever of the
+        // two the card is showing (nowPlayingSource), never both.
         val openPlayer = android.view.View.OnClickListener {
-            startActivity(Intent(this, com.mammonrn.phoneaikiosk.media.MusicActivity::class.java))
+            val target = if (nowPlayingSource == NowPlayingCard.Source.RADIO)
+                com.mammonrn.phoneaikiosk.radio.RadioActivity::class.java
+            else com.mammonrn.phoneaikiosk.media.MusicActivity::class.java
+            startActivity(Intent(this, target))
         }
         findViewById<android.view.View>(R.id.card_music).setOnClickListener(openPlayer)
         findViewById<android.view.View>(R.id.music_song).setOnClickListener(openPlayer)
-        findViewById<android.view.View>(R.id.music_toggle).setOnClickListener {
-            com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
-        }
-        findViewById<android.view.View>(R.id.music_next).setOnClickListener {
-            com.mammonrn.phoneaikiosk.media.MusicPlayer.next(this)
-        }
+        findViewById<android.view.View>(R.id.music_prev).setOnClickListener { nowPlayingStep(-1) }
+        findViewById<android.view.View>(R.id.music_toggle).setOnClickListener { nowPlayingToggle() }
+        findViewById<android.view.View>(R.id.music_next).setOnClickListener { nowPlayingStep(1) }
         alarmStop.setOnClickListener {
             VoiceService.start(this, VoiceService.ACTION_ALARM_STOP)
         }
@@ -854,7 +873,7 @@ class MainActivity : Activity() {
         // it comes back by itself the day the broker has devices to show).
         fun hidden(id: String) = (id == "alarms" && !alarmsVisible) ||
             (id == "home" && homeCard == null) ||
-            (id == "music" && !com.mammonrn.phoneaikiosk.media.MusicPlayer.hasMedia)
+            (id == "music" && !nowPlayingVisible)
         val slots = fitToStack(board.layout(nowMs).filterNot { hidden(it.id) }, nowMs)
         val ids = slots.map { it.id }
         if (ids != shownOrder) {
@@ -956,25 +975,148 @@ class MainActivity : Activity() {
     }
 
     /**
-     * The music window (0.53.0): the song, and [หยุดชั่วคราว|เล่นต่อ] [ถัดไป].
-     * Held open while music is loaded, so the windows above fold for it, never
-     * Jarvis. Touches a view only when its text changes.
+     * The shared "now playing" card (Poom, this round): one card for music
+     * and radio — they never play together (an existing rule) — showing
+     * whichever [NowPlayingCard.pick] says to, from each player's own state.
+     * Held open while either qualifies, so the windows above fold for it,
+     * never Jarvis; hidden the moment neither does (`hidden()` in
+     * [renderCards], via [nowPlayingVisible]). Touches a view only when its
+     * text changes.
      */
-    private fun showMusic(nowMs: Long) {
-        val player = com.mammonrn.phoneaikiosk.media.MusicPlayer
-        val has = player.hasMedia
+    private fun showNowPlaying(nowMs: Long) {
+        val music = com.mammonrn.phoneaikiosk.media.MusicPlayer
+        val radio = com.mammonrn.phoneaikiosk.radio.RadioPlayer
+        val musicPlayback = when (music.state) {
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING -> NowPlayingCard.Playback.PLAYING
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PAUSED -> NowPlayingCard.Playback.PAUSED
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.State.STOPPED -> NowPlayingCard.Playback.STOPPED
+        }
+        // The radio has no pause of its own (a live stream has nothing to
+        // resume from): connecting counts as playing (it is on its way),
+        // stopped and failed both count as stopped.
+        val radioPlayback = when (radio.state) {
+            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.PLAYING,
+            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.CONNECTING -> NowPlayingCard.Playback.PLAYING
+            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.STOPPED,
+            com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.FAILED -> NowPlayingCard.Playback.STOPPED
+        }
+        musicPausedAtMs = NowPlayingCard.pausedAt(musicPlayback, musicPausedAtMs, nowMs)
+        radioPausedAtMs = NowPlayingCard.pausedAt(radioPlayback, radioPausedAtMs, nowMs)
+        val source = NowPlayingCard.pick(
+            NowPlayingCard.State(musicPlayback, musicPausedAtMs),
+            NowPlayingCard.State(radioPlayback, radioPausedAtMs),
+            nowMs,
+        )
+        nowPlayingSource = source
+        val has = source != null
+        nowPlayingVisible = has
         board.holdOpen("music", has)
         if (!has) return
-        val track = player.queue.current ?: return
-        val song = if (track.artist.isEmpty()) track.title else "${track.title} · ${track.artist}"
-        val playing = player.state == com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING
-        val toggle = getString(if (playing) R.string.music_pause else R.string.music_resume)
+
+        val icon = findViewById<ImageView>(R.id.music_icon)
+        val title = findViewById<android.widget.TextView>(R.id.music_title)
         val songView = findViewById<android.widget.TextView>(R.id.music_song)
+        val prevView = findViewById<android.widget.TextView>(R.id.music_prev)
         val toggleView = findViewById<android.widget.TextView>(R.id.music_toggle)
-        if (songView.text.toString() != song) songView.text = song
-        if (toggleView.text.toString() != toggle) toggleView.text = toggle
-        summaries["music"] = getString(if (playing) R.string.music_playing else R.string.music_paused)
-        board.report("music", track.id, nowMs)
+        val nextView = findViewById<android.widget.TextView>(R.id.music_next)
+
+        when (source) {
+            NowPlayingCard.Source.MUSIC -> {
+                icon.setImageResource(R.drawable.ic_pixel_music_light)
+                icon.contentDescription = getString(R.string.window_music)
+                val titleText = getString(R.string.window_music)
+                if (title.text.toString() != titleText) title.text = titleText
+                val track = music.queue.current
+                val song = if (track == null) "" else
+                    if (track.artist.isEmpty()) track.title else "${track.title} · ${track.artist}"
+                if (songView.text.toString() != song) songView.text = song
+                val playing = music.state == com.mammonrn.phoneaikiosk.media.MusicPlayer.State.PLAYING
+                val toggleWord = getString(if (playing) R.string.music_pause else R.string.music_resume)
+                if (toggleView.contentDescription != toggleWord) {
+                    toggleView.text = toggleWord
+                    toggleView.contentDescription = toggleWord
+                }
+                val prevWord = getString(R.string.music_prev)
+                val nextWord = getString(R.string.music_next)
+                if (prevView.contentDescription != prevWord) {
+                    prevView.text = prevWord
+                    prevView.contentDescription = prevWord
+                }
+                if (nextView.contentDescription != nextWord) {
+                    nextView.text = nextWord
+                    nextView.contentDescription = nextWord
+                }
+                summaries["music"] = getString(if (playing) R.string.music_playing else R.string.music_paused)
+                if (track != null) board.report("music", "m:" + track.id, nowMs)
+            }
+            NowPlayingCard.Source.RADIO -> {
+                icon.setImageResource(R.drawable.ic_pixel_radio_light)
+                icon.contentDescription = getString(R.string.window_radio)
+                val titleText = getString(R.string.window_radio)
+                if (title.text.toString() != titleText) title.text = titleText
+                val station = radio.stationName.orEmpty()
+                if (songView.text.toString() != station) songView.text = station
+                val toggleWord = getString(R.string.radio_stop)
+                if (toggleView.contentDescription != toggleWord) {
+                    toggleView.text = toggleWord
+                    toggleView.contentDescription = toggleWord
+                }
+                val prevWord = getString(R.string.music_prev)
+                val nextWord = getString(R.string.music_next)
+                val prevSpoken = getString(R.string.radio_prev_station)
+                val nextSpoken = getString(R.string.radio_next_station)
+                if (prevView.contentDescription != prevSpoken) {
+                    prevView.text = prevWord
+                    prevView.contentDescription = prevSpoken
+                }
+                if (nextView.contentDescription != nextSpoken) {
+                    nextView.text = nextWord
+                    nextView.contentDescription = nextSpoken
+                }
+                summaries["music"] = getString(R.string.radio_state_playing)
+                board.report("music", "r:" + radio.stationId.orEmpty(), nowMs)
+            }
+            null -> Unit
+        }
+    }
+
+    /** The shared card's middle button: music's play/pause, or the radio's
+     *  only control, stop — a live stream has nothing to resume from. */
+    private fun nowPlayingToggle() {
+        if (nowPlayingSource == NowPlayingCard.Source.RADIO) {
+            com.mammonrn.phoneaikiosk.radio.RadioPlayer.stop(this)
+        } else {
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.toggle(this)
+        }
+    }
+
+    /**
+     * The shared card's outer buttons: [step] +1 is "next", -1 is "previous".
+     * Music steps its queue; the radio steps its station list through
+     * [com.mammonrn.phoneaikiosk.radio.RadioVoice], the exact "next
+     * station"/"previous station" the spoken command already uses — never a
+     * second copy of "which station is next".
+     */
+    private fun nowPlayingStep(step: Int) {
+        if (nowPlayingSource == NowPlayingCard.Source.RADIO) {
+            val player = com.mammonrn.phoneaikiosk.radio.RadioPlayer
+            val context = this
+            val deck = object : com.mammonrn.phoneaikiosk.radio.RadioVoice.Deck {
+                override val stations get() = com.mammonrn.phoneaikiosk.radio.RadioStore.book(context).ordered()
+                override val onAir get() = player.stationId.takeIf {
+                    player.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.PLAYING ||
+                        player.state == com.mammonrn.phoneaikiosk.radio.RadioPlayer.State.CONNECTING
+                }
+                override val last get() = player.stationId
+                override fun play(station: com.mammonrn.phoneaikiosk.radio.Station) = player.play(context, station)
+                override fun stop() = player.stop(context)
+            }
+            com.mammonrn.phoneaikiosk.radio.RadioVoice.perform(if (step > 0) "next" else "previous", "", deck)
+        } else if (step > 0) {
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.next(this)
+        } else {
+            com.mammonrn.phoneaikiosk.media.MusicPlayer.previous(this)
+        }
     }
 
     /** The alarms window: the list, the stop button while one rings, its news. */

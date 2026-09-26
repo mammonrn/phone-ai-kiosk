@@ -579,13 +579,20 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ======================================================== music window
-             0.53.0 (Poom, DESIGN.md 12): while music is playing or paused, the
-             song and two word buttons, [หยุดชั่วคราว|เล่นต่อ] and [ถัดไป], 48dp.
-             Registered last, so it sits just above Jarvis, and held open
-             (CardBoard.holdOpen): the windows above fold to make room, never
-             Jarvis under its 156dp. Hidden when nothing is loaded. Tapping the
-             song opens the player. -->
+        <!-- ================================================ now-playing window
+             SHARED by music and radio (Poom): the two never play at once, so
+             one card shows whichever is actually playing, or was playing and
+             paused within NowPlayingCard.PAUSE_HOLD_MS — MainActivity decides
+             which and redraws this card's icon (music note vs radio, own-drawn,
+             differ in SHAPE), title bar word ("เครื่องเล่นเพลง"/"วิทยุ") and the
+             song/station line. Word buttons, 48dp: [ก่อนหน้า][หยุดชั่วคราว|เล่นต่อ|
+             หยุด][ถัดไป] — for the radio these mean the previous/next STATION and
+             its only control, stop (a live stream has nothing to resume from).
+             Registered last (still the id "music", CardBoardTest/MusicScreenTest),
+             so it sits just above Jarvis, and held open (CardBoard.holdOpen): the
+             windows above fold to make room, never Jarvis under its 156dp. Hidden
+             when neither is showing (NowPlayingCard.pick). Tapping the song
+             opens the matching app, MusicActivity or RadioActivity. -->
         <LinearLayout
             android:id="@+id/card_music"
             android:layout_width="match_parent"
@@ -661,6 +668,27 @@
                     android:ellipsize="end"
                     android:textColor="@color/retro_text"
                     android:textSize="@dimen/type_secondary"
+                    android:fontFamily="@font/plex_thai" />
+
+                <!-- Track back, or the previous starred/added station
+                     (radio/RadioVoice's own "previous station" logic, not a
+                     second copy of it). Its word and contentDescription are
+                     set at runtime (MainActivity), same as music_toggle and
+                     music_next below. -->
+                <TextView
+                    android:id="@+id/music_prev"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:minWidth="64dp"
+                    android:layout_marginStart="5dp"
+                    android:gravity="center"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:background="@drawable/retro_button"
+                    android:text="@string/music_prev"
+                    android:textColor="@color/retro_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
                     android:fontFamily="@font/plex_thai" />
 
                 <TextView

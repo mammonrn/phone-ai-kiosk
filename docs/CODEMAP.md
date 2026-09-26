@@ -75,7 +75,7 @@
 
 **หน้าจอ / ข้อมูล**
 - `dashboard.py` — payload ของการ์ดหน้าแรก (ทอง น้ำมัน `oil.py` คริปโต อากาศ)
-- อากาศ: `forecast.py` → `blend.py` (Open-Meteo+NWP) → `forecast_text.py` · `nwp.py` (TMD NWP, key `tmd-nwp`) · `uv_check.py` · `weather_checks.py`
+- อากาศ: `forecast.py` → `blend.py` (Open-Meteo+NWP) → `forecast_text.py` (`card_rows`: การ์ด 2 แถว, `ROW_WIDTH` 48 · `spoken` จาร์วิส) · `nwp.py` (TMD NWP, key `tmd-nwp`) · `uv_check.py` · `weather_checks.py`
 - ค่าวัดจริง: `obs.py` (รวม) ← `metar.py`, `station_met.py` (ThaiWater) · ฝน: `thaiwater_rain.py`, `radar.py`, `local_rain.py`
 - เตือนภัย: `alerts.py` (⚠) · `flood_forecast.py` (◇) · `gistda_flood.py` · `dams.py` · `verify.py` ให้คะแนนพยากรณ์ตามพื้นที่
 - `tls.py` + `certs/` ใบกลางสำหรับเว็บที่ส่งสายใบรับรองไม่ครบ (ห้ามปิดการตรวจ)

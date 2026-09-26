@@ -16,6 +16,10 @@
     <string name="radio_stop">หยุด</string>
     <string name="radio_song">เพลง: %1$s</string>
 
+    <!-- the shared "now playing" card on the home screen (MainActivity) -->
+    <string name="radio_prev_station">สถานีก่อนหน้า</string>
+    <string name="radio_next_station">สถานีถัดไป</string>
+
     <!-- why a station does not play -->
     <string name="radio_err_timeout">เล่นไม่ได้: สถานีไม่ตอบภายใน %1$d วินาที</string>
     <string name="radio_err_stalled">หยุดแล้ว: สัญญาณจากสถานีขาดนานเกิน 30 วินาที</string>
