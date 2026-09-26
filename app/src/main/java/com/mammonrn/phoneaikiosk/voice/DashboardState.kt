@@ -452,20 +452,36 @@ object DashboardState {
         val out = ArrayList<Pair<String, String>>()
         val dust = pm25(air)
         if (data == null) return if (dust == null) out else listOf(dust)
+        // 0.67 (Poom: "ถ้าไม่มีแหล่งไหนผ่าน แสดง '—' ห้ามแสดงค่าผิด"): a value the broker
+        // SENT as null failed every check (server weather_checks) and shows as "—" in its
+        // usual place; a key an older broker never sent is still left out.
+        fun failed(key: String) = data.has(key) && data.isNull(key)
         val high = data.optDouble("high_c", Double.NaN)
         val low = data.optDouble("low_c", Double.NaN)
         if (!high.isNaN() && !low.isNaN()) out += "สูง/ต่ำ" to "${Math.round(high)}°/${Math.round(low)}°"
+        else if (failed("high_c") || failed("low_c")) out += "สูง/ต่ำ" to DASH
         if (data.has("rain_chance") && !data.isNull("rain_chance")) {
             out += "โอกาสฝน" to "${data.optInt("rain_chance")}%"
-        }
+        } else if (failed("rain_chance")) out += "โอกาสฝน" to DASH
         if (data.has("wind_kmh") && !data.isNull("wind_kmh")) {
             out += "ลม กม./ชม." to "${data.optInt("wind_kmh")}"
-        }
+        } else if (failed("wind_kmh")) out += "ลม กม./ชม." to DASH
+        if (failed("uv") && data.optInt("is_day", 1) == 1) out += "UV" to DASH
         val uv = data.optDouble("uv", Double.NaN)
-        if (!uv.isNaN()) out += "UV" to "${Math.round(uv)} ${uvWord(uv)}"
+        // Below 1 whole-number rounding reads as "0" — indistinguishable from
+        // "no data" and from "truly zero" (2026-09-26: the card showed "0" at
+        // 07:52 with the sun already up, e.g. UV 0.4). One decimal only in
+        // that band; at 1 and above the whole number has read fine all along.
+        if (!uv.isNaN()) out += "UV" to (if (uv < 1.0)
+            String.format(java.util.Locale.US, "%.1f", uv) else "${Math.round(uv)}") + " ${uvWord(uv)}"
         if (dust != null) out += dust
+        // The air panel came back but no PM2.5 passed (failed, too old, out of range): "—".
+        else if (air != null) out += "PM2.5 มคก./ลบ.ม." to DASH
         return out
     }
+
+    /** A value no source could vouch for (0.67): shown in its place instead of a number. */
+    const val DASH = "—"
 
     /** Older than this, PM2.5 is not shown as now: it is an hourly reading. */
     const val MAX_PM25_AGE_SECONDS = 3 * 3600

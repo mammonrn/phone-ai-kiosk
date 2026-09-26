@@ -61,8 +61,27 @@ class ScreenDateAndMovesTest {
         val full = JSONObject("""{"high_c":31.4,"low_c":23.4,"rain_chance":12,"wind_kmh":8,"uv":8.3}""")
         assertEquals(listOf("สูง/ต่ำ" to "31°/23°", "โอกาสฝน" to "12%", "ลม กม./ชม." to "8", "UV" to "8 สูงมาก"),
                      DashboardState.weatherStats(full))
-        val partial = JSONObject("""{"high_c":31.4,"low_c":23.4,"uv":null}""")
+        val partial = JSONObject("""{"high_c":31.4,"low_c":23.4}""")  // keys an older broker never sent
         assertEquals(listOf("สูง/ต่ำ" to "31°/23°"), DashboardState.weatherStats(partial))
+    }
+
+    @Test
+    fun `UV under 1 shows one decimal so it never reads as zero`() {
+        // THE BUG this exists for (2026-09-26): the card said "UV 0" at 07:52
+        // with the sun already up. Math.round(0.4) is 0, indistinguishable
+        // from "no data" and from a real zero — one decimal below 1 fixes it.
+        val low = JSONObject("""{"uv":0.4}""")
+        assertEquals(listOf("UV" to "0.4 ต่ำ"), DashboardState.weatherStats(low))
+        val zero = JSONObject("""{"uv":0.0}""")
+        assertEquals(listOf("UV" to "0.0 ต่ำ"), DashboardState.weatherStats(zero))
+    }
+
+    @Test
+    fun `UV at 1 and above is still the whole number it always was`() {
+        val one = JSONObject("""{"uv":1.3}""")
+        assertEquals(listOf("UV" to "1 ต่ำ"), DashboardState.weatherStats(one))
+        val high = JSONObject("""{"uv":8.3}""")
+        assertEquals(listOf("UV" to "8 สูงมาก"), DashboardState.weatherStats(high))
     }
 
     @Test
@@ -77,19 +96,32 @@ class ScreenDateAndMovesTest {
     }
 
     @Test
-    fun `no air data means no PM2_5 cell, and the rest of the card is untouched`() {
+    fun `PM2_5 that no source vouches for is a dash, no air panel at all is no cell`() {
         val weather = JSONObject("""{"high_c":31.4,"low_c":23.4}""")
         val failed = JSONObject("""{"ok":false,"age_seconds":0,"error":"upstream"}""")
         val old = JSONObject("""{"ok":false,"age_seconds":20000,"stale":{"pm25":12.0,"pm25_word":"ดีมาก"}}""")
         val staleButRecent = JSONObject("""{"ok":false,"age_seconds":1800,"stale":{"pm25":12.0,"pm25_word":"ดีมาก"}}""")
         val expected = listOf("สูง/ต่ำ" to "31°/23°")
+        // Poom 0.67: "ถ้าไม่มีแหล่งไหนผ่าน แสดง '—' ห้ามแสดงค่าผิด".
+        val dash = expected + ("PM2.5 มคก./ลบ.ม." to DashboardState.DASH)
         assertEquals(expected, DashboardState.weatherStats(weather, null))
-        assertEquals(expected, DashboardState.weatherStats(weather, failed))
-        assertEquals(expected, DashboardState.weatherStats(weather, old))
+        assertEquals(dash, DashboardState.weatherStats(weather, failed))
+        assertEquals(dash, DashboardState.weatherStats(weather, old))
         assertEquals(expected + ("PM2.5 มคก./ลบ.ม." to "12 ดีมาก"),
                      DashboardState.weatherStats(weather, staleButRecent))
-        assertEquals(expected, DashboardState.weatherStats(weather,
+        assertEquals(dash, DashboardState.weatherStats(weather,
             JSONObject("""{"ok":true,"age_seconds":0,"pm25":null}""")))
+    }
+
+    @Test
+    fun `a weather value that failed every check is a dash in its place`() {
+        val failed = JSONObject("""{"high_c":null,"low_c":23.4,"rain_chance":null,"wind_kmh":7,"uv":null,"is_day":1}""")
+        assertEquals(listOf("สูง/ต่ำ" to DashboardState.DASH, "โอกาสฝน" to DashboardState.DASH,
+                            "ลม กม./ชม." to "7", "UV" to DashboardState.DASH),
+                     DashboardState.weatherStats(failed))
+        // At night the broker sends no UV at all: nothing to dash.
+        assertEquals(listOf("ลม กม./ชม." to "7"),
+                     DashboardState.weatherStats(JSONObject("""{"wind_kmh":7,"is_day":0}""")))
     }
 
     @Test

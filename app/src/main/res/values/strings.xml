@@ -291,8 +291,8 @@
          Kept in step with CREDITS in server/kiosk_broker/dashboard.py. -->
     <string name="window_sources">ที่มาข้อมูล</string>
     <string-array name="data_sources">
-        <item>อากาศและพยากรณ์|Open-Meteo (open-meteo.com) สัญญาอนุญาต CC BY 4.0 แบบจำลอง ECMWF</item>
-        <item>ฝุ่น PM2.5|Open-Meteo Air Quality สัญญาอนุญาต CC BY 4.0 ข้อมูลจาก CAMS, Copernicus Atmosphere Monitoring Service ระดับตามเกณฑ์กรมควบคุมมลพิษ พ.ศ. 2566</item>
+        <item>อากาศและพยากรณ์|Open-Meteo (open-meteo.com) สัญญาอนุญาต CC BY 4.0 แบบจำลอง ECMWF ค่ายูวีสำรองจาก currentuvindex.com สัญญาอนุญาต CC BY 4.0 ใช้เมื่อค่าหลักตรวจสอบแล้วไม่น่าเชื่อถือ</item>
+        <item>ฝุ่น PM2.5|Air4Thai กรมควบคุมมลพิษ จากสถานีตรวจวัดที่ใกล้ที่สุด เมื่อไม่มีสถานีใกล้พอ ใช้ Open-Meteo Air Quality สัญญาอนุญาต CC BY 4.0 ข้อมูลจาก CAMS, Copernicus Atmosphere Monitoring Service แทน ระดับตามเกณฑ์กรมควบคุมมลพิษ พ.ศ. 2566</item>
         <item>ชื่อพื้นที่|© OpenStreetMap contributors สัญญาอนุญาต ODbL</item>
         <item>ราคาทอง|สมาคมค้าทองคำ ผ่าน chnwt.dev</item>
         <item>ราคาน้ำมัน|ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev</item>

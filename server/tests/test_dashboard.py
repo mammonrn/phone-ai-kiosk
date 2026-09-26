@@ -20,6 +20,7 @@ THREE THINGS IN HERE ARE NOT ABOUT AVAILABILITY and are the reason the file grew
 from __future__ import annotations
 
 import dataclasses
+import datetime as dt
 import json
 import logging
 
@@ -357,7 +358,10 @@ def test_sunrise_and_sunset_come_from_the_same_request(monkeypatch):
     monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: urls.append(url) or body)
     got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
     assert (got["sunrise"], got["sunset"]) == ("06:05", "18:13")
-    assert len(urls) == 1 and "sunrise,sunset" in urls[0]
+    # Exactly one call for the weather itself; this body has no hourly UV, so
+    # compute_uv may also reach for the UV backup — that is a second call to
+    # the same stubbed `_get`, not a second call to Open-Meteo for sunrise.
+    assert len(urls) >= 1 and "sunrise,sunset" in urls[0]
 
 
 @pytest.mark.parametrize("daily", [
@@ -819,31 +823,42 @@ def test_two_configs_do_not_share_one_cache(cfg, fake_sources):
 
 
 # --- UV now, not the day's peak (Poom, 2026-09-23: "UV 8" on the card at night)
+# --- UV INTERPOLATED, not the hour's start value (2026-09-26: 07:52 read 07:00's
+#     0.2 while 08:00 was already 1.5, and the phone rounds — see weather_checks)
 
-def _uv_answer(current_time: str, is_day: int) -> dict:
+def _uv_answer(hour: int, minute: int, is_day: int) -> dict:
     """The shape Open-Meteo really sends with two models: `current` carries
-    only the first model's fields (ECMWF: no UV), the hourly block both."""
-    hours = [f"2026-09-23T{h:02d}:00" for h in range(24)]
+    only the first model's fields (ECMWF: no UV), the hourly block both.
+
+    `current.time` is built from TODAY's real date, not a fixed one: fetch_weather
+    now checks that reading is not stale (weather_checks.is_stale), and a date
+    frozen at whenever this test was written would eventually be years old. The
+    hourly temperature series exists so a stale/missing `current` reading still
+    leaves fetch_weather something to fall back to (weather_checks.best_temperature)
+    — this file is about UV, and a temperature failure must not hide that."""
+    today = dt.datetime.now(dt.timezone(dt.timedelta(hours=7))).date().isoformat()
+    hours = [f"{today}T{h:02d}:00" for h in range(24)]
     uv = [0.0] * 6 + [0.1, 0.6, 1.9, 3.8, 5.9, 7.6, 8.3, 8.1, 6.9, 4.8, 2.6, 0.9, 0.1] + [0.0] * 5
+    temps = [25.0] * 24
+    current_time = f"{today}T{hour:02d}:{minute:02d}"
     return {"current": {"time": current_time, "temperature_2m": 25.2, "relative_humidity_2m": 80,
-                        "weather_code": 0, "is_day": is_day, "uv_index": None},
-            "hourly": {"time": hours, "uv_index_ecmwf_ifs025": [None] * 24, "uv_index_best_match": uv},
+                        "weather_code": 0, "is_day": is_day, "uv_index": None, "cloud_cover": 20},
+            "hourly": {"time": hours, "uv_index_ecmwf_ifs025": [None] * 24, "uv_index_best_match": uv,
+                      "temperature_2m_best_match": temps},
             "daily": {"uv_index_max_ecmwf_ifs025": [None], "uv_index_max_best_match": [8.3]}}
 
 
-def test_uv_by_day_is_this_hours_value(monkeypatch):
-    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer("2026-09-23T09:45", 1))
+def test_uv_by_day_is_interpolated_between_the_hour_and_the_next(monkeypatch):
+    """THE BUG THIS TEST EXISTS FOR: 09:45 sits between 09:00 (3.8) and
+    10:00 (5.9). The old code read 09:00's value outright; interpolating by
+    the 45 minutes gives 3.8 + 0.75*(5.9-3.8) = 5.375, rounded to 5.4."""
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer(9, 45, 1))
     got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
-    assert got["uv"] == 3.8 and got["uv_max"] == 8.3
+    assert got["uv"] == 5.4 and got["uv_max"] == 8.3
     assert "uv_index" in dashboard_mod.WEATHER_URL.split("&hourly=")[1]
 
 
 def test_uv_at_night_is_not_shown_and_never_the_days_peak(monkeypatch):
-    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer("2026-09-23T21:15", 0))
+    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: _uv_answer(21, 15, 0))
     got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1)
     assert got["uv"] is None and got["uv_max"] == 8.3
-
-
-def test_uv_for_an_hour_that_is_missing_is_none():
-    assert dashboard_mod.uv_now(["2026-09-23T09:00"], [3.0], "2026-09-23T10:05") is None
-    assert dashboard_mod.uv_now(None, None, None) is None

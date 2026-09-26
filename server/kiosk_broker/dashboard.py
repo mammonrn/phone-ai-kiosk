@@ -95,10 +95,16 @@ WEATHER_MODELS = ("ecmwf_ifs025", "best_match")
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude={lat}&longitude={lon}"
-    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m"
+    # cloud_cover: the UV sanity check's other half (weather_checks.uv_sanity_ok)
+    # — with the sun high and the sky this clear a UV under 1 is impossible, so
+    # a reading that low is the stale-hourly-value bug, not weather.
+    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m,cloud_cover"
     "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,"
     "precipitation_probability_max,wind_speed_10m_max,uv_index_max"
-    "&hourly=precipitation_probability,uv_index"
+    # temperature_2m alongside the fields already asked for: best_match's own
+    # hourly series, so `current`'s single reading can be checked against it
+    # (weather_checks.best_temperature) without a second request.
+    "&hourly=precipitation_probability,uv_index,temperature_2m"
     "&timezone=Asia%2FBangkok&forecast_days=4&models=ecmwf_ifs025,best_match"
 )
 PLACE_URL = (
@@ -144,7 +150,10 @@ CREDITS = {
     "crypto": "Binance · อันดับจาก CoinGecko",
     "gold": "สมาคมค้าทองคำ ผ่าน chnwt.dev",
     "oil": "ราคากรุงเทพฯ จาก kapook ผ่าน chnwt.dev",
-    "air": "Open-Meteo (CC BY 4.0) · CAMS, Copernicus Atmosphere Monitoring Service",
+    # Air4Thai first because that is the source used when a nearby station
+    # answered; Open-Meteo/CAMS is named too because it is still the backup
+    # (see fetch_air) and the licence's attribution still applies when it is.
+    "air": "Air4Thai กรมควบคุมมลพิษ · Open-Meteo (CC BY 4.0) · CAMS, Copernicus Atmosphere Monitoring Service",
     "place": "© OpenStreetMap contributors (ODbL)",
 }
 
@@ -271,7 +280,7 @@ def _picked(block: dict, names) -> dict:
 
 
 def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
-    from . import forecast
+    from . import forecast, weather_checks
     raw = _get(WEATHER_URL.format(lat=latitude, lon=longitude), timeout)
     current = raw["current"]
     daily = _picked(raw.get("daily", {}) or {}, (
@@ -280,9 +289,7 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
     hourly_raw = raw.get("hourly", {}) or {}
     hourly = {"time": hourly_raw.get("time"),
               "precipitation_probability": _pick(hourly_raw, "precipitation_probability")}
-    # UV NOW, NOT THE DAY'S PEAK (Poom, 2026-09-23: the card said "UV 8" at
-    # night). `current` answers for the first model only, and ECMWF has no
-    # UV, so the value is best_match's for this hour from the hourly block.
+
     code = int(current["weather_code"])
     # Open-Meteo sends 1 or 0. Missing would mean the field was dropped from the
     # API, and then nothing says whether the sun is up — so a missing value is
@@ -290,29 +297,70 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
     # wherever the day and night words differ. Wrong by day is a milder word;
     # wrong by night is the bug this field was added to fix.
     is_day = bool(int(current.get("is_day", 0)))
+    current_time = current.get("time")
+
+    # `current` is a single reading Open-Meteo can occasionally serve stale
+    # (its own caching, not ours). A PRESENT-but-old timestamp is grounds to
+    # drop the current-only fields (temperature, humidity have no other
+    # source in this request); a MISSING timestamp is not treated as proof of
+    # anything — every fixture in this file predates this check having one.
+    stale_current = bool(current_time) and weather_checks.is_stale(current_time)
+    if stale_current:
+        log.info("dashboard weather: current reading is stale, dropping it")
+
+    temp_c = weather_checks.best_temperature(
+        None if stale_current else current.get("temperature_2m"),
+        hourly_raw.get("time"), hourly_raw.get("temperature_2m_best_match"), current_time)
+    if temp_c is None:
+        raise ValueError("no usable temperature")
+
+    humidity_raw = None if stale_current else current.get("relative_humidity_2m")
+    humidity = weather_checks.checked(humidity_raw, *weather_checks.HUMIDITY_RANGE)
+
+    high_raw = _first_number(daily.get("temperature_2m_max"))
+    low_raw = _first_number(daily.get("temperature_2m_min"))
+    high_c, low_c = (high_raw, low_raw) if weather_checks.high_low_ok(high_raw, low_raw) else (None, None)
+
+    rain_chance = weather_checks.checked(_first_int(daily.get("precipitation_probability_max")),
+                                         *weather_checks.RAIN_CHANCE_RANGE)
+    wind_kmh = weather_checks.checked(_first_int(daily.get("wind_speed_10m_max")),
+                                      *weather_checks.WIND_RANGE)
+
+    # UV NOW, NOT THE DAY'S PEAK (Poom, 2026-09-23: the card said "UV 8" at
+    # night), and INTERPOLATED, NOT THE HOUR'S START (2026-09-26: 07:52 read
+    # 07:00's 0.2 while 08:00 was already 1.5, and the phone rounds). See
+    # weather_checks.compute_uv: Open-Meteo's own series first, sanity-checked
+    # against the sun's real position, currentuvindex.com only when that
+    # fails. None at all after dark: the sun is down, there is nothing to
+    # warn about, and the cell goes. The day's peak stays for a spoken
+    # question, named as the peak.
+    uv = None
+    if is_day:
+        uv, _source = weather_checks.compute_uv(
+            hourly_raw.get("time"), _pick(hourly_raw, "uv_index"), current_time,
+            latitude, longitude, current.get("cloud_cover"),
+            lambda: _get(weather_checks.UV_BACKUP_URL.format(lat=latitude, lon=longitude), timeout))
+
     return {
-        "temp_c": round(float(current["temperature_2m"]), 1),
-        "humidity": int(current["relative_humidity_2m"]),
+        "temp_c": round(float(temp_c), 1),
+        "humidity": int(round(humidity)) if humidity is not None else None,
         "code": code,
         "is_day": 1 if is_day else 0,
         "word": weather_word(code, is_day),
-        "high_c": _first_number(daily.get("temperature_2m_max")),
-        "low_c": _first_number(daily.get("temperature_2m_min")),
+        "high_c": high_c,
+        "low_c": low_c,
         # Same request, same position, no new source: Open-Meteo answers these
         # in the daily block beside the high and low. Local time, since the URL
         # asks for Asia/Bangkok. None when missing, and the card goes without.
         "sunrise": _clock_time(daily.get("sunrise")),
         "sunset": _clock_time(daily.get("sunset")),
         # Today's numbers for the card (Poom: temperature, rain, wind, UV —
-        # today only), each None when the model did not give it.
-        "rain_chance": _first_int(daily.get("precipitation_probability_max")),
+        # today only), each None when the model did not give it or it failed
+        # its plausibility check (weather_checks).
+        "rain_chance": rain_chance,
         "rain_mm": _first_number(daily.get("precipitation_sum")),
-        "wind_kmh": _first_int(daily.get("wind_speed_10m_max")),
-        # The card's UV is the value for this hour, and none at all after
-        # dark: the sun is down, there is nothing to warn about, and the cell
-        # goes. The day's peak stays for a spoken question, named as the peak.
-        "uv": uv_now(hourly_raw.get("time"), _pick(hourly_raw, "uv_index"), current.get("time"))
-              if is_day else None,
+        "wind_kmh": wind_kmh,
+        "uv": uv,
         "uv_max": _first_number(daily.get("uv_index_max")),
         # The next three days in one sentence (forecast.py), or None.
         "outlook": forecast.outlook(daily, hourly),
@@ -320,18 +368,6 @@ def fetch_weather(latitude: float, longitude: float, timeout: float) -> dict:
         "days": forecast.day_lines(daily),
         "model": "ECMWF",
     }
-
-
-def uv_now(times, values, current_time) -> float | None:
-    """The hourly value for the hour [current_time] ("2026-09-23T13:15") falls
-    in, or None when the hour or the value is missing."""
-    if not (isinstance(times, list) and isinstance(values, list) and isinstance(current_time, str)):
-        return None
-    hour = current_time[:13] + ":00"
-    for when, value in zip(times, values):
-        if when == hour and isinstance(value, (int, float)) and not isinstance(value, bool):
-            return round(max(float(value), 0.0), 1)
-    return None
 
 
 def _first_int(values) -> int | None:
@@ -447,14 +483,35 @@ def pm25_word(value: float) -> str:
 
 
 def fetch_air(latitude: float, longitude: float, timeout: float) -> dict:
+    """PM2.5: Air4Thai's nearest real station when one is close enough and
+    recent enough to mean something for this position (weather_checks,
+    ≤30 km, ≤3 h) — a government-run station beats a modelled estimate when
+    there is one nearby. Open-Meteo/CAMS otherwise, same as before Air4Thai
+    was added. `source` (and, for Air4Thai, `station_km`) travel in the
+    payload so the screen can say which one answered.
+    """
+    from . import weather_checks
+    try:
+        stations = (_get(weather_checks.AIR4THAI_URL, timeout) or {}).get("stations")
+        pm, km = weather_checks.air4thai_reading(stations, latitude, longitude)
+    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as exc:
+        # A station that cannot be reached is not a failed panel — Open-Meteo
+        # is right there as the backup, tried next exactly as if Air4Thai had
+        # simply found no station near enough.
+        log.info("air4thai unavailable: %s", type(exc).__name__)
+        pm, km = None, None
+
+    if pm is not None:
+        return {"pm25": pm, "pm25_word": pm25_word(pm), "source": "Air4Thai", "station_km": km}
+
     raw = _get(AIR_URL.format(lat=latitude, lon=longitude), timeout)
     value = (raw.get("current") or {}).get("pm2_5")
     if value is None:
         raise ValueError("no pm2_5 in the air-quality answer")
     pm = round(float(value), 1)
-    if not 0 <= pm <= 2000:
+    if not weather_checks.in_range(pm, *weather_checks.PM25_RANGE):
         raise ValueError("pm2_5 out of range")
-    return {"pm25": pm, "pm25_word": pm25_word(pm)}
+    return {"pm25": pm, "pm25_word": pm25_word(pm), "source": "Open-Meteo"}
 
 
 def fetch_oil(timeout: float) -> dict:

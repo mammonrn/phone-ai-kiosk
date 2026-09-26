@@ -118,18 +118,57 @@ def test_pm25_words_follow_the_pcd_2566_bands(value, word):
     assert dashboard_mod.pm25_word(value) == word
 
 
-def test_fetch_air_reads_the_current_pm25(monkeypatch):
+def test_fetch_air_falls_back_to_open_meteo_when_no_station_is_near(monkeypatch):
+    """Air4Thai answers (no station close to 20.05,99.89 in this canned list),
+    so the panel falls through to Open-Meteo/CAMS exactly as it always did."""
     seen = []
-    monkeypatch.setattr(dashboard_mod, "_get",
-                        lambda url, timeout: seen.append(url) or {"current": {"pm2_5": 41.26}})
-    assert dashboard_mod.fetch_air(20.05, 99.89, 5) == {"pm25": 41.3, "pm25_word": "เริ่มมีผลต่อสุขภาพ"}
-    assert seen[0].startswith("https://air-quality-api.open-meteo.com/") and "current=pm2_5" in seen[0]
+
+    def fake_get(url, timeout):
+        seen.append(url)
+        if "air4thai" in url:
+            return {"stations": [{"lat": "13.75", "long": "100.50",
+                                  "AQILast": {"date": "2026-09-26", "time": "07:00",
+                                              "PM25": {"value": "9.0"}}}]}
+        return {"current": {"pm2_5": 41.26}}
+
+    monkeypatch.setattr(dashboard_mod, "_get", fake_get)
+    got = dashboard_mod.fetch_air(20.05, 99.89, 5)
+    assert got == {"pm25": 41.3, "pm25_word": "เริ่มมีผลต่อสุขภาพ", "source": "Open-Meteo"}
+    assert "air4thai" in seen[0]
+    assert seen[1].startswith("https://air-quality-api.open-meteo.com/") and "current=pm2_5" in seen[1]
+
+
+def test_fetch_air_prefers_a_nearby_air4thai_station(monkeypatch):
+    """A real station within 30 km and reported within 3 hours wins over the
+    modelled Open-Meteo value — see weather_checks.air4thai_reading. The
+    reading's timestamp is built from the real clock (5 minutes ago) rather
+    than a fixed date, so the test does not go stale itself."""
+    from kiosk_broker import weather_checks
+    import datetime as dt
+
+    recent = dt.datetime.now(weather_checks.BANGKOK) - dt.timedelta(minutes=5)
+
+    def fake_get(url, timeout):
+        if "air4thai" in url:
+            return {"stations": [{"lat": "20.06", "long": "99.90",
+                                  "AQILast": {"date": recent.strftime("%Y-%m-%d"),
+                                              "time": recent.strftime("%H:%M"),
+                                              "PM25": {"value": "12.4"}}}]}
+        raise AssertionError("Open-Meteo must not be called when Air4Thai has a usable station")
+
+    monkeypatch.setattr(dashboard_mod, "_get", fake_get)
+    got = dashboard_mod.fetch_air(20.05, 99.89, 5)
+    assert got["pm25"] == 12.4 and got["source"] == "Air4Thai"
+    assert got["station_km"] < 2.0
 
 
 @pytest.mark.parametrize("answer", [{}, {"current": {}}, {"current": {"pm2_5": None}},
                                     {"current": {"pm2_5": -3}}, {"current": {"pm2_5": 99999}}])
 def test_fetch_air_refuses_a_missing_or_impossible_value(monkeypatch, answer):
-    monkeypatch.setattr(dashboard_mod, "_get", lambda url, timeout: answer)
+    def fake_get(url, timeout):
+        return {"stations": []} if "air4thai" in url else answer
+
+    monkeypatch.setattr(dashboard_mod, "_get", fake_get)
     with pytest.raises(ValueError):
         dashboard_mod.fetch_air(20.05, 99.89, 5)
 
