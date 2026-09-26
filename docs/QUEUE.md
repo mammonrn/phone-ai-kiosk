@@ -192,3 +192,7 @@
 - สลับวิดีโอแล้วหมุนจอ
 - สั่งเสียงเปิด-หยุดวิดีโอ
 - บรรทัดสัญญาณ WiFi
+92. ✅ การ์ดอากาศ 2 แถวพร้อมกัน (0.74, DESIGN 5ป) — ฝั่ง broker ต้อง deploy ก่อนมือถือถึงจะเห็น (`card_rows`) / ความกว้างแถว 48 ช่องวัดจากภาพแคป A07 ถ้า log `weather row too wide` ขึ้นให้ลดลง
+93. ✅ การ์ดควบคุมเพลง/วิทยุบนหน้าแรก (DESIGN 5ผ) ทดสอบบน A07 ครบทุกปุ่มทั้งสองแบบ
+94. ⛔ กรอบ Windows 95 รอบ Facebook/Instagram/YouTube แบบหน้าต่าง: One UI (Android 16) บังคับแอปใน allowlist กลับเต็มจอระหว่าง lock task (`dismissMultiWindowMode: locked freeform`, `maximize_lock_freeform`) โค้ดถอนแล้ว ค่าระบบคืนแล้ว (enable_freeform_support ลบ, force_resizable_activities 0) — รอ Poom ตัดสินทางต่อ
+95. ❓ พบระหว่างทดสอบ: ถอดแอปโซเชียลออกจาก allowlist แล้ว task ของแอปยังค้างอยู่หลังตู้ (ไม่ถูกปิด ขัดกับ DESIGN 5ท ที่ว่าปิด) ทดลอง suspend→unsuspend ด้วย Device Owner แล้วปิดได้ — รอ Poom อนุมัติ (สิทธิ์/ความปลอดภัย)
