@@ -18,5 +18,6 @@
     <string name="social_cancelled">ยังไม่ได้เปิด เพราะยกเลิกการยืนยันตัวตน</string>
     <string name="social_not_passed">ยังไม่ได้เปิด เพราะยืนยันตัวตนไม่ผ่าน</string>
     <string name="social_gone">ไม่พบ %1$s ในเครื่องแล้ว กรุณาปิดหน้านี้แล้วเปิดใหม่อีกครั้ง</string>
+    <string name="social_frame_opening">กำลังเปิด %1$s</string>
     <string name="social_failed">เปิด %1$s ไม่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง</string>
 </resources>

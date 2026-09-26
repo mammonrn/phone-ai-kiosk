@@ -348,6 +348,11 @@
             android:name=".social.SocialActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <!-- Poom 2026-09-26: the 1995 frame around a Facebook/Instagram/YouTube window (social/SocialFrameActivity). -->
+        <activity
+            android:name=".social.SocialFrameActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <!-- 0.68: the Control Panel's Bluetooth page (settings/BluetoothActivity). Ours, so lock task allows it. -->
         <activity
             android:name=".settings.BluetoothActivity"

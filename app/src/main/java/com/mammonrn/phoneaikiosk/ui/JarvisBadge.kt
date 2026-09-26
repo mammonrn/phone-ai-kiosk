@@ -169,6 +169,8 @@ object JarvisBadges {
         "TimerActivity" -> "timer"
         "SettingsActivity" -> "panel"
         "CalendarActivity" -> "calendar"
+        // The frame around Facebook/Instagram/YouTube: a Jarvis button in its title bar.
+        "SocialFrameActivity" -> "social"
         else -> null
     }
 
