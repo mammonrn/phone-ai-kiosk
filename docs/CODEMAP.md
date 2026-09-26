@@ -12,7 +12,7 @@
 - `K/LockTaskAllowlist.kt` — แอปที่อยู่บนจอได้ระหว่าง lock (ขอบเขตของตู้) — แตะ = งาน `debugger`
 - `K/KioskDeviceAdminReceiver.kt`, `K/PackageReplacedReceiver.kt`, `K/TapGate.kt`
 
-**จุดเสียบที่ใช้ร่วม (แก้แล้วต้อง ui-check ทุกหน้าที่ใช้)**
+**จุดเสียบที่ใช้ร่วม (ย้าย/เปลี่ยนขนาด → แคป 1 ภาพต่อหน้าที่ใช้)**
 - `K/ui/ToolWindow.kt` — หน้าต่างของแอปเล็กในแผงควบคุม (แถบหัว, X, "กลับหน้าหลัก")
 - `K/ui/Origin.kt` — จำว่าเปิดแอปมาจากไหน ให้ปุ่ม X กลับไปถูกที่
 - `K/calc/SlideDeck.kt` (+`SlideHost.kt`) — หน้าแบบปัด ใช้ในเครื่องคิดเลขทุกหมวดและแอปเวลา
@@ -51,7 +51,7 @@
 - `home/` การ์ดหน้าแรก (`HomeCard`, `HomeGate`, `HomeSettings`, `HomeSummary`)
 - `weather/` การ์ดอากาศ (`WeatherAlerts` ⚠/◇/▸, `WeatherIcons`, `PlaceName`, `PlaceLookup`, `EmergencyNumbers`)
 
-**debug เท่านั้น** `app/src/debug/.../TestTriggerReceiver.kt`, `uicheck/UiWalk.kt` — ตัวเดินหน้าจอของ `scripts/ui-check` (หน้าใหม่ต้องเพิ่มที่นี่)
+**debug เท่านั้น** `app/src/debug/.../TestTriggerReceiver.kt`, `uicheck/UiWalk.kt` — ตัวเดินหน้าจอเดิม (เลิกใช้แล้ว)
 
 **test** `app/src/test/java/com/mammonrn/phoneaikiosk/<Class>Test.kt` (แบนราบ ไม่แยกโฟลเดอร์ ยกเว้น `weather/`)
 
@@ -85,7 +85,7 @@
 **test** `server/tests/test_<module>.py`, ข้อมูลจริงใน `server/tests/data/<source>/` · ติดตั้ง `server/install/`
 
 ## สคริปต์และเครื่องมือ
-- `scripts/ui-check` — เดินหน้าจอบน A07 (`ONLY=<หน้า,...>`), สรุปผลด้วย `tools/ui/report.py`
+- `scripts/ui-check` — **เลิกใช้แล้ว** (Poom 2026-09-26) เก็บไว้เผื่ออ้างอิง
 - `scripts/social-check`, `scripts/video-frames-repeat`
 - `tools/voice/` — matrix คำสั่งเสียง (`matrix_rows.py`, `gen_matrix.py`, `full_route.py`), คลิป STT (`make_clips.py`, `run_stt_clips.sh`, `score.py`)
 - `tools/radio/measure.py` · `tools/libvlc/build-lgpl.sh` · `server/tools/` (`build_flood_freq.py`, `build_provinces.py`)
