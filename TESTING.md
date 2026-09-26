@@ -2249,6 +2249,10 @@ scripts/social-check INSTAGRAM
 - สคริปต์ข้ามการสแกนหน้าด้วย debug broadcast `TEST_SOCIAL_VISIT` ซึ่งทำงานเฉพาะเมื่อ `--es nonce` ตรงกับ system property `debug.kiosk.social_nonce` (ยาว 16 ตัวขึ้นไป) ที่ตั้งได้จาก adb เท่านั้น แอปอื่นตั้งไม่ได้ สคริปต์ตั้งเองและล้างตอนจบ
 - ไม่พิมพ์อะไรในแอป ไม่แตะบัญชี / เส้นทางจริงจากแผงควบคุมถึงกล้องยืนยันตัวตนตรวจด้วย log นับจำนวน (`KioskAuth`, `KioskSocial`) ไม่แคปหน้าจอตอนกล้องเปิด
 
+**YouTube ReVanced (0.67):** อัปเดต = patch YouTube รุ่นที่ patches รองรับ ด้วยกุญแจเดิม (%USERPROFILE%/kiosk-keys/revanced-youtube.keystore) และ `java -Duser.language=en -Duser.country=US -jar revanced-cli... patch -p <rvp> -b ...` แล้ว `adb install -r` / ทดสอบ: เปิดผ่าน TEST_SOCIAL_VISIT app=YOUTUBE → เล่นคลิปสาธารณะ (`am start -a VIEW -d https://www.youtube.com/watch?v=aqz-KE-bpKQ -p app.revanced.android.youtube`) → ปิดจอ: เครื่องเล่นของ uid YouTube ใน `dumpsys audio` ยัง started → TEST_LISTEN: paused ระหว่าง turn แล้ว started → `KEYCODE_MEDIA_PAUSE`: log `visit end reason=stopped-playing` และ allowlist กลับเป็นของตู้
+
+**การ์ดอากาศ (0.67):** `ONLY=home scripts/ui-check` มีหน้า home-alerts-0/1/2 (ประกาศตัวอย่างจาก TEST_WEATHER_ALERTS, debug) / broker: `tests/test_alerts.py` ใช้ประกาศจริงที่เก็บไว้ใน `tests/data/alerts/`
+
 **ตัวถอดเสียงรุ่นใหม่ (หลัง deploy broker 0.65):** ผ่าน debug override เท่านั้น ไม่ใช่ค่าหลัก
 ```
 tools/voice/run_stt_clips.sh CLIPS RESULTS.tsv qwen qwen31 funasr
