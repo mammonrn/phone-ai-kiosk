@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UV, very high: the full sun with the four cardinal rays reaching one
+     square further out than "high" — a longer reach, not just the same sun
+     recoloured. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFB000" android:pathData="M6,5h4v1h-4z M5,6h6v4h-6z M6,10h4v1h-4z" />
+    <path android:fillColor="#FFB000"
+        android:pathData="M7,1h2v3h-2z M7,12h2v3h-2z M1,7h3v2h-3z M12,7h3v2h-3z
+                          M3,3h2v2h-2z M11,3h2v2h-2z M3,11h2v2h-2z M11,11h2v2h-2z" />
+</vector>

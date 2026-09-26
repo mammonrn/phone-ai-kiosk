@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wind, calm: one short streamline. Neutral dark grey, the same colour as
+     every other line-drawn tool icon in this app (no new colour). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#404040" android:pathData="M4,8h6v1h-6z" />
+</vector>

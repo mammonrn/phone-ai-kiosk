@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wind, moderate: two streamlines of different length, the classic gust
+     mark — more lines than "calm", still fewer than "strong". -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#404040" android:pathData="M3,6h5v1h-5z M3,9h8v1h-8z" />
+</vector>

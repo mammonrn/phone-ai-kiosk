@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rain chance, high: TWO droplets, not one bigger droplet — the shape
+     itself says "more", not only the colour (DESIGN.md "6. ไอคอน"). Same
+     navy as the medium droplet. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000080" android:pathData="M6,3h2v1h-2z M5,4h4v1h-4z M4,5h6v6h-6z M5,11h4v1h-4z" />
+    <path android:fillColor="#000080" android:pathData="M11,9h2v1h-2z M10,10h4v3h-4z M11,13h2v1h-2z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M5,6h1v1h-1z" />
+</vector>

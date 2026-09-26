@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- สสน. situation level 4, "น้ำมาก": two rows of waves instead of one —
+     more water, same calm navy as the neutral icon (not yet the level 5
+     hazard). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000080"
+        android:pathData="M2,9h3v1h-3z M6,10h3v1h-3z M10,9h3v1h-3z
+                          M3,12h3v1h-3z M7,13h3v1h-3z M11,12h3v1h-3z" />
+</vector>

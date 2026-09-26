@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PM2.5, "เริ่มมีผลต่อสุขภาพ": nine particles, black — the densest cloud
+     before the hazard mark of the worst level. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000000"
+        android:pathData="M4,5h1v1h-1z M10,9h1v1h-1z M6,10h1v1h-1z M11,5h1v1h-1z M8,7h1v1h-1z
+                          M3,9h1v1h-1z M12,10h1v1h-1z M2,6h1v1h-1z M9,3h1v1h-1z" />
+</vector>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rain chance, low: one small hollow-weight droplet in the neutral grey
+     already used for outlines elsewhere (locks, ticks) — no new colour, and
+     smaller than the medium/high droplets so "low" reads as less at a glance
+     (DESIGN.md "6. ไอคอน": levels differ by shape). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#808080" android:pathData="M7,7h2v1h-2z M6,8h4v3h-4z M7,11h2v1h-2z" />
+</vector>

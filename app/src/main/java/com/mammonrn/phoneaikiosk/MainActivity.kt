@@ -986,10 +986,39 @@ class MainActivity : Activity() {
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
         }
+        // A small pixel icon beside the label, one per stat (rain/wind/UV/PM2.5;
+        // "สูง/ต่ำ" gets none) — never taller than the label's own text line, so
+        // the row, and with it the card, cannot grow by adding it (Poom: "the
+        // card's height must not change by a single pixel"). The icon's size is
+        // measured from the label TextView's OWN Paint, not guessed in dp, so it
+        // is exactly the label's line height on every screen density.
+        fun labelCell(stat: Pair<String, String>, sp: Float, color: Int): android.view.View {
+            val label = cell(stat.first, sp, color)
+            val icon = com.mammonrn.phoneaikiosk.weather.WeatherIcons.forStat(stat.first, stat.second)
+                ?: return label
+            val metrics = label.paint.fontMetrics
+            val size = Math.round(metrics.descent - metrics.ascent)
+            val iconView = ImageView(this).apply {
+                setImageResource(icon)
+                // Decorative only (not tappable): the value's own text still
+                // carries the full description, so TalkBack does not read this
+                // icon a second time (ux-ui-design SKILL.md, accessibility).
+                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                layoutParams = android.widget.LinearLayout.LayoutParams(size, size).apply {
+                    marginEnd = dp(3)
+                }
+            }
+            return android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(iconView)
+                addView(label)
+            }
+        }
         val labelSp = sp(R.dimen.type_label)
         val valueSp = sp(R.dimen.type_secondary)
         for ((rowIndex, row) in stats.chunked(STAT_COLUMNS).withIndex()) {
-            fun spanned(view: TextView, index: Int) = view.apply {
+            fun spanned(view: android.view.View, index: Int) = view.apply {
                 if (index == row.lastIndex && row.size < STAT_COLUMNS) {
                     layoutParams = android.widget.TableRow.LayoutParams().apply {
                         span = STAT_COLUMNS - row.lastIndex
@@ -999,7 +1028,7 @@ class MainActivity : Activity() {
             weatherStats.addView(android.widget.TableRow(this).apply {
                 if (rowIndex > 0) setPadding(0, dp(4), 0, 0)
                 for ((index, stat) in row.withIndex()) {
-                    addView(spanned(cell(stat.first, labelSp, R.color.retro_dim), index))
+                    addView(spanned(labelCell(stat, labelSp, R.color.retro_dim), index))
                 }
             })
             weatherStats.addView(android.widget.TableRow(this).apply {

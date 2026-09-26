@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wind, strong: three streamlines, the longest curling upward at its tip —
+     the shape that reads as "force", not the two flat lines of "moderate". -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#404040"
+        android:pathData="M2,4h4v1h-4z M2,7h7v1h-7z M2,10h9v1h-9z M11,8h1v2h-1z" />
+</vector>

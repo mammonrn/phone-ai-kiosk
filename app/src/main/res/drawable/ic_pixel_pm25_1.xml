@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PM2.5, "ดีมาก": two faint particles — the sparsest of the five. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#808080" android:pathData="M4,5h1v1h-1z M10,9h1v1h-1z" />
+</vector>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown beside a weather number that reads "—" (DashboardState.DASH): a
+     hollow box with a dash, the same neutral grey as every other "nothing to
+     show" mark in this app (locks, offline icons) — never a guessed level. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#808080"
+        android:pathData="M4,4h8v1h-8z M4,11h8v1h-8z M4,4h1v8h-1z M11,4h1v8h-1z M6,7h4v1h-4z" />
+</vector>

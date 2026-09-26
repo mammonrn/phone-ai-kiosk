@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UV, low: the sun's own disc (DESIGN.md colour table, "ทอง/แดด"), no
+     rays at all — the least of the five UV shapes. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFB000" android:pathData="M6,5h4v1h-4z M5,6h6v4h-6z M6,10h4v1h-4z" />
+</vector>
