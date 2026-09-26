@@ -17,7 +17,6 @@ import com.mammonrn.phoneaikiosk.KioskDeviceAdminReceiver
 import com.mammonrn.phoneaikiosk.LockTaskAllowlist
 import com.mammonrn.phoneaikiosk.auth.VerifyActivity
 import com.mammonrn.phoneaikiosk.settings.WifiPanel
-import com.mammonrn.phoneaikiosk.ui.Origin
 import com.mammonrn.phoneaikiosk.voice.Recorder
 import com.mammonrn.phoneaikiosk.voice.WakePause
 
@@ -48,12 +47,6 @@ import com.mammonrn.phoneaikiosk.voice.WakePause
  * While the app records (a call, a voice message) the wake word rests
  * (WakePause.Source.OTHER_APP_MIC) and comes back when it stops — the system gives
  * the microphone to the app in front, and ours hears silence meanwhile.
- *
- * IN A WINDOW (Poom 2026-09-26): with freeform switched on, the app opens as a window in
- * the kiosk's own 1995 frame (SocialFrameActivity), which is opened first, starts it
- * and is under it the whole visit. Its X ends the visit; the app going away (Back out of it,
- * closed) leaves it as a kiosk screen coming forward does. The frame is not "a kiosk
- * screen in front". Without freeform, the app opens full screen as before.
  *
  * The log has the app, the reason and the minutes. Nothing about the accounts.
  */
@@ -109,8 +102,6 @@ object SocialVisit {
     private var quietPolls = 0
     private var appContext: Context? = null
     private var focus: android.media.AudioFocusRequest? = null
-    /** The frame around the app (SocialFrameActivity): told when the visit ends, so it closes. */
-    var onEnd: (() -> Unit)? = null
 
     /**
      * The package the kiosk's own allowlist keeps (WifiPanel.restore): YouTube while it plays
@@ -141,7 +132,7 @@ object SocialVisit {
     fun open(activity: Activity, app: App): Result {
         val pkg = installed(activity, app) ?: return Result.NOT_INSTALLED
         val intent = activity.packageManager.getLaunchIntentForPackage(pkg) ?: return Result.NOT_INSTALLED
-        return begin(activity, pkg, app.name.lowercase(), intent, app, framed = SocialFrameActivity.canFrame(activity))
+        return begin(activity, pkg, app.name.lowercase(), intent, app)
     }
 
     /** Opens the Play Store at [app]'s page for one visit. ONLY after a passed identity check. */
@@ -150,8 +141,7 @@ object SocialVisit {
         return begin(activity, PLAY_PACKAGE, "play-" + app.name.lowercase(), intent)
     }
 
-    private fun begin(activity: Activity, pkg: String, what: String, intent: Intent, app: App? = null,
-                      framed: Boolean = false): Result {
+    private fun begin(activity: Activity, pkg: String, what: String, intent: Intent, app: App? = null): Result {
         val dpm = activity.getSystemService(DevicePolicyManager::class.java)
         if (dpm == null || !dpm.isDeviceOwnerApp(activity.packageName)) return Result.NOT_OWNER
         // A visit already on (only the debug test can start one from outside a kiosk screen):
@@ -159,30 +149,17 @@ object SocialVisit {
         end(activity, "replaced", restore = false)
         val admin = KioskDeviceAdminReceiver.componentName(activity)
         refuseNotifications(activity)
-        liftSuspension(activity, pkg)
         dpm.setLockTaskPackages(admin, LockTaskAllowlist.packages(activity.packageName) + pkg)
         return try {
-            // Framed: the frame now, a full-screen kiosk screen; the app from the frame once
-            // the frame's opening is over ([launchInFrame]) - started together, the lock task
-            // brought the frame's task forward over the app (A07 log: "startLockTask
-            // findTaskToMoveToFront" after the app resumed). Only the app asks for a window.
-            val framedNow = framed && app != null
-            if (framedNow) {
-                pending = intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                activity.startActivity(SocialFrameActivity.intent(activity, app!!, Origin.of(activity)))
-            } else {
-                pending = null
-                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
+            activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             active = pkg
-            framedVisit = framedNow
             label = what
             keeps = app?.keepsPlaying == true
             background = false
             appContext = activity.applicationContext
             startedAt = SystemClock.elapsedRealtime()
             watch(activity.applicationContext, if (limitMs != LIMIT_MS) limitMs else app?.limitMs ?: LIMIT_MS)
-            Log.i(TAG, "visit start app=$what framed=$framedNow")
+            Log.i(TAG, "visit start app=$what")
             Result.OPENED
         } catch (e: Exception) {
             Log.w(TAG, "visit failed app=$what ${e.javaClass.simpleName}")
@@ -195,7 +172,6 @@ object SocialVisit {
     fun end(context: Context, reason: String, restore: Boolean = true) {
         val pkg = active ?: return
         active = null
-        pending = null
         main.removeCallbacksAndMessages(null)
         screenOff?.let { runCatching { context.applicationContext.unregisterReceiver(it) } }
         screenOff = null
@@ -205,9 +181,6 @@ object SocialVisit {
         background = false
         jarvisTurn(false)
         if (restore) WifiPanel.restore(context)
-        if (framedVisit) closeWindow(context, pkg)
-        framedVisit = false
-        onEnd?.invoke()
         val minutes = (SystemClock.elapsedRealtime() - startedAt) / 60_000
         Log.i(TAG, "visit end app=$label reason=$reason minutes=$minutes still_allowed=${allowed(context, pkg)}")
     }
@@ -217,8 +190,6 @@ object SocialVisit {
 
     /** From KioskScreens on every resume: a kiosk screen in front ends the visit. */
     fun kioskResumed(activity: Activity) {
-        // The frame is under the app the whole visit: not a kiosk screen in front.
-        if (activity is SocialFrameActivity) return
         kioskFront = java.lang.ref.WeakReference(activity)
         if (active == null || activity is SocialActivity || activity is VerifyActivity) return
         // The app's first frames: a task that the new list closed can bring a kiosk screen
@@ -231,59 +202,6 @@ object SocialVisit {
         }
         leave(activity, "kiosk-front")
     }
-
-    /** A framed visit's app, not started yet: the frame starts it ([launchInFrame]). */
-    private var pending: Intent? = null
-    /** This visit's app is in a window over the kiosk: its end must close that window ([closeWindow]). */
-    private var framedVisit = false
-
-    /**
-     * A windowed app outlives its place on the list: the system took the task off the lock
-     * task but left its window on screen, above the kiosk (A07, 2026-09-26: after X the
-     * app's window stayed isOnScreen=true over the home screen). Suspending the package
-     * closes its activities (the task was gone at once on the A07); it is lifted again at
-     * once, so the next visit opens it as usual. Only the visit's own package, only at its end.
-     */
-    private fun closeWindow(context: Context, pkg: String) {
-        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
-        if (!dpm.isDeviceOwnerApp(context.packageName)) return
-        val admin = KioskDeviceAdminReceiver.componentName(context)
-        val off = runCatching { dpm.setPackagesSuspended(admin, arrayOf(pkg), true).isEmpty() }.getOrDefault(false)
-        val on = runCatching { dpm.setPackagesSuspended(admin, arrayOf(pkg), false).isEmpty() }.getOrDefault(false)
-        Log.i(TAG, "app window closed app=$label suspended=$off lifted=$on")
-    }
-
-    /** A suspension left over (lifting it failed once): lifted before the app is opened. */
-    private fun liftSuspension(context: Context, pkg: String) {
-        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
-        val admin = KioskDeviceAdminReceiver.componentName(context)
-        if (runCatching { dpm.isPackageSuspended(admin, pkg) }.getOrDefault(false)) {
-            val on = runCatching { dpm.setPackagesSuspended(admin, arrayOf(pkg), false).isEmpty() }.getOrDefault(false)
-            Log.i(TAG, "left-over suspension lifted=$on")
-        }
-    }
-
-    /**
-     * From the frame, once it is the top screen: the visited app, as a window in its well.
-     * False when there is nothing to start or it could not start (the visit then ends).
-     */
-    fun launchInFrame(frame: Activity): Boolean {
-        val intent = pending ?: return false
-        pending = null
-        if (active == null) return false
-        return try {
-            frame.startActivity(intent, SocialFrameActivity.launchOptions(frame))
-            Log.i(TAG, "frame app started app=$label")
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "frame app failed app=$label ${e.javaClass.simpleName}")
-            end(frame, "failed")
-            false
-        }
-    }
-
-    /** The frame is the top screen again: the app was closed or backed out of. */
-    fun appLeft(activity: Activity) = leave(activity, "app-gone")
 
     /** The kiosk came forward or the screen went off: the visit ends, unless YouTube plays on. */
     private fun leave(context: Context, why: String) {
