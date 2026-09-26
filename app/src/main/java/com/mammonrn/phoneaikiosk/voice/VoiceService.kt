@@ -98,7 +98,8 @@ class VoiceService : Service() {
         // Asks whether an on-device Thai recognizer exists, for dumpsys. Asks
         // only: no recognition, no microphone. See DeviceSttProbe.
         runCatching { DeviceSttProbe.probe(this) }
-        recorder = Recorder()
+        // 0.68: the audio manager, so the wake word always hears the phone's own microphone.
+        recorder = Recorder(audio = getSystemService(android.media.AudioManager::class.java))
         detector = HeyJarvisDetector.fromAssets(this) ?: NoModelDetector("model-load-failed")
         stats = VoiceStats(this)
         SoakProbe.noteCreate(this, "service")
@@ -210,6 +211,15 @@ class VoiceService : Service() {
             // 0.66: Facebook/Instagram as the broker sends it ("เปิดเฟสบุ๊ค"), on the worker
             // thread as in a real turn (it waits for the app to come up). The identity check
             // is NOT skipped: this goes through SocialActivity like the icon.
+            // 0.68: Bluetooth as the broker sends it; --es command on|off|connect|disconnect --es query <name>.
+            if (type == KioskAction.BLUETOOTH) {
+                val command = intent.getStringExtra(EXTRA_COMMAND).orEmpty()
+                val name = intent.getStringExtra(EXTRA_QUERY).orEmpty()
+                if (command in com.mammonrn.phoneaikiosk.settings.BluetoothVoice.COMMANDS) network.execute {
+                    val said = performAction(KioskAction(type, "", mapOf("command" to command, "name" to name)))
+                    Log.i(TAG, "test perform type=$type command=$command done=${isDoneWords(said)}")
+                }
+            }
             if (type == KioskAction.OPEN_SOCIAL) {
                 val app = intent.getStringExtra(EXTRA_QUERY).orEmpty()
                 if (app in com.mammonrn.phoneaikiosk.social.SocialVoice.APPS) network.execute {
@@ -866,6 +876,23 @@ class VoiceService : Service() {
         return result
     }
 
+    /**
+     * 0.68: a spoken Bluetooth command, done before the reply (settings/BluetoothVoice),
+     * on this worker thread (it waits up to BluetoothLink.WAIT_MS for the radio).
+     * Logged: the command and the outcome, never a device's name.
+     */
+    private fun bluetooth(action: KioskAction): String? {
+        val command = action.params["command"].orEmpty()
+        val (deck, close) = com.mammonrn.phoneaikiosk.settings.BluetoothLink.voiceDeck(this)
+        val result = try {
+            com.mammonrn.phoneaikiosk.settings.BluetoothVoice.perform(command, action.params["name"].orEmpty(), deck)
+        } finally { close() }
+        val done = isDoneWords(result)
+        VoiceState.lastAction = "bluetooth:$command:${if (done) "ok" else "not-done"}"
+        Log.i(TAG, "action bluetooth command=$command done=$done")
+        return result
+    }
+
     private fun performAction(action: KioskAction): String? {
         if (action.type == KioskAction.VERIFY_IDENTITY) return verifyForPrivate()
         if (action.type == KioskAction.OPEN_CAMERA_APP) return openCameraApp()
@@ -877,6 +904,7 @@ class VoiceService : Service() {
         if (action.type == KioskAction.TIMER) return timer(action)
         if (action.type == KioskAction.RADIO) return radio(action)
         if (action.type == KioskAction.OPEN_SOCIAL) return com.mammonrn.phoneaikiosk.social.SocialVoice.open(this, action.params["app"].orEmpty())
+        if (action.type == KioskAction.BLUETOOTH) return bluetooth(action)
         if (action.type == KioskAction.HOME_UPDATED) {
             // The light is already switched (the broker did it) and the reply
             // says so. Here only the card is told to ask again.

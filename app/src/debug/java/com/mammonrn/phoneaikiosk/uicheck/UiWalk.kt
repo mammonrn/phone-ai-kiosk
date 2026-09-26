@@ -387,6 +387,7 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
         panel(); press("โฟลเดอร์สื่อ"); check("folder-media")
         panel(); press("โฟลเดอร์เครื่องมือ"); check("folder-tools")
         panel(); press("ไฟในบ้าน"); settle(1500); check("lights")
+        bluetooth()
         openApp(null, "จัดการไฟล์", "FilesActivity"); check("files")
         openApp(null, "ยืนยันตัวตน", null); check("identity", picture = false)
         openApp(null, "ที่มาข้อมูล", null); check("sources")
@@ -457,6 +458,31 @@ class UiWalk(private val ctx: Context, private val only: List<String>?) {
             }
         }
         home()
+    }
+
+    /**
+     * Bluetooth (0.68): the real page as the panel's tile opens it (nothing pressed on
+     * it: no switching, no search, no pairing), then every state drawn from made-up
+     * data (BluetoothActivity.EXTRA_SAMPLE, debug only), one picture each.
+     */
+    private fun bluetooth() {
+        if (wanted("bluetooth")) { openApp(null, "บลูทูธ", "BluetoothActivity"); settle(1500); check("bluetooth") }
+        for (s in com.mammonrn.phoneaikiosk.settings.BluetoothActivity.SAMPLES) {
+            val name = "bluetooth-sample-$s"
+            if (!wanted(name)) continue
+            panel()
+            val from = top() ?: continue
+            main.post {
+                from.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(
+                    com.mammonrn.phoneaikiosk.settings.BluetoothActivity.intent(from)
+                        .putExtra(com.mammonrn.phoneaikiosk.settings.BluetoothActivity.EXTRA_SAMPLE, s),
+                    com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+            }
+            waitFor("BluetoothActivity")
+            check(name)
+            main.post { top()?.finish() }
+            settle()
+        }
     }
 
     /** The first film, paused at once (its place moves a second at most), full screen standing and lying. */

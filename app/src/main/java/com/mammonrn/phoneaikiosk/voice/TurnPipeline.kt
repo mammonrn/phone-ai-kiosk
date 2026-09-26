@@ -242,7 +242,9 @@ val DONE_BEFORE_SPEAKING = setOf(KioskAction.SET_ALARM, KioskAction.ALARM_ENABLE
                                  // the map and the camera app are opened first too, and when they
                                  // cannot be, the reason IS the reply; Facebook/Instagram always
                                  // say their own words (social/SocialVoice).
-                                 KioskAction.OPEN_MAPS, KioskAction.OPEN_CAMERA_APP, KioskAction.OPEN_SOCIAL)
+                                 KioskAction.OPEN_MAPS, KioskAction.OPEN_CAMERA_APP, KioskAction.OPEN_SOCIAL,
+                                 // 0.68: Bluetooth switched (or not) on the phone first; the words are its own.
+                                 KioskAction.BLUETOOTH)
 
 /** 0.62.0: actions whose words, when there are any, are the answer itself — not a failure. */
 val ANSWERED_ON_PHONE = setOf(KioskAction.NOTE_READ, KioskAction.OPEN_SOCIAL)
@@ -322,6 +324,12 @@ class KioskAction(
          * (the identity check, one visit) before speaking; the reply is the phone's own.
          */
         const val OPEN_SOCIAL = "open_social"
+
+        /**
+         * 0.68: {command "on"|"off"|"connect"|"disconnect", name} — Bluetooth on this
+         * phone, done before speaking (settings/BluetoothVoice); the words are the phone's.
+         */
+        const val BLUETOOTH = "bluetooth"
     }
 }
 

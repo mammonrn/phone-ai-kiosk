@@ -16,7 +16,11 @@ import java.io.ByteArrayOutputStream
  * Nothing here writes a file. Audio exists as a byte array for as long as one
  * question takes and is then dropped.
  */
-class Recorder(val helpers: AudioHelpers = AudioHelpers()) {
+class Recorder(
+    val helpers: AudioHelpers = AudioHelpers(),
+    /** To find the phone's own microphone (0.68, [builtInMic]); null in tests. */
+    private val audio: android.media.AudioManager? = null,
+) {
 
     /** One frame, ~64 ms. Small enough for a wake word stage to work on. */
     val frameSamples = SAMPLE_RATE / 16
@@ -53,11 +57,37 @@ class Recorder(val helpers: AudioHelpers = AudioHelpers()) {
         // needs. Overridable over adb so the alternatives can be MEASURED on
         // the A07 — see AudioHelpers.SOURCES — without the default moving.
         activeSource = requestedSource
-        return AudioRecord(
+        val record = AudioRecord(
             activeSource,
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, buffer,
         )
+        preferBuiltInMic(record)
+        return record
     }
+
+    /**
+     * THE WAKE WORD ALWAYS HEARS THE PHONE (0.68, Poom): with headphones or a speaker
+     * on Bluetooth the SOUND may go there, but the microphone that listens for "Hey
+     * Jarvis" and the question stays the phone's own — a headset's microphone is
+     * across the room or in someone's ears, and taking it would need a call-style
+     * (SCO) link that drops music to phone quality. So the recorder asks for the
+     * built-in microphone by name, and nothing in this app starts SCO or sets a
+     * communication device (BluetoothTest reads the code for it).
+     */
+    private fun preferBuiltInMic(record: AudioRecord) {
+        val am = audio ?: return
+        val inputs = runCatching { am.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS).toList() }.getOrDefault(emptyList())
+        val id = builtInMic(inputs.map { it.type to it.id })
+        val device = inputs.firstOrNull { it.id == id }
+        val ok = device != null && runCatching { record.setPreferredDevice(device) }.getOrDefault(false)
+        if (ok != lastPreferred) {
+            lastPreferred = ok
+            // Counts and a yes/no only: no device names.
+            runCatching { android.util.Log.i("KioskMic", "preferred builtin=$ok inputs=${inputs.size}") }
+        }
+    }
+
+    @Volatile private var lastPreferred: Boolean? = null
 
     /**
      * Reads frames until [onFrame] returns false or [shouldStop] says to stop.
@@ -169,6 +199,14 @@ class Recorder(val helpers: AudioHelpers = AudioHelpers()) {
 
     companion object {
         const val SAMPLE_RATE = 16_000
+
+        /**
+         * The phone's own microphone among the inputs, as (type, id) pairs: the id of
+         * the first TYPE_BUILTIN_MIC, or null when there is none. Never a Bluetooth
+         * (SCO or LE) or wired headset's microphone. Plain Kotlin: BluetoothTest.
+         */
+        fun builtInMic(inputs: List<Pair<Int, Int>>): Int? =
+            inputs.firstOrNull { it.first == android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC }?.second
 
         /**
          * The audio session of the wake word's capture while it is open, else 0. Lets

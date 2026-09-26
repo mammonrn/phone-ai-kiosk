@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bluetooth in the Control Panel (0.68, settings/BluetoothActivity). Its own file,
+     so the other features of this round do not touch the same lines of strings.xml.
+     Written Thai (ScreenWordsTest); what Jarvis SAYS is in settings/BluetoothVoice. -->
+<resources>
+    <string name="window_bluetooth">บลูทูธ</string>
+
+    <!-- the Control Panel tile: the state in words (the icon differs by shape too) -->
+    <string name="bt_tile_off">บลูทูธ: ปิด</string>
+    <string name="bt_tile_on">บลูทูธ: เปิด</string>
+    <string name="bt_tile_turning_on">บลูทูธ: กำลังเปิด</string>
+    <string name="bt_tile_turning_off">บลูทูธ: กำลังปิด</string>
+    <string name="bt_tile_connecting">บลูทูธ: กำลังเชื่อมต่อ</string>
+    <string name="bt_tile_connected">บลูทูธ: เชื่อมต่อแล้ว</string>
+    <string name="bt_tile_unsupported">บลูทูธ: ใช้ไม่ได้</string>
+    <string name="bt_tile_no_permission">บลูทูธ: ไม่มีสิทธิ์</string>
+
+    <!-- the page's status -->
+    <string name="bt_status_on">บลูทูธเปิดอยู่</string>
+    <string name="bt_status_off">บลูทูธปิดอยู่</string>
+    <string name="bt_status_turning_on">กำลังเปิดบลูทูธ…</string>
+    <string name="bt_status_turning_off">กำลังปิดบลูทูธ…</string>
+    <string name="bt_status_unsupported">เครื่องนี้ไม่มีบลูทูธ</string>
+    <string name="bt_status_no_permission">แอปพลิเคชันยังไม่ได้รับสิทธิ์ใช้บลูทูธ</string>
+    <string name="bt_note_connected">เชื่อมต่ออยู่ %1$d อุปกรณ์</string>
+    <string name="bt_note_none_connected">ยังไม่ได้เชื่อมต่ออุปกรณ์ใด</string>
+    <string name="bt_note_off">เปิดบลูทูธเพื่อใช้หูฟังหรือลำโพงไร้สาย</string>
+    <string name="bt_note_wait">กรุณารอสักครู่</string>
+    <string name="bt_note_unsupported">ไม่มีสิ่งใดให้ตั้งค่าในหน้านี้</string>
+    <string name="bt_note_no_permission">ต้องได้รับสิทธิ์ \"อุปกรณ์ใกล้เคียง\" จากผู้ดูแลเครื่องก่อน ระหว่างนี้กรุณาใช้หน้าตั้งค่าบลูทูธของระบบ</string>
+
+    <string name="bt_turn_on">เปิดบลูทูธ</string>
+    <string name="bt_turn_off">ปิดบลูทูธ</string>
+    <string name="bt_turn_wait">กรุณารอสักครู่…</string>
+    <string name="bt_switch_refused">ระบบไม่อนุญาตให้เปลี่ยนโดยตรง กรุณาใช้หน้าตั้งค่าบลูทูธของระบบ</string>
+    <string name="bt_open_system">เปิดหน้าตั้งค่าบลูทูธของระบบ</string>
+    <string name="bt_open_system_failed">เปิดหน้าตั้งค่าบลูทูธของระบบไม่ได้</string>
+    <string name="bt_system_back">ในหน้าตั้งค่าของระบบ กดปุ่มย้อนกลับเพื่อกลับมาหน้านี้</string>
+
+    <!-- paired devices -->
+    <string name="bt_paired_title">อุปกรณ์ที่เคยจับคู่ (%1$d)</string>
+    <string name="bt_paired_empty">ยังไม่มีอุปกรณ์ที่เคยจับคู่ กรุณาเปิดโหมดจับคู่ที่หูฟังหรือลำโพง แล้วกด \"ค้นหาอุปกรณ์ใหม่\"</string>
+    <string name="bt_paired_when_off">เปิดบลูทูธเพื่อดูอุปกรณ์ที่เคยจับคู่</string>
+    <string name="bt_row_desc">%1$s, %2$s, %3$s แตะเพื่อดูตัวเลือก</string>
+    <string name="bt_link_connected">● เชื่อมต่อแล้ว</string>
+    <string name="bt_link_connecting">◐ กำลังเชื่อมต่อ</string>
+    <string name="bt_link_disconnecting">◐ กำลังยกเลิกการเชื่อมต่อ</string>
+    <string name="bt_link_not_connected">○ ไม่ได้เชื่อมต่อ</string>
+    <string name="bt_row_how">การเชื่อมต่อ การยกเลิกการเชื่อมต่อ และการลืมอุปกรณ์ ต้องทำในหน้าตั้งค่าบลูทูธของระบบ เพราะ Android ไม่เปิดให้แอปพลิเคชันทำโดยตรง</string>
+    <string name="bt_row_connect">เชื่อมต่อหรือยกเลิกในหน้าตั้งค่าของระบบ</string>
+    <string name="bt_row_forget">ลืมอุปกรณ์นี้…</string>
+    <string name="bt_forget_confirm">การลืมอุปกรณ์ต้องยืนยันตัวตนก่อน แล้วทำในหน้าตั้งค่าของระบบ: แตะไอคอนตั้งค่าข้างชื่อ %1$s แล้วเลือกยกเลิกการจับคู่ เมื่อลืมแล้ว ต้องจับคู่ใหม่จึงจะใช้ได้อีก</string>
+    <string name="bt_forget_go">ยืนยันตัวตนและเปิดหน้าตั้งค่า</string>
+
+    <string name="bt_unnamed">อุปกรณ์ไม่มีชื่อ</string>
+    <string name="bt_kind_headphones">หูฟัง</string>
+    <string name="bt_kind_speaker">ลำโพง</string>
+    <string name="bt_kind_audio">อุปกรณ์เสียง</string>
+    <string name="bt_kind_car">เครื่องเสียงรถยนต์</string>
+    <string name="bt_kind_input">แป้นพิมพ์หรือเมาส์</string>
+    <string name="bt_kind_phone">โทรศัพท์</string>
+    <string name="bt_kind_computer">คอมพิวเตอร์</string>
+    <string name="bt_kind_wearable">อุปกรณ์สวมใส่</string>
+    <string name="bt_kind_other">อุปกรณ์อื่น</string>
+
+    <!-- new devices -->
+    <string name="bt_search">ค้นหาอุปกรณ์ใหม่</string>
+    <string name="bt_search_needs_check">ต้องยืนยันตัวตนก่อนค้นหาและจับคู่</string>
+    <string name="bt_search_again">ค้นหาอีกครั้ง</string>
+    <string name="bt_search_stop">หยุดค้นหา</string>
+    <string name="bt_searching">กำลังค้นหาอุปกรณ์ใกล้เคียง… พบ %1$d เครื่อง</string>
+    <string name="bt_search_done">ค้นหาเสร็จแล้ว พบ %1$d เครื่อง แตะชื่ออุปกรณ์เพื่อจับคู่</string>
+    <string name="bt_search_none">ไม่พบอุปกรณ์ที่พร้อมจับคู่ กรุณาเปิดโหมดจับคู่ที่อุปกรณ์ วางไว้ใกล้เครื่อง แล้วค้นหาใหม่อีกครั้ง</string>
+    <string name="bt_search_failed">เริ่มค้นหาไม่ได้ กรุณาลองใหม่อีกครั้ง</string>
+    <string name="bt_search_hidden">ไม่แสดงอุปกรณ์ที่ไม่มีชื่อ %1$d เครื่อง</string>
+    <string name="bt_found_desc">%1$s, %2$s แตะเพื่อจับคู่</string>
+    <string name="bt_pair">จับคู่</string>
+    <string name="bt_pairing">กำลังจับคู่กับ %1$s… หากมีหน้าต่างให้ยืนยัน กรุณากดยืนยัน และตรวจรหัสบนอุปกรณ์ถ้ามี</string>
+    <string name="bt_paired_ok">✓ จับคู่กับ %1$s แล้ว</string>
+    <string name="bt_pair_failed">✕ จับคู่กับ %1$s ไม่สำเร็จ: %2$s</string>
+    <string name="bt_pair_fail_not_started">ระบบไม่เริ่มการจับคู่ กรุณาลองใหม่อีกครั้ง</string>
+    <string name="bt_pair_fail_refused">อุปกรณ์ปฏิเสธ หรือการยืนยันถูกยกเลิก กรุณาตรวจว่าอุปกรณ์อยู่ในโหมดจับคู่ แล้วลองใหม่อีกครั้ง</string>
+    <string name="bt_pair_fail_timeout">อุปกรณ์ไม่ตอบภายใน 60 วินาที กรุณาวางอุปกรณ์ไว้ใกล้เครื่อง แล้วลองใหม่อีกครั้ง</string>
+    <string name="bt_pair_fail_radio_off">บลูทูธปิดลงระหว่างจับคู่</string>
+
+    <!-- the identity check before searching or forgetting -->
+    <string name="bt_check_nothing_enrolled">ยังไม่ได้ดำเนินการ เพราะยังไม่ได้ตั้งใบหน้าหรือ pattern กรุณาตั้งในแผงควบคุม หน้ายืนยันตัวตน</string>
+    <string name="bt_check_cancelled">ยังไม่ได้ดำเนินการ เพราะยกเลิกการยืนยันตัวตน</string>
+    <string name="bt_check_failed">ยังไม่ได้ดำเนินการ เพราะยืนยันตัวตนไม่ผ่าน</string>
+
+    <string name="bt_audio_note">เสียงของจาร์วิส เพลง วิดีโอ วิทยุ และ YouTube ออกทางหูฟังหรือลำโพงบลูทูธที่เชื่อมต่ออยู่ ส่วนไมโครโฟนที่ฟังคำสั่งใช้ไมโครโฟนของเครื่องเสมอ</string>
+    <string name="bt_sample">ตัวอย่างสำหรับตรวจหน้าจอ</string>
+</resources>

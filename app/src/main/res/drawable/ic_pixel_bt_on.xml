@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Our own pixel art (0.68, DESIGN.md 6): Bluetooth on: the headphones alone.
+     Headphones, not the Bluetooth figure mark (a trademark of the Bluetooth SIG).
+     16x16 grid, rectangles only; the states differ by SHAPE (BluetoothModel.look). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#000080" android:pathData="M5,1h6v1h-6z M3,2h2v1h-2z M11,2h2v1h-2z M2,3h1v4h-1z M13,3h1v4h-1z" />
+    <path android:fillColor="#000000" android:pathData="M1,7h3v5h-3z M12,7h3v5h-3z" />
+</vector>

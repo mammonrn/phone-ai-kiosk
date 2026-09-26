@@ -100,6 +100,23 @@
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!--
+      BLUETOOTH (0.68, Poom: the Control Panel's Bluetooth page, settings/BluetoothLink).
+      CONNECT: the paired devices' names and states, on/off (the device owner's
+      exemption from the API 33 deprecation), pairing. SCAN: searching for a new
+      device, neverForLocation - the app does not learn where the phone is from
+      what it finds. Both runtime permissions, granted by the Device Owner to this
+      app with no dialog, like the microphone. The two legacy ones are what API 29
+      and 30 ask for instead (granted at install).
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
+    <!--
       WHY THIS BLOCK EXISTS, AND WHY IT IS ONE LINE LONG.
 
       From Android 11, an app that targets API 30 or higher cannot see other
@@ -329,6 +346,11 @@
         <!-- 0.65.0: opens Facebook or Instagram after the identity check (social/SocialVisit). -->
         <activity
             android:name=".social.SocialActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <!-- 0.68: the Control Panel's Bluetooth page (settings/BluetoothActivity). Ours, so lock task allows it. -->
+        <activity
+            android:name=".settings.BluetoothActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
         <activity

@@ -124,6 +124,14 @@ class Broker(private val baseUrl: String, private val token: String) {
                     if (app !in com.mammonrn.phoneaikiosk.social.SocialVoice.APPS) null
                     else KioskAction(type, "", mapOf("app" to app))
                 }
+                // 0.68: one of four commands and a bounded device name (settings/BluetoothVoice).
+                KioskAction.BLUETOOTH -> {
+                    val command = json.optString("command")
+                    val name = json.optString("name").trim()
+                    if (command !in com.mammonrn.phoneaikiosk.settings.BluetoothVoice.COMMANDS ||
+                        name.length > com.mammonrn.phoneaikiosk.settings.BluetoothVoice.MAX_NAME) null
+                    else KioskAction(type, "", mapOf("command" to command, "name" to name))
+                }
                 else -> null
             }
         }

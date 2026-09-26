@@ -76,6 +76,8 @@ class SettingsActivity : Activity() {
 
     /** [label] is read each time the panel is drawn, so a switch can say its state. */
     private class Category(val icon: Int, val label: (SettingsActivity) -> String,
+                           /** 0.68: a picture that follows a state (Bluetooth); [icon] otherwise. */
+                           val iconOf: ((SettingsActivity) -> Int)? = null,
                            val open: (SettingsActivity) -> Unit)
 
     /** One icon on the panel's first page, or a folder of them (opened as a popup). */
@@ -112,13 +114,18 @@ class SettingsActivity : Activity() {
         // Back from the WiFi panel: the settings app leaves the allowlist.
         WifiPanel.restore(this)
         torch.watch(true)
+        bluetooth.watch(true)
         if (page == Page.HOME) showHome()
     }
 
     override fun onPause() {
         super.onPause()
         torch.watch(false)
+        bluetooth.watch(false)
     }
+
+    /** 0.68: the Bluetooth tile's state, redrawn when it changes (settings/BluetoothTile). */
+    private val bluetooth by lazy { BluetoothTile(this) { if (page == Page.HOME) showHome() } }
 
     // --------------------------------------------------------- the torch
 
@@ -266,7 +273,7 @@ class SettingsActivity : Activity() {
         }
         addRows(grid, TILES.map { t ->
             when (t) {
-                is Tile.One -> tile(t.category.icon, t.category.label(this), null) { t.category.open(this) }
+                is Tile.One -> tile(t.category.iconOf?.invoke(this) ?: t.category.icon, t.category.label(this), null) { t.category.open(this) }
                 is Tile.Folder -> folderTile(t)
             }
         })
@@ -1029,6 +1036,13 @@ class SettingsActivity : Activity() {
                     // 0.42.0: WiFi opens the system's panel for one visit (WifiPanel);
                     // the torch is a switch, and its label is its state.
                     Category(R.drawable.ic_pixel_wifi, { it.getString(R.string.window_wifi) }) { it.openWifi() },
+            ),
+            Tile.One(
+                    // 0.68 (Poom): Bluetooth beside WiFi; the picture and the words are its state
+                    // (BluetoothTile), and it opens its page (settings/BluetoothActivity).
+                    Category(R.drawable.ic_pixel_bt_off, { it.bluetooth.label() }, iconOf = { it.bluetooth.look.icon }) {
+                        it.startActivity(com.mammonrn.phoneaikiosk.ui.Origin.from(BluetoothActivity.intent(it), com.mammonrn.phoneaikiosk.ui.Origin.PANEL))
+                    },
             ),
             Tile.One(
                     Category(R.drawable.ic_pixel_torch, { it.torch.label() }) { it.torch.toggle() },
