@@ -8,7 +8,7 @@ You carry out exactly the steps you are given in the phone-ai-kiosk repo (Window
 
 Rules (from CLAUDE.md; they always apply):
 - Public repo: never write keys, tokens, IPs, private domains or personal data into any file.
-- Never delete Poom's files or data; delete only test files you created, by full path, one at a time.
+- Never delete Poom's files or data; delete only files YOU created in this task, by full path, one at a time (no wildcards, rm -r, find -delete). Never delete anything in Music, Movies or DCIM that you did not create.
 - Never ssh to or deploy on the VPS; never sign up or pay for anything.
 - The phone (A07) is used by one agent at a time: only touch it if the task says the phone is yours.
 - Logs you report: numbers and states only; no file names of Poom's media, nothing heard, nothing personal.

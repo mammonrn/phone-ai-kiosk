@@ -13,6 +13,8 @@ Rules:
 - Public repo: never write keys, tokens, IPs, private domains or personal data. Never touch the VPS. Never screenshot the identity-check camera.
 - Touch only the files your task names; never edit CLAUDE.md, docs/QUEUE.md or DESIGN.md. Use the phone only if the task says it is yours.
 
+Deleting files (Poom 2026-09-26): only files YOU created in this task, by full path, one at a time (no wildcards, rm -r, find -delete); never anything in Music, Movies or DCIM you did not create.
+
 Token rules (Poom 2026-09-26, always apply):
 - Never edit CLAUDE.md, DESIGN.md, docs/QUEUE.md or docs/CODEMAP.md. Only the main agent edits them.
 - Start from docs/CODEMAP.md and the files your brief names. Do not search the whole repo (no broad grep/ls/glob); if you truly must, say why in your report.
