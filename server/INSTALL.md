@@ -1707,3 +1707,20 @@ root บน VPS อ่านได้ทั้งไฟล์ token และ `v
 - ❓ เอกสารไม่บอกว่า "เดือน" เริ่มนับเมื่อไร broker นับตามเดือน UTC
 - ❓ เอกสารไม่บอกวิธีแบ่งหน้าเกิน 30 อุปกรณ์ด้วย `beginIndex` ให้ชัด broker ขอทั้งหมดครั้งเดียว (`num=0`)
 - ❓ วิธียืนยันตัวของคำขอยกเลิกการเชื่อม (ดูด้านบน)
+
+
+## สถานีตรวจวัดกรมอุตุฯ (data.tmd.go.th) — ใส่ key (0.68)
+
+ใช้เทียบอุณหภูมิ/ความชื้นที่วัดจริงกับค่าจากแบบจำลอง ไม่มี key = ปิด ไม่ส่งคำขอเลย
+
+1. สมัครที่ https://data.tmd.go.th/api/registerPre.php ติ๊กยอมรับข้อตกลง กรอกแบบฟอร์มด้วยอีเมลของตัวเอง รออีเมลตอบกลับที่มี uid และ ukey
+2. บน VPS (ห้ามส่ง key ในแชทหรือพิมพ์เป็นอาร์กิวเมนต์):
+```
+cd ~/phone-ai-kiosk && git pull && sudo bash server/install/install.sh
+B='sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker'
+$B keys set tmd      # ถาม TMD_UID แล้ว TMD_UKEY ทีละค่า ตอนวางมองไม่เห็น ไม่ลงประวัติคำสั่ง
+$B keys              # ต้องขึ้น tmd มี (ไม่แสดงค่า)
+sudo systemctl restart kiosk-broker
+sudo journalctl -u kiosk-broker -n 50 | grep "tmd observations"    # ต้องเห็น tmd observations: on
+```
+ไฟล์ที่เก็บคือไฟล์ env เดิมของ broker (สิทธิ์ 600 เจ้าของ kioskbroker นอก repo) เปลี่ยน key ภายหลังใช้ `$B keys set tmd` ซ้ำได้ (เขียนทับอย่างปลอดภัย)
