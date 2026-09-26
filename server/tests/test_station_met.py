@@ -1,6 +1,6 @@
 """station_met.py — ThaiWater per-station temperature/humidity
-(api-v3.thaiwater.net/.../public/thaiwater/temperature|humid), a SECOND
-free measured-temperature source alongside synop.py.
+(api-v3.thaiwater.net/.../public/thaiwater/temperature|humid), a free,
+no-signup, nationwide measured-temperature source (alongside metar.py).
 
 tests/data/station_met/real_temperature.json and real_humid.json are REAL
 responses (captured 2026-09-26, public station data — trimmed to 3

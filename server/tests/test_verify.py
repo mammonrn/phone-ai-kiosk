@@ -23,7 +23,7 @@ def conn(tmp_path):
     c.close()
 
 
-def store_reading(conn, *, hour, lat=13.75, lon=100.50, source="synop", temp_c=None,
+def store_reading(conn, *, hour, lat=13.75, lon=100.50, source="metar", temp_c=None,
                   rain_mm=None, rain_hours=None, station_id="48455"):
     """One reader-shaped report at `hour`, stored as the timer would store it
     (near the point it is about)."""
@@ -80,7 +80,7 @@ def test_temp_settles_against_the_nearest_station_and_keeps_its_distance(conn):
                        " FROM forecast_records").fetchone()
     assert row["observed_value"] == 32.0
     assert row["settled_at"] == BANGKOK_NOW + 60
-    assert row["truth_source"] == "synop" and row["truth_km"] == pytest.approx(5.6, abs=0.1)
+    assert row["truth_source"] == "metar" and row["truth_km"] == pytest.approx(5.6, abs=0.1)
 
 
 def test_temp_not_settled_when_no_station_has_that_hour(conn):
@@ -95,7 +95,7 @@ def test_temp_not_settled_when_no_station_has_that_hour(conn):
 def test_temp_not_settled_when_station_too_far(conn):
     verify.record(conn, kind="temp", area=(13.75, 100.50), source="Open-Meteo",
                  valid_from=BANGKOK_NOW, valid_to=BANGKOK_NOW, value=34.0, now=BANGKOK_NOW)
-    report = {"source": "synop", "id": "x", "lat": 13.75 + 0.3, "lon": 100.50,  # ~33 km
+    report = {"source": "metar", "id": "x", "lat": 13.75 + 0.3, "lon": 100.50,  # ~33 km
               "observed_at": BANGKOK_NOW, "temp_c": 25.0}
     obs.record_hourly(conn, [report], [(13.75 + 0.3, 100.50)], now=BANGKOK_NOW)
     assert verify.settle_point_forecasts(conn, kind="temp", now=BANGKOK_NOW + 60) == 0
@@ -103,9 +103,9 @@ def test_temp_not_settled_when_station_too_far(conn):
 
 # --------------------------------------------------- settling: rain_chance ---
 
-def test_rain_settles_yes_from_a_synop_period_that_is_the_window(conn):
-    # A 6-hour window ending 13:00 Bangkok (06 UTC) is exactly SYNOP's own
-    # 6-hour rain period (6RRR) reported at 13:00.
+def test_rain_settles_yes_from_a_stations_period_that_is_the_window(conn):
+    # A 6-hour window ending 13:00 Bangkok (06 UTC) exactly matches a
+    # station's own 6-hour rain period reported at 13:00.
     end = BANGKOK_NOW - 2 * 3600
     verify.record(conn, kind="rain_chance", area=(13.75, 100.50), source="ensemble",
                  valid_from=end - 6 * 3600, valid_to=end, value=70.0, now=end - 6 * 3600)
@@ -113,7 +113,7 @@ def test_rain_settles_yes_from_a_synop_period_that_is_the_window(conn):
     assert verify.settle_point_forecasts(conn, kind="rain_chance", now=BANGKOK_NOW) == 1
     row = conn.execute("SELECT outcome, observed_value, truth_source FROM forecast_records").fetchone()
     assert row["outcome"] == "yes" and row["observed_value"] == pytest.approx(5.5)
-    assert row["truth_source"] == "synop"
+    assert row["truth_source"] == "metar"
 
 
 def test_rain_settles_by_summing_two_3h_periods(conn):
@@ -372,4 +372,4 @@ def test_cli_forecast_score_prints_settled_numbers(conn, capsys):
     assert "open-meteo" in out
     assert "MAE=2.00" in out
     # the measured source and its station distance are in the report
-    assert "synop" in out and "กม." in out
+    assert "metar" in out and "กม." in out

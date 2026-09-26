@@ -690,6 +690,10 @@ def main(argv: list[str] | None = None) -> int:
                                      "coverage — never a key or a URL that carries one")
     p.add_argument("source", choices=["tmd", "gistda"])
     p.add_argument("--json", action="store_true", help="machine-readable output, same redaction")
+    p.add_argument("--out", default=None,
+                   help="gistda only: also write the full per-endpoint detail (fields/samples/"
+                        "freshness) as markdown here; the terminal itself only gets a short "
+                        "summary line per endpoint")
     sub.add_parser("tuya-check", help="Tuya Cloud: keys, data center, and one token request")
     sub.add_parser("tuya-devices", help="Tuya Cloud: list devices — name, type, on/off. Read only")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
@@ -895,7 +899,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd in ("probe",):
         from . import probe
 
-        return probe.run(args.source, _secret, as_json=args.json)
+        return probe.run(args.source, _secret, as_json=args.json, out_path=args.out)
     if args.cmd == "stt-hints-check":
         from . import stt_hints
 

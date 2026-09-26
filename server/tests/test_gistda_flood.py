@@ -101,24 +101,50 @@ def test_summarize_provinces_maps_thai_names_to_th_codes():
     assert "TH-12" in provinces  # นนทบุรี
     bangkok = provinces["TH-10"]
     assert bangkok["features"] == 2
-    assert bangkok["area_km2"] == 2.3  # 1.5 + 0.8, both features carry area_km2
-    assert bangkok["latest"] == "2026-09-26"
+    # two DIFFERENT tambons (100101/100201) — both flood_area (rai) figures
+    # count: 937.5 rai + 500.0 rai = 1437.5 rai = 2.3 km²
+    assert bangkok["area_km2"] == pytest.approx(2.3)
+    assert bangkok["latest"] == "2026-09-26"  # from file_name, not img_date/date
 
 
-def test_summarize_provinces_sums_area_km2_when_the_field_is_present():
+def test_summarize_provinces_sums_flood_area_once_per_tambon():
     features = [
-        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "area_km2": 1.0, "date": "2026-09-20"}},
-        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "area_km2": 2.5, "date": "2026-09-21"}},
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "tb_idn": "1",
+                                            "flood_area": 625.0, "file_name": "rd2_20260920_0000"}},
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "tb_idn": "2",
+                                            "flood_area": 1562.5, "file_name": "rd2_20260921_0000"}},
     ]
     provinces = gf.summarize_provinces(features)
-    assert provinces["TH-10"]["area_km2"] == 3.5
+    assert provinces["TH-10"]["area_km2"] == pytest.approx(3.5)  # 1.0 + 2.5 km²
     assert provinces["TH-10"]["latest"] == "2026-09-21"
 
 
-def test_summarize_provinces_never_guesses_an_unnamed_area_unit():
-    features = [{"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "area": 999.0}}]
+def test_summarize_provinces_counts_a_tambons_flood_area_only_once():
+    """`flood_area` is a per-TAMBON rollup duplicated onto every parcel
+    feature that intersects it (confirmed live, 2026-09-26) — summing it
+    once per FEATURE would overcount by however many parcels share a
+    tambon. Two parcels, same tb_idn, same flood_area: counted once."""
+    features = [
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "tb_idn": "140117",
+                                            "flood_area": 40.2567, "file_name": "rd2_20260926_0613"}},
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "tb_idn": "140117",
+                                            "flood_area": 40.2567, "file_name": "rd2_20260926_0613"}},
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "tb_idn": "140117",
+                                            "flood_area": 40.2567, "file_name": "rd2_20260926_0613"}},
+    ]
     provinces = gf.summarize_provinces(features)
-    assert provinces["TH-10"]["area_km2"] is None  # "area" (no unit confirmed) is never read
+    bangkok = provinces["TH-10"]
+    assert bangkok["features"] == 3  # every parcel still counted
+    assert bangkok["area_km2"] == pytest.approx(40.2567 * gf.RAI_TO_KM2)  # the tambon's area, ONCE
+
+
+def test_summarize_provinces_never_guesses_an_unnamed_area_field():
+    features = [{"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "area": 999.0,
+                                                     "area_km2": 999.0, "shape_area_km2": 999.0}}]
+    provinces = gf.summarize_provinces(features)
+    # only "flood_area" (confirmed, in rai) is ever read — every other
+    # plausible-looking name (the old guesses included) is left alone
+    assert provinces["TH-10"]["area_km2"] is None
 
 
 def test_summarize_provinces_drops_unmapped_province_names():
@@ -274,22 +300,22 @@ def test_key_never_appears_in_a_fetch_failure_log(caplog):
 
 def test_fold_features_nests_districts_inside_their_province():
     features = [
-        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "ap_tn": "บางนา",
-                                            "area_km2": 1.0, "date": "2026-09-25"}},
-        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "ap_tn": "บางนา",
-                                            "area_km2": 0.5, "date": "2026-09-26"}},
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "ap_tn": "บางนา", "tb_idn": "1",
+                                            "flood_area": 625.0, "file_name": "rd2_20260925_0000"}},
+        {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "ap_tn": "บางนา", "tb_idn": "2",
+                                            "flood_area": 312.5, "file_name": "rd2_20260926_0000"}},
         {"type": "Feature", "properties": {"pv_tn": "กรุงเทพมหานคร", "district": "บางกะปิ",
-                                            "area_km2": 2.0, "date": "2026-09-24"}},
+                                            "flood_area": 1250.0, "file_name": "rd2_20260924_0000"}},
     ]
     by_name = gf.flood_forecast.province_name_to_code()
     running = {"provinces": {}, "total_features": 0, "unmapped": 0}
     gf._fold_features(features, running, by_name)
     bangkok = running["provinces"]["TH-10"]
     assert bangkok["features"] == 3
-    assert bangkok["area_km2"] == 3.5
+    assert bangkok["area_km2"] == pytest.approx(3.5)
     assert set(bangkok["districts"]) == {"บางนา", "บางกะปิ"}
     assert bangkok["districts"]["บางนา"]["features"] == 2
-    assert bangkok["districts"]["บางนา"]["area_km2"] == 1.5
+    assert bangkok["districts"]["บางนา"]["area_km2"] == pytest.approx(1.5)
     assert bangkok["districts"]["บางนา"]["latest"] == "2026-09-26"
     assert bangkok["districts"]["บางกะปิ"]["features"] == 1
 
@@ -427,11 +453,11 @@ def test_local_scope_refetches_a_different_grid_cell(monkeypatch):
 #: decision itself from the separate (and separately documented, 🔶) risk
 #: that a multi-feature page's own FIRST record might not be its newest.
 _ONE_FEATURE_PAGE = {"features": [{"type": "Feature",
-                                   "properties": {"pv_tn": "กรุงเทพมหานคร", "img_date": "2026-09-25",
-                                                  "area_km2": 1.0}}], "links": []}
+                                   "properties": {"pv_tn": "กรุงเทพมหานคร", "file_name": "rd2_20260925_0000",
+                                                  "flood_area": 625.0}}], "links": []}  # 1.0 km²
 _ONE_FEATURE_PAGE_NEWER = {"features": [{"type": "Feature",
-                                         "properties": {"pv_tn": "กรุงเทพมหานคร", "img_date": "2026-09-30",
-                                                        "area_km2": 9.0}}], "links": []}
+                                         "properties": {"pv_tn": "กรุงเทพมหานคร", "file_name": "rd2_20260930_0000",
+                                                        "flood_area": 5625.0}}], "links": []}  # 9.0 km²
 
 
 def test_quick_latest_date_skips_the_full_refresh_when_unchanged(monkeypatch):
@@ -477,3 +503,38 @@ def test_quick_latest_date_does_a_full_refresh_when_the_date_changed(monkeypatch
     assert len(calls) == 4  # quick-check + full page, twice
     assert first["national"]["total_area_km2"] == 1.0
     assert second["national"]["total_area_km2"] == 9.0
+
+
+# ------------------------------------------------------- flood-freq lookup ---
+
+def test_flood_freq_lookup_is_none_before_the_build_script_has_run(monkeypatch, tmp_path):
+    gf.forget_flood_freq_cache()
+    monkeypatch.setattr(gf, "FLOOD_FREQ_DATA_PATH", tmp_path / "does-not-exist.json")
+    try:
+        assert gf.load_flood_freq_districts() is None
+        assert gf.flood_freq_km2("14") is None
+        assert gf.flood_freq_km2("14", "อ.พระนครศรีอยุธยา") is None
+    finally:
+        gf.forget_flood_freq_cache()
+
+
+def test_flood_freq_lookup_reads_a_built_file(monkeypatch, tmp_path):
+    data_file = tmp_path / "gistda_flood_freq_districts.json"
+    data_file.write_text(json.dumps({
+        "source": "GISTDA flood-freq", "licence": "รอ Poom",
+        "provinces": {
+            "14": {"name": "จ.พระนครศรีอยุธยา", "districts": {
+                "อ.พระนครศรีอยุธยา": {"area_km2": 1.23, "avg_years_flooded": 3.5},
+                "อ.บางปะอิน": {"area_km2": 0.5, "avg_years_flooded": 1.0},
+            }},
+        },
+    }, ensure_ascii=False), encoding="utf-8")
+    gf.forget_flood_freq_cache()
+    monkeypatch.setattr(gf, "FLOOD_FREQ_DATA_PATH", data_file)
+    try:
+        assert gf.flood_freq_km2("14", "อ.พระนครศรีอยุธยา") == 1.23
+        assert gf.flood_freq_km2("14") == pytest.approx(1.73)  # both districts summed
+        assert gf.flood_freq_km2("99") is None  # province not in the file
+        assert gf.flood_freq_km2("14", "อ.ไม่มีอยู่จริง") is None  # district not in the file
+    finally:
+        gf.forget_flood_freq_cache()

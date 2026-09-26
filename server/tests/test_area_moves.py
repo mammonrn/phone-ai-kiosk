@@ -24,8 +24,8 @@ HAT_YAI = (7.0, 100.47)
 MODEL = {CHIANG_RAI: 21.0, BANGKOK: 31.0, HAT_YAI: 27.0}
 
 STATIONS = [
-    {"source": "synop", "id": "48303", "name": "CHIANG RAI", "lat": 19.96, "lon": 99.88},
-    {"source": "synop", "id": "48455", "name": "BANGKOK", "lat": 13.73, "lon": 100.56},
+    {"source": "metar", "id": "48303", "name": "CHIANG RAI", "lat": 19.96, "lon": 99.88},
+    {"source": "metar", "id": "48455", "name": "BANGKOK", "lat": 13.73, "lon": 100.56},
     {"source": "metar", "id": "VTSS", "name": "Hat Yai Intl", "lat": 6.93, "lon": 100.39},
 ]
 MEASURED = {"48303": 22.0, "48455": 32.5, "VTSS": 28.5}
@@ -67,8 +67,8 @@ def board(cfg, monkeypatch):
 
 def test_every_per_position_answer_follows_the_kiosk_across_regions(board, tmp_path):
     conn = store.connect(tmp_path / "b.sqlite")
-    expected = [(CHIANG_RAI, 22.0, "CHIANG RAI", "SYNOP"),
-                (BANGKOK, 32.5, "BANGKOK", "SYNOP"),
+    expected = [(CHIANG_RAI, 22.0, "CHIANG RAI", "METAR"),
+                (BANGKOK, 32.5, "BANGKOK", "METAR"),
                 (HAT_YAI, 28.5, "Hat Yai Intl", "METAR")]
     areas = []
     for i, (where, temp, station, label) in enumerate(expected):

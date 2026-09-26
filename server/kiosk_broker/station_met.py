@@ -1,8 +1,7 @@
 """Measured temperature (and, where sent, humidity) from สสน.'s ThaiWater
-station network — a SECOND free, no-signup, nationwide source of measured
-air temperature, independent of synop.py's Ogimet/TMD SYNOP reading, for
-the same reason Poom cannot get a TMDAPI uid/ukey: this module needs no
-key at all.
+station network — a free, no-signup, nationwide source of measured air
+temperature, for the same reason Poom cannot get a TMDAPI uid/ukey: this
+module needs no key at all.
 
 THE SOURCE, found the same way thaiwater_rain.py's own rain reader was
 found (this broker already trusts api-v3.thaiwater.net under DESIGN 5ผ —
@@ -33,10 +32,10 @@ measured temperature and this module does not attempt it.
 
 RESPONSE SIZE: each endpoint answers with EVERY station in Thailand in one
 JSON body (~1.7 MB temperature, ~1.5 MB humidity on 2026-09-26) — there is
-no "nearest station" or bounding-box query parameter, so, exactly like
-synop.py, this module fetches the whole country in one shot per parameter
-and leaves "which station is nearest to wherever the kiosk is right now"
-to the caller.
+no "nearest station" or bounding-box query parameter, so, same as
+metar.py's own nationwide fetch, this module fetches the whole country in
+one shot per parameter and leaves "which station is nearest to wherever
+the kiosk is right now" to the caller.
 
 JOINING temperature and humidity: BY `station.id` ONLY, never by name or
 position (two different physical stations can share a name). A station
@@ -49,17 +48,18 @@ reporting keeps its last value in this feed rather than disappearing).
 `observed_at` is decoded from each parameter's own `..._datetime` field
 (Bangkok local time, "YYYY-MM-DD HH:MM", the same convention
 thaiwater_rain.py's own `rainfall_datetime` uses) so the CALLER — the
-aggregator picking the best nearby, RECENT reading across synop.py and
-this module — can reject a stale one; this module only rejects physically
-IMPLAUSIBLE values (same bounds as synop.py), never old-but-plausible ones,
-since "how old is too old" is the aggregator's call, not this reader's.
+aggregator picking the best nearby, RECENT reading across every station
+reader — can reject a stale one; this module only rejects physically
+IMPLAUSIBLE values (the same kind of bounds check metar.py applies to its
+own readings), never old-but-plausible ones, since "how old is too old"
+is the aggregator's call, not this reader's.
 
 CACHING: `StationMetCache` fetches both endpoints once per refresh, at most
 every `ttl` seconds (TTL_SECONDS, 30 minutes — the same cadence
 thaiwater_rain.py's own POLL_SECONDS already uses for this host, chosen
 there as "two polls an hour catches every hourly reading without asking
 more than the gauges themselves update"), in the BACKGROUND, same shape as
-synop.SynopCache and nwp.NwpCache.
+metar.MetarCache and nwp.NwpCache.
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ TTL_SECONDS = 1800
 BANGKOK = dt.timezone(dt.timedelta(hours=7))
 
 #: Tests switch this off so a refresh runs in the caller's thread — same
-#: idea as synop.BACKGROUND / nwp.BACKGROUND.
+#: idea as metar.BACKGROUND / nwp.BACKGROUND.
 BACKGROUND = True
 
 
@@ -214,7 +214,7 @@ def parse(temperature_raw: dict, humid_raw: "dict | None" = None) -> list[dict]:
 def fetch_all(timeout: float = FETCH_TIMEOUT, fetch=None) -> list[dict]:
     """One nationwide temperature fetch + one humidity fetch, joined and
     ready for the aggregator to pick from. Never raises: a fetch or parse
-    failure yields [], the same "nothing this refresh" rule synop.py and
+    failure yields [], the same "nothing this refresh" rule metar.py and
     nwp.py already follow. A humidity-fetch failure alone still returns
     temperature-only rows (rh: None) rather than discarding everything."""
     try:
@@ -241,7 +241,7 @@ def fetch_all(timeout: float = FETCH_TIMEOUT, fetch=None) -> list[dict]:
 class StationMetCache:
     """The last good ThaiWater temperature/humidity fetch, refreshed at most
     every `ttl` seconds and in the BACKGROUND — same shape as
-    synop.SynopCache (one "position": all of Thailand, no per-position
+    metar.MetarCache (one "position": all of Thailand, no per-position
     keying)."""
 
     def __init__(self, ttl: int = TTL_SECONDS, timeout: float = FETCH_TIMEOUT, fetch=None):

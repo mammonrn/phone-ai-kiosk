@@ -359,7 +359,7 @@ _OM_BODY = {"current": {"temperature_2m": 22.8, "relative_humidity_2m": 90,
                       "sunrise": ["2026-09-23T06:05"], "sunset": ["2026-09-23T18:13"]}}
 
 
-def _station(kind, value, source="synop", km=5.2, name="CHIANG RAI"):
+def _station(kind, value, source="metar", km=5.2, name="CHIANG RAI"):
     return {"value": value, "source": source, "id": "48303", "name": name,
             "distance_km": km, "observed_at": 1_800_000_000.0}
 
@@ -383,16 +383,16 @@ def test_a_close_fresh_station_becomes_the_primary_temperature_and_humidity(monk
 
     def measured(kind, elev):
         asked.append((kind, elev))
-        return {"temp": _station("temp", 25.0), "rh": _station("rh", 70.0, source="metar", km=8.0),
+        return {"temp": _station("temp", 25.0), "rh": _station("rh", 70.0, source="thaiwater", km=8.0),
                 "wind": _station("wind", 5.6)}[kind]
 
     got = dashboard_mod.fetch_weather(20.05, 99.89, timeout=1, measured=measured)
-    assert got["temp_c"] == 25.0 and got["temp_source"] == "SYNOP"
-    assert got["humidity"] == 70 and got["humidity_source"] == "METAR"
+    assert got["temp_c"] == 25.0 and got["temp_source"] == "METAR"
+    assert got["humidity"] == 70 and got["humidity_source"] == "สสน."
     # the modelled value is kept for verify.py, and the station's distance is shown
     assert got["model_temp_c"] == pytest.approx(22.8)
     assert got["measured"]["temp"]["distance_km"] == 5.2
-    assert got["measured"]["rh"]["source"] == "metar"
+    assert got["measured"]["rh"]["source"] == "thaiwater"
     # today's forecast wind peak is untouched; the station's current wind travels apart
     assert got["measured"]["wind"]["value"] == 5.6
     # Open-Meteo's own elevation for the point is handed to the station choice
@@ -405,7 +405,7 @@ def test_station_and_open_meteo_disagreeing_by_a_lot_is_logged_and_the_station_w
         got = dashboard_mod.fetch_weather(
             20.05, 99.89, timeout=1,
             measured=lambda kind, elev: _station(kind, 31.0) if kind == "temp" else None)
-    assert got["temp_c"] == 31.0 and got["temp_source"] == "SYNOP"
+    assert got["temp_c"] == 31.0 and got["temp_source"] == "METAR"
     assert got["humidity_source"] == "Open-Meteo"
     assert "disagree" in caplog.text
 
@@ -414,8 +414,8 @@ def test_a_station_credit_only_appears_on_a_fetch_where_a_station_answered(cfg, 
     """See dashboard.Dashboard.snapshot: attribution for a source used this
     fetch, not one merely wired in."""
     snapshot = _snapshot(cfg)  # fake_sources' fake weather() never uses a station
-    assert "SYNOP" not in snapshot["weather"]["credit"]
     assert "METAR" not in snapshot["weather"]["credit"]
+    assert "สสน." not in snapshot["weather"]["credit"]
 
 
 def test_sunrise_and_sunset_come_from_the_same_request(monkeypatch):

@@ -1,38 +1,46 @@
-# Synthetic fixtures — GISTDA flood extent (api-gateway.gistda.or.th)
+# Fixtures — GISTDA flood extent (api-gateway.gistda.or.th)
 
-GISTDA's public dataset pages (`opendata.gistda.or.th/dataset/flood-disaster-data`,
-`disaster.gistda.or.th/landing/services`, read 2026-09-26) list the
-`features/flood/{1day,3days,7days,30days}` endpoints and their query
-parameters (`api_key`, `bbox`, `pv_idn`/`ap_idn`/`tb_idn`, `limit`,
-`offset`) but do **not** publish the response JSON schema, the GeoJSON
-`properties` field names, the pagination shape, or the unit of any area
-field — confirmed only indirectly via `probe.py`'s own `place_fields`
-(`properties.pv_tn`, `properties.province`) and `freshness_fields`
-(`properties.img_date`, `properties.date`).
+✅ CONFIRMED 2026-09-26 against a real (public demo) key — full write-up in
+`docs/research/gistda-fields.md`. These two fixtures follow the CONFIRMED
+shape (a `features` GeoJSON array, `numberMatched`/`numberReturned`
+counters, a `links` array with a `rel: "next"` entry on the first page),
+with real property names taken from a live `flood/1day`/`flood/3days`
+response, geometry trimmed to a tiny 5-point polygon (never the real,
+much larger, parcel boundary):
 
-These two fixtures are therefore **entirely synthetic**, built to the most
-common shape for this kind of "OGC API Features"-style service (a
-`features` GeoJSON array, plus either a `links` array with a `rel: "next"`
-entry or `numberMatched`/`numberReturned` counters) so `gistda_flood.py`'s
-pager has something realistic to walk across two pages:
+* `pv_idn`/`pv_tn`, `ap_idn`/`ap_tn`, `tb_idn`/`tb_tn` — province/district/
+  subdistrict id + Thai name, confirmed live.
+* `file_name` — the source satellite image id(s), embedding a
+  `YYYYMMDD_HHMM`; the real freshness signal (`gistda_flood._feature_date`
+  parses the first embedded date). `_createdAt` (also present on real
+  responses) is only GISTDA's own database write time, not used for
+  freshness any more.
+* `flood_area` — the flooded area of the WHOLE tambon (`tb_idn`) a feature
+  belongs to, in **rai** (1 rai = 1,600 m² = 0.0016 km², confirmed by a
+  live unit cross-check against flood-freq's own `area_rai`/`shape_area`
+  pair), duplicated identically across every parcel feature that
+  intersects that tambon — `gistda_flood._fold_features`/
+  `summarize_provinces` count it once per `tb_idn`, not once per feature.
 
-* `flood_3days_page1.json` — 2 features, a `links` `next` entry pointing at
-  `flood_3days_page2.json`'s own offset, `numberMatched: 3`.
-* `flood_3days_page2.json` — the last feature, no `next` link.
-
-`properties.pv_tn` values are real Thai province names taken from
+`properties.pv_tn` values are real Thai province names from
 `kiosk_broker/data/provinces.json` (กรุงเทพมหานคร / นนทบุรี) so the
-province-code mapping test has something real to match; one feature carries
-an unrecognised name to exercise the "unmapped province" path.
+province-code mapping test has something real to match.
 
-🔶 **Not confirmed and should be checked against a real key**
-(`$B probe gistda` once `GISTDA_API_KEY` is set): the exact pagination
-style, whether `links`/`next` exists at all, any area field's name or
-unit, and (added later) the DISTRICT (amphoe) property name —
-`gistda_flood._DISTRICT_NAME_KEYS` guesses `ap_tn`/`district` by symmetry
-with `pv_tn`/`province`, purely from the documented `pv_idn`/`ap_idn`/
-`tb_idn` query-parameter triple, never confirmed against a live response.
-`gistda_flood.py` deliberately reports `area_km2: None` unless a field is
-unambiguously named in km², rather than guess a unit. Replace these
-fixtures with a real trimmed sample once a probe confirms the shape, and
-delete this note.
+* `flood_3days_page1.json` — 2 Bangkok features, DIFFERENT tambons
+  (100101/100201, so their `flood_area` figures legitimately add up), a
+  `links` `next` entry pointing at `flood_3days_page2.json`'s own offset,
+  `numberMatched: 3`.
+* `flood_3days_page2.json` — the third (Nonthaburi) feature, no `next`
+  link.
+
+`tests/test_gistda_flood.py` also has an inline test
+(`test_summarize_provinces_counts_a_tambons_flood_area_only_once`) for the
+tambon-dedup rule itself, with THREE parcels sharing one `tb_idn` — that
+case is deliberately not in these fixture files, to keep the two-page
+pagination story in the fixtures simple.
+
+Not covered by these fixtures (see docs/research/gistda-fields.md
+instead): flood-freq's own per-pixel schema (`area_rai`, `shape_area`,
+`freq`, `y_2011`..`y_2024`) and drought-recurrence's pre-aggregated plain
+JSON array — both are a different shape from flood/{1day,3days,7days,
+30days}'s own GeoJSON.

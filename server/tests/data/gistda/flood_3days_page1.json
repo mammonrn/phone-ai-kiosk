@@ -8,13 +8,29 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [100.5, 13.75]},
-      "properties": {"pv_tn": "กรุงเทพมหานคร", "img_date": "2026-09-25", "area_km2": 1.5}
+      "geometry": {"type": "Polygon", "coordinates": [[[100.50, 13.75], [100.50, 13.751], [100.501, 13.751], [100.501, 13.75], [100.50, 13.75]]]},
+      "properties": {
+        "pv_idn": 10, "pv_tn": "กรุงเทพมหานคร",
+        "ap_idn": 1001, "ap_tn": "เขตบางนา",
+        "tb_idn": "100101", "tb_tn": "ต.บางนา",
+        "lat": 13.75, "long": 100.5,
+        "file_name": "rd2_20260925_0600",
+        "flood_area": 937.5,
+        "_createdAt": "2026-09-26T06:00:00.000Z"
+      }
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [100.52, 13.9]},
-      "properties": {"pv_tn": "กรุงเทพมหานคร", "img_date": "2026-09-26", "area_km2": 0.8}
+      "geometry": {"type": "Polygon", "coordinates": [[[100.52, 13.90], [100.52, 13.901], [100.521, 13.901], [100.521, 13.90], [100.52, 13.90]]]},
+      "properties": {
+        "pv_idn": 10, "pv_tn": "กรุงเทพมหานคร",
+        "ap_idn": 1002, "ap_tn": "เขตห้วยขวาง",
+        "tb_idn": "100201", "tb_tn": "ต.ห้วยขวาง",
+        "lat": 13.90, "long": 100.52,
+        "file_name": "rd2_20260926_0613",
+        "flood_area": 500.0,
+        "_createdAt": "2026-09-26T06:13:00.000Z"
+      }
     }
   ]
 }

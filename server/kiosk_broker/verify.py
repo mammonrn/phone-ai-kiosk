@@ -13,11 +13,11 @@ SETTLING NEEDS A GROUND TRUTH, and not every kind has one here:
 * rain_chance and temp settle against MEASURED values near the forecast's
   own point (Poom 2026-09-26: free, no-signup sources nationwide, nearest
   to wherever the kiosk was — obs.py): rain against สสน.'s hourly gauges
-  first, then any station whose rain periods exactly cover the window
-  (SYNOP 6RRR, hourly reports); temperature against the nearest station of
-  obs.py's choice (SYNOP, METAR, สสน., Air4Thai) that has a reading at that
-  hour. Never a partial sum, never a station outside obs.MAX_KM — a window
-  with no complete truth near it is simply never settled and ages out.
+  first, then any other station whose stored rain periods exactly cover
+  the window; temperature against the nearest station of obs.py's choice
+  (METAR, สสน., Air4Thai) that has a reading at that hour. Never a partial
+  sum, never a station outside obs.MAX_KM — a window with no complete
+  truth near it is simply never settled and ages out.
 
 * uv has no ground truth source wired here at all (no station in Thailand
   publishes a measured UV index this broker can reach for free). `record`
@@ -153,10 +153,9 @@ def _parse_point(area: str) -> "tuple[float, float] | None":
 #: never a position) — forecast-score's default area.
 KIOSK_AREA_STATE_KEY = "kiosk_area"
 
-#: SYNOP's main hours in Bangkok local time (00, 03, ... 21 UTC) — the eight
-#: hours tomorrow's hourly temperature forecasts are recorded for, and the
-#: eight readings that make a complete day for a 3-hourly station.
-SYNOP_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
+#: Standard 3-hourly reporting times in Bangkok local time (01, 04, ... 22) —
+#: the eight hours tomorrow's hourly temperature forecasts are recorded for.
+STANDARD_HOURS = (1, 4, 7, 10, 13, 16, 19, 22)
 
 
 def area_code_for(area) -> "str | None":
@@ -228,15 +227,15 @@ def open_points(conn, now: "float | None" = None, days: int = 3, limit: int = 20
     return out
 
 
-def synoptic_hours(valid_from: float, valid_to: float) -> "list[float]":
-    """Every SYNOP main hour inside (valid_from, valid_to], as epoch
-    seconds — a day has eight."""
+def standard_hours(valid_from: float, valid_to: float) -> "list[float]":
+    """Every standard 3-hourly reporting time inside (valid_from, valid_to],
+    as epoch seconds — a day has eight."""
     start = dt.datetime.fromtimestamp(valid_from, BANGKOK)
     end = dt.datetime.fromtimestamp(valid_to, BANGKOK)
     day = start.replace(hour=0, minute=0, second=0, microsecond=0)
     slots = []
     while day <= end:
-        for hour in SYNOP_HOURS:
+        for hour in STANDARD_HOURS:
             slot_ts = day.replace(hour=hour).timestamp()
             if valid_from < slot_ts <= valid_to:
                 slots.append(slot_ts)
@@ -723,7 +722,7 @@ def cli_forecast_score(conn, days: int, area: "str | None" = None, all_areas: bo
 #                                   over the whole day)
 #   rain_day       mm               open_meteo, tmd_nwp, blend      today, first time seen before 12:00
 #   temp_max/min   deg C            open_meteo, tmd_nwp, blend      tomorrow, first time seen today
-#   temp_hour      deg C            open_meteo, tmd_nwp, blend      tomorrow's eight SYNOP hours
+#   temp_hour      deg C            open_meteo, tmd_nwp, blend      tomorrow's eight standard hours
 #                                                                    (01, 04, ... 22), first time seen today
 #
 # "Before 12:00" for today's rain: a forecast first seen in the evening
@@ -731,25 +730,22 @@ def cli_forecast_score(conn, days: int, area: "str | None" = None, all_areas: bo
 #
 # GROUND TRUTH (see the module docstring for the older kinds) — measured
 # values near the forecast's own point, chosen the same way obs.py chooses
-# for the card (obs.MAX_KM per kind, SYNOP first when distances are
+# for the card (obs.MAX_KM per kind, METAR first when distances are
 # similar), station distance kept with the settlement (truth_km):
 #
 # * Rain (rain_prob, rain_prob_day, rain_day): ThaiWater's hourly gauges
 #   (thaiwater_rain.py) first — the nearest gauge within THAIWATER_MAX_KM that
-#   has EVERY hour of the window stored — then any obs.py station whose
-#   stored rain periods (SYNOP 6RRR, hourly reports) exactly tile the
-#   window. Never a partial sum. "Rained" = at least RAIN_HIT_MM.
+#   has EVERY hour of the window stored — then any other obs.py station
+#   whose stored rain periods (hourly reports) exactly tile the window.
+#   Never a partial sum. "Rained" = at least RAIN_HIT_MM.
 # * Temperature (temp_hour, temp_max, temp_min): obs.py's stored hourly
 #   readings (obs_hourly). temp_hour compares the exact hour. temp_max/min
 #   need a COMPLETE day from one station: at least MIN_HOURLY_READINGS of
-#   the 24 hours, or all eight SYNOP main hours — so the night is always in
-#   it. From eight 3-hourly readings the true peak usually falls between
-#   them (the measured max a little LOW, the min a little HIGH), which makes
-#   forecasts look slightly worse, never better.
+#   the 24 hours, so the night is always in it.
 
 THAIWATER_MAX_KM = 20.0
 #: A day's max/min from hourly readings needs at least this many of its 24
-#: hours (a 3-hourly station needs all eight SYNOP hours instead).
+#: hours.
 MIN_HOURLY_READINGS = 20
 #: Sources that are blended (blend.py) — "blend" and "ensemble" are
 #: recorded too but never weighted against themselves.
@@ -917,18 +913,17 @@ def observed_temp_extreme(conn, lat: float, lon: float, day_from: float, day_to:
                           which: str) -> "tuple[float, str, float] | None":
     """(the day's measured max or min, source, station km) from the preferred
     station near the point that has a COMPLETE day in [day_from, day_to):
-    at least MIN_HOURLY_READINGS hours, or every SYNOP main hour. None when
-    no station near enough has one (the forecast waits, then ages out)."""
+    at least MIN_HOURLY_READINGS hours. None when no station near enough
+    has one (the forecast waits, then ages out)."""
     if which not in ("max", "min"):
         raise ValueError(which)
-    synop = set(synoptic_hours(day_from - 1, day_to - 1))
     for km, source, slat, slon in obs.stations_near(conn, lat, lon, "temp"):
         rows = conn.execute(
             "SELECT hour, temp_c FROM obs_hourly WHERE source = ? AND station_lat = ? AND station_lon = ?"
             " AND hour >= ? AND hour < ? AND temp_c IS NOT NULL",
             (source, slat, slon, day_from, day_to)).fetchall()
         have = {r["hour"]: r["temp_c"] for r in rows}
-        if len(have) >= MIN_HOURLY_READINGS or (synop and synop <= set(have)):
+        if len(have) >= MIN_HOURLY_READINGS:
             values = list(have.values())
             return (max(values) if which == "max" else min(values)), source, km
     return None
@@ -1209,7 +1204,7 @@ def report_target_lines(targets: dict, value_shares: "dict | None" = None) -> li
     tt = targets["temp_tomorrow"]
     if not tt["verdict"]:
         lines.append(f"  ยังไม่มีผลเทียบ — ต้องมีสถานีวัดอุณหภูมิห่างตู้ไม่เกิน {obs.MAX_KM['temp']:.0f} กม. "
-                     f"ที่มีค่าครบทั้งวัน (≥{MIN_HOURLY_READINGS} ชม. หรือครบ 8 เวลาหลักของ SYNOP)")
+                     f"ที่มีค่าครบทั้งวัน (≥{MIN_HOURLY_READINGS} ชม.)")
     for s, verdict in tt["verdict"].items():
         parts = []
         for label, table in (("สูงสุด", tt["tmax"]), ("ต่ำสุด", tt["tmin"])):

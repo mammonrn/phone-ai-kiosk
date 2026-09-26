@@ -214,9 +214,14 @@ def test_probe_gistda_sends_the_key_as_a_query_param_and_never_prints_it():
 
     def fetch(url, timeout, limit, headers=None):
         calls.append((url, headers))
-        body = json.dumps({"features": [
-            {"properties": {"pv_tn": "เชียงใหม่", "date": "2026-09-26", "owner": "someone"}},
-        ]}).encode()
+        if "gi-service" in url:  # drought-recurrence: a bare JSON array, no "features" wrapper
+            body = json.dumps([
+                {"province_name": "เชียงใหม่", "district_name": "เมือง", "owner": "someone"},
+            ]).encode()
+        else:
+            body = json.dumps({"features": [
+                {"properties": {"pv_tn": "เชียงใหม่", "file_name": "rd2_20260926_0613", "owner": "someone"}},
+            ]}).encode()
         return 200, body
 
     secret_key = "gistda-super-secret-key"
@@ -226,7 +231,11 @@ def test_probe_gistda_sends_the_key_as_a_query_param_and_never_prints_it():
     assert len(calls) == len(probe.GISTDA_ENDPOINTS)
     for url, headers in calls:
         assert f"api_key={secret_key}" in url
-        assert not headers
+        # only drought-recurrence (gi-service) needs a Referer — see EndpointSpec.extra_headers
+        if "gi-service" in url:
+            assert headers == {"Referer": "https://opendata.gistda.or.th/dataset/disasters-02"}
+        else:
+            assert not headers
     text = out.getvalue()
     assert secret_key not in text
     assert "owner" not in text  # personal-looking field must not survive into print
@@ -241,6 +250,47 @@ def test_probe_gistda_reports_a_non_200_status_honestly():
     rc = probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), out=out, fetch=fetch, sleep=lambda s: None)
     assert rc == 0
     assert "401" in out.getvalue()
+
+
+def test_probe_gistda_prints_a_short_summary_within_40_lines():
+    out = io.StringIO()
+
+    def fetch(url, timeout, limit, headers=None):
+        if "gi-service" in url:
+            return 200, json.dumps([{"province_name": "เชียงใหม่"}]).encode()
+        return 200, json.dumps({"features": [
+            {"properties": {"pv_tn": "เชียงใหม่", "file_name": "rd2_20260926_0613"}},
+        ]}).encode()
+
+    rc = probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), out=out, fetch=fetch, sleep=lambda s: None)
+    assert rc == 0
+    text = out.getvalue()
+    lines = [line for line in text.splitlines() if line.strip()]
+    assert len(lines) <= 40
+    # one summary line per endpoint, none of the old full "fields   :" dumps
+    assert sum(1 for line in lines if line.startswith("- ")) == len(probe.GISTDA_ENDPOINTS)
+    assert "fields      :" not in text
+
+
+def test_probe_gistda_out_writes_the_full_detail_as_markdown(tmp_path):
+    out = io.StringIO()
+    out_file = tmp_path / "gistda-fields.md"
+
+    def fetch(url, timeout, limit, headers=None):
+        if "gi-service" in url:
+            return 200, json.dumps([{"province_name": "เชียงใหม่"}]).encode()
+        return 200, json.dumps({"features": [
+            {"properties": {"pv_tn": "เชียงใหม่", "file_name": "rd2_20260926_0613"}},
+        ]}).encode()
+
+    rc = probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), out=out, fetch=fetch, sleep=lambda s: None,
+                          out_path=str(out_file))
+    assert rc == 0
+    assert str(out_file) in out.getvalue()
+    md = out_file.read_text(encoding="utf-8")
+    assert md.count("## ") == len(probe.GISTDA_ENDPOINTS)
+    assert "fields:" in md
+    assert "api_key" not in md  # only the redacted path, never a query string, ever hits this file
 
 
 def test_probe_json_output_is_valid_json_and_still_redacted():
@@ -387,7 +437,7 @@ def test_paginate_features_first_page_non_200_is_reported_plainly():
     assert status == 404 and records == [] and pages_fetched == 1
 
 
-def test_run_gistda_reports_the_true_total_across_pages():
+def test_run_gistda_reports_the_true_total_across_pages(tmp_path):
     def fetch(url, timeout, limit, headers=None):
         offset = int(dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))["offset"])
         if offset == 0:
@@ -399,11 +449,15 @@ def test_run_gistda_reports_the_true_total_across_pages():
         return 200, json.dumps({"features": page}).encode("utf-8")
 
     out = io.StringIO()
-    rc = probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), out=out, fetch=fetch, sleep=lambda s: None)
+    out_file = tmp_path / "full.md"
+    rc = probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), out=out, fetch=fetch, sleep=lambda s: None,
+                          out_path=str(out_file))
     assert rc == 0
-    text = out.getvalue()
-    assert f"{probe.GISTDA_PAGE_LIMIT + 7} รายการ" in text
-    assert "pages       : 2" in text
+    # the short terminal summary still carries the TRUE total...
+    assert f"{probe.GISTDA_PAGE_LIMIT + 7} รายการ" in out.getvalue()
+    # ...and the full detail (pages/pagination notes) lands in --out, not the terminal
+    md = out_file.read_text(encoding="utf-8")
+    assert "pages: 2" in md
 
 
 # --------------------------------------------------------------- endpoint fixes ---

@@ -16,7 +16,11 @@ count / bbox / province count), and bytes read.
 NEVER PRINTED, BY CONSTRUCTION:
   * the key itself, in any form (plain, URL-encoded);
   * any URL that carries a query string (only the path is ever printed);
-  * request headers (which, for GISTDA, carry the key);
+  * request headers (NWP's Bearer token travels this way; GISTDA's own key
+    never does — see the GISTDA section below — but one GISTDA endpoint,
+    drought-recurrence, needs a non-secret `Referer` header, also never
+    printed, just in case a future endpoint ever puts something sensitive
+    there too);
   * an error body or exception message that might echo the request URL back
     (`redact()` scrubs every configured secret value out of everything this
     module prints, including exception text, before it reaches `out`).
@@ -43,6 +47,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 USER_AGENT = "phone-ai-kiosk/1.0 (+https://github.com/mammonrn/phone-ai-kiosk)"
@@ -247,6 +252,13 @@ class EndpointSpec:
     #: per-endpoint override — flood-freq answered slowly enough on
     #: 2026-09-26 to need longer than the others, once, no retry loop.
     timeout: float = FETCH_TIMEOUT
+    #: per-endpoint headers, merged with whatever the caller already passes
+    #: (NWP's shared Bearer token) — confirmed 2026-09-26: GISTDA's
+    #: `gi-service` family (drought-recurrence) 403s with
+    #: "REFERER_REQUIRED" unless a `Referer` matching its own dataset page
+    #: is sent; the `features` family (flood/*, water_hyacinth) needs none.
+    #: Never a secret — this only ever carries a public URL.
+    extra_headers: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -330,62 +342,111 @@ NWP_ENDPOINTS: tuple[EndpointSpec, ...] = (
 #: https://opendata.gistda.or.th/dataset/flood-disaster-data and
 #: .../disasters-02, read 2026-09-26) authenticates the "features" family
 #: with ONE value in the query string, `api_key=` — never a header, never a
-#: second id/secret. A SEPARATE STAC catalogue for the same flood datasets
+#: second id/secret. CONFIRMED 2026-09-26 against the demo key GISTDA itself
+#: publishes on those two dataset pages (live "ลองใช้งาน" example URLs —
+#: never Poom's own key, never written to a file); full findings in
+#: docs/research/gistda-fields.md, summary here:
+#:   * `bbox` DOES filter server-side (proof: a small box over Chiang Rai
+#:     returned 0 features, the same box moved to Ayutthaya returned 43,
+#:     numberMatched matched numberReturned in both cases) — the "bbox
+#:     ignored, coordinates near Ayutthaya not Bangkok" symptom Poom saw was
+#:     this probe's OWN `_BANGKOK_BBOX` being ~155 km tall and quietly
+#:     including Ayutthaya, not a server-side bug; shrunk below.
+#:   * `pv_idn`/`ap_idn`/`tb_idn` (province/district/subdistrict — matching
+#:     provinces.json's own 2-digit codes for `pv_idn`, confirmed: pv_idn=14
+#:     landed on "จ.พระนครศรีอยุธยา") filter server-side too, independent of
+#:     `bbox` — either alone, or combined (an AND).
+#:   * `limit` is honoured up to at least 5000 in ONE page (no server-side
+#:     cap seen below that) — GISTDA_PAGE_LIMIT below (200) is this probe's
+#:     own politeness choice, not a server minimum.
+#:   * `sort=asc`/`sort=desc` made no difference to feature order in a live
+#:     test — do not rely on it.
+#:   * NO field-selection/geometry-skipping parameter exists: an unknown
+#:     query parameter (tried: `properties=`, `select=`, `fields=`,
+#:     `skipGeometry=`, `geometry=false`) is silently treated as an
+#:     impossible extra filter — the response comes back 200 with
+#:     numberMatched=0, not an error and not "ignored". Never add a
+#:     speculative parameter to a live request; it looks like "no data
+#:     here", not "bad request".
+#:   * real `properties` field names (flood/1day, confirmed by a live probe,
+#:     never `img_date`/`date` as originally guessed): pv_idn/pv_tn,
+#:     ap_idn/ap_tn, tb_idn/tb_tn, lat/long, `file_name` (the source image
+#:     id(s), comma-joined, each ending in an embedded YYYYMMDD_HHMM —
+#:     THIS is the freshness signal, not `_createdAt`/`_updatedAt` which are
+#:     only GISTDA's own database write time, clustered at probe time
+#:     regardless of the window asked for), `flood_area` (rai, confirmed by
+#:     unit cross-check — see docs/research/gistda-fields.md — duplicated
+#:     across every parcel feature in the same tb_idn, i.e. a per-SUBDISTRICT
+#:     rollup, not per-feature), and several per-PARCEL crop-area fields in
+#:     m² (`_area`/`f_area`/`rice_area`/`cassava_area`/`maize_area`/
+#:     `sugarcane_area`) plus building/hospital/school/population counts.
+#:     flood-freq's own schema instead carries `area_rai` (per-pixel, rai),
+#:     `shape_area` (the same pixel, m² — area_rai*1600 ≈ shape_area,
+#:     confirming the unit), `freq` (count of `y_2011`..`y_2024` flagged 1)
+#:     — genuinely one tiny (~0.02 rai) polygon per pixel: one district
+#:     alone (Phra Nakhon Si Ayutthaya) answered 12,829 of them, which is
+#:     why a whole-country crawl belongs to tools/build_flood_freq.py, run
+#:     once on the VPS with Poom's own key, not this probe.
+#:   * `gi-service` endpoints (drought-recurrence) are a DIFFERENT API
+#:     family: a plain JSON array (no `features`/`links` wrapper, no
+#:     pagination), pre-aggregated per subdistrict, and 403
+#:     "REFERER_REQUIRED" without a `Referer` header naming the dataset
+#:     page — see `extra_headers` below.
+#: A SEPARATE STAC catalogue for the same flood datasets
 #: (`/api/2.0/resources/stac/flood/...`) instead documents a `token=`
 #: parameter; whether that is the SAME value as `api_key` was not confirmed
-#: from the public pages alone (Poom's own sign-up confirmation may say —
-#: worth checking), so the STAC and WMS/WMTS/TMS map-tile forms are left out
-#: of this probe: tiles are images, not the field/freshness/coverage summary
-#: this tool exists to print, and a wrong guess at `token` would just be
-#: noise. Every endpoint below needs a location/scope parameter to answer at
-#: all (there is no "give me all of Thailand" call) — this probe uses a
-#: SMALL bbox around Bangkok's own well-known public coordinate (never
-#: anything from Poom's own household), not the whole country: GISTDA's own
-#: pagination ignores each endpoint's `limit=5` here anyway (confirmed by
-#: Poom's own live run, 2026-09-26: flood/1day alone paged 21 times, 4200+
-#: features, before hitting the byte cap, because `_paginate_features`
-#: always asks GISTDA_PAGE_LIMIT per page regardless of an endpoint's own
-#: `limit`) — so the only real lever this probe has for staying small is
-#: asking about a SMALL AREA, matching `gistda_flood.py`'s own LOCAL scope
-#: (`_bbox_around`, ~100 km wide) rather than a whole-country box.
-_BANGKOK_BBOX = "99.7018,13.0563,101.3018,14.4563"  # ~±0.8° around Bangkok
+#: (Poom's own sign-up confirmation may say — worth checking), so the STAC
+#: and WMS/WMTS/TMS map-tile forms are left out of this probe: tiles are
+#: images, not the field/freshness/coverage summary this tool exists to
+#: print, and a wrong guess at `token` would just be noise (see the
+#: "unknown parameter → silent 0 results" finding above).
+_BANGKOK_BBOX = "100.4000,13.6500,100.7000,13.8500"  # inner Bangkok only —
+#: deliberately small and NORTH-EDGE short of Ayutthaya (~14.3°N) so this
+#: probe's own numbers stay a genuine "one city" sample; see the bbox-proof
+#: note above and docs/research/gistda-fields.md for the two-bbox comparison.
 
 GISTDA_ENDPOINTS: tuple[EndpointSpec, ...] = (
     EndpointSpec(
         name="flood/1day (พื้นที่น้ำท่วม ปัจจุบัน/1 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/1day",
         kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
-        freshness_fields=("properties.img_date", "properties.date"),
-        place_fields=("properties.pv_tn", "properties.province"),
+        freshness_fields=("properties.file_name",),
+        place_fields=("properties.pv_tn",),
     ),
     EndpointSpec(
         name="flood/3days (พื้นที่น้ำท่วมสะสม 3 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/3days",
         kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
-        freshness_fields=("properties.img_date", "properties.date"),
-        place_fields=("properties.pv_tn", "properties.province"),
+        freshness_fields=("properties.file_name",),
+        place_fields=("properties.pv_tn",),
     ),
     EndpointSpec(
         name="flood/7days (พื้นที่น้ำท่วมสะสม 7 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/7days",
         kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
-        freshness_fields=("properties.img_date", "properties.date"),
-        place_fields=("properties.pv_tn", "properties.province"),
+        freshness_fields=("properties.file_name",),
+        place_fields=("properties.pv_tn",),
     ),
     EndpointSpec(
         name="flood/30days (พื้นที่น้ำท่วมสะสม 30 วัน)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood/30days",
         kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
-        freshness_fields=("properties.img_date", "properties.date"),
-        place_fields=("properties.pv_tn", "properties.province"),
+        freshness_fields=("properties.file_name",),
+        place_fields=("properties.pv_tn",),
     ),
     EndpointSpec(
-        # Slower to answer than the others on 2026-09-26 (it scans 2011-2023,
-        # not a rolling window) — a longer timeout, once, no retry loop.
-        name="flood-freq (พื้นที่น้ำท่วมซ้ำซาก 2011-2023)",
+        # A single (pv_idn, ap_idn)-scoped request answers in well under a
+        # second (confirmed live) — it is asking for the WHOLE COUNTRY at
+        # once (this probe's small bbox) that is slow/times out, because
+        # each district alone can hold 10,000+ pixel-level features (see
+        # the module comment above). A longer timeout, once, no retry loop.
+        name="flood-freq (พื้นที่น้ำท่วมซ้ำซาก 2011-2024)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood-freq",
         kind="json", records_key="features", extra_params={"bbox": _BANGKOK_BBOX, "limit": "5"},
-        place_fields=("properties.pv_tn", "properties.province"),
+        freshness_fields=("properties._createdAt",),  # this dataset is static;
+        # _createdAt is when GISTDA itself last (re)built the record, the
+        # closest thing to an "as of" date it publishes.
+        place_fields=("properties.pv_tn",),
         timeout=FETCH_TIMEOUT * 3,
     ),
     EndpointSpec(
@@ -393,17 +454,29 @@ GISTDA_ENDPOINTS: tuple[EndpointSpec, ...] = (
         # names) answered 404 on 2026-09-26; the SAME page's own live "ลองใช้
         # งาน" example links (opendata.gistda.or.th/dataset/disasters-02, read
         # the same day) use v1.1 instead — the dataset was moved, not removed.
+        # Confirmed live 2026-09-26: this is a PLAIN JSON ARRAY, already
+        # aggregated per subdistrict ({"subdistrict_name", "district_name",
+        # "province_name", "total", "detail": [{"year", "freq"}, ...]}), not
+        # a GeoJSON FeatureCollection — records_key="" reads the response
+        # itself as the record list, and it must NOT go through
+        # _run_one_features (that pager injects limit=/offset=, which this
+        # endpoint does not take — see the "unknown parameter" finding
+        # above, an injected limit/offset would zero it out the same way).
+        # Also needs a Referer header (see extra_headers) or GISTDA answers
+        # 403 REFERER_REQUIRED before any of the above even matters.
         name="drought-recurrence (พื้นที่ภัยแล้งซ้ำซาก 2018-2023)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/gi-service/v1.1/disasters/drought-recurrence",
-        kind="json", records_key="features", extra_params=dict(_BANGKOK_LAT_LON),
-        place_fields=("properties.pv_tn", "properties.province"),
+        kind="json", records_key="", extra_params=dict(_BANGKOK_LAT_LON),
+        extra_headers={"Referer": "https://opendata.gistda.or.th/dataset/disasters-02"},
+        place_fields=("province_name", "district_name"),
     ),
     EndpointSpec(
         name="water_hyacinth (ผักตบชวากีดขวางทางน้ำ)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/water_hyacinth",
         kind="json", records_key="features", extra_params={"pv_idn": "10", "limit": "5"},
-        freshness_fields=("properties.img_date", "properties.date"),
-        place_fields=("properties.pv_tn", "properties.province"),
+        freshness_fields=("properties._createdAt",),  # no file_name on this
+        # dataset in a live sample — only the DB write time is available.
+        place_fields=("properties.pv_tn",),
     ),
 )
 
@@ -698,8 +771,9 @@ def _run_one_features(spec: EndpointSpec, url: str, secrets: list[str],
     """Like _run_one, but follows every page of a GISTDA `features` endpoint
     (see _paginate_features) before summarising, so `coverage` reports the
     WHOLE answer rather than just its first GISTDA_PAGE_LIMIT rows."""
+    merged_headers = {**(headers or {}), **spec.extra_headers} or None
     records, total_bytes, pages, note, status = _paginate_features(
-        url, secrets, fetch, headers, sleep, spec.timeout)
+        url, secrets, fetch, merged_headers, sleep, spec.timeout)
     if status == "error":
         return ProbeResult(name=spec.name, status="error", error=note)
     if status != 200:
@@ -717,8 +791,9 @@ def _run_one(spec: EndpointSpec, url: str, secrets: list[str],
              sleep: Callable[[float], None] = time.sleep) -> ProbeResult:
     if spec.kind == "json" and spec.records_key == "features":
         return _run_one_features(spec, url, secrets, fetch, sleep, headers)
+    merged_headers = {**(headers or {}), **spec.extra_headers} or None
     try:
-        status, body = fetch(url, spec.timeout, MAX_RESPONSE_BYTES, headers)
+        status, body = fetch(url, spec.timeout, MAX_RESPONSE_BYTES, merged_headers)
     except Exception as exc:  # noqa: BLE001 — any transport failure becomes a safe line
         return ProbeResult(name=spec.name, status="error", error=redact(str(exc), secrets))
     if status != 200:
@@ -767,7 +842,7 @@ def _as_dict(result: ProbeResult, path: str) -> dict:
 def _run_list(specs: tuple[EndpointSpec, ...], urls: list[str], secrets: list[str],
               fetch: Callable[..., tuple[int, bytes]], out, as_json: bool,
               sleep: Callable[[float], None], headers: "dict[str, str] | None" = None,
-              pause_before_first: bool = False) -> list[tuple[ProbeResult, str]]:
+              pause_before_first: bool = False, print_full: bool = True) -> list[tuple[ProbeResult, str]]:
     results = []
     for i, (spec, url) in enumerate(zip(specs, urls)):
         if i > 0 or pause_before_first:
@@ -775,9 +850,51 @@ def _run_list(specs: tuple[EndpointSpec, ...], urls: list[str], secrets: list[st
         result = _run_one(spec, url, secrets, fetch, headers, sleep)
         path = path_only(url)
         results.append((result, path))
-        if not as_json:
+        if not as_json and print_full:
             _print_result(result, path, out)
     return results
+
+
+def _short_line(result: ProbeResult, path: str) -> str:
+    """One line for `probe gistda`'s own short summary (Poom 2026-09-26: the
+    old per-endpoint block for every one of the 7 GISTDA endpoints ran well
+    past a pasteable length) — status/count/bytes/freshness only, never a
+    URL or a field list; `--out PATH` still gets the full detail (see
+    _write_gistda_markdown)."""
+    if result.error:
+        return f"- {result.name}: http={result.status}, error — {_truncate(result.error, 70)}"
+    return (f"- {result.name}: http={result.status}, {result.coverage}, "
+            f"{result.bytes_read} bytes, ล่าสุด {_truncate(result.freshness, 40)}")
+
+
+def _write_gistda_markdown(results: list[tuple[ProbeResult, str]], path: str) -> None:
+    """The FULL per-endpoint detail (fields, samples, freshness, coverage,
+    pagination) as markdown at `path` — same content `_print_result` used to
+    print straight to the terminal for every GISTDA endpoint, now opt-in via
+    `--out` so the short summary (`_short_line`) can stay pasteable."""
+    lines = ["# GISTDA probe — full detail", "", f"generated: {len(results)} endpoint(s)", ""]
+    for result, endpoint_path in results:
+        lines.append(f"## {result.name}")
+        lines.append(f"- path: `{endpoint_path}`")
+        if result.records_path:
+            lines.append(f"- records path: `{result.records_path}`")
+        lines.append(f"- http status: {result.status}")
+        lines.append(f"- bytes read: {result.bytes_read}")
+        if result.pages > 1:
+            lines.append(f"- pages: {result.pages}")
+        if result.pagination_note:
+            lines.append(f"- pagination: {result.pagination_note}")
+        if result.error:
+            lines.append(f"- error: {result.error}")
+            lines.append("")
+            continue
+        lines.append(f"- fields: {', '.join(result.fields) if result.fields else '(none found)'}")
+        lines.append(f"- freshness: {result.freshness}")
+        lines.append(f"- coverage: {result.coverage}")
+        for i, sample in enumerate(result.samples, 1):
+            lines.append(f"- sample {i}: `{sample}`")
+        lines.append("")
+    Path(path).write_text("\n".join(lines), encoding="utf-8")
 
 
 def run_tmd(secret: Callable[[str], str | None], out=sys.stdout, as_json: bool = False,
@@ -786,7 +903,7 @@ def run_tmd(secret: Callable[[str], str | None], out=sys.stdout, as_json: bool =
     """Probes TMD's NWP forecast product (TMD_NWP_TOKEN, Bearer header) — the
     only TMD credential this broker still uses. The older TMDAPI uid/ukey
     pair was dropped for good (Poom 2026-09-26: no way to sign up); measured
-    values now come from free no-signup sources (SYNOP, METAR, สสน.,
+    values now come from free no-signup sources (METAR, สสน.,
     Air4Thai) instead. Exits non-zero without any request when no NWP token
     is present."""
     fetch = fetch or _fetch
@@ -809,23 +926,40 @@ def run_tmd(secret: Callable[[str], str | None], out=sys.stdout, as_json: bool =
 
 def run_gistda(secret: Callable[[str], str | None], out=sys.stdout, as_json: bool = False,
                fetch: Callable[..., tuple[int, bytes]] | None = None,
-               sleep: Callable[[float], None] = time.sleep) -> int:
+               sleep: Callable[[float], None] = time.sleep, out_path: "str | None" = None) -> int:
+    """`probe gistda` prints a SHORT summary (Poom 2026-09-26, ≤ 40 lines —
+    see `_short_line`): one line per endpoint, never the per-endpoint field
+    list/samples that used to make this un-pasteable with 7 endpoints. Pass
+    `out_path` (the CLI's `--out PATH`) to also write the FULL detail as
+    markdown there (`_write_gistda_markdown`) — that file, not another probe
+    run, is what docs/research/gistda-fields.md was built from."""
     key = secret("GISTDA_API_KEY")
     if not key:
         print("ยังไม่มี key ของ gistda — ใช้ `$B keys set gistda`", file=out)
         return 1
     fetch = fetch or _fetch
     urls = [_gistda_url(spec, key) for spec in GISTDA_ENDPOINTS]
-    results = _run_list(GISTDA_ENDPOINTS, urls, [key], fetch, out, as_json, sleep)
+    results = _run_list(GISTDA_ENDPOINTS, urls, [key], fetch, out, as_json, sleep, print_full=False)
     if as_json:
         print(json.dumps([_as_dict(r, p) for r, p in results], ensure_ascii=False, indent=2), file=out)
+    else:
+        print("\n--- GISTDA (api-gateway.gistda.or.th) — สรุปย่อ ---", file=out)
+        for result, path in results:
+            print(_short_line(result, path), file=out)
+        if out_path:
+            print(f"\nรายละเอียดเต็มเขียนไว้ที่: {out_path}", file=out)
+        else:
+            print("\nรายละเอียดเต็ม (fields/samples ทุกตัว): ใช้ --out PATH", file=out)
+    if out_path:
+        _write_gistda_markdown(results, out_path)
     return 0
 
 
-def run(name: str, secret: Callable[[str], str | None], out=sys.stdout, as_json: bool = False) -> int:
+def run(name: str, secret: Callable[[str], str | None], out=sys.stdout, as_json: bool = False,
+        out_path: "str | None" = None) -> int:
     if name == "tmd":
         return run_tmd(secret, out, as_json)
     if name == "gistda":
-        return run_gistda(secret, out, as_json)
+        return run_gistda(secret, out, as_json, out_path=out_path)
     print(f"{name}: ไม่รู้จัก — ใช้ tmd หรือ gistda", file=out)
     return 2

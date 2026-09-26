@@ -6,24 +6,18 @@ place).
 THE SOURCES (each its own reader module, same output shape — see
 `_REPORT_FIELDS`):
 
-* ``synop``      — กรมอุตุฯ SYNOP, every surface station in Thailand (WMO
-                   standard sites; main hours every 3 h) via Ogimet — synop.py.
-                   OFF unless SYNOP_ENABLED is set (see `synop_enabled`):
-                   Ogimet's robots.txt disallows bots while its help page
-                   invites curl use — a terms question for Poom. Off means
-                   the reader is never even built: no request at all.
 * ``metar``      — every Thai airport's METAR (hourly) — metar.py
 * ``thaiwater``  — สสน. telemetry temperature/humidity stations (hourly,
                    ~2,700 nationwide, a mixed-agency network) — station_met.py
                    Its readings pass a NEIGHBOUR CHECK before use (`sane`).
 
-(Air4Thai publishes no temperature/humidity/wind — it stays PM2.5 only.)
+(Air4Thai publishes no temperature/humidity/wind — it stays PM2.5 only.
+SYNOP via Ogimet is permanently OFF — Poom 2026-09-26: Ogimet's robots.txt
+disallows bots, so it is not used at all; there is no switch to turn it back
+on. The reader module and its fixtures are deleted, not merely disabled.)
 A reader that is not installed yet is simply skipped (guarded import), so the
-broker runs with whatever subset exists. EVERYTHING WORKS WITHOUT SYNOP:
-METAR + ThaiWater cover the country (ThaiWater alone has a station within a
-few km of almost any town); when SYNOP is enabled it simply joins the
-candidates and, by PRIORITY, wins over a METAR/ThaiWater station that is
-not more than SIMILAR_KM nearer.
+broker runs with whatever subset exists. METAR + ThaiWater cover the country
+(ThaiWater alone has a station within a few km of almost any town).
 
 A TIMER, NOT THE PHONE: the phone asks only while its screen is on. A night
 with the screen off would leave the night's hours missing, and a day whose
@@ -42,7 +36,7 @@ CHOOSING A STATION (`nearest`), per value kind, among every source at once:
    within MAX_ELEVATION_DIFF_M of the position's elevation when BOTH are
    known (a valley station and a hill-top kiosk are different air).
 3. The nearest wins — except that a station of a higher-priority source
-   (PRIORITY: SYNOP, METAR, สสน.) that is at most SIMILAR_KM farther than
+   (PRIORITY: METAR, สสน.) that is at most SIMILAR_KM farther than
    the nearest one wins over it.
 3a. A สสน. reading counts only when it agrees with its neighbours (`sane`):
    within SANE_TOLERANCE of the median of the other fresh stations within
@@ -51,7 +45,7 @@ CHOOSING A STATION (`nearest`), per value kind, among every source at once:
    LONE_NEIGHBOUR_KM. A station nobody nearby can vouch for is not used —
    the modelled value is shown instead (a sensor in the sun, a gauge hut
    or a stale clock on a mixed-agency network is likelier than a real 5 °C
-   hot spot). WMO-standard sources (SYNOP, METAR) are trusted as they are.
+   hot spot). WMO-standard sources (METAR) are trusted as they are.
 4. Nothing left → None: the card shows the modelled value or "—", and no
    forecast settles against a station from another area. Never a far
    station's value silently.
@@ -93,16 +87,15 @@ MAX_KM = {"temp": 25.0, "rh": 25.0, "wind": 15.0, "rain": 20.0}
 MAX_ELEVATION_DIFF_M = 150.0
 
 #: Freshness per source. Hourly sources: 90 min (one missed report is still
-#: "now", two are not). SYNOP's main hours are 3 h apart: 3 h 30.
-MAX_AGE_SECONDS = {"synop": 3.5 * 3600, "metar": 1.5 * 3600, "thaiwater": 1.5 * 3600}
+#: "now", two are not).
+MAX_AGE_SECONDS = {"metar": 1.5 * 3600, "thaiwater": 1.5 * 3600}
 DEFAULT_MAX_AGE_SECONDS = 1.5 * 3600
 #: A reading stamped further in the future than this is a clock error.
 MAX_FUTURE_SECONDS = 600
 
-#: Source priority when distances are similar: SYNOP first when enabled
-#: (Poom: the main source — WMO-standard sites), METAR (the same WMO
-#: standard, at airports), then สสน. telemetry (dense but mixed-agency).
-PRIORITY = ("synop", "metar", "thaiwater")
+#: Source priority when distances are similar: METAR (WMO standard, at
+#: airports) first, then สสน. telemetry (dense but mixed-agency).
+PRIORITY = ("metar", "thaiwater")
 
 #: Sources whose readings must agree with their neighbours first (`sane`).
 CHECKED_SOURCES = frozenset({"thaiwater"})
@@ -125,8 +118,8 @@ POLL_SECONDS = 600
 FIRST_RETRY_SECONDS = 60
 
 #: Readings within this of a whole hour are stored as that hour (METAR at
-#: :00, SYNOP at its main hours); anything else (a :30 METAR) is not stored
-#: for settling — it is still used as "now" by `nearest`.
+#: :00); anything else (a :30 METAR) is not stored for settling — it is
+#: still used as "now" by `nearest`.
 HOUR_TOLERANCE_SECONDS = 20 * 60
 
 #: Stations farther than this from every point of interest are not stored.
@@ -134,28 +127,17 @@ STORE_KM = max(MAX_KM.values())
 
 #: The reader modules and, for each, the cache class (None = every class in
 #: the module whose name ends in "Cache").
-SOURCE_MODULES = (("synop", "SynopCache"), ("metar", "MetarCache"), ("station_met", None))
+SOURCE_MODULES = (("metar", "MetarCache"), ("station_met", None))
 
 #: Credits for "ที่มาข้อมูล" and the weather panel's credit when a measured
 #: value was used; a reader module's own CREDIT constant wins.
 CREDITS = {
-    "synop": "สถานีตรวจอากาศผิวพื้น กรมอุตุนิยมวิทยา (SYNOP ผ่าน ogimet.com)",
     "metar": "รายงานอากาศสนามบิน (METAR, aviationweather.gov)",
     "thaiwater": "สถานีโทรมาตร สสน. (ThaiWater)",
 }
 
 #: Short labels for the weather panel's temp_source/humidity_source.
-LABELS = {"synop": "SYNOP", "metar": "METAR", "thaiwater": "สสน."}
-
-#: Health's answer for SYNOP while it is switched off.
-SYNOP_OFF_REASON = "ปิดไว้ (รอ Poom)"
-
-
-def synop_enabled() -> bool:
-    """SYNOP_ENABLED — a plain env var (not a secret), default OFF; read
-    when the readers are built (broker start)."""
-    import os
-    return os.environ.get("SYNOP_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+LABELS = {"metar": "METAR", "thaiwater": "สสน."}
 
 #: Tests switch this off so nothing runs in a thread.
 BACKGROUND = True
@@ -286,9 +268,6 @@ def load_sources() -> list[tuple[str, object]]:
     """(module name, cache instance) for every reader that is installed."""
     out = []
     for module_name, class_name in SOURCE_MODULES:
-        if module_name == "synop" and not synop_enabled():
-            log.info("observation source synop off (SYNOP_ENABLED not set)")
-            continue
         try:
             module = importlib.import_module(f"{__package__}.{module_name}")
         except ImportError:
@@ -357,11 +336,9 @@ def health_sources() -> list[tuple[str, str]]:
 
 def health_probe(module_name: str, timeout: float = 15.0, now: "float | None" = None) -> tuple[str, str]:
     """One real whole-country fetch through the reader's own fetch_all:
-    ("ok", "synop 118 สถานี · สด 112") per source it returned, or
+    ("ok", "metar 54 สถานี · สด 40") per source it returned, or
     ("ERROR", reason)."""
     now = time.time() if now is None else now
-    if module_name == "synop" and not synop_enabled():
-        return "off", SYNOP_OFF_REASON  # no request at all while off
     try:
         module = importlib.import_module(f"{__package__}.{module_name}")
         reports = module.fetch_all(timeout)

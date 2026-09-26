@@ -51,8 +51,8 @@ THE SOURCES, checked before they were chosen:
   telling anyone, which is exactly why the stale-value handling above exists.
 * Nationwide warnings (กรมอุตุฯ CAP, GDACS) — see alerts.py; one cache for
   every phone, refreshed in the background, the same items Jarvis reads out.
-* Measured stations (obs.py: กรมอุตุฯ SYNOP, every Thai airport's METAR,
-  สสน. and Air4Thai stations — all free, no sign-up) — the current
+* Measured stations (obs.py: every Thai airport's METAR, สสน. and Air4Thai
+  stations — all free, no sign-up) — the current
   temperature and humidity MEASURED by the station obs.py chooses nearest
   the kiosk's CURRENT position, only when it is close enough (obs.MAX_KM per
   value, and for temperature a similar elevation) and fresh enough
@@ -459,7 +459,7 @@ def fetch_weather(latitude: float, longitude: float, timeout: float, measured=No
         "days": forecast.day_lines(daily),
         "model": "ECMWF",
         # Which source answered temp_c/humidity — a station source label
-        # (obs.LABELS: "SYNOP", "METAR", "สสน.", "Air4Thai") or "Open-Meteo"
+        # (obs.LABELS: "METAR", "สสน.", "Air4Thai") or "Open-Meteo"
         # (modelled, no station close and fresh enough) — the same idea as
         # air's "source" for pm25.
         "temp_source": temp_source,
@@ -1070,7 +1070,7 @@ class Dashboard:
         """What verify.py's per-value section lists, each recorded once
         (verify.record_once): every 6-h window's rain probability before it
         starts (blend = ensemble), today's rain yes/no inputs before noon,
-        tomorrow's max/min and its eight SYNOP-hour temperatures — per
+        tomorrow's max/min and its eight standard-hour temperatures — per
         deterministic source and for the blend. Values only, rounded
         position, no personal data."""
         from . import blend, verify
@@ -1103,7 +1103,7 @@ class Dashboard:
         today = dt.datetime.fromtimestamp(start, blend.BANGKOK).strftime("%Y-%m-%d")
         tomorrow_start = start + 86400
         tomorrow = dt.datetime.fromtimestamp(tomorrow_start, blend.BANGKOK).strftime("%Y-%m-%d")
-        slots = verify.synoptic_hours(tomorrow_start, tomorrow_start + 86400)
+        slots = verify.standard_hours(tomorrow_start, tomorrow_start + 86400)
 
         def source_day(data, date):
             return next((d for d in (data or {}).get("daily") or () if d.get("date") == date), {})

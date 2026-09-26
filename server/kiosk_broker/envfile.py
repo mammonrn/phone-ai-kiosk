@@ -42,7 +42,7 @@ SETTABLE: dict[str, str] = {
                       "forecast, not a station reading); probe.py only so far, not wired into "
                       "any live feature yet. The older TMDAPI uid/ukey pair (measured station "
                       "observations) is retired — Poom cannot sign up for it; measured values "
-                      "come from free no-signup sources (SYNOP, METAR, สสน., Air4Thai) instead",
+                      "come from free no-signup sources (METAR, สสน., Air4Thai) instead",
     "GISTDA_API_KEY": "GISTDA (api-gateway.gistda.or.th) API key — a single value sent as the "
                        "api_key query parameter, for probe.py (not wired into any live feature yet)",
 }
@@ -68,7 +68,7 @@ KEY_GROUPS: dict[str, tuple[str, ...]] = {
 #: accepts, so Poom can clean an old wrong value out of his env file even
 #: though nothing writes to these names anymore. TMDAPI's uid/ukey pair was
 #: dropped 2026-09-26 (Poom cannot sign up for a TMD account) — measured
-#: values now come from free no-signup sources (SYNOP, METAR, สสน.,
+#: values now come from free no-signup sources (METAR, สสน.,
 #: Air4Thai) instead; the separate NWP forecast product (TMD_NWP_TOKEN,
 #: "tmd-nwp" above) is unaffected and stays.
 RETIRED_GROUPS: dict[str, tuple[str, ...]] = {

@@ -27,46 +27,44 @@ example URLs on opendata.gistda.or.th/dataset/flood-disaster-data (read
 nwp.py's and dams.py's rule — `secret("GISTDA_API_KEY")` is read fresh
 on every refresh, never stored.
 
-🔶 WHAT IS **NOT** PUBLICLY DOCUMENTED (checked 2026-09-26, GISTDA's dataset
-pages list the endpoints and the `bbox`/`pv_idn`/`ap_idn`/`tb_idn`/`limit`/
-`offset` query parameters but publish no response schema, no `sortby`/order
-parameter, and no field-selection parameter at all):
-  * the exact pagination shape — this module assumes the common "OGC API
-    Features" convention (a `features` GeoJSON array, `numberMatched`/
-    `numberReturned` counters, and/or a `links` array with a `rel: "next"`
-    entry) and follows whichever of those signs it actually sees, stopping
-    on the FIRST sign that there is no more data (see `fetch_all_features`
-    and `_stream_pages`).
-  * the `properties` field names for province, district and date —
-    probe.py's own `place_fields`/`freshness_fields` (`pv_tn`/`province`,
-    `img_date`/`date`) are the only ones with any documented backing (they
-    are what Poom's probe was built to look for); this module reads the
-    same pairs, plus a DISTRICT (amphoe) name guessed BY SYMMETRY with the
-    documented `pv_idn`/`ap_idn`/`tb_idn` query-parameter triple (province/
-    district/tambon id numbers) — if GISTDA numbers those three levels the
-    same way it *names* them, `ap_tn`/`district` are the amphoe equivalents
-    of `pv_tn`/`province`. 🔶 UNCONFIRMED: Poom's own probe (see probe.py's
-    GISTDA_ENDPOINTS, which prints every property name a live response
-    actually carries) must check this guess before districts are trusted
-    for anything beyond a shadow calculation.
-  * whether an area field exists at all, its name, or its UNIT (km²? rai?
-    m²?). Rather than guess a unit and risk a silently-wrong number feeding
-    flood-risk math, `area_km2` is populated ONLY from a property explicitly
-    named in km² (`area_km2`/`shape_area_km2`); anything else leaves it
-    None. `features` (a plain count) is the one number here with no unit to
-    get wrong, and is the primary signal until a probe confirms an area
-    field.
-  * whether `bbox` is honoured by the server at all, or a bbox request
-    simply returns the same country-wide answer filtered client-side
-    somewhere upstream — the local-scope cadence below (`get(...,
-    latitude=, longitude=)`) assumes the server actually restricts its
-    answer to the box, which shrinks the response; if that turns out false,
-    the byte/page caps below still hold (they are enforced on what comes
-    back, not assumed from the request), just with less benefit from asking
-    a smaller box.
-  Poom's own `$B probe gistda`, once `GISTDA_API_KEY` is set, would confirm
-  all of the above from a real response; nothing here should be trusted
-  over that.
+✅ CONFIRMED 2026-09-26 (a live probe against GISTDA's own public demo key —
+see docs/research/gistda-fields.md for the full write-up and the two-bbox
+proof; nothing below is guessed any more):
+  * pagination: a `features` GeoJSON FeatureCollection, `numberMatched`/
+    `numberReturned` counters, and (rarely) a `links` array with a
+    `rel: "next"` entry — this module's own "stop on the first sign there
+    is no more data" behaviour (`fetch_all_features`/`_stream_pages`)
+    matches what a live response actually does.
+  * `bbox` DOES filter server-side, and `pv_idn`/`ap_idn`/`tb_idn` filter
+    independently of it (either alone, or combined as an AND) — a small
+    box over Chiang Rai answered 0 features, the same box moved to
+    Ayutthaya answered 43; `pv_idn=14` alone answered the same 43 (plus
+    more elsewhere in that province). The "bbox ignored" symptom seen
+    2026-09-26 on the VPS was the PROBE's own bbox being far larger than
+    intended (spanning Bangkok AND Ayutthaya), not a server bug.
+  * `properties` field names (flood/1day..30days): `pv_idn`/`pv_tn`,
+    `ap_idn`/`ap_tn` (the DISTRICT name — the `district`/symmetry guess
+    below is confirmed correct), `tb_idn`/`tb_tn`, `lat`/`long`,
+    `file_name` (source image id(s), comma-joined, each ending in an
+    embedded YYYYMMDD_HHMM — the real freshness signal; `_createdAt`/
+    `_updatedAt` are only GISTDA's own database write time, clustered at
+    fetch time regardless of the window asked for), `flood_area` (the
+    flooded area for the WHOLE tambon (`tb_idn`), in RAI, duplicated
+    identically across every parcel feature that intersects that tambon —
+    confirmed by a live sample where 33 different parcels in one tambon
+    all carried the same `flood_area`), and several per-PARCEL crop-area
+    fields in m² (`_area`/`f_area`/`rice_area`/`cassava_area`/
+    `maize_area`/`sugarcane_area` — NOT flood area; do not sum these for
+    risk math). `_area_km2`/`_district_name`/`_feature_date` below read
+    this confirmed shape; `_TB_IDN_KEY`-based dedup (see `_fold_features`)
+    exists specifically because `flood_area` repeats per parcel, not per
+    tambon.
+  * NO field-selection or geometry-skipping parameter exists on this API:
+    an unrecognised query parameter is silently treated as an impossible
+    extra filter (a 200 with `numberMatched: 0`), never an error and never
+    simply ignored — never add a speculative parameter to a live request.
+  * `sort=asc`/`sort=desc` made no measurable difference to feature order
+    in a live test; nothing here relies on it.
 
 PROVINCE MAPPING reuses flood_forecast.province_name_to_code (สสน.'s own
 Thai-name → provinces.json code table, already used for alerts.py's river
@@ -142,11 +140,13 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Callable
 
 from . import flood_forecast  # province_name_to_code, load_provinces — read-only reuse
@@ -203,14 +203,36 @@ PAGE_PAUSE_SECONDS = 1.0
 #: ("at most twice a day"), per scope (and per LOCAL cell).
 REFRESH_SECONDS = 12 * 3600
 
-#: Only a property explicitly named in km² is trusted for area — see the
-#: module docstring's own reasoning about the undocumented unit.
-_AREA_KM2_KEYS = ("area_km2", "shape_area_km2")
+#: CONFIRMED 2026-09-26 (see the module docstring and
+#: docs/research/gistda-fields.md): flood/{1day,3days,7days,30days} carry no
+#: property named in km² at all — `flood_area` is the real flooded-area
+#: signal, in RAI, for the WHOLE tambon (`tb_idn`) a feature belongs to, not
+#: per feature (see `_TB_IDN_KEY` and `_fold_features`'s dedup). 1 rai =
+#: 1,600 m² = 0.0016 km² (Thailand's standard land-area unit; cross-checked
+#: live against a flood-freq sample where `area_rai * 1600 ≈ shape_area`,
+#: the same pixel's own m² figure).
+_AREA_RAI_KEY = "flood_area"
+RAI_TO_KM2 = 0.0016
 _PROVINCE_NAME_KEYS = ("pv_tn", "province")
-#: 🔶 guessed by symmetry with pv_tn/province — see the module docstring's
-#: own DISTRICT reasoning; unconfirmed until Poom's probe checks it.
+#: Confirmed live: `ap_tn` IS the district (amphoe) name, matching the
+#: guess-by-symmetry with `pv_tn`/`pv_idn` that stood here before.
 _DISTRICT_NAME_KEYS = ("ap_tn", "district")
-_DATE_KEYS = ("img_date", "date")
+#: `tb_idn` (subdistrict id, e.g. 140117 = province 14 / district 01 /
+#: tambon 17 — globally unique, confirmed against provinces.json's own
+#: 2-digit province codes) identifies the tambon a `flood_area` figure
+#: belongs to, so it is counted only ONCE per tambon rather than once per
+#: intersecting parcel feature.
+_TB_IDN_KEY = "tb_idn"
+#: `file_name` (e.g. "rd2_20260926_0613, rd2_20260924_1815") is the real
+#: freshness signal — confirmed live: `_createdAt`/`_updatedAt` are only
+#: GISTDA's own database write time, clustered at fetch time regardless of
+#: which window (1/3/7/30 day) was asked for. The date is read as the
+#: FIRST embedded YYYYMMDD found in the (possibly comma-joined) string,
+#: which is "a" date this feature is backed by, not necessarily the latest
+#: of the several that may appear — good enough for "is this fresh", not
+#: for ordering multiple features precisely.
+_DATE_KEYS = ("file_name", "img_date", "date")
+_FILE_NAME_DATE_RE = re.compile(r"(20\d{6})")
 
 
 class GistdaFloodError(ValueError):
@@ -312,11 +334,22 @@ def fetch_all_features(key: str, window: str, timeout: float = FETCH_TIMEOUT, fe
 # ------------------------------------------------------------------- parsing ---
 
 def _area_km2(props: dict) -> "float | None":
-    for name in _AREA_KM2_KEYS:
-        value = props.get(name)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return float(value)
+    """`flood_area` (RAI, confirmed — see the module docstring and
+    `_AREA_RAI_KEY`) converted to km². `None` when the property is absent
+    or not a plain number — never a guess at some other field's unit."""
+    value = props.get(_AREA_RAI_KEY)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) * RAI_TO_KM2
     return None
+
+
+def _tambon_id(props: dict) -> "str | None":
+    """`tb_idn`, as a string — the identity `flood_area` is actually
+    reported PER (see `_fold_features`'s dedup); `None` when absent, which
+    means that feature's own area is counted every time it is seen (the old,
+    over-counting behaviour) rather than silently dropped."""
+    value = props.get(_TB_IDN_KEY)
+    return str(value) if value is not None else None
 
 
 def _named(props: dict, keys: tuple[str, ...]) -> "str | None":
@@ -332,16 +365,31 @@ def _province_name(props: dict) -> "str | None":
 
 
 def _district_name(props: dict) -> "str | None":
-    """🔶 see the module docstring's own DISTRICT reasoning — unconfirmed
-    property names, guessed by symmetry with province."""
+    """`ap_tn` — confirmed live (see the module docstring) to be the
+    district (amphoe) name, the guess-by-symmetry with `pv_tn` this stood
+    on before a probe could check it."""
     return _named(props, _DISTRICT_NAME_KEYS)
 
 
 def _feature_date(props: dict) -> "str | None":
+    """"YYYY-MM-DD", read from `file_name`'s own embedded YYYYMMDD (the
+    confirmed freshness signal — see the module docstring), or the first
+    10 characters of `img_date`/`date` if either of those ever appears on a
+    future GISTDA dataset. `file_name` may be comma-joined (several source
+    images); this reads whichever YYYYMMDD occurs FIRST in the string,
+    which is "a" backing date, not necessarily the most recent of several."""
     for name in _DATE_KEYS:
         value = props.get(name)
-        if value:
-            return str(value)[:10]
+        if not value:
+            continue
+        text = str(value)
+        if name == "file_name":
+            match = _FILE_NAME_DATE_RE.search(text)
+            if match:
+                digits = match.group(1)
+                return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+            continue
+        return text[:10]
     return None
 
 
@@ -360,6 +408,7 @@ def summarize_provinces(features: list[dict], provinces: "list[dict] | None" = N
     by_name = flood_forecast.province_name_to_code(provinces)
     out: dict[str, dict] = {}
     unmapped = 0
+    seen_tambons: set = set()
     for feature in features:
         if not isinstance(feature, dict):
             continue
@@ -374,9 +423,18 @@ def summarize_provinces(features: list[dict], provinces: "list[dict] | None" = N
         key = f"TH-{code}"
         entry = out.setdefault(key, {"area_km2": None, "features": 0, "latest": None})
         entry["features"] += 1
-        area = _area_km2(props)
-        if area is not None:
-            entry["area_km2"] = area if entry["area_km2"] is None else entry["area_km2"] + area
+        # `flood_area` (this feature's own area, once converted) is a
+        # TAMBON-wide rollup duplicated onto every parcel that intersects
+        # it (confirmed — see the module docstring): count it once per
+        # tambon, not once per feature, or the sum overcounts by however
+        # many parcels share that tambon.
+        tid = _tambon_id(props)
+        if tid is None or tid not in seen_tambons:
+            if tid is not None:
+                seen_tambons.add(tid)
+            area = _area_km2(props)
+            if area is not None:
+                entry["area_km2"] = area if entry["area_km2"] is None else entry["area_km2"] + area
         date = _feature_date(props)
         if date and (entry["latest"] is None or date > entry["latest"]):
             entry["latest"] = date
@@ -405,7 +463,17 @@ def _fold_features(features: list, running: dict, by_name: dict) -> None:
     docstring's STREAMING / MEMORY BOUND section. `running` is
     {"provinces": {code: {"area_km2","features","latest","districts": {name:
     {"area_km2","features","latest"}}}}, "total_features": int,
-    "unmapped": int}."""
+    "unmapped": int, "seen_tambons": set}.
+
+    AREA DEDUP: `flood_area` (this feature's own `_area_km2`) is a per-TAMBON
+    rollup duplicated onto every parcel feature that intersects that tambon
+    — confirmed live, see the module docstring — so it is added to both the
+    province and its district total only the FIRST time a given `tb_idn` is
+    seen across the whole running total (not once per province/district
+    combination), via `running["seen_tambons"]`. A feature with no `tb_idn`
+    at all still has its own area counted every time (nothing to dedup
+    against), matching the old, simpler behaviour for that edge case."""
+    seen_tambons = running.setdefault("seen_tambons", set())
     for feature in features:
         if not isinstance(feature, dict):
             continue
@@ -421,8 +489,13 @@ def _fold_features(features: list, running: dict, by_name: dict) -> None:
         key = f"TH-{code}"
         entry = running["provinces"].setdefault(key, _blank_entry())
         entry["features"] += 1
-        area = _area_km2(props)
         date = _feature_date(props)
+        tid = _tambon_id(props)
+        area = None
+        if tid is None or tid not in seen_tambons:
+            if tid is not None:
+                seen_tambons.add(tid)
+            area = _area_km2(props)
         _merge_area(entry, area)
         _merge_latest(entry, date)
 
@@ -454,11 +527,13 @@ def _quick_latest_date(key: str, window: str, bbox: str, timeout: float, fetch,
     """One small (limit=1) page, read only for its own freshness field — a
     cheap "has anything changed" probe before paying for a full paginated
     refresh (see the module docstring's TWO SCOPES section). 🔶 GISTDA does
-    not document a way to ask for "the newest one first", so this reads
-    whatever the API's own default first record is; if that is not actually
-    the newest, the only consequence is one skipped refresh until the TTL
-    forces one anyway — never a wrong number kept longer than the cache
-    would have kept it regardless."""
+    not document a way to ask for "the newest one first" — confirmed
+    2026-09-26 that `sort=asc`/`sort=desc` make no measurable difference to
+    feature order either — so this reads whatever the API's own default
+    first record is; if that is not actually the newest, the only
+    consequence is one skipped refresh until the TTL forces one anyway —
+    never a wrong number kept longer than the cache would have kept it
+    regardless."""
     getter = fetch or _fetch
     url = _first_page_url(window, key, bbox, limit=1)
     try:
@@ -730,3 +805,63 @@ class GistdaFlood:
             self._refreshing = False
             self._local_cache.clear()
             self._local_refreshing.clear()
+
+
+# ------------------------------------------------------- flood-freq lookup ---
+
+#: `flood-freq` (2011-2024 recurrent flood extent, a DIFFERENT dataset from
+#: flood/{1day,...}30days above) is a STATIC layer, but a whole-country
+#: crawl is not something this broker's own polite fetch budget can do: one
+#: SINGLE district (Phra Nakhon Si Ayutthaya) alone answered 12,829
+#: pixel-level (~0.02 rai each) features live, 2026-09-26 — see
+#: docs/research/gistda-fields.md and tools/build_flood_freq.py's own
+#: docstring. That script is what Poom runs ONCE on the VPS, with his own
+#: key, to build this file; this module only ever READS it, and returns
+#: None (never a fabricated number) until it exists.
+FLOOD_FREQ_DATA_PATH = Path(__file__).with_name("data") / "gistda_flood_freq_districts.json"
+_FLOOD_FREQ_CACHE: "dict | None | bool" = False  # False = not loaded yet
+
+
+def load_flood_freq_districts() -> "dict | None":
+    """The parsed contents of FLOOD_FREQ_DATA_PATH (see
+    `tools/build_flood_freq.py`'s own output contract), or `None` when the
+    file does not exist yet or fails to parse — read once and cached, like
+    flood_forecast.load_provinces. Never raises: a missing or broken file is
+    exactly like "Poom has not run the build script yet"."""
+    global _FLOOD_FREQ_CACHE
+    if _FLOOD_FREQ_CACHE is not False:
+        return _FLOOD_FREQ_CACHE
+    try:
+        _FLOOD_FREQ_CACHE = json.loads(FLOOD_FREQ_DATA_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        _FLOOD_FREQ_CACHE = None
+    return _FLOOD_FREQ_CACHE
+
+
+def forget_flood_freq_cache() -> None:
+    """Tests only — forces the next `load_flood_freq_districts()` to read
+    the file again instead of the cached value."""
+    global _FLOOD_FREQ_CACHE
+    _FLOOD_FREQ_CACHE = False
+
+
+def flood_freq_km2(province_code: str, district_name: "str | None" = None) -> "float | None":
+    """SHADOW ONLY (see the module docstring's own SHADOW MODE section — the
+    same licence-unconfirmed rule as everything else here): the recurrent
+    (2011-2024) flood area in km² for `province_code` ("14", not "TH-14" —
+    provinces.json's own bare code), or for one `district_name` within it
+    (an `ap_tn`-style name, e.g. "อ.พระนครศรีอยุธยา") when given. `None`
+    when `tools/build_flood_freq.py` has not been run yet, or the
+    province/district is not in its output — never a guess."""
+    data = load_flood_freq_districts()
+    if not data:
+        return None
+    province = (data.get("provinces") or {}).get(str(province_code))
+    if not province:
+        return None
+    districts = province.get("districts") or {}
+    if district_name is not None:
+        entry = districts.get(district_name)
+        return entry.get("area_km2") if entry else None
+    areas = [d.get("area_km2") for d in districts.values() if isinstance(d.get("area_km2"), (int, float))]
+    return round(sum(areas), 2) if areas else None

@@ -6,8 +6,16 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [100.4, 13.85]},
-      "properties": {"pv_tn": "นนทบุรี", "date": "2026-09-24", "area_km2": 0.3}
+      "geometry": {"type": "Polygon", "coordinates": [[[100.40, 13.85], [100.40, 13.851], [100.401, 13.851], [100.401, 13.85], [100.40, 13.85]]]},
+      "properties": {
+        "pv_idn": 12, "pv_tn": "นนทบุรี",
+        "ap_idn": 1201, "ap_tn": "เมืองนนทบุรี",
+        "tb_idn": "120101", "tb_tn": "ต.สวนใหญ่",
+        "lat": 13.85, "long": 100.40,
+        "file_name": "rd2_20260924_1815",
+        "flood_area": 187.5,
+        "_createdAt": "2026-09-26T06:00:00.000Z"
+      }
     }
   ]
 }

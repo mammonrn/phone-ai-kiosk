@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS thaiwater_rain_1h (
 );
 CREATE INDEX IF NOT EXISTS thaiwater_rain_1h_prune ON thaiwater_rain_1h(observed_at);
 
--- Measured weather from every free station source (obs.py: SYNOP, METAR,
+-- Measured weather from every free station source (obs.py: METAR,
 -- สสน., Air4Thai), one row per source per rounded station position per
 -- whole hour, only stations near the kiosk's current position or near a
 -- forecast still waiting to settle (obs.STORE_KM) — the temperature and
