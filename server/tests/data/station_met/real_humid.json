@@ -1,0 +1,19 @@
+{
+  "result": "OK",
+  "data": [
+    {
+      "humid_datetime": "2026-09-26 13:00",
+      "humid": 45,
+      "station": {
+        "id": 685658
+      }
+    },
+    {
+      "humid_datetime": "2026-09-26 13:00",
+      "humid": 42.1,
+      "station": {
+        "id": 1475118
+      }
+    }
+  ]
+}

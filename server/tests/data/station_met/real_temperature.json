@@ -1,0 +1,47 @@
+{
+  "result": "OK",
+  "data": {
+    "season_maxmin": "อุณหภูมิปัจจุบัน",
+    "data": [
+      {
+        "id": 111337016,
+        "temperature": 41.1,
+        "temperature_datetime": "2026-09-26 13:00",
+        "station": {
+          "id": 685658,
+          "tele_station_name": {
+            "en": "Nam Muab (Ban Nam Muab) Birdge"
+          },
+          "tele_station_lat": 18.484377,
+          "tele_station_long": 100.93808
+        }
+      },
+      {
+        "id": 185445759,
+        "temperature": 40.5,
+        "temperature_datetime": "2026-09-26 13:00",
+        "station": {
+          "id": 1475118,
+          "tele_station_name": {
+            "en": "Ngad Bridge"
+          },
+          "tele_station_lat": 19.238968,
+          "tele_station_long": 99.18048
+        }
+      },
+      {
+        "id": 186139798,
+        "temperature": 38.63,
+        "temperature_datetime": "2026-09-26 13:00",
+        "station": {
+          "id": 1512928,
+          "tele_station_name": {
+            "en": "Mae Na Ruea Reservoir"
+          },
+          "tele_station_lat": 19.09579,
+          "tele_station_long": 99.80992
+        }
+      }
+    ]
+  }
+}

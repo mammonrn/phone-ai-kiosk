@@ -1,0 +1,84 @@
+{
+  "temperature": {
+    "result": "OK",
+    "data": {
+      "data": [
+        {
+          "id": 1,
+          "temperature": 999.0,
+          "temperature_datetime": "2026-09-26 13:00",
+          "station": {
+            "id": 90001,
+            "tele_station_name": {"en": "Broken Sensor Station"},
+            "tele_station_lat": 13.75,
+            "tele_station_long": 100.5
+          }
+        },
+        {
+          "id": 2,
+          "temperature": 28.4,
+          "temperature_datetime": "2026-09-26 13:00",
+          "station": {
+            "id": 90002,
+            "tele_station_name": {"en": "No Coordinates Station"},
+            "tele_station_lat": null,
+            "tele_station_long": null
+          }
+        },
+        {
+          "id": 3,
+          "temperature": 27.0,
+          "temperature_datetime": "not-a-date",
+          "station": {
+            "id": 90003,
+            "tele_station_name": {"en": "Bad Timestamp Station"},
+            "tele_station_lat": 14.0,
+            "tele_station_long": 101.0
+          }
+        },
+        {
+          "id": 4,
+          "temperature": 26.5,
+          "temperature_datetime": "2026-09-25 22:00",
+          "station": {
+            "id": 90004,
+            "tele_station_name": {"en": "Stale But Plausible Station"},
+            "tele_station_lat": 15.0,
+            "tele_station_long": 102.0
+          }
+        },
+        {
+          "id": 5,
+          "temperature": 29.0,
+          "temperature_datetime": "2026-09-26 13:00",
+          "station": {
+            "id": 90005,
+            "tele_station_name": {"en": "Has A Humidity Match"},
+            "tele_station_lat": 16.0,
+            "tele_station_long": 103.0
+          }
+        },
+        {
+          "id": 6,
+          "temperature": 30.0,
+          "temperature_datetime": "2026-09-26 13:00",
+          "station": {
+            "id": 90006,
+            "tele_station_name": {"en": "Valid Temp Bad Humid Sensor"},
+            "tele_station_lat": 17.0,
+            "tele_station_long": 104.0
+          }
+        }
+      ]
+    }
+  },
+  "humid": {
+    "result": "OK",
+    "data": [
+      {"humid_datetime": "2026-09-26 13:00", "humid": 150.0, "station": {"id": 90001}},
+      {"humid_datetime": "2026-09-26 13:00", "humid": 70.5, "station": {"id": 90005}},
+      {"humid_datetime": "2026-09-26 13:00", "humid": 150.0, "station": {"id": 90006}},
+      {"humid_datetime": "2026-09-26 13:00", "humid": 88.0, "station": {"id": 90099}}
+    ]
+  }
+}
