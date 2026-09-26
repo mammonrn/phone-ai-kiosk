@@ -69,6 +69,8 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 
+from . import tls
+
 log = logging.getLogger("kiosk_broker")
 
 BANGKOK = dt.timezone(dt.timedelta(hours=7))
@@ -113,7 +115,7 @@ def _get(url: str, timeout: float) -> bytes:
     """Bytes, never the parsed XML — kept separate from parsing so a test can
     feed parse_stations() a fixture without a network at all."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with tls.urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             # The status only — never the URL, which here carries a key in
             # its query string (see the module docstring's NO KEY rule).

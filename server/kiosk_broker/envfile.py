@@ -38,8 +38,14 @@ SETTABLE: dict[str, str] = {
     "GOOGLE_TTS_API_KEY": "/v1/tts",
     "QWEN_API_KEY": "Alibaba Cloud Model Studio (Singapore) key, for the \"qwen\" transcriber",
     "QWEN_WORKSPACE_ID": "optional: the Model Studio workspace id, for the newer Singapore domain",
-    "TMD_UID": "data.tmd.go.th (Thai Meteorological Department) API uid, for tmd_obs.py",
+    "TMD_UID": "data.tmd.go.th (Thai Meteorological Department) API uid, for tmd_obs.py — "
+               "the OLDER /api/ product (measured station observations), NOT the NWP token below",
     "TMD_UKEY": "data.tmd.go.th (Thai Meteorological Department) API ukey, for tmd_obs.py",
+    "TMD_NWP_TOKEN": "data.tmd.go.th/nwpapi Bearer token (the NEWER NWP forecast product — a "
+                      "different sign-up and a different credential from TMD_UID/TMD_UKEY above); "
+                      "probe.py only so far, not wired into any live feature yet",
+    "GISTDA_API_KEY": "GISTDA (api-gateway.gistda.or.th) API key — a single value sent as the "
+                       "api_key query parameter, for probe.py (not wired into any live feature yet)",
 }
 
 
@@ -50,6 +56,8 @@ SETTABLE: dict[str, str] = {
 #: and TMD_UKEY to do anything, so half a pair present is still "ไม่มี".
 KEY_GROUPS: dict[str, tuple[str, ...]] = {
     "tmd": ("TMD_UID", "TMD_UKEY"),
+    "tmd-nwp": ("TMD_NWP_TOKEN",),
+    "gistda": ("GISTDA_API_KEY",),
     "qwen": ("QWEN_API_KEY",),
     "groq": ("GROQ_API_KEY",),
     "google": ("GOOGLE_TTS_API_KEY",),
@@ -182,7 +190,49 @@ def replace_secrets(env_path: Path, values: dict[str, str]) -> None:
             kept_lines.append(line)
     kept_lines.extend(f"{name}={value}" for name, value in checked.items())
     body = ("\n".join(kept_lines) + "\n") if kept_lines else ""
+    _atomic_write(env_path, body)
 
+
+def remove_secrets(env_path: Path, names: tuple[str, ...]) -> int:
+    """Deletes every line for the given names (any of them, present or not)
+    from the env file, atomically, the same way `replace_secrets` rewrites
+    it — for the one case neither `set-key` nor `keys set` serves: a key
+    that was entered WRONG (e.g. the GISTDA value typed into TMD_UKEY) and
+    needs to be gone rather than overwritten with another guess. Returns how
+    many of `names` actually had a line removed. The caller (`keys unset`)
+    is the one that asks for confirmation; this function just removes,
+    unconditionally, once called.
+
+    `names` need not all be in SETTABLE — `keys unset` removes a whole
+    group, and a name it does not recognise is simply never found in the
+    file, so this stays permissive rather than raising for an unknown name.
+    """
+    if not env_path.is_file():
+        return 0
+    removed = 0
+    kept_lines: list[str] = []
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            existing_name = stripped.split("=", 1)[0].strip()
+            if existing_name in names:
+                removed += 1
+                continue
+        kept_lines.append(line)
+    if removed:
+        body = ("\n".join(kept_lines) + "\n") if kept_lines else ""
+        _atomic_write(env_path, body)
+    return removed
+
+
+def _atomic_write(env_path: Path, body: str) -> None:
+    """A new file, written with 0600 from its very first byte, in the SAME
+    directory as `env_path` so the final `os.replace` is one atomic rename
+    on both POSIX and Windows — a crash mid-write leaves the temp file
+    orphaned and the real env file exactly as it was, never half-written and
+    never world-readable even for an instant. Shared by `replace_secrets`
+    and `remove_secrets`, the two places this module rewrites rather than
+    appends."""
     tmp_path = env_path.with_name(env_path.name + f".tmp{os.getpid()}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     fd = os.open(tmp_path, flags, 0o600)

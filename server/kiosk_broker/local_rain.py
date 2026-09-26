@@ -51,6 +51,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 from . import alerts  # width()/fit() for the same 45-column rule, BANGKOK
+from . import tls
 
 log = logging.getLogger("kiosk_broker")
 
@@ -96,7 +97,7 @@ NO_DATA_ANSWER = "ยังไม่มีข้อมูลฝนล่าส�
 
 def _fetch(url: str, timeout: float, limit: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with tls.urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             raise ValueError(f"http {response.status}")
         body = response.read(limit + 1)

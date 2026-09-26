@@ -76,6 +76,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import alerts  # width(), fit(), LINE_WIDTH, THAI_MONTHS_SHORT — the same card rules
+from . import tls
 
 log = logging.getLogger("kiosk_broker")
 
@@ -344,7 +345,7 @@ REGION_CARD_THRESHOLD = 5
 
 def _fetch(url: str, timeout: float, limit: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with tls.urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             raise ValueError(f"http {response.status}")
         body = response.read(limit + 1)

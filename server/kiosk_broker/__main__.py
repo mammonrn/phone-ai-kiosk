@@ -448,6 +448,34 @@ def _keys_set(group: str) -> int:
     return 0
 
 
+def _keys_unset(group: str) -> int:
+    """`keys unset GROUP`: removes every secret a group needs from the env
+    file, after an explicit y/N confirmation — for a key entered WRONG (the
+    2026-09-26 mix-up: a GISTDA value typed into TMD_UKEY), where the fix is
+    "gone", not another guess `keys set` would overwrite it with. Prints
+    which names were actually removed; a group with nothing to remove is not
+    an error (unsetting an already-empty group is a no-op, not a refusal)."""
+    from . import envfile
+
+    names = envfile.KEY_GROUPS.get(group)
+    if names is None:
+        print(f"{group}: not a known key group. One of: {', '.join(sorted(envfile.KEY_GROUPS))}",
+              file=sys.stderr)
+        return 2
+    env_path = config_mod.DEFAULT_HOME / "env"
+    print(f"about to remove from {env_path}: {', '.join(names)}")
+    if sys.stdin.isatty():
+        answer = input("continue? [y/N] ").strip().lower()
+    else:
+        answer = sys.stdin.readline().strip().lower()
+    if answer != "y":
+        print("cancelled — nothing removed.")
+        return 1
+    removed = envfile.remove_secrets(env_path, names)
+    print(f"{group}: {removed} of {len(names)} line(s) removed. Check with `keys`.")
+    return 0
+
+
 def _client(cfg: "config_mod.Config"):
     """The Anthropic client."""
     import anthropic
@@ -587,6 +615,13 @@ def _botnoi_voices(conn, cfg, args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # `health`: every public data source probed once with the broker's own TLS
+    # contexts (tls.py) + the serving broker's last TLS status per host. Handled
+    # before argparse so it stays one self-contained block.
+    if list(sys.argv[1:] if argv is None else argv)[:1] == ["health"]:
+        from . import tls
+        return tls.health_main(config_mod.DEFAULT_HOME)
+
     parser = argparse.ArgumentParser(prog="kiosk_broker")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -609,6 +644,10 @@ def main(argv: list[str] | None = None) -> int:
         "set", help="replace every secret a group needs — hidden input, never a command-line "
                     "argument, safe to re-run (unlike set-key, this DOES overwrite)")
     p_keys_set.add_argument("group", help="e.g. tmd — see envfile.KEY_GROUPS for the full list")
+    p_keys_unset = keys_sub.add_parser(
+        "unset", help="remove every secret a group needs from the env file, after a y/N "
+                     "confirmation — for a key entered wrong, where the fix is 'gone'")
+    p_keys_unset.add_argument("group", help="e.g. tmd — see envfile.KEY_GROUPS for the full list")
     p = sub.add_parser("set-key", help="append one secret to the env file, read without echo; "
                                        "never rewrites the file, refuses a name already there")
     p.add_argument("name", help="e.g. TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, TUYA_DATA_CENTER")
@@ -637,6 +676,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-usd", type=float, default=0.05,
                    help="this run's own ceiling, at list price (Poom: $0.05)")
     sub.add_parser("stt-qwen-check", help="Qwen ASR: key present, and one request with 1 s of silence")
+    p = sub.add_parser("probe", help="probe tmd|gistda: call every documented endpoint a key "
+                                     "unlocks, once each, and print dataset/fields/freshness/"
+                                     "coverage — never a key or a URL that carries one")
+    p.add_argument("source", choices=["tmd", "gistda"])
+    p.add_argument("--json", action="store_true", help="machine-readable output, same redaction")
     sub.add_parser("tuya-check", help="Tuya Cloud: keys, data center, and one token request")
     sub.add_parser("tuya-devices", help="Tuya Cloud: list devices — name, type, on/off. Read only")
     sub.add_parser("selftest", help="one real call to the API, then the measured cost")
@@ -830,6 +874,12 @@ def main(argv: list[str] | None = None) -> int:
         return _set_key(args.name)
     if args.cmd == "keys" and getattr(args, "keys_cmd", None) == "set":
         return _keys_set(args.group)
+    if args.cmd == "keys" and getattr(args, "keys_cmd", None) == "unset":
+        return _keys_unset(args.group)
+    if args.cmd in ("probe",):
+        from . import probe
+
+        return probe.run(args.source, _secret, as_json=args.json)
     if args.cmd == "stt-hints-check":
         from . import stt_hints
 
@@ -1452,15 +1502,24 @@ def main(argv: list[str] | None = None) -> int:
                 ("QWEN_API_KEY", "the \"qwen\" transcriber (Alibaba, Singapore)"),
                 ("QWEN_WORKSPACE_ID", "optional: the newer Singapore domain for qwen"),
                 ("BOTNOI_TOKEN", "the Botnoi experiment only, never production"),
-                ("TMD_UID", "TMD station observations (data.tmd.go.th), for the weather card"),
-                ("TMD_UKEY", "TMD station observations (data.tmd.go.th), for the weather card"),
+                ("TMD_UID", "TMD station observations (data.tmd.go.th/api/), for the weather card"),
+                ("TMD_UKEY", "TMD station observations (data.tmd.go.th/api/), for the weather card"),
+                ("TMD_NWP_TOKEN", "TMD NWP forecast (data.tmd.go.th/nwpapi) — probe only, not wired yet"),
+                ("GISTDA_API_KEY", "GISTDA (flood/disaster data) — probe only, not wired yet"),
                 ("TUYA_ACCESS_ID", "Tuya Cloud, read-only this phase"),
                 ("TUYA_ACCESS_SECRET", "Tuya Cloud, read-only this phase"),
                 ("TUYA_DATA_CENTER", "which Tuya host to call"),
                 ("EWELINK_APP_ID", "eWeLink application (expires 2027-09-24)"),
                 ("EWELINK_APP_SECRET", "eWeLink application"),
             ):
-                state = "present" if _secret(name) else "missing"
+                value = _secret(name)
+                state = "present" if value else "missing"
+                if name == "TMD_NWP_TOKEN" and value:
+                    from . import probe as probe_mod
+
+                    exp = probe_mod.jwt_dates(value).get("exp")
+                    if exp:
+                        state = f"present (หมดอายุ {exp})"
                 print(f"  {name:<20} {state:<8} {what}")
             print()
             print("BOTNOI_TOKEN missing is normal: tts_provider is 'google' and")

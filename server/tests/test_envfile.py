@@ -151,3 +151,60 @@ def test_replace_secrets_leaves_the_file_0600(tmp_path):
     os.chmod(path, 0o644)
     envfile.replace_secrets(path, {"TMD_UID": SECRET, "TMD_UKEY": SECRET})
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+# ---------------------------------------------- new key groups (0.69: gistda)
+
+def test_gistda_and_tmd_nwp_are_known_key_groups():
+    assert envfile.KEY_GROUPS["gistda"] == ("GISTDA_API_KEY",)
+    assert envfile.KEY_GROUPS["tmd-nwp"] == ("TMD_NWP_TOKEN",)
+    assert "GISTDA_API_KEY" in envfile.SETTABLE
+    assert "TMD_NWP_TOKEN" in envfile.SETTABLE
+
+
+# --------------------------------------------------------------- remove_secrets
+
+def test_remove_secrets_deletes_only_the_named_lines(tmp_path):
+    path = _env(tmp_path, "TMD_UID=wrong-value\nGROQ_API_KEY=ggg\nTMD_UKEY=also-wrong\n")
+    removed = envfile.remove_secrets(path, ("TMD_UID", "TMD_UKEY"))
+    assert removed == 2
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines == ["GROQ_API_KEY=ggg"]
+
+
+def test_remove_secrets_on_a_group_with_nothing_present_is_a_no_op(tmp_path):
+    path = _env(tmp_path, "GROQ_API_KEY=ggg\n")
+    removed = envfile.remove_secrets(path, ("TMD_UID", "TMD_UKEY"))
+    assert removed == 0
+    assert path.read_text(encoding="utf-8") == "GROQ_API_KEY=ggg\n"
+
+
+def test_remove_secrets_on_a_missing_file_is_a_no_op(tmp_path):
+    path = tmp_path / "env"
+    assert envfile.remove_secrets(path, ("TMD_UID",)) == 0
+    assert not path.exists()
+
+
+def test_remove_secrets_only_removes_the_named_half_of_a_pair(tmp_path):
+    # The exact 2026-09-26 mix-up: TMD_UKEY held a GISTDA value. Unsetting
+    # the whole tmd group must not disturb an unrelated key like gistda's.
+    path = _env(tmp_path, "TMD_UID=x\nTMD_UKEY=y\nGISTDA_API_KEY=z\n")
+    removed = envfile.remove_secrets(path, envfile.KEY_GROUPS["tmd"])
+    assert removed == 2
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines == ["GISTDA_API_KEY=z"]
+
+
+def test_remove_secrets_leaves_no_temp_file_behind(tmp_path):
+    path = _env(tmp_path, "TMD_UID=x\nTMD_UKEY=y\n")
+    envfile.remove_secrets(path, ("TMD_UID", "TMD_UKEY"))
+    leftovers = [p for p in tmp_path.iterdir() if p.name != "env"]
+    assert leftovers == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="file modes are POSIX")
+def test_remove_secrets_leaves_the_file_0600(tmp_path):
+    path = _env(tmp_path, "TMD_UID=x\nTMD_UKEY=y\n")
+    os.chmod(path, 0o644)
+    envfile.remove_secrets(path, ("TMD_UID",))
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600

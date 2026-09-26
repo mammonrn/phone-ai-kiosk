@@ -341,6 +341,9 @@ def make_server(config: Config, client: object, stt_client: object = None,
                 tts_api_key: str = "", botnoi_token: str = "",
                 google_stt_key: str = "") -> ThreadingHTTPServer:
     store.connect(config.db_path).close()  # create/migrate once, up front
+    # Where `python -m kiosk_broker health` finds this broker's last TLS status per host.
+    from . import tls
+    tls.set_status_file(config.home / "tls_status.json")
 
     handler = type("BoundHandler", (Handler,), {
         "config": config,

@@ -1724,3 +1724,62 @@ sudo systemctl restart kiosk-broker
 sudo journalctl -u kiosk-broker -n 50 | grep "tmd observations"    # ต้องเห็น tmd observations: on
 ```
 ไฟล์ที่เก็บคือไฟล์ env เดิมของ broker (สิทธิ์ 600 เจ้าของ kioskbroker นอก repo) เปลี่ยน key ภายหลังใช้ `$B keys set tmd` ซ้ำได้ (เขียนทับอย่างปลอดภัย)
+
+⚠️ **key นี้กับ key ของ "NWP" ด้านล่างเป็นคนละสมัคร คนละรูปแบบ** — สมัครหน้านี้ (`registerPre.php`) ได้ `uid`/`ukey` สองค่า
+ไม่ใช่ token ยาวๆ ตัวเดียวที่ขึ้นต้นด้วย `eyJ` (นั่นคือ JWT ของ NWP API ด้านล่าง) ถ้าใส่ผิดกลุ่ม (เช่นเผลอเอา key ของ
+NWP หรือ GISTDA มาใส่ `TMD_UKEY`) ให้ลบออกก่อนด้วย `$B keys unset tmd` (มีถามยืนยัน y/N) แล้วค่อยสมัคร/ใส่ใหม่ให้ถูกกลุ่ม
+ห้ามใช้ `$B keys set tmd` ทับเพราะจะเขียนทับด้วยอีกค่าที่อาจผิดอีก
+
+
+## พยากรณ์กรมอุตุฯ แบบ NWP (data.tmd.go.th/nwpapi) — ใส่ key (0.69, สำรวจก่อน ยังไม่ต่อเข้าการ์อากาศ)
+
+คนละผลิตภัณฑ์กับ "สถานีตรวจวัด" ด้านบน: อันนี้เป็น**แบบจำลองพยากรณ์**ตามพิกัด/จังหวัด/ภาค (ราย 3 ชม. ล่วงหน้า 10 วัน
+ความละเอียด 9 กม. หรือรายชั่วโมงล่วงหน้า 72 ชม. ความละเอียด 3 กม.) ไม่มีค่าที่วัดจริงจากสถานีเลย — ยังใช้ `TMD_UID`/
+`TMD_UKEY` ด้านบนสำหรับค่าที่วัดจริงต่อไปตามเดิม key ตัวนี้เป็น **JWT ตัวเดียว** (ขึ้นต้นด้วย `eyJ`) ส่งเป็น
+`Authorization: Bearer <token>` ไม่ใช่ query param แบบ uid/ukey
+
+1. สมัครที่ https://data.tmd.go.th/nwpapi/register (กรอกข้อมูลส่วนตัวและวัตถุประสงค์การใช้งาน) แล้ว login ที่
+   https://data.tmd.go.th/nwpapi/login กด "Create New Token" — คัดลอก token (ยาว ขึ้นต้น `eyJ`) เก็บไว้ชั่วคราว
+   **ห้ามส่งใน chat กับ Claude Code**
+2. บน VPS:
+```
+cd ~/phone-ai-kiosk && git pull && sudo bash server/install/install.sh
+B='sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker'
+$B keys set tmd-nwp   # ถาม TMD_NWP_TOKEN ค่าเดียว ตอนวางมองไม่เห็น ไม่ลงประวัติคำสั่ง
+$B keys               # ต้องขึ้น tmd-nwp มี (หมดอายุ YYYY-MM-DD) — อ่านจาก exp ใน JWT เอง ไม่ได้เดา
+```
+โควตาเอกสาร: ไม่เกิน 60 ครั้ง/นาที และไม่เกิน 100,000 datapoint/ชั่วโมงต่อบัญชี (429 เมื่อเกิน) — ยังไม่ได้ต่อเข้าการ์ดอากาศ
+รอผล `$B probe tmd` ก่อน
+
+
+## GISTDA (พื้นที่น้ำท่วม/ภัยแล้ง) — ใส่ key (0.69, สำรวจก่อน ยังไม่ต่อเข้าการ์ดอากาศ)
+
+ข้อมูลน้ำท่วม/ภัยแล้งจาก opendata.gistda.or.th ผ่าน api-gateway.gistda.or.th ยังไม่ได้ต่อเข้าฟีเจอร์ใดๆ ของตู้ —
+รอบนี้ใส่ key แล้วสำรวจก่อนด้วย `$B probe gistda` ว่าข้อมูลเข้าเงื่อนไขไหม (ดูรายงานที่ Poom ได้รับพร้อมงานนี้)
+
+1. สมัคร key ที่ https://api-gateway.gistda.or.th/v2 **ห้ามส่ง key ในแชทกับ Claude Code**
+2. บน VPS:
+```
+cd ~/phone-ai-kiosk && git pull && sudo bash server/install/install.sh
+B='sudo -u kioskbroker env KIOSK_BROKER_HOME=/home/kioskbroker/.config/kiosk-broker PYTHONPATH=/home/kioskbroker/app /home/kioskbroker/venv/bin/python -m kiosk_broker'
+$B keys set gistda    # ถาม GISTDA_API_KEY ค่าเดียว ตอนวางมองไม่เห็น ไม่ลงประวัติคำสั่ง
+$B keys               # ต้องขึ้น gistda มี (ไม่แสดงค่า)
+```
+key นี้ส่งเป็น query parameter `api_key=` (ไม่ใช่ header) — ตรวจจากหน้า dataset ของ opendata.gistda.or.th เอง
+2026-09-26 ยังไม่พบหน้าเงื่อนไขการใช้งานเฉพาะของ api-gateway (แยกจาก Sphere ซึ่งเป็นคนละผลิตภัณฑ์/แผนที่) — ดูหัวข้อ
+"เงื่อนไข GISTDA" ในรายงานที่ส่งพร้อมงานนี้ และอีเมลยืนยันตอนสมัครของ Poom เองอาจมีรายละเอียดเพิ่ม
+
+
+## `$B probe tmd` / `$B probe gistda` — สำรวจว่า key ให้อะไรบ้าง (0.69)
+
+เรียกทุก endpoint ที่เอกสารทางการระบุว่า key นั้นใช้ได้ **ครั้งเดียวต่อ endpoint** เว้นช่วงอย่างน้อย 1 วินาที แล้วพิมพ์
+สรุปที่ปลอดภัยแปะกลับมาได้ทันที: ชื่อชุดข้อมูล / HTTP status / ชื่อฟิลด์ / ตัวอย่าง 1-2 แถว (ตัดฟิลด์ที่ดูเป็นข้อมูลส่วนตัว
+ออก) / ความสด / ครอบคลุมพื้นที่ / ขนาดที่อ่าน **ไม่พิมพ์ key หรือ URL ที่มี key เด็ดขาด** (ตรวจด้วย unit test) — ถ้า
+endpoint ไหนตอบไม่ใช่ 200 ก็แค่รายงานสถานะจริงตามนั้น (เช่น 404 แปลว่า path ต้องแก้ ไม่ใช่ความผิดพลาดของเครื่องมือ)
+
+```
+$B probe tmd      # ถ้ามี tmd-nwp จะสำรวจ NWP ก่อน แล้วสำรวจ TMDAPI (uid/ukey) ต่อถ้ามีด้วย — ส่วนไหนไม่มี key ก็ข้าม
+$B probe gistda
+```
+ไม่มี key เลยของกลุ่มนั้น → พิมพ์ว่ายังไม่มี key และจบด้วย exit code ไม่ใช่ 0 โดยไม่ยิง request ออกไปเลย ใช้ `--json`
+ต่อท้ายได้ถ้าต้องการเอาไปประมวลผลต่อ (ยังปลอดภัยเหมือนกัน)

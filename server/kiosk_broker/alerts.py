@@ -97,6 +97,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
+from . import tls
+
 log = logging.getLogger("kiosk_broker")
 
 USER_AGENT = "phone-ai-kiosk/1.0 (+https://github.com/mammonrn/phone-ai-kiosk)"
@@ -183,7 +185,7 @@ class AlertSourceError(ValueError):
 
 def _fetch(url: str, timeout: float, limit: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with tls.urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             raise AlertSourceError(f"http {response.status}")
         body = response.read(limit + 1)

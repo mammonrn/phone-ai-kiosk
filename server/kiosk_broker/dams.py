@@ -69,6 +69,7 @@ import urllib.error
 import urllib.request
 
 from . import alerts  # fit(), ANSWER_CHARS — the same spoken-answer rules
+from . import tls
 
 log = logging.getLogger("kiosk_broker")
 
@@ -118,7 +119,7 @@ class DamSourceError(ValueError):
 
 def _fetch(url: str, timeout: float, limit: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with tls.urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             raise DamSourceError(f"http {response.status}")
         body = response.read(limit + 1)

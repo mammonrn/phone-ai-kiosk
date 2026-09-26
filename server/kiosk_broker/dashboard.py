@@ -87,6 +87,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
+from . import tls
+
 log = logging.getLogger("kiosk_broker")
 
 #: Nothing here sends a key, a token or anything identifying. If that ever stops
@@ -234,7 +236,7 @@ MAX_RESPONSE_BYTES = 256 * 1024
 
 def _get(url: str, timeout: float) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with tls.urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             raise ValueError(f"http {response.status}")
         # Bounded read: a source that starts answering with a gigabyte must not
