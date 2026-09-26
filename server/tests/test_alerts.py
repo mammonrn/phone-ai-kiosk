@@ -285,6 +285,60 @@ def test_before_any_fetch_nothing_is_claimed():
     assert all(v == {"ok": False, "updated": None} for v in payload["sources"].values())
 
 
+def test_tmd_rss_retries_once_after_a_timeout_then_succeeds(monkeypatch):
+    calls = []
+
+    def flaky(url, timeout, limit):
+        calls.append((url, timeout))
+        rss_calls = sum(1 for u, _ in calls if u == alerts.TMD_WARNING_RSS_URL)
+        if url == alerts.TMD_WARNING_RSS_URL and rss_calls == 1:
+            raise TimeoutError("timed out")
+        return PAGES[url]
+
+    slept = []
+    monkeypatch.setattr(alerts.time, "sleep", lambda s: slept.append(s))
+    b = board(flaky)
+    b.refresh(NOW)
+    assert slept == [alerts.TMD_RSS_RETRY_PAUSE]
+    tmd_rss_calls = [c for c in calls if c[0] == alerts.TMD_WARNING_RSS_URL]
+    assert len(tmd_rss_calls) == 2 and all(t == alerts.TMD_RSS_TIMEOUT for _, t in tmd_rss_calls)
+    payload = b.payload(NOW)
+    assert payload["sources"]["tmd_rss"] == {"ok": True, "updated": int(NOW)}
+
+
+def test_tmd_rss_gives_up_after_a_second_timeout(monkeypatch):
+    def always_slow(url, timeout, limit):
+        if url == alerts.TMD_WARNING_RSS_URL:
+            raise TimeoutError("timed out")
+        return PAGES[url]
+
+    slept = []
+    monkeypatch.setattr(alerts.time, "sleep", lambda s: slept.append(s))
+    b = board(always_slow)
+    b.refresh(NOW)
+    assert slept == [alerts.TMD_RSS_RETRY_PAUSE]  # exactly one retry, never a loop
+    payload = b.payload(NOW)
+    assert payload["sources"]["tmd_rss"] == {"ok": False, "updated": None}
+    assert payload["ok"] is True  # tmd_cap still succeeded; a secondary source failing is not fatal
+
+
+def test_a_plain_offline_tmd_rss_is_not_retried(monkeypatch):
+    # Only a TIMEOUT gets the retry+pause; an outright refusal/offline gains
+    # nothing from repeating the identical request 2 seconds later.
+    def offline_rss(url, timeout, limit):
+        if url == alerts.TMD_WARNING_RSS_URL:
+            raise urllib.error.URLError("offline")
+        return PAGES[url]
+
+    slept = []
+    monkeypatch.setattr(alerts.time, "sleep", lambda s: slept.append(s))
+    b = board(offline_rss)
+    b.refresh(NOW)
+    assert slept == []
+    payload = b.payload(NOW)
+    assert payload["sources"]["tmd_rss"] == {"ok": False, "updated": None}
+
+
 def test_thaiwater_joins_the_cache_like_any_other_source():
     web = Web({**PAGES, alerts.THAIWATER_URL: THAIWATER_FULL})
     b = board(web)

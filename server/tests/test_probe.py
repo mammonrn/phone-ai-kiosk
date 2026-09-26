@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import urllib.parse
 
 import pytest
 
@@ -287,3 +288,158 @@ def test_probe_pauses_between_calls_but_not_before_the_first(monkeypatch):
     probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), fetch=fetch, sleep=sleeps.append)
     assert len(sleeps) == len(probe.GISTDA_ENDPOINTS) - 1
     assert all(s == probe.PAUSE_SECONDS for s in sleeps)
+
+
+# ------------------------------------------------------- nested discovery ---
+
+def test_discover_records_finds_the_deepest_nested_list():
+    # Shaped like data.tmd.go.th/nwpapi's own docs:
+    # {"WeatherForecasts": [{"location": {...}, "forecasts": [{"time": ..., "data": {...}}]}]}
+    body = {
+        "WeatherForecasts": [
+            {"location": {"province": "กรุงเทพมหานคร"},
+             "forecasts": [
+                 {"time": "2026-09-26T00:00:00", "data": {"tc": 30, "rh": 80}},
+                 {"time": "2026-09-26T03:00:00", "data": {"tc": 29, "rh": 82}},
+             ]},
+        ],
+    }
+    path, records = probe._discover_records(body)
+    assert path == "WeatherForecasts[].forecasts[]"
+    assert [r["time"] for r in records] == ["2026-09-26T00:00:00", "2026-09-26T03:00:00"]
+
+
+def test_discover_records_empty_for_no_nested_list():
+    assert probe._discover_records({"a": 1, "b": "x"}) == ("", [])
+
+
+def test_flatten_record_merges_one_nested_dict_field():
+    flat = probe._flatten_record({"time": "t1", "data": {"tc": 30, "rh": 80}})
+    assert flat == {"time": "t1", "tc": 30, "rh": 80}
+
+
+def test_probe_tmd_nwp_shows_flattened_fields_and_a_time_range():
+    out = io.StringIO()
+
+    def fetch(url, timeout, limit, headers=None):
+        body = {"WeatherForecasts": [
+            {"location": {"province": "กรุงเทพมหานคร"},
+             "forecasts": [
+                 {"time": "2026-09-26T00:00:00", "data": {"tc": 30, "rh": 80}},
+                 {"time": "2026-09-27T00:00:00", "data": {"tc": 29, "rh": 82}},
+             ]},
+        ]}
+        return 200, json.dumps(body).encode("utf-8")
+
+    rc = probe.run_tmd(_secret({"TMD_NWP_TOKEN": SAMPLE_JWT}), out=out, fetch=fetch, sleep=lambda s: None)
+    assert rc == 0
+    text = out.getvalue()
+    assert "records path: WeatherForecasts[].forecasts[]" in text
+    assert "tc" in text and "rh" in text
+    assert "ตั้งแต่ 2026-09-26T00:00:00 ถึง 2026-09-27T00:00:00" in text
+
+
+# ------------------------------------------------------------- pagination ---
+
+def _feature(i):
+    return {"id": i, "properties": {"pv_tn": f"จังหวัด{i % 3}", "img_date": f"2026-09-{10 + i:02d}"}}
+
+
+def test_paginate_features_follows_offset_until_a_short_page(monkeypatch):
+    pages = [[_feature(i) for i in range(probe.GISTDA_PAGE_LIMIT)],
+              [_feature(i) for i in range(probe.GISTDA_PAGE_LIMIT, probe.GISTDA_PAGE_LIMIT + 3)]]
+    calls = []
+
+    def fetch(url, timeout, limit, headers=None):
+        calls.append(url)
+        page = pages[len(calls) - 1]
+        return 200, json.dumps({"features": page}).encode("utf-8")
+
+    slept = []
+    records, total_bytes, pages_fetched, note, status = probe._paginate_features(
+        "https://x/features/flood/1day?bbox=a", [], fetch, None, slept.append, probe.FETCH_TIMEOUT)
+    assert status == 200 and pages_fetched == 2 and note == ""
+    assert len(records) == probe.GISTDA_PAGE_LIMIT + 3
+    assert "offset=0" in calls[0] and f"offset={probe.GISTDA_PAGE_LIMIT}" in calls[1]
+    assert slept == [probe.GISTDA_PAGE_PAUSE_SECONDS]
+
+
+def test_paginate_features_stops_on_a_repeated_page(monkeypatch):
+    page = [_feature(i) for i in range(probe.GISTDA_PAGE_LIMIT)]
+    calls = []
+
+    def fetch(url, timeout, limit, headers=None):
+        calls.append(url)
+        return 200, json.dumps({"features": page}).encode("utf-8")  # same page every time: offset ignored
+
+    records, total_bytes, pages_fetched, note, status = probe._paginate_features(
+        "https://x/features/flood/1day", [], fetch, None, lambda s: None, probe.FETCH_TIMEOUT)
+    assert pages_fetched == 2  # asked a second time, saw the same ids, stopped
+    assert "offset not honoured" in note
+    assert len(records) == probe.GISTDA_PAGE_LIMIT  # only the first page kept
+
+
+def test_paginate_features_stops_at_the_page_cap(monkeypatch):
+    full_page = [_feature(i) for i in range(probe.GISTDA_PAGE_LIMIT)]
+
+    def fetch(url, timeout, limit, headers=None):
+        # A different id set each time so the repeat-detector never fires —
+        # only the hard page cap should stop this.
+        offset = int(dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))["offset"])
+        page = [_feature(i + offset) for i in range(probe.GISTDA_PAGE_LIMIT)]
+        return 200, json.dumps({"features": page}).encode("utf-8")
+
+    records, total_bytes, pages_fetched, note, status = probe._paginate_features(
+        "https://x/features/flood/1day", [], fetch, None, lambda s: None, probe.FETCH_TIMEOUT)
+    assert pages_fetched == probe.GISTDA_MAX_PAGES
+    assert f"{probe.GISTDA_MAX_PAGES}-page cap" in note
+
+
+def test_paginate_features_first_page_non_200_is_reported_plainly():
+    def fetch(url, timeout, limit, headers=None):
+        return 404, b"not found"
+
+    records, total_bytes, pages_fetched, note, status = probe._paginate_features(
+        "https://x/features/flood-freq", [], fetch, None, lambda s: None, probe.FETCH_TIMEOUT)
+    assert status == 404 and records == [] and pages_fetched == 1
+
+
+def test_run_gistda_reports_the_true_total_across_pages():
+    def fetch(url, timeout, limit, headers=None):
+        offset = int(dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))["offset"])
+        if offset == 0:
+            page = [_feature(i) for i in range(probe.GISTDA_PAGE_LIMIT)]
+        elif offset == probe.GISTDA_PAGE_LIMIT:
+            page = [_feature(i) for i in range(probe.GISTDA_PAGE_LIMIT, probe.GISTDA_PAGE_LIMIT + 7)]
+        else:
+            page = []
+        return 200, json.dumps({"features": page}).encode("utf-8")
+
+    out = io.StringIO()
+    rc = probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), out=out, fetch=fetch, sleep=lambda s: None)
+    assert rc == 0
+    text = out.getvalue()
+    assert f"{probe.GISTDA_PAGE_LIMIT + 7} รายการ" in text
+    assert "pages       : 2" in text
+
+
+# --------------------------------------------------------------- endpoint fixes ---
+
+def test_flood_freq_uses_a_longer_timeout():
+    spec = next(s for s in probe.GISTDA_ENDPOINTS if "flood-freq" in s.url)
+    assert spec.timeout > probe.FETCH_TIMEOUT
+
+    seen_timeouts = []
+
+    def fetch(url, timeout, limit, headers=None):
+        if "flood-freq" in url:
+            seen_timeouts.append(timeout)
+        return 200, b'{"features": []}'
+
+    probe.run_gistda(_secret({"GISTDA_API_KEY": "k"}), fetch=fetch, sleep=lambda s: None)
+    assert seen_timeouts == [spec.timeout]
+
+
+def test_drought_recurrence_uses_the_working_api_version():
+    spec = next(s for s in probe.GISTDA_ENDPOINTS if "drought-recurrence" in s.url)
+    assert "/v1.1/" in spec.url and "/v1.0/" not in spec.url

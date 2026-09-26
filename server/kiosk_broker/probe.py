@@ -229,7 +229,12 @@ class EndpointSpec:
     #: counting (province name, station name, ...).
     place_fields: tuple[str, ...] = ()
     #: for JSON: the key holding the list of records, "" = the response
-    #: itself is the list (or every top-level key is one "record").
+    #: itself is the list (or every top-level key is one "record"); "features"
+    #: additionally turns on GISTDA's own `?limit=&offset=` pagination (see
+    #: _paginate_features) — every GISTDA endpoint below answers this shape;
+    #: "auto" walks the body to find the first nested list of records instead
+    #: (see _discover_records) — for an endpoint like TMD's NWP whose exact
+    #: nesting was confirmed from the docs but not yet a records_key by hand.
     records_key: str = ""
     #: for XML: the repeated element name, "" = auto-detect (see
     #: _auto_record_tag) for a dataset whose exact tag was not confirmed by
@@ -240,6 +245,9 @@ class EndpointSpec:
     #: bounding box covering all of Thailand keeps the answer representative
     #: without pointing at Poom's own address.
     extra_params: dict = field(default_factory=dict)
+    #: per-endpoint override — flood-freq answered slowly enough on
+    #: 2026-09-26 to need longer than the others, once, no retry loop.
+    timeout: float = FETCH_TIMEOUT
 
 
 @dataclass
@@ -252,6 +260,15 @@ class ProbeResult:
     coverage: str = "❓ ไม่ทราบ"
     bytes_read: int = 0
     error: str = ""
+    #: set only for records_key == "auto" — the path _discover_records found,
+    #: e.g. "WeatherForecasts[].forecasts[]", printed so a human can check it.
+    records_path: str = ""
+    #: > 1 only for a paginated (records_key == "features") endpoint.
+    pages: int = 1
+    #: why pagination stopped before a hard cap would have mattered, or why
+    #: it stopped AT a cap — "" when every page came back full and the last
+    #: one was simply short (the ordinary, non-noteworthy ending).
+    pagination_note: str = ""
 
 
 # ------------------------------------------------------------------ TMD ---
@@ -429,14 +446,14 @@ NWP_ENDPOINTS: tuple[EndpointSpec, ...] = (
         url="https://data.tmd.go.th/nwpapi/v1/forecast/location/hourly/at"
             f"?lat={_BANGKOK_LAT_LON['lat']}&lon={_BANGKOK_LAT_LON['lon']}"
             f"&fields={_NWP_HOURLY_FIELDS}&duration=48",
-        kind="json",
+        kind="json", records_key="auto", freshness_fields=("time",),
     ),
     EndpointSpec(
         name="forecast/location/daily/at (พยากรณ์รายวันตามพิกัด, สูงสุด 126 วัน)",
         url="https://data.tmd.go.th/nwpapi/v1/forecast/location/daily/at"
             f"?lat={_BANGKOK_LAT_LON['lat']}&lon={_BANGKOK_LAT_LON['lon']}"
             f"&fields={_NWP_DAILY_FIELDS}&duration=7",
-        kind="json",
+        kind="json", records_key="auto", freshness_fields=("time",),
     ),
 )
 
@@ -491,14 +508,21 @@ GISTDA_ENDPOINTS: tuple[EndpointSpec, ...] = (
         place_fields=("properties.pv_tn", "properties.province"),
     ),
     EndpointSpec(
+        # Slower to answer than the others on 2026-09-26 (it scans 2011-2023,
+        # not a rolling window) — a longer timeout, once, no retry loop.
         name="flood-freq (พื้นที่น้ำท่วมซ้ำซาก 2011-2023)",
         url="https://api-gateway.gistda.or.th/api/2.0/resources/features/flood-freq",
         kind="json", records_key="features", extra_params={"bbox": _THAILAND_BBOX, "limit": "5"},
         place_fields=("properties.pv_tn", "properties.province"),
+        timeout=FETCH_TIMEOUT * 3,
     ),
     EndpointSpec(
+        # v1.0 (the version opendata.gistda.or.th's own "homepage" field still
+        # names) answered 404 on 2026-09-26; the SAME page's own live "ลองใช้
+        # งาน" example links (opendata.gistda.or.th/dataset/disasters-02, read
+        # the same day) use v1.1 instead — the dataset was moved, not removed.
         name="drought-recurrence (พื้นที่ภัยแล้งซ้ำซาก 2018-2023)",
-        url="https://api-gateway.gistda.or.th/api/2.0/resources/gi-service/v1.0/disasters/drought-recurrence",
+        url="https://api-gateway.gistda.or.th/api/2.0/resources/gi-service/v1.1/disasters/drought-recurrence",
         kind="json", records_key="features", extra_params=dict(_BANGKOK_LAT_LON),
         place_fields=("properties.pv_tn", "properties.province"),
     ),
@@ -538,37 +562,94 @@ def _truncate(text: str, limit: int = 200) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def _summarise_json(spec: EndpointSpec, body: bytes, secrets: list[str]) -> ProbeResult:
-    result = ProbeResult(name=spec.name, status=0, bytes_read=len(body))
-    try:
-        data = json.loads(body.decode("utf-8", errors="replace"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        result.error = redact(f"could not parse JSON: {exc}", secrets)
-        return result
+#: Records beyond this many are still counted (coverage always reports the
+#: true total), but not scanned for fields/freshness/places/samples — a
+#: probe is a diagnostic run by hand, not a bulk export.
+MAX_ANALYSED_RECORDS = 2000
 
-    records = data
-    if spec.records_key:
-        records = _dig(data, spec.records_key) or []
-    if isinstance(records, dict):
-        records = list(records.values())
-    if not isinstance(records, list):
-        records = [records]
 
-    cleaned = [strip_personal(r) if isinstance(r, dict) else r for r in records[:1000]]
+def _discover_records(obj) -> tuple[str, list]:
+    """For an endpoint whose exact records_key was not confirmed against a
+    live response (records_key == "auto" — see EndpointSpec's own comment):
+    walk `obj`, always following the first nested list-of-dicts found (by
+    checking every record at the current level, not just the first, so one
+    empty/short record does not hide a field the others have), down to the
+    DEEPEST such list. Confirmed against TMD NWP's own documented shape
+    (data.tmd.go.th/nwpapi/doc): {"WeatherForecasts": [{"location": {...},
+    "forecasts": [{"time": ..., "data": {...}}]}]} — this returns
+    ("WeatherForecasts[].forecasts[]", every location's forecasts combined),
+    not the outer per-location list. Returns ("", []) when `obj` has no list
+    of dicts anywhere."""
+    if isinstance(obj, list):
+        if not obj or not all(isinstance(v, dict) for v in obj):
+            return "", []
+        keys = []
+        for rec in obj:
+            for key in rec:
+                if key not in keys:
+                    keys.append(key)
+        for key in keys:
+            nested: list = []
+            for rec in obj:
+                value = rec.get(key)
+                if isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
+                    nested.extend(value)
+            if nested:
+                sub_path, sub_records = _discover_records(nested)
+                path = f"{key}[]" + (f".{sub_path}" if sub_path else "")
+                return path, sub_records
+        return "", obj
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
+                sub_path, sub_records = _discover_records(value)
+                path = f"{key}[]" + (f".{sub_path}" if sub_path else "")
+                return path, sub_records
+        return "", []
+    return "", []
+
+
+def _flatten_record(rec: dict) -> dict:
+    """A leaf record found by _discover_records, e.g. {"time": "...", "data":
+    {"tc": 30, "rh": 80}} → {"time": "...", "tc": 30, "rh": 80}: NWP nests the
+    actual forecast fields one level down in a `data` object; this shows them
+    where `fields`/samples actually look. Applied ONLY to auto-discovered
+    records — every other spec's own place_fields/freshness_fields use
+    dotted paths into a shape confirmed by hand, which this must not reshape
+    out from under it."""
+    out = dict(rec)
+    for key, value in rec.items():
+        if isinstance(value, dict):
+            out.pop(key, None)
+            out.update(value)
+    return out
+
+
+def _fill_from_records(result: ProbeResult, spec: EndpointSpec, records: list, secrets: list[str],
+                        total_count: "int | None" = None) -> None:
+    """fields/samples/freshness/coverage from an already-extracted records
+    list — shared by a single-fetch endpoint (_summarise_json) and a
+    paginated one (_run_one_features), so both describe their answer the
+    same way. `total_count`, when given, is the TRUE number of records (a
+    paginated endpoint may hold more than MAX_ANALYSED_RECORDS)."""
+    total = len(records) if total_count is None else total_count
+    cleaned = [strip_personal(r) if isinstance(r, dict) else r for r in records[:MAX_ANALYSED_RECORDS]]
     if cleaned and isinstance(cleaned[0], dict):
         result.fields = sorted(cleaned[0].keys())
     for rec in cleaned[:2]:
         result.samples.append(redact(_truncate(json.dumps(rec, ensure_ascii=False)), secrets))
 
-    newest = None
+    values: list[str] = []
     for rec in cleaned:
         if not isinstance(rec, dict):
             continue
         for path in spec.freshness_fields:
             value = _dig(rec, path)
             if value:
-                newest = str(value) if newest is None else max(newest, str(value))
-    result.freshness = f"ล่าสุดที่พบ: {newest}" if newest else result.freshness
+                values.append(str(value))
+    if values:
+        lo, hi = min(values), max(values)
+        result.freshness = f"ตั้งแต่ {lo} ถึง {hi}" if lo != hi else f"ล่าสุดที่พบ: {hi}"
 
     places = set()
     for rec in cleaned:
@@ -579,9 +660,33 @@ def _summarise_json(spec: EndpointSpec, body: bytes, secrets: list[str]) -> Prob
             if value:
                 places.add(str(value))
     if places:
-        result.coverage = f"{len(cleaned)} รายการ, {len(places)} พื้นที่ที่ต่างกัน"
+        result.coverage = f"{total} รายการ, {len(places)} พื้นที่ที่ต่างกัน"
     else:
-        result.coverage = f"{len(cleaned)} รายการ"
+        result.coverage = f"{total} รายการ"
+
+
+def _summarise_json(spec: EndpointSpec, body: bytes, secrets: list[str]) -> ProbeResult:
+    result = ProbeResult(name=spec.name, status=0, bytes_read=len(body))
+    try:
+        data = json.loads(body.decode("utf-8", errors="replace"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        result.error = redact(f"could not parse JSON: {exc}", secrets)
+        return result
+
+    if spec.records_key == "auto":
+        records_path, records = _discover_records(data)
+        records = [_flatten_record(r) if isinstance(r, dict) else r for r in records]
+        result.records_path = records_path
+    else:
+        records = data
+        if spec.records_key:
+            records = _dig(data, spec.records_key) or []
+        if isinstance(records, dict):
+            records = list(records.values())
+        if not isinstance(records, list):
+            records = [records]
+
+    _fill_from_records(result, spec, records, secrets)
     return result
 
 
@@ -600,13 +705,15 @@ def _summarise_xml(spec: EndpointSpec, body: bytes, secrets: list[str]) -> Probe
         pieces = [f"{child.tag}={_truncate(child.text or '', 40)}" for child in list(rec)[:6]]
         result.samples.append(redact(_truncate(", ".join(pieces)), secrets))
 
-    newest = None
+    values: list[str] = []
     for rec in records:
         for path in spec.freshness_fields:
             value = _xml_find(rec, path)
             if value:
-                newest = value if newest is None else max(newest, value)
-    result.freshness = f"ล่าสุดที่พบ: {newest}" if newest else result.freshness
+                values.append(value)
+    if values:
+        lo, hi = min(values), max(values)
+        result.freshness = f"ตั้งแต่ {lo} ถึง {hi}" if lo != hi else f"ล่าสุดที่พบ: {hi}"
 
     places = set()
     for rec in records:
@@ -618,11 +725,128 @@ def _summarise_xml(spec: EndpointSpec, body: bytes, secrets: list[str]) -> Probe
     return result
 
 
+# ------------------------------------------------------------- pagination ---
+
+#: GISTDA's own `features/...` endpoints take `?limit=&offset=` — confirmed
+#: 2026-09-26 against the live "ลองใช้งาน" example request URLs GISTDA itself
+#: publishes on opendata.gistda.or.th/dataset/flood-disaster-data (both
+#: parameters appear there, e.g. "...&limit=10&offset=0&..."). No field for
+#: "how many pages are left" (no numberMatched, no next link) is documented
+#: anywhere public, so pagination here reads "done" off the DATA itself: an
+#: empty page, a short page, or a page that repeats the previous one's
+#: features (offset silently ignored) — see _paginate_features.
+GISTDA_PAGE_LIMIT = 200
+#: Hard stop so a misbehaving endpoint cannot turn one probe into an
+#: unbounded crawl.
+GISTDA_MAX_PAGES = 50
+GISTDA_MAX_TOTAL_BYTES = 8 * 1024 * 1024
+#: Same politeness as PAUSE_SECONDS between one endpoint and the next.
+GISTDA_PAGE_PAUSE_SECONDS = PAUSE_SECONDS
+
+
+def _feature_id(feature) -> str:
+    """A stable-enough identity for one GeoJSON feature, used only to notice
+    a server that ignored `offset` and sent the same page again — never
+    shown; this never leaves _paginate_features."""
+    if isinstance(feature, dict):
+        fid = feature.get("id")
+        if fid is not None:
+            return str(fid)
+        return json.dumps(feature.get("properties"), sort_keys=True, default=str)
+    return str(feature)
+
+
+def _paginate_features(url: str, secrets: list[str], fetch: Callable[..., tuple[int, bytes]],
+                        headers: "dict[str, str] | None", sleep: Callable[[float], None],
+                        timeout: float) -> tuple[list, int, int, str, "int | str"]:
+    """Every page of a GISTDA `features/...` endpoint. Returns (all records,
+    total bytes read, pages fetched, a note, the first page's HTTP status or
+    "error")."""
+    parsed = urllib.parse.urlsplit(url)
+    params = dict(urllib.parse.parse_qsl(parsed.query))
+    records: list = []
+    total_bytes = 0
+    pages = 0
+    last_ids: "set[str] | None" = None
+    note = ""
+    status: "int | str" = "error"
+    offset = 0
+    while True:
+        params["limit"] = str(GISTDA_PAGE_LIMIT)
+        params["offset"] = str(offset)
+        page_url = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(params)))
+        try:
+            page_status, body = fetch(page_url, timeout, MAX_RESPONSE_BYTES, headers)
+        except Exception as exc:  # noqa: BLE001 — a page failure ends pagination, not the probe
+            if pages == 0:
+                return [], 0, 0, redact(str(exc), secrets), "error"
+            note = f"page {pages + 1}: {type(exc).__name__} — stopped, kept what was already fetched"
+            break
+        pages += 1
+        total_bytes += len(body)
+        if pages == 1:
+            status = page_status
+        if page_status != 200:
+            if pages == 1:
+                return [], total_bytes, pages, "ไม่ใช่ 200 — ดูสถานะด้านบน", status
+            note = f"page {pages}: http {page_status} — stopped, kept what was already fetched"
+            break
+        try:
+            data = json.loads(body.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if pages == 1:
+                return [], total_bytes, pages, redact(f"could not parse JSON: {exc}", secrets), status
+            note = f"page {pages}: bad json — stopped, kept what was already fetched"
+            break
+        page_records = data.get("features") if isinstance(data, dict) else None
+        if not isinstance(page_records, list) or not page_records:
+            break
+        ids = {_feature_id(r) for r in page_records}
+        if last_ids is not None and ids == last_ids:
+            note = "offset not honoured by this endpoint — stopped after the repeated page"
+            break
+        records.extend(page_records)
+        last_ids = ids
+        if pages >= GISTDA_MAX_PAGES:
+            note = f"stopped at the {GISTDA_MAX_PAGES}-page cap"
+            break
+        if total_bytes >= GISTDA_MAX_TOTAL_BYTES:
+            note = "stopped at the byte cap"
+            break
+        if len(page_records) < GISTDA_PAGE_LIMIT:
+            break  # fewer than asked for: the ordinary end, nothing to note
+        offset += len(page_records)
+        sleep(GISTDA_PAGE_PAUSE_SECONDS)
+    return records, total_bytes, pages, note, status
+
+
+def _run_one_features(spec: EndpointSpec, url: str, secrets: list[str],
+                       fetch: Callable[..., tuple[int, bytes]], sleep: Callable[[float], None],
+                       headers: "dict[str, str] | None" = None) -> ProbeResult:
+    """Like _run_one, but follows every page of a GISTDA `features` endpoint
+    (see _paginate_features) before summarising, so `coverage` reports the
+    WHOLE answer rather than just its first GISTDA_PAGE_LIMIT rows."""
+    records, total_bytes, pages, note, status = _paginate_features(
+        url, secrets, fetch, headers, sleep, spec.timeout)
+    if status == "error":
+        return ProbeResult(name=spec.name, status="error", error=note)
+    if status != 200:
+        return ProbeResult(name=spec.name, status=status, bytes_read=total_bytes,
+                            error=note or "ไม่ใช่ 200 — ดูสถานะด้านบน")
+    result = ProbeResult(name=spec.name, status=status, bytes_read=total_bytes,
+                          pages=pages, pagination_note=note)
+    _fill_from_records(result, spec, records, secrets, total_count=len(records))
+    return result
+
+
 def _run_one(spec: EndpointSpec, url: str, secrets: list[str],
              fetch: Callable[..., tuple[int, bytes]],
-             headers: "dict[str, str] | None" = None) -> ProbeResult:
+             headers: "dict[str, str] | None" = None,
+             sleep: Callable[[float], None] = time.sleep) -> ProbeResult:
+    if spec.kind == "json" and spec.records_key == "features":
+        return _run_one_features(spec, url, secrets, fetch, sleep, headers)
     try:
-        status, body = fetch(url, FETCH_TIMEOUT, MAX_RESPONSE_BYTES, headers)
+        status, body = fetch(url, spec.timeout, MAX_RESPONSE_BYTES, headers)
     except Exception as exc:  # noqa: BLE001 — any transport failure becomes a safe line
         return ProbeResult(name=spec.name, status="error", error=redact(str(exc), secrets))
     if status != 200:
@@ -637,8 +861,14 @@ def _run_one(spec: EndpointSpec, url: str, secrets: list[str],
 def _print_result(result: ProbeResult, path: str, out) -> None:
     print(f"\n=== {result.name} ===", file=out)
     print(f"  path        : {path}", file=out)
+    if result.records_path:
+        print(f"  records path: {result.records_path}", file=out)
     print(f"  http status : {result.status}", file=out)
     print(f"  bytes read  : {result.bytes_read}", file=out)
+    if result.pages > 1:
+        print(f"  pages       : {result.pages}", file=out)
+    if result.pagination_note:
+        print(f"  pagination  : {result.pagination_note}", file=out)
     if result.error:
         print(f"  error       : {result.error}", file=out)
         return
@@ -655,6 +885,8 @@ def _as_dict(result: ProbeResult, path: str) -> dict:
         "bytes_read": result.bytes_read, "fields": result.fields,
         "samples": result.samples, "freshness": result.freshness,
         "coverage": result.coverage, "error": result.error,
+        "records_path": result.records_path, "pages": result.pages,
+        "pagination_note": result.pagination_note,
     }
 
 
@@ -668,7 +900,7 @@ def _run_list(specs: tuple[EndpointSpec, ...], urls: list[str], secrets: list[st
     for i, (spec, url) in enumerate(zip(specs, urls)):
         if i > 0 or pause_before_first:
             sleep(PAUSE_SECONDS)
-        result = _run_one(spec, url, secrets, fetch, headers)
+        result = _run_one(spec, url, secrets, fetch, headers, sleep)
         path = path_only(url)
         results.append((result, path))
         if not as_json:

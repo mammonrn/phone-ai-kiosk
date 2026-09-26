@@ -127,6 +127,14 @@ GDACS_LEVELS = ("Red", "Orange")
 #: background (see Alerts), and TMD answered in 0.9 s one minute and not at all
 #: the next on the day this was written.
 FETCH_TIMEOUT = 10.0
+#: TMD's plain "เตือนภัย" RSS specifically (see the module docstring: it once
+#: took over a minute, and a live VPS run on 2026-09-26 saw it time out at
+#: FETCH_TIMEOUT) — a longer timeout and one retry after a short, polite
+#: pause, still within the SAME refresh. It is a secondary source (the card
+#: works from CAP alone), so a second failure is simply logged and this
+#: source's last good items are kept, same as any other source (refresh()).
+TMD_RSS_TIMEOUT = 20.0
+TMD_RSS_RETRY_PAUSE = 2.0
 #: The RSS lists are ~32 KB and ~104 KB; a CAP document with its polygons was
 #: 99-145 KB. Bounded reads, so a source cannot take the broker's memory.
 MAX_FEED_BYTES = 512 * 1024
@@ -179,6 +187,14 @@ _CAP_NS = "{urn:oasis:names:tc:emergency:cap:1.2}"
 
 class AlertSourceError(ValueError):
     """A source answered with something this module will not read."""
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    """True for a raw TimeoutError (usually a slow read, after the connection
+    itself succeeded) or a URLError wrapping one (a slow connect) — never for
+    an offline/refused/DNS failure, which a retry cannot fix."""
+    inner = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    return isinstance(inner, TimeoutError)
 
 
 # ------------------------------------------------------------------ fetching ---
@@ -858,7 +874,23 @@ class Alerts:
         return [i for i in out if i["expires"] > now]
 
     def _tmd_rss(self, now: float) -> list[dict]:
-        return parse_warning_rss(self._get(TMD_WARNING_RSS_URL, MAX_FEED_BYTES), now)
+        return parse_warning_rss(self._get_tmd_rss(), now)
+
+    def _get_tmd_rss(self) -> bytes:
+        """TMD_WARNING_RSS_URL with its own longer timeout and one retry after
+        a short pause — see TMD_RSS_TIMEOUT's own comment. Only a TIMEOUT gets
+        the retry (a connection actually refused or offline gains nothing from
+        waiting 2 seconds and trying the identical request again); any other
+        failure, or a second timeout, is raised as usual for refresh() to log
+        and count as this source's failed attempt."""
+        try:
+            return self._get(TMD_WARNING_RSS_URL, MAX_FEED_BYTES, TMD_RSS_TIMEOUT)
+        except (TimeoutError, urllib.error.URLError) as exc:
+            if not _is_timeout(exc):
+                raise
+            log.info("alerts source=tmd_rss retrying once after a timeout")
+            time.sleep(TMD_RSS_RETRY_PAUSE)
+            return self._get(TMD_WARNING_RSS_URL, MAX_FEED_BYTES, TMD_RSS_TIMEOUT)
 
     def _gdacs(self, now: float) -> list[dict]:
         return parse_gdacs(self._get(GDACS_URL, MAX_FEED_BYTES))
@@ -871,8 +903,8 @@ class Alerts:
             self._thaiwater_stations = (now, parse_thaiwater_stations(body))
         return parse_thaiwater(body)
 
-    def _get(self, url: str, limit: int) -> bytes:
-        return (self._fetch_with or _fetch)(url, self.timeout, limit)
+    def _get(self, url: str, limit: int, timeout: float | None = None) -> bytes:
+        return (self._fetch_with or _fetch)(url, self.timeout if timeout is None else timeout, limit)
 
 
 # ------------------------------------------------------------ Jarvis answers ---

@@ -43,6 +43,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 log = logging.getLogger("kiosk_broker.tls")
 
@@ -290,6 +291,115 @@ def probe(url: str, timeout: float = 15.0, opener=None) -> tuple[str, str]:
     return ("ok" if code == 200 else f"HTTP {code}"), "tls ok"
 
 
+#: `probe()` itself, captured before anything can monkeypatch the module
+#: attribute of the same name — see `_health_rows`: only when the caller is
+#: using this exact function (nobody passed their own `probe_fn`, and nobody
+#: replaced `tls.probe`) does a location-based source get its own minimal
+#: VALID request instead of a bare, query-free GET.
+_DEFAULT_PROBE = probe
+
+#: A public, well-known coordinate (central Bangkok) — used ONLY to build a
+#: minimal valid `health` request for the three Open-Meteo endpoints below,
+#: which answer HTTP 400 to their bare base URL (no latitude/longitude).
+#: Never the kiosk's own position.
+_HEALTH_LAT, _HEALTH_LON = 13.75, 100.50
+
+#: A JSON health probe reads more than probe()'s 1 KiB (the ensemble answer
+#: alone was ~120 KiB for a 3-day forecast) but is still bounded.
+_MAX_HEALTH_BYTES = 512 * 1024
+
+
+def _fetch_json_probe(url: str, timeout: float, opener) -> tuple[str, str, dict | None]:
+    """Like `probe()`, but for a source that needs real query parameters to
+    answer at all (a bare base URL is HTTP 400) and whose health check must
+    look inside the JSON body, not just its status. Returns the same
+    ("ok"|"TLS-FAIL"|"HTTP nnn"|"ERROR", reason) probe() does, plus the
+    parsed body (None unless "ok")."""
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    ctx = context_for(url)
+    kwargs = {"timeout": timeout}
+    if ctx is not None:
+        kwargs["context"] = ctx
+    try:
+        with (opener or urllib.request.urlopen)(request, **kwargs) as response:
+            body = response.read(_MAX_HEALTH_BYTES + 1)
+            code = getattr(response, "status", 200)
+    except urllib.error.HTTPError as exc:
+        return f"HTTP {exc.code}", "tls ok", None
+    except (urllib.error.URLError, OSError) as exc:
+        reason = tls_reason(exc)
+        if reason:
+            return "TLS-FAIL", reason, None
+        inner = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+        return "ERROR", type(inner).__name__ if not isinstance(inner, str) else "unreachable", None
+    if len(body) > _MAX_HEALTH_BYTES:
+        return "ERROR", "response too large", None
+    if code != 200:
+        return f"HTTP {code}", "tls ok", None
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except ValueError:
+        return "ERROR", "bad json", None
+    return "ok", "tls ok", data
+
+
+def _probe_open_meteo_forecast(timeout: float = 15.0, opener=None) -> tuple[str, str]:
+    """The bare `/v1/forecast` base URL answers HTTP 400 (no location); this
+    asks for one real field at a public Bangkok coordinate instead."""
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={_HEALTH_LAT}"
+           f"&longitude={_HEALTH_LON}&current=temperature_2m")
+    result, reason, data = _fetch_json_probe(url, timeout, opener)
+    if result != "ok":
+        return result, reason
+    if "temperature_2m" not in ((data or {}).get("current") or {}):
+        return "ERROR", "no current.temperature_2m in answer"
+    return "ok", "current.temperature_2m ok"
+
+
+def _probe_open_meteo_air(timeout: float = 15.0, opener=None) -> tuple[str, str]:
+    """Same problem as the forecast API above, one field (pm2_5) instead."""
+    url = (f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={_HEALTH_LAT}"
+           f"&longitude={_HEALTH_LON}&current=pm2_5")
+    result, reason, data = _fetch_json_probe(url, timeout, opener)
+    if result != "ok":
+        return result, reason
+    if "pm2_5" not in ((data or {}).get("current") or {}):
+        return "ERROR", "no current.pm2_5 in answer"
+    return "ok", "current.pm2_5 ok"
+
+
+def _probe_open_meteo_ensemble(timeout: float = 15.0, opener=None) -> tuple[str, str]:
+    """The real request local_rain.py makes (see its own module docstring:
+    82 members from ecmwf_ifs025 + gfs025) — reused here rather than
+    duplicated, so this probe and the actual feature never drift apart."""
+    from . import local_rain  # noqa: PLC0415 — deferred: local_rain.py imports this module
+    url = local_rain.ENSEMBLE_URL.format(lat=_HEALTH_LAT, lon=_HEALTH_LON)
+    result, reason, data = _fetch_json_probe(url, timeout, opener)
+    if result != "ok":
+        return result, reason
+    hourly = (data or {}).get("hourly") or {}
+    members = sum(1 for key in hourly if key.startswith("precipitation"))
+    if not members:
+        return "ERROR", "no precipitation members in answer"
+    return "ok", f"{members} members"
+
+
+#: Sources whose bare-URL GET (probe()'s default) answers HTTP 400 because
+#: they need real query parameters to mean anything — see each function's
+#: own docstring for what "minimal valid" means for that source.
+_LOCATION_PROBES: dict[str, Callable[[], tuple[str, str]]] = {
+    "open_meteo": _probe_open_meteo_forecast,
+    "open_meteo_air": _probe_open_meteo_air,
+    "open_meteo_ensemble": _probe_open_meteo_ensemble,
+}
+
+#: TMD's plain "เตือนภัย" RSS (see alerts.py) is a secondary source — the
+#: warning card already works from CAP alone — that has been slow to answer;
+#: a health failure classified as a timeout reads as this instead of the bare
+#: exception name.
+_TMD_RSS_TIMEOUT_NOTE = "timeout (แหล่งสำรอง)"
+
+
 def health_lines(sources=SOURCES, probe_fn=probe, last: dict | None = None) -> list[str]:
     """The `health` table. `last` is the serving broker's own last status per
     host (tls_status.json), shown when there is one."""
@@ -301,7 +411,13 @@ def _health_rows(sources, probe_fn, last):
     for name, url in sources:
         parts = urllib.parse.urlsplit(url)
         host = parts.hostname or ""
-        result, reason = probe_fn(f"{parts.scheme}://{parts.netloc}{parts.path}")
+        override = _LOCATION_PROBES.get(name) if probe_fn is _DEFAULT_PROBE else None
+        if override is not None:
+            result, reason = override()
+        else:
+            result, reason = probe_fn(f"{parts.scheme}://{parts.netloc}{parts.path}")
+        if name == "tmd_rss" and result == "ERROR" and reason == "TimeoutError":
+            reason = _TMD_RSS_TIMEOUT_NOTE
         seen = ""
         if last and host in last:
             entry = last[host]

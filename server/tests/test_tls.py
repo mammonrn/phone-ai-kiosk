@@ -332,6 +332,83 @@ def test_probe_classifies(monkeypatch):
     assert tls.probe("https://x.invalid/", opener=refused) == ("ERROR", "ConnectionRefusedError")
 
 
+class _JsonResponse:
+    def __init__(self, body: bytes, status: int = 200):
+        self._body = body
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, _n):
+        return self._body
+
+
+def _json_opener(payload: dict, status: int = 200):
+    body = json.dumps(payload).encode("utf-8")
+
+    def opener(request, **kw):
+        return _JsonResponse(body, status)
+    return opener
+
+
+def test_open_meteo_forecast_probe_needs_real_params_not_a_bare_url():
+    ok = tls._probe_open_meteo_forecast(opener=_json_opener({"current": {"temperature_2m": 30.1}}))
+    assert ok == ("ok", "current.temperature_2m ok")
+    missing = tls._probe_open_meteo_forecast(opener=_json_opener({"current": {}}))
+    assert missing[0] == "ERROR"
+
+
+def test_open_meteo_air_probe_reads_pm25():
+    ok = tls._probe_open_meteo_air(opener=_json_opener({"current": {"pm2_5": 12.0}}))
+    assert ok == ("ok", "current.pm2_5 ok")
+    missing = tls._probe_open_meteo_air(opener=_json_opener({"current": {}}))
+    assert missing[0] == "ERROR"
+
+
+def test_open_meteo_ensemble_probe_counts_members():
+    hourly = {"time": ["x"], **{f"precipitation_member{i:02d}": [1.0] for i in range(82)}}
+    ok = tls._probe_open_meteo_ensemble(opener=_json_opener({"hourly": hourly}))
+    assert ok == ("ok", "82 members")
+    empty = tls._probe_open_meteo_ensemble(opener=_json_opener({"hourly": {"time": ["x"]}}))
+    assert empty[0] == "ERROR"
+
+
+def test_health_rows_use_location_probes_only_for_the_real_default_probe(monkeypatch):
+    # A custom probe_fn (as every existing test passes) must never be
+    # bypassed — only tls.probe itself, unpatched, triggers the override.
+    calls = []
+
+    def fake_probe(url):
+        calls.append(url)
+        return "ok", "tls ok"
+
+    rows = tls._health_rows(
+        (("open_meteo_ensemble", "https://ensemble-api.open-meteo.com/v1/ensemble"),),
+        fake_probe, None)
+    assert calls == ["https://ensemble-api.open-meteo.com/v1/ensemble"]
+    assert rows[0][2] == "ok"
+
+    monkeypatch.setitem(tls._LOCATION_PROBES, "open_meteo_ensemble", lambda: ("ok", "82 members"))
+    rows = tls._health_rows(
+        (("open_meteo_ensemble", "https://ensemble-api.open-meteo.com/v1/ensemble"),),
+        tls.probe, None)
+    assert rows[0][2:4] == ("ok", "82 members")
+
+
+def test_health_prints_a_thai_note_for_a_tmd_rss_timeout():
+    def fake_probe(url):
+        return ("ERROR", "TimeoutError") if "warning-news" in url else ("ok", "tls ok")
+
+    lines = tls.health_lines(
+        sources=(("tmd_rss", "https://www.tmd.go.th/api/xml/warning-news"),),
+        probe_fn=fake_probe, last=None)
+    assert "timeout (แหล่งสำรอง)" in lines[1]
+
+
 def test_health_command_dispatch_and_exit_code(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli.config_mod, "DEFAULT_HOME", tmp_path)
     monkeypatch.setattr(tls, "probe", lambda url: ("ok", "tls ok"))
