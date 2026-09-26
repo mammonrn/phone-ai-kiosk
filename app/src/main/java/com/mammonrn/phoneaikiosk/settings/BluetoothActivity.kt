@@ -47,8 +47,9 @@ import com.mammonrn.phoneaikiosk.ui.UiScale
  * button that could not do what it says.
  *
  * THE IDENTITY CHECK (Poom): searching for and pairing a new device, and forgetting
- * one, need a pass (IdentityGate; the hour's grant applies). Turning on or off and
- * opening the system's screen to connect do not — like WiFi.
+ * one, need a pass (IdentityGate; the hour's grant applies), and so does opening the
+ * system's screen (it can pair and forget by itself) — as the WiFi panel does (Poom
+ * 2026-09-26: every system settings screen). Turning the radio on or off does not.
  *
  * EVERY STATE (ux-ui-design): no Bluetooth · no permission · off · turning on/off ·
  * on with nothing paired · the list · searching · found nothing · pairing · paired ·
@@ -194,8 +195,8 @@ class BluetoothActivity : Activity() {
     /**
      * The system Bluetooth screen can pair and forget devices itself, with no identity
      * check of ours. So every way to it passes the check first (the hour's grant applies);
-     * turning the radio on/off and the paired list on this page do not need it. (0.68:
-     * interim until Poom decides the same for WiFi's settings link.)
+     * turning the radio on/off and the paired list on this page do not need it. (Poom
+     * 2026-09-26: the same for every system settings screen, WiFi included.)
      */
     private fun systemAfterCheck() = check(Want.SYSTEM)
 

@@ -381,6 +381,10 @@
     <!-- Control panel: WiFi and the torch (0.42.0). -->
     <string name="window_wifi">WiFi</string>
     <string name="wifi_unavailable">เปิดหน้า WiFi ไม่ได้</string>
+    <!-- Poom 2026-09-26: the system WiFi screen needs the identity check first (WifiPanel). -->
+    <string name="wifi_check_nothing_enrolled">ยังไม่ได้เปิดหน้า WiFi เพราะยังไม่ได้ตั้งใบหน้าหรือ pattern กรุณาตั้งในแผงควบคุม หน้ายืนยันตัวตน</string>
+    <string name="wifi_check_cancelled">ยังไม่ได้เปิดหน้า WiFi เพราะยกเลิกการยืนยันตัวตน</string>
+    <string name="wifi_check_failed">ยังไม่ได้เปิดหน้า WiFi เพราะยืนยันตัวตนไม่ผ่าน</string>
     <string name="torch_off">ไฟฉาย: ปิด</string>
     <string name="torch_on">ไฟฉาย: เปิด</string>
     <string name="torch_unavailable">ไฟฉาย: ใช้ไม่ได้</string>

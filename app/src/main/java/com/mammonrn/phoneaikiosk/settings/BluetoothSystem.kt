@@ -53,7 +53,11 @@ object BluetoothSystem {
         return true
     }
 
-    /** The system Bluetooth screen, for one visit. False when it could not be opened. */
+    /**
+     * The system Bluetooth screen, for one visit. ONLY after a passed identity check
+     * (BluetoothActivity.systemAfterCheck; Poom 2026-09-26: every system settings screen).
+     * False when it could not be opened.
+     */
     fun openSettings(activity: Activity): Boolean {
         if (!allow(activity, listOf(WifiPanel.SETTINGS_PACKAGE))) return false
         try {

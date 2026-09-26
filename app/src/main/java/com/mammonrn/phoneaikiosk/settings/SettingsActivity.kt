@@ -113,6 +113,9 @@ class SettingsActivity : Activity() {
         hideSystemBars()
         // Back from the WiFi panel: the settings app leaves the allowlist.
         WifiPanel.restore(this)
+        // A passed check opens the WiFi panel only now, AFTER the restore above: opened
+        // from onActivityResult, the restore would take the settings app away at once.
+        wifiAfterResume?.let { wifiAfterResume = null; it() }
         torch.watch(true)
         bluetooth.watch(true)
         if (page == Page.HOME) showHome()
@@ -175,10 +178,49 @@ class SettingsActivity : Activity() {
         })
     }
 
+    /**
+     * The WiFi tile (Poom 2026-09-26): the system's WiFi panel reaches the whole settings
+     * app, so the identity check comes first — the hour's grant applies, so inside it the
+     * check passes without the camera. Nothing joins the allowlist until the check passed
+     * (WifiPanel.openAfterPass from onResume); cancelled or failed, the list is untouched
+     * and a message says why. Switching the torch or the Bluetooth radio here is not a
+     * system screen and needs no check.
+     */
     private fun openWifi() {
-        if (!WifiPanel.open(this)) {
+        if (wifiCheckPending) return
+        wifiCheckPending = true
+        wifiAfterResume = null
+        android.util.Log.i("KioskWifi", "check asked")
+        com.mammonrn.phoneaikiosk.auth.IdentityGate.ask(this)
+    }
+
+    /** A check for the WiFi panel is on screen: a second tap does not start another. */
+    private var wifiCheckPending = false
+
+    /** Set by a passed check; run by onResume after the allowlist is the kiosk's own. */
+    private var wifiAfterResume: (() -> Unit)? = null
+
+    private fun openWifiNow() {
+        if (!WifiPanel.openAfterPass(this)) {
             android.widget.Toast.makeText(this, R.string.wifi_unavailable, android.widget.Toast.LENGTH_LONG).show()
         }
+    }
+
+    /** The answer of the check [openWifi] asked for. */
+    private fun wifiChecked(data: Intent?) {
+        wifiCheckPending = false
+        val outcome = data?.getStringExtra(VerifyActivity.EXTRA_OUTCOME)
+        if (com.mammonrn.phoneaikiosk.auth.IdentityGate.passed(data)) {
+            android.util.Log.i("KioskWifi", "check passed")
+            wifiAfterResume = { openWifiNow() }
+            return
+        }
+        android.util.Log.i("KioskWifi", "check not passed")
+        android.widget.Toast.makeText(this, when (outcome) {
+            VerifyActivity.OUTCOME_NOTHING_ENROLLED -> R.string.wifi_check_nothing_enrolled
+            VerifyActivity.OUTCOME_CANCELLED, null -> R.string.wifi_check_cancelled
+            else -> R.string.wifi_check_failed
+        }, android.widget.Toast.LENGTH_LONG).show()
     }
 
     @Deprecated("Superseded by OnBackInvokedDispatcher on API 33+, still the path below it.")
@@ -681,6 +723,10 @@ class SettingsActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == com.mammonrn.phoneaikiosk.auth.IdentityGate.REQUEST) {
+            wifiChecked(data)
+            return
+        }
         if (requestCode == REQUEST_DELETE) {
             val key = deleteAfterPass
             deleteAfterPass = null
