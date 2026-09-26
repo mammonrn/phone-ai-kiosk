@@ -131,7 +131,10 @@ def test_fetch_reading_calls_out_when_both_keys_are_present(monkeypatch):
 
     monkeypatch.setattr(tmd_obs, "_get", fake_get)
     secret = {"TMD_UID": "the-uid", "TMD_UKEY": "the-ukey"}.get
-    got = tmd_obs.fetch_reading(*CHIANG_RAI, timeout=5.0, secret=secret)
+    # The fixture's own reading time, not the wall clock: a real clock made this test
+    # fail every day after 10:00, once the 07:00 reading was over 3 h old.
+    got = tmd_obs.fetch_reading(*CHIANG_RAI, timeout=5.0, secret=secret,
+                                now=dt.datetime(2026, 9, 26, 7, 30, tzinfo=tmd_obs.BANGKOK))
     assert got is not None
     assert got["station_name"] == "CHIANG RAI"
     assert len(seen_urls) == 1

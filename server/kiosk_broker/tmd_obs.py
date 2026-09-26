@@ -255,7 +255,8 @@ def reading(stations, latitude: float, longitude: float,
 FETCH_ERRORS = (urllib.error.URLError, OSError, ValueError, ET.ParseError)
 
 
-def fetch_reading(latitude: float, longitude: float, timeout: float, secret) -> "dict | None":
+def fetch_reading(latitude: float, longitude: float, timeout: float, secret,
+                  now: "dt.datetime | None" = None) -> "dict | None":
     """The TMD reading for this position, or None — no key, nothing close and
     fresh enough, or the request/parse failed. `secret` is a `name -> value`
     callable (envfile.reader(cfg.env_path)), read fresh every call like every
@@ -274,4 +275,4 @@ def fetch_reading(latitude: float, longitude: float, timeout: float, secret) -> 
         # the URL, and this URL carries the key in its query string.
         log.info("tmd observation unavailable: %s", type(exc).__name__)
         return None
-    return reading(stations, latitude, longitude)
+    return reading(stations, latitude, longitude, now=now)
