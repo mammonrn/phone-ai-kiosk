@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Wind, calm: one short streamline. Neutral dark grey, the same colour as
-     every other line-drawn tool icon in this app (no new colour). -->
+<!-- Wind, calm (<15 km/h): ONE flowing line ending in a curl - the common wind glyph, drawn as our own 8-bit staircase. Level = number of curled lines (1/2/3), a shape difference, not colour. Navy from DESIGN.md's colour table. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="16" android:viewportHeight="16">
-    <path android:fillColor="#404040" android:pathData="M4,8h6v1h-6z" />
+    <path android:fillColor="#000080"
+        android:pathData="M9,4h4v1h-4z M8,5h1v2h-1z M13,5h1v1h-1z M14,6h1v3h-1z M13,9h1v1h-1z M1,10h12v1h-12z" />
 </vector>

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- PM2.5, "เริ่มมีผลต่อสุขภาพ": nine particles, black — the densest cloud
-     before the hazard mark of the worst level. -->
+<!-- PM2.5 'roem mi phon': the same mask, FIVE dust specks (the densest). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="16" android:viewportHeight="16">
-    <path android:fillColor="#000000"
-        android:pathData="M4,5h1v1h-1z M10,9h1v1h-1z M6,10h1v1h-1z M11,5h1v1h-1z M8,7h1v1h-1z
-                          M3,9h1v1h-1z M12,10h1v1h-1z M2,6h1v1h-1z M9,3h1v1h-1z" />
+    <path android:fillColor="#404040"
+        android:pathData="M2,1h2v2h-2z M12,1h2v2h-2z M7,2h2v2h-2z M4,4h2v2h-2z M10,4h2v2h-2z M3,6h10v1h-10z M1,7h3v1h-3z M12,7h3v1h-3z M0,8h1v4h-1z M3,8h1v5h-1z M12,8h1v5h-1z M15,8h1v4h-1z M1,12h1v1h-1z M14,12h1v1h-1z M2,13h3v1h-3z M11,13h3v1h-3z M5,14h6v1h-6z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M4,7h8v2h-8z M4,10h8v1h-8z M4,12h8v1h-8z M5,13h6v1h-6z" />
+    <path android:fillColor="#808080"
+        android:pathData="M4,9h8v1h-8z M4,11h8v1h-8z" />
 </vector>
